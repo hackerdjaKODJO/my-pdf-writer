@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- page with knocked-out PDF wordmark -->
+    <path
+        android:fillColor="#000000"
+        android:fillType="evenOdd"
+        android:pathData="M35,23 H73 A5,5 0 0 1 78,28 V80 A5,5 0 0 1 73,85 H35 A5,5 0 0 1 30,80 V28 A5,5 0 0 1 35,23 Z M37 49.219H39.829V44.498H42.118Q44.471 44.498 45.731 43.354Q46.99 42.209 46.99 40.124Q46.99 38.033 45.728 36.907Q44.466 35.781 42.122 35.781H37ZM39.829 42.389V37.904H41.864Q43.165 37.904 43.666 38.49Q44.166 39.076 44.166 40.128Q44.166 41.189 43.666 41.789Q43.165 42.389 41.864 42.389Z M48.869 49.219H53.377Q56.086 49.219 57.915 47.558Q59.745 45.896 59.745 42.92V42.075Q59.745 39.099 57.915 37.44Q56.086 35.781 53.377 35.781H48.869ZM51.683 47.11V37.899H53.336Q54.909 37.899 55.883 38.94Q56.856 39.98 56.856 42.025V42.975Q56.856 45.02 55.883 46.065Q54.909 47.11 53.336 47.11Z M62.094 49.219H64.923V43.801H70.229V41.679H64.923V37.932H71V35.781H62.094Z" />
+
+    <!-- folded corner -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M67,23 L78,34 L67,34 Z" />
+
+    <!-- pen -->
+    <path
+        android:pathData="M58,78 L76,60"
+        android:strokeColor="#000000"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M76,60 L72.5,71 L65,63.5 Z" />
+</vector>
