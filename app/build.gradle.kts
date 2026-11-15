@@ -26,6 +26,19 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    // Optional phone-review build: package only the arm64 native libraries.
+    // AGP keeps the 16 KB page alignment that a repacked zip loses.
+    if (providers.gradleProperty("arm64Only").getOrNull() == "true") {
+        splits {
+            abi {
+                isEnable = true
+                reset()
+                include("arm64-v8a")
+                isUniversalApk = false
+            }
+        }
+    }
+
     signingConfigs {
         if (keystoreProperties.containsKey("storeFile")) {
             create("release") {
