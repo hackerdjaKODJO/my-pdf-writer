@@ -95,7 +95,7 @@ My PDF Writer는 다음 한 가지에 집중합니다.
 | 저장 | `org.json` 기반 JSON 파일 + `SharedPreferences` |
 | 파일 접근 | Storage Access Framework (`ActivityResultContracts`) |
 
-**빌드 크기**: 디버그 APK 약 28 MB(27.2 MiB). 릴리스 빌드는 R8/리소스 축소를 켜서 줄일 예정입니다.
+**빌드 크기**: 디버그 APK 약 28 MB, 릴리스 APK **7.9 MB**, AAB **10.5 MB** (R8 코드 축소 + 리소스 축소 적용).
 
 ---
 
@@ -153,21 +153,29 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 디버그 빌드는 `applicationIdSuffix = ".debug"`가 붙어
 `com.hackerdjakodjo.mypdfwriter.debug`로 설치됩니다.
 
-### 릴리스 서명(선택)
+### 릴리스 빌드
 
-`keystore.properties`를 프로젝트 루트에 만들면 릴리스 빌드에 자동 적용됩니다.
-(파일과 키스토어는 `.gitignore`에 포함되어 있습니다.)
-
-```properties
-storeFile=release.jks
-storePassword=...
-keyAlias=...
-keyPassword=...
-```
+R8 코드 축소와 리소스 축소가 켜져 있습니다(`app/build.gradle.kts`).
+PDFBox-Android의 선택적 클래스에 대한 keep/dontwarn 규칙은 `app/proguard-rules.pro`에 있습니다.
+업로드 키스토어와 `keystore.properties`는 저장소에 커밋하지 않습니다.
 
 ```bash
-./gradlew bundleRelease   # app/build/outputs/bundle/release/app-release.aab
+# 새 환경에서 업로드 키 생성 (비밀번호는 안전한 곳에 보관)
+keytool -genkeypair -v -keystore upload-keystore.jks -storetype PKCS12 \
+  -alias upload -keyalg RSA -keysize 2048 -validity 10000
+
+# keystore.properties
+# storeFile=upload-keystore.jks
+# storePassword=...
+# keyAlias=upload
+# keyPassword=...
+
+./gradlew bundleRelease assembleRelease
+# app/build/outputs/bundle/release/app-release.aab
+# app/build/outputs/apk/release/app-release.apk
 ```
+
+릴리스 APK는 `com.hackerdjakodjo.mypdfwriter`(디버그 접미사 없음)로 설치됩니다.
 
 ---
 
@@ -181,12 +189,18 @@ Android 16(Pixel 7 AVD)에서 다음 흐름을 직접 확인했습니다.
 - 페이지 회전(90°/180°), 이동, 삭제, 빈 페이지 추가, 원본 구성 초기화
 - 회전된 페이지에서 텍스트·밑줄·형광펜이 함께 회전
 - 페이지 메모 저장/불러오기, 텍스트 검색(2건) 및 페이지 이동
-- 내보내기: `mypdf-lecture_주석.pdf` (24,982 bytes) 생성
+- 디버그 내보내기: `mypdf-lecture_주석.pdf` (24,982 bytes)
   - `pdfinfo`: 3 pages, A4, Page rot 90
   - Poppler 렌더링으로 평탄화된 필기·형광펜·밑줄 확인
   - 내보낸 PDF를 앱에서 다시 열어 편집 가능한 주석이 없음을 확인
+- **R8 릴리스 APK**에서 PDF 열기, 펜, 검색(2건), 페이지 회전, 내보내기 재검증
+  - `release-r8-test.pdf` (14,545 bytes), `pdfinfo`: 3 pages, A4, Page rot 90
+- **단위 테스트 11개 통과** (`PageSpec` 회전 정규화, `PageTransforms` 90/180/270 변환,
+  `DocState.normalized` 인덱스 재매핑)
+- 릴리스 APK 권한 확인: `INTERNET`/저장소/카메라/알림/광고 ID 없음
+- 네이티브 라이브러리 16 KB 페이지 정렬 확인 (`zipalign -c -P 16`)
 
-> 자동화된 계측 테스트(UI/단위)는 아직 없습니다. 위 항목은 에뮬레이터 수동 스모크 테스트 결과입니다.
+> 계측(UI) 테스트는 아직 없습니다. 위 항목은 에뮬레이터 수동 스모크 테스트와 JVM 단위 테스트 결과입니다.
 
 ---
 
@@ -209,6 +223,7 @@ app/src/main/java/com/hackerdjakodjo/mypdfwriter/
 ├── MyPdfWriterApp.kt            # PDFBox 리소스 초기화
 ├── data/
 │   ├── Models.kt                # Annotation, PageSpec, DocState, RecentDoc
+│   ├── PageTransforms.kt        # 회전 시 좌표/굵기/글자 크기 보정 (순수 함수)
 │   └── Stores.kt                # DocStateStore(JSON), LibraryStore(SharedPreferences)
 ├── pdf/
 │   ├── PdfRepository.kt         # 원본 복사, 페이지 조립, PdfRenderer 캐시, 텍스트 추출
@@ -221,11 +236,17 @@ app/src/main/java/com/hackerdjakodjo/mypdfwriter/
     ├── PdfCanvas.kt             # 제스처, 좌표 변환, 실시간 미리보기
     ├── PdfViewModel.kt          # 상태, 페이지 작업, 실행 취소, 검색, 내보내기
     └── theme/Theme.kt
+app/src/test/java/com/hackerdjakodjo/mypdfwriter/data/
+├── PageSpecTest.kt              # 회전 정규화
+├── PageTransformsTest.kt        # 90/180/270 좌표·스케일 변환
+└── DocStateTest.kt              # 원본 변경 시 페이지/주석/메모 재매핑
 ```
 
 기타:
 
 - `tools/make-sample-pdf.js`, `tools/mypdf-lecture.pdf` — 테스트용 3페이지 샘플
+- `tools/make-store-assets.py` — Play Store 스크린샷/피처 그래픽/아이콘 생성
+- `store/` — Play Store 등록용 1080×2160 스크린샷 7장, 피처 그래픽, 512px 아이콘
 - `docs/screenshots/` — 기능 검증 스크린샷
 - `docs/competitive-analysis.md` — 경쟁 앱 5종 역공학 분석
 - `docs/architecture.md` — 상세 설계
@@ -233,10 +254,24 @@ app/src/main/java/com/hackerdjakodjo/mypdfwriter/
 
 ---
 
+## Play Store 자산
+
+`store/`에 Play Store 등록용 자산과 문안을 준비했습니다.
+
+- `store/screenshots/` — 1080×2160 스크린샷 7장 (1:2 비율)
+- `store/feature-graphic-1024x500.png` — 피처 그래픽
+- `store/icon-512.png` — 앱 아이콘
+- `store/README.md` — 앱 이름/설명, 데이터 안전성 답변, 업로드 체크리스트
+
+`python tools/make-store-assets.py`로 언제든 다시 생성할 수 있습니다.
+
+---
+
 ## 로드맵
 
-- **v0.1 (현재)**: 핵심 필기·페이지 편집·메모·검색·평탄화 내보내기
-- **v0.2**: 릴리스 서명/AAB, 페이지 썸네일, 텍스트 선택·복사, 이미지 삽입, 태블릿 레이아웃
+- **v0.1 (현재)**: 핵심 필기·페이지 편집·메모·검색·평탄화 내보내기, R8 릴리스 빌드/AAB,
+  업로드 키스토어, 단위 테스트 11개, Play Store 자산
+- **v0.2**: Play Console 등록·테스트 트랙, 페이지 썸네일, 텍스트 선택·복사, 이미지 삽입, 태블릿 레이아웃
 - **v0.3**: 스캔 PDF OCR, 암호화 PDF, 폼 필드, 접근성 개선
 - **v1.0**: Play Store 정식 출시, 영어/일본어, 온보딩
 

@@ -1,7 +1,7 @@
 # Play Store 출시 로드맵
 
 > My PDF Writer v0.1.0 → Google Play 정식 출시까지의 체크리스트와 단계별 계획
-> 현재 상태: 기능 구현·에뮬레이터 검증 완료, **릴리스 서명/스토어 등록은 미착수**
+> 현재 상태: **릴리스 서명·R8·AAB·스토어 자산 완료**, Play Console 등록/테스트 미착수
 
 ---
 
@@ -11,12 +11,13 @@
 | --- | --- |
 | 핵심 기능 구현 | ✅ |
 | 에뮬레이터 스모크 테스트 | ✅ |
-| 자동화 테스트 | ❌ |
-| 릴리스 키스토어 | ❌ |
-| R8/리소스 축소 | ❌ (현재 `isMinifyEnabled = false`) |
-| AAB 빌드 | ❌ (검증 필요) |
+| 자동화 테스트 | ⚠️ JVM 단위 테스트 11개 통과, UI 계측 테스트 없음 |
+| 릴리스 키스토어 | ✅ 로컬 생성·백업 (저장소에는 미커밋) |
+| R8/리소스 축소 | ✅ APK 7.9 MB / AAB 10.5 MB |
+| AAB 빌드 | ✅ 서명 검증 완료 |
 | 개인정보 처리방침 | ❌ |
-| 스토어 등록 자산 | ❌ (스크린샷은 개발용 720×1600) |
+| 스토어 등록 자산 | ✅ 1080×2160 스크린샷 7장, 피처 그래픽, 512px 아이콘 |
+| 저장소 공개 | ✅ `hackerdjaKODJO/my-pdf-writer` (public) |
 | Play Console 앱 생성 | ❌ |
 | 비공개 테스트 | ❌ |
 
@@ -26,64 +27,68 @@
 
 ### 1-1. 서명과 빌드
 
-- [ ] 업로드 키스토어 생성 (RSA 2048, 25년 이상 유효)
+- [x] 업로드 키스토어 생성 (RSA 2048, 25년 이상 유효)
   ```bash
   keytool -genkeypair -v -keystore upload-keystore.jks \
     -alias upload -keyalg RSA -keysize 2048 -validity 10000
   ```
-- [ ] `keystore.properties` 작성 (git 커밋 금지)
+- [x] `keystore.properties` 작성 (git 커밋 금지, 로컬 백업 완료)
   ```properties
   storeFile=upload-keystore.jks
   storePassword=...
   keyAlias=upload
   keyPassword=...
   ```
-- [ ] `versionCode`/`versionName` 확정 (`0.1.0` → `1`/`0.1.0`)
-- [ ] `isMinifyEnabled = true`, `isShrinkResources = true`로 릴리스 최적화
-  - PDFBox-Android, `org.json`, Compose 관련 keep 규칙 확인
-- [ ] `./gradlew bundleRelease`로 AAB 생성
-- [ ] `bundletool` 또는 내부 테스트 트랙에서 설치 검증
-- [ ] 16 KB 페이지 크기 지원 확인 (네이티브 라이브러리 없음 → 대부분 충족, Play Console 경고 확인)
+- [x] `versionCode`/`versionName` 확정 (`0.1.0` → `1`/`0.1.0`)
+- [x] `isMinifyEnabled = true`, `isShrinkResources = true`로 릴리스 최적화
+  - PDFBox-Android `-dontwarn com.gemalto.jp2.**`, `-keep class com.tom_roush.pdfbox.**`
+- [x] `./gradlew bundleRelease`로 AAB 생성
+- [x] 릴리스 APK를 에뮬레이터에 설치해 열기·필기·검색·회전·내보내기 검증
+- [x] 16 KB 페이지 크기 지원 확인
+  - 네이티브 라이브러리 4개(`libandroidx.graphics.path.so`) 모두 16 KB 정렬
+  - `zipalign -c -P 16 -v 4` 확인
 - [ ] Play App Signing 활성화 (업로드 키는 Google에 보관)
 
 ### 1-2. 정책·신고
 
-- [ ] **데이터 안전성(Data safety)**: 현재 수집/공유하는 데이터 없음
+- [x] **데이터 안전성(Data safety)**: 답변 초안 준비 (`store/README.md`)
   - 파일은 기기에서만 처리, 서버 전송 없음
   - 광고/분석 SDK 없음
   - 향후 크래시 리포팅/분석을 추가하면 즉시 갱신
-- [ ] **광고 선언**: "앱에 광고가 없습니다"
-- [ ] **콘텐츠 등급**: 설문 제출 (폭력/성/도박/약물 없음 → 전체 이용가 예상)
-- [ ] **타깃층**: 대학생 이상. 아동 대상 아님
-- [ ] **뉴스 앱/정부 앱/코로나 앱**: 해당 없음
-- [ ] **권한 선언**: `INTERNET` 없음, `MANAGE_EXTERNAL_STORAGE` 없음, `CAMERA` 없음
+- [x] **광고 선언**: "앱에 광고가 없습니다" (초안)
+- [x] **콘텐츠 등급**: 설문 답변 초안 (폭력/성/도박/약물 없음 → 전체 이용가 예상)
+- [x] **타깃층**: 대학생 이상. 아동 대상 아님
+- [x] **뉴스 앱/정부 앱/코로나 앱**: 해당 없음
+- [x] **권한 선언**: `INTERNET` 없음, `MANAGE_EXTERNAL_STORAGE` 없음, `CAMERA` 없음
+  - 릴리스 APK 권한 확인: 앱 자체 `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`만 존재
   - SAF만 사용하므로 저장소 권한 정책 심사 부담이 낮음
 - [ ] **개인정보 처리방침 URL** 준비 (GitHub Pages/Notion/자체 페이지)
   - 앱 내 정보 다이얼로그에서도 링크 제공 검토
 - [ ] 개발자 계정 정보·연락처 이메일·웹사이트 정비
 - [ ] 개인 개발자 계정의 비공개 테스트 요건(테스터 수·기간)을 Play Console에서 확인
+- [ ] Play Console에 데이터 안전성/광고/콘텐츠 등급 설문 실제 제출
 
 ### 1-3. 스토어 등록 자산
 
 | 자산 | 규격 | 상태 |
 | --- | --- | --- |
-| 앱 이름 | 최대 30자 | 후보: `My PDF Writer – 전공 필기 PDF` |
-| 짧은 설명 | 최대 80자 | "광고 없이 오프라인으로 강의자료 PDF에 필기하고 정리해 내보내세요." |
-| 자세한 설명 | 최대 4,000자 | 아래 초안 참고 |
-| 앱 아이콘 | 512×512 PNG | 현재 adaptive icon → 512px 추출 필요 |
-| 피처 그래픽 | 1024×500 PNG/JPEG | 제작 필요 |
-| 휴대폰 스크린샷 | 2~8장, 320~3,840px, **최대 2:1 비율** | 현재 720×1600(1:2.22)은 비율 초과 → 1080×2160 또는 1080×1920으로 재캡처/크롭 |
+| 앱 이름 | 최대 30자 | ✅ 후보: `My PDF Writer – 전공 필기 PDF` |
+| 짧은 설명 | 최대 80자 | ✅ "광고 없이 오프라인으로 강의자료 PDF에 필기하고 정리해 내보내세요." |
+| 자세한 설명 | 최대 4,000자 | ✅ `store/README.md` 초안 |
+| 앱 아이콘 | 512×512 PNG | ✅ `store/icon-512.png` |
+| 피처 그래픽 | 1024×500 PNG/JPEG | ✅ `store/feature-graphic-1024x500.png` |
+| 휴대폰 스크린샷 | 2~8장, 320~3,840px, **최대 2:1 비율** | ✅ `store/screenshots/` 1080×2160 7장 |
 | 태블릿 스크린샷 | 선택 | v0.2 태블릿 레이아웃 이후 |
 | 프로모션 동영상 | 선택 | — |
 
-**스크린샷 재캡처 메모**
+**스크린샷 메모**
 
-- Play 스크린샷은 최대 2:1 비율을 권장합니다. Pixel 7의 1080×2400(1:2.22)은
-  상태바/내비게이션 바를 크롭해 1080×2160으로 맞추는 것을 권장합니다.
+- Play 스크린샷은 최대 2:1 비율을 권장합니다. 1080×2160(1:2)으로 제작했습니다.
 - 첫 2장이 전환율에 가장 큰 영향을 줍니다.
   1. 홈 + "광고 없이, 완전 오프라인"
-  2. 필기 화면 + 형광펜/텍스트
-- 3~8장: 페이지 편집, 회전, 메모, 검색, 내보내기, 내보낸 PDF.
+  2. 필기 화면 + "강의자료 위에 바로 필기"
+- 3~7장: 페이지 편집, 회전, 검색, 메모, 내보낸 PDF.
+- `python tools/make-store-assets.py`로 다시 생성할 수 있습니다.
 
 ### 1-4. 자세한 설명 초안
 
@@ -162,13 +167,13 @@ My PDF Writer는 대학생의 전공 공부를 위해 만든 오프라인 PDF �
 
 ### Phase 0 — 출시 준비 (v0.1.x, 2~3주)
 
-- 릴리스 서명, R8, AAB
-- 개인정보 처리방침, 데이터 안전성 신고
-- 스토어 스크린샷/피처 그래픽/아이콘
-- 내부 테스트에서 크래시·ANR 0건 만들기
-- 자동화 테스트 최소 세트 추가
-  - `PageSpec.normalizeRotation`, `rotateAnnotation`, `DocState.normalized`
-  - 문서 열기 → 내보내기 계측 테스트 1개
+- [x] 릴리스 서명, R8, AAB
+- [ ] 개인정보 처리방침, 데이터 안전성 신고 (답변 초안은 완료)
+- [x] 스토어 스크린샷/피처 그래픽/아이콘
+- [ ] 내부 테스트에서 크래시·ANR 0건 만들기
+- [~] 자동화 테스트 최소 세트
+  - [x] `PageSpec.normalizeRotation`, `PageTransforms`, `DocState.normalized` (11개)
+  - [ ] 문서 열기 → 내보내기 계측 테스트 1개
 
 **종료 기준**: 내부 테스트 1주, 치명 결함 0, AAB 설치 성공, 데이터 안전성 검토 완료.
 
@@ -181,7 +186,7 @@ My PDF Writer는 대학생의 전공 공부를 위해 만든 오프라인 PDF �
 - 태블릿·폴더블 2단 레이아웃
 - 접근성(TalkBack, 색 대비, 터치 타깃)
 - 내보내기 옵션: 압축/해상도, 주석 페이지 JPEG
-- R8 최적화, 시작 시간 단축(Baseline Profile 검토)
+- 시작 시간 단축(Baseline Profile 검토)
 
 **종료 기준**: 비공개 테스트 2주, 크래시 없는 세션 99.5% 이상, 내보내기 성공률 99% 이상.
 

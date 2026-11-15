@@ -107,14 +107,28 @@ data class DocState(
 
     /** Drops references that no longer exist after the source file changed. */
     fun normalized(sourcePageCount: Int): DocState {
-        var specs = pages.filter { spec -> spec.sourcePage == null || spec.sourcePage in 0 until sourcePageCount }
-        if (specs.isEmpty()) specs = List(sourcePageCount) { PageSpec(it) }
-        if (specs.isEmpty()) specs = listOf(PageSpec(null))
-        return copy(
-            pages = specs,
-            annotations = annotations.filter { it.page in specs.indices },
-            notes = notes.filterKeys { it in specs.indices },
-        )
+        val valid = pages.mapIndexedNotNull { oldIndex, spec ->
+            if (spec.sourcePage == null || spec.sourcePage in 0 until sourcePageCount) {
+                oldIndex to spec
+            } else {
+                null
+            }
+        }
+        if (valid.isEmpty()) {
+            val fresh = List(sourcePageCount) { PageSpec(it) }.ifEmpty { listOf(PageSpec(null)) }
+            return copy(pages = fresh, annotations = emptyList(), notes = emptyMap())
+        }
+        val indexMap = HashMap<Int, Int>(valid.size)
+        valid.forEachIndexed { newIndex, (oldIndex, _) -> indexMap[oldIndex] = newIndex }
+        val specs = valid.map { it.second }
+        val annotations = annotations.mapNotNull { annotation ->
+            val mapped = indexMap[annotation.page] ?: return@mapNotNull null
+            annotation.copy(page = mapped)
+        }
+        val notes = buildMap {
+            notes.forEach { (oldPage, value) -> indexMap[oldPage]?.let { put(it, value) } }
+        }
+        return copy(pages = specs, annotations = annotations, notes = notes)
     }
 
     companion object {

@@ -4,4 +4,6 @@
 -dontwarn org.apache.commons.logging.**
 -dontwarn java.awt.**
 -dontwarn javax.imageio.**
+-dontwarn com.gemalto.jp2.**
 -keep class com.tom_roush.pdfbox.** { *; }
+-keep class org.apache.commons.logging.** { *; }

@@ -13,6 +13,7 @@ import com.hackerdjakodjo.mypdfwriter.data.DocStateStore
 import com.hackerdjakodjo.mypdfwriter.data.LibraryStore
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
+import com.hackerdjakodjo.mypdfwriter.data.PageTransforms
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
 import com.hackerdjakodjo.mypdfwriter.data.Tool
@@ -401,26 +402,9 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             it[index] = spec.copy(extraRotation = PageSpec.normalizeRotation(spec.extraRotation + delta))
         }
         val annotations = state.annotations.map { annotation ->
-            if (annotation.page == index) rotateAnnotation(annotation, delta, aspect) else annotation
+            if (annotation.page == index) PageTransforms.rotate(annotation, delta, aspect) else annotation
         }
         rebuild(state.copy(pages = pages, annotations = annotations))
-    }
-
-    private fun rotateAnnotation(annotation: Annotation, delta: Int, aspect: Float): Annotation {
-        val points = when (delta) {
-            90 -> annotation.points.map { NormalizedPoint(1f - it.y, it.x) }
-            180 -> annotation.points.map { NormalizedPoint(1f - it.x, 1f - it.y) }
-            270 -> annotation.points.map { NormalizedPoint(it.y, 1f - it.x) }
-            else -> annotation.points
-        }
-        val widthScale = if (delta == 180) 1f else aspect
-        val fontScale = if (delta == 180) 1f else 1f / aspect
-        return annotation.copy(
-            points = points,
-            width = (annotation.width * widthScale).coerceIn(0.0005f, 0.1f),
-            fontSize = (annotation.fontSize * fontScale).coerceIn(0.008f, 0.12f),
-            textRotation = PageSpec.normalizeRotation(annotation.textRotation + delta),
-        )
     }
 
     fun movePage(index: Int, direction: Int) {
@@ -500,7 +484,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 val size = spec.sourcePage?.let { sizes.getOrNull(it) }
                 val baseAspect = if (size != null && size.height > 0f) size.width / size.height else 1f
                 val aspect = if (spec.extraRotation % 180 == 0) baseAspect else 1f / baseAspect
-                return rotateAnnotation(annotation, delta, aspect)
+                return PageTransforms.rotate(annotation, delta, aspect)
             }
 
             val annotations = state.annotations.mapNotNull { annotation ->

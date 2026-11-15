@@ -48,6 +48,7 @@ com.hackerdjakodjo.mypdfwriter
 ├── MyPdfWriterApp.kt        # PDFBoxResourceLoader 초기화
 ├── data
 │   ├── Models.kt            # NormalizedPoint, Annotation, PageSpec, DocState, RecentDoc
+│   ├── PageTransforms.kt    # 회전 시 좌표/굵기/글자 크기 보정 (순수 함수)
 │   └── Stores.kt            # DocStateStore, LibraryStore
 ├── pdf
 │   ├── PdfRepository.kt     # 복사, 조립, 렌더 캐시, 텍스트 추출, 페이지 크기
@@ -117,7 +118,12 @@ data class DocState(
 )
 ```
 
-`normalized(sourcePageCount)`가 원본 페이지 수 변경/손상 시 유효하지 않은 참조를 제거합니다.
+`normalized(sourcePageCount)`는 원본 페이지 수 변경/손상 시 다음을 수행합니다.
+
+- 유효하지 않은 `PageSpec`(원본 인덱스 초과)을 제거합니다.
+- 남은 페이지의 **이전 인덱스 → 새 인덱스 맵**을 만들어 주석과 메모를 재매핑합니다.
+  (페이지가 하나 삭제됐다고 뒤 페이지의 필기가 한 칸씩 밀리면 안 됩니다.)
+- 살아남은 페이지가 없으면 원본 페이지 목록으로 초기화하고 주석/메모를 비웁니다.
 
 ### 3-4. `RecentDoc` — 최근 문서
 
@@ -424,20 +430,33 @@ PdfExporter.export(source, specs, annotations, out)
 
 ## 13. 테스트 전략
 
-### 현재 (수동 스모크)
+### JVM 단위 테스트 (11개 통과)
 
-- 에뮬레이터: Pixel 7 AVD, Android 16
+- `PageSpecTest`: `normalizeRotation`의 음수/360도/450도 래핑, JSON 왕복
+- `PageTransformsTest`: 90/180/270/0도 좌표 변환, 굵기·글자 크기 스케일,
+  `textRotation` 누적, 음수 delta 정규화
+- `DocStateTest`: 원본 페이지 수 유지, 누락 페이지 제거 + 인덱스 재매핑,
+  유효 페이지 없음/원본 0페이지 fallback
+
+```bash
+./gradlew testDebugUnitTest
+```
+
+### 수동 스모크 (Pixel 7 AVD, Android 16)
+
 - 필기 5종, 지우개, undo/redo
 - 페이지 회전/이동/삭제/빈 페이지/초기화
 - 회전된 페이지에서 텍스트·밑줄·형광펜 방향
 - 메모 저장/목록, 검색/점프
 - 내보내기 후 `pdfinfo` + Poppler 렌더 비교
 - 내보낸 PDF를 앱에서 재열기
+- **R8 릴리스 APK**에서 열기·필기·검색·회전·내보내기 재검증
+- 릴리스 권한 확인, 네이티브 라이브러리 16 KB 정렬 확인
 
 ### v0.2에서 추가할 것
 
-- 단위 테스트: `PageSpec.normalizeRotation`, `rotateAnnotation`, `buildHits`, `DocState.normalized`
 - 계측 테스트: 문서 열기 → 필기 → 회전 → 내보내기
+- `buildHits` 검색 스니펫/대소문자/공백 정규화 테스트
 - 골든 이미지: `AnnotationPainter` 출력 비교
 - 대용량 PDF(500페이지), 저사양 기기, 다크 모드, 프로세스 사망 복원
 
@@ -452,7 +471,7 @@ PdfExporter.export(source, specs, annotations, out)
 - 텍스트 주석은 줄바꿈/폰트 1종만 지원합니다.
 - 주석이 많은 페이지는 내보내기 파일이 커질 수 있습니다.
 - 페이지 작업마다 전체 PDF를 재조립하므로 수백 페이지 문서에서는 느릴 수 있습니다.
-- 자동화 테스트가 아직 없습니다.
+- UI 계측 테스트가 아직 없습니다(JVM 단위 테스트만 존재).
 
 ---
 
