@@ -136,7 +136,7 @@ My PDF Writer는 다음 한 가지에 집중합니다.
 
 ```bash
 # 1) 저장소 클론
-git clone https://github.com/hackerdjakodjo/my-pdf-writer.git
+git clone https://github.com/hackerdjaKODJO/my-pdf-writer.git
 cd my-pdf-writer
 
 # 2) SDK 경로 지정 (local.properties는 커밋되지 않습니다)
