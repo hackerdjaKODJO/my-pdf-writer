@@ -99,8 +99,8 @@ My PDF Writer는 대학생의 전공 공부를 위해 만든 오프라인 PDF �
 
 ## 업로드 전 남은 작업
 
-- [ ] Play Console 앱 생성 (기본 언어: 한국어)
-- [ ] 개인정보 처리방침 URL 등록
+- [ ] Play Console 앱 생성 (기본 언어: 한국어) — Console 접속 필요
+- [x] 개인정보 처리방침 URL 등록: <https://hackerdjakodjo.github.io/my-pdf-writer/privacy-policy.html>
 - [ ] 내부 테스트 트랙에 `app-release.aab` 업로드
 - [ ] 스크린샷 7장, 피처 그래픽, 아이콘 업로드
 - [ ] 데이터 안전성/콘텐츠 등급/광고 설문 제출

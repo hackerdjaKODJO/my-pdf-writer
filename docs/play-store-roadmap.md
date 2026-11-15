@@ -15,7 +15,7 @@
 | 릴리스 키스토어 | ✅ 로컬 생성·백업 (저장소에는 미커밋) |
 | R8/리소스 축소 | ✅ APK 7.9 MB / AAB 10.5 MB |
 | AAB 빌드 | ✅ 서명 검증 완료 |
-| 개인정보 처리방침 | ❌ |
+| 개인정보 처리방침 | ✅ GitHub Pages 게시 |
 | 스토어 등록 자산 | ✅ 1080×2160 스크린샷 7장, 피처 그래픽, 512px 아이콘 |
 | 저장소 공개 | ✅ `hackerdjaKODJO/my-pdf-writer` (public) |
 | Play Console 앱 생성 | ❌ |
@@ -62,7 +62,8 @@
 - [x] **권한 선언**: `INTERNET` 없음, `MANAGE_EXTERNAL_STORAGE` 없음, `CAMERA` 없음
   - 릴리스 APK 권한 확인: 앱 자체 `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`만 존재
   - SAF만 사용하므로 저장소 권한 정책 심사 부담이 낮음
-- [ ] **개인정보 처리방침 URL** 준비 (GitHub Pages/Notion/자체 페이지)
+- [x] **개인정보 처리방침 URL** 준비: <https://hackerdjakodjo.github.io/my-pdf-writer/privacy-policy.html>
+  - GitHub Pages(`/docs`)로 게시
   - 앱 내 정보 다이얼로그에서도 링크 제공 검토
 - [ ] 개발자 계정 정보·연락처 이메일·웹사이트 정비
 - [ ] 개인 개발자 계정의 비공개 테스트 요건(테스터 수·기간)을 Play Console에서 확인
