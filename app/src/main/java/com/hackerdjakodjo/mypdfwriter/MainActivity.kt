@@ -11,10 +11,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.ui.LibraryScreen
 import com.hackerdjakodjo.mypdfwriter.ui.PdfViewModel
+import com.hackerdjakodjo.mypdfwriter.ui.ToolsScreen
 import com.hackerdjakodjo.mypdfwriter.ui.ViewerScreen
 import com.hackerdjakodjo.mypdfwriter.ui.theme.MyPdfWriterTheme
 
@@ -41,18 +45,29 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MyPdfWriterTheme {
+                var showTools by remember { mutableStateOf(false) }
                 val viewer by viewModel.viewer.collectAsStateWithLifecycle()
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    if (viewer == null) {
-                        LibraryScreen(
+                    when {
+                        showTools -> ToolsScreen(
+                            onBack = { showTools = false },
+                            onOpen = { uri ->
+                                showTools = false
+                                viewModel.openDocument(uri)
+                            },
+                            initialSource = viewModel.currentSourceFile(),
+                            initialName = viewer?.docName.orEmpty(),
+                        )
+                        viewer == null -> LibraryScreen(
                             vm = viewModel,
                             onPickPdf = { openPdf.launch(arrayOf("application/pdf")) },
                             onCreatePdf = { createPdf.launch("새 문서.pdf") },
+                            onOpenTools = { showTools = true },
                         )
-                    } else {
-                        ViewerScreen(
+                        else -> ViewerScreen(
                             vm = viewModel,
                             onExportRequest = { suggestedName -> exportPdf.launch(suggestedName) },
+                            onOpenTools = { showTools = true },
                         )
                     }
                 }

@@ -79,7 +79,12 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryScreen(vm: PdfViewModel, onPickPdf: () -> Unit, onCreatePdf: () -> Unit) {
+fun LibraryScreen(
+    vm: PdfViewModel,
+    onPickPdf: () -> Unit,
+    onCreatePdf: () -> Unit,
+    onOpenTools: () -> Unit,
+) {
     val docs by vm.library.collectAsStateWithLifecycle()
     val message by vm.libraryMessage.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -122,6 +127,8 @@ fun LibraryScreen(vm: PdfViewModel, onPickPdf: () -> Unit, onCreatePdf: () -> Un
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { HeroCard(onPickPdf = onPickPdf, onCreatePdf = onCreatePdf) }
+
+            item { ToolsEntry(onClick = onOpenTools) }
 
             item {
                 Text(

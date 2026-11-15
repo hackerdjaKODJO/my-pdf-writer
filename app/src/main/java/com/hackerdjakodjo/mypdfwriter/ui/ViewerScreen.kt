@@ -1,6 +1,8 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,8 +40,10 @@ import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FitScreen
 import androidx.compose.material.icons.outlined.FormatStrikethrough
 import androidx.compose.material.icons.outlined.FormatUnderlined
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Highlight
 import androidx.compose.material.icons.outlined.HorizontalRule
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.Redo
 import androidx.compose.material.icons.outlined.Search
@@ -53,6 +57,8 @@ import androidx.compose.material.icons.outlined.ZoomOut
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -119,9 +125,15 @@ val annotationPalette = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ViewerScreen(vm: PdfViewModel, onExportRequest: (String) -> Unit) {
+fun ViewerScreen(
+    vm: PdfViewModel,
+    onExportRequest: (String) -> Unit,
+    onOpenTools: () -> Unit,
+) {
     val stateFlow = vm.viewer.collectAsStateWithLifecycle()
     val bitmap by vm.pageBitmap.collectAsStateWithLifecycle()
+    val outline by vm.outline.collectAsStateWithLifecycle()
+    val metadata by vm.metadata.collectAsStateWithLifecycle()
     val state = stateFlow.value ?: return
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -129,13 +141,69 @@ fun ViewerScreen(vm: PdfViewModel, onExportRequest: (String) -> Unit) {
     var showNotes by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var showAnnotations by remember { mutableStateOf(false) }
+    var showOrganize by remember { mutableStateOf(false) }
+    var showOutline by remember { mutableStateOf(false) }
+    var showProperties by remember { mutableStateOf(false) }
+    var showStyle by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var selectedPages by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var textTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
     var stampTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
     var signatureTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
 
+    val extractPdf = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/pdf"),
+    ) { uri ->
+        if (uri != null && selectedPages.isNotEmpty()) {
+            vm.extractPages(selectedPages, uri)
+            selectedPages = emptySet()
+        }
+    }
+
     val sheetOpen = showPages || showNotes || showSearch || showAnnotations ||
+        showOrganize || showOutline || showProperties || showStyle || showMenu ||
         textTarget != null || stampTarget != null || signatureTarget != null
     BackHandler(enabled = !sheetOpen) { vm.closeDocument() }
+
+    if (showOrganize) {
+        OrganizeScreen(
+            docName = state.docName,
+            pages = state.pages,
+            selected = selectedPages,
+            loadThumbnail = { index -> vm.loadThumbnail(index) },
+            revision = state.revision,
+            onBack = { showOrganize = false },
+            onSelectionChange = { selectedPages = it },
+            onRotate = { indices, delta ->
+                vm.rotatePages(indices, delta)
+                selectedPages = emptySet()
+            },
+            onDelete = { indices ->
+                vm.deletePages(indices)
+                selectedPages = emptySet()
+            },
+            onDuplicate = { indices ->
+                vm.duplicatePages(indices)
+                selectedPages = emptySet()
+            },
+            onMove = { indices, direction ->
+                vm.movePages(indices, direction)
+                selectedPages = emptySet()
+            },
+            onInsertBlank = { afterIndex ->
+                vm.insertBlankPages(afterIndex)
+                selectedPages = emptySet()
+            },
+            onExtract = { indices ->
+                selectedPages = indices
+                extractPdf.launch("extract.pdf")
+            },
+            onMerge = onOpenTools,
+            onSplit = onOpenTools,
+            onExport = { onExportRequest(vm.exportSuggestedName()) },
+        )
+        return
+    }
 
     LaunchedEffect(state.message) {
         val message = state.message ?: return@LaunchedEffect
@@ -170,21 +238,104 @@ fun ViewerScreen(vm: PdfViewModel, onExportRequest: (String) -> Unit) {
                     IconButton(onClick = { showSearch = true }) {
                         Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.search))
                     }
-                    IconButton(onClick = { showPages = true }) {
-                        Icon(Icons.Outlined.Description, contentDescription = stringResource(R.string.pages))
+                    IconButton(
+                        onClick = {
+                            selectedPages = emptySet()
+                            showOrganize = true
+                        },
+                    ) {
+                        Icon(Icons.Outlined.GridView, contentDescription = "페이지 정리")
                     }
-                    IconButton(onClick = { showNotes = true }) {
-                        Icon(Icons.Outlined.StickyNote2, contentDescription = stringResource(R.string.notes))
-                    }
-                    IconButton(onClick = { showAnnotations = true }) {
-                        BadgedBox(
-                            badge = {
-                                if (state.annotations.isNotEmpty()) {
-                                    Badge { Text(state.annotations.size.toString()) }
-                                }
-                            },
-                        ) {
-                            Icon(Icons.AutoMirrored.Outlined.Notes, contentDescription = stringResource(R.string.annotations_title))
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Outlined.MoreVert, contentDescription = "더보기")
+                        }
+                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("페이지 편집") },
+                                onClick = {
+                                    showMenu = false
+                                    showPages = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("페이지 메모") },
+                                onClick = {
+                                    showMenu = false
+                                    showNotes = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (state.annotations.isEmpty()) "주석 목록"
+                                        else "주석 목록 (${state.annotations.size})",
+                                    )
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    showAnnotations = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("목차") },
+                                onClick = {
+                                    showMenu = false
+                                    vm.loadOutline()
+                                    showOutline = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("문서 정보") },
+                                onClick = {
+                                    showMenu = false
+                                    vm.loadMetadata()
+                                    showProperties = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("문서 꾸미기 (워터마크·페이지 번호)") },
+                                onClick = {
+                                    showMenu = false
+                                    showStyle = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (state.nightMode) "주간 모드" else "야간 모드") },
+                                onClick = {
+                                    showMenu = false
+                                    vm.toggleNightMode()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("현재 페이지 텍스트 복사") },
+                                onClick = {
+                                    showMenu = false
+                                    vm.copyPageText()
+                                },
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("PDF 도구") },
+                                onClick = {
+                                    showMenu = false
+                                    onOpenTools()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("인쇄") },
+                                onClick = {
+                                    showMenu = false
+                                    vm.printCurrent()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("공유") },
+                                onClick = {
+                                    showMenu = false
+                                    vm.shareCurrent()
+                                },
+                            )
                         }
                     }
                     IconButton(onClick = { onExportRequest(vm.exportSuggestedName()) }) {
@@ -223,6 +374,9 @@ fun ViewerScreen(vm: PdfViewModel, onExportRequest: (String) -> Unit) {
                 fontSize = state.fontSize,
                 opacity = state.opacity,
                 zoom = state.zoom,
+                documentStyle = state.documentStyle,
+                pageCount = state.pageCount,
+                nightMode = state.nightMode,
                 onZoomChange = vm::setZoom,
                 onAddStroke = vm::addStroke,
                 onEraseStroke = vm::eraseStroke,
@@ -270,6 +424,39 @@ fun ViewerScreen(vm: PdfViewModel, onExportRequest: (String) -> Unit) {
     }
     if (showAnnotations) {
         AnnotationSheet(state, vm) { showAnnotations = false }
+    }
+    if (showOutline) {
+        OutlineSheet(
+            entries = outline.orEmpty(),
+            onSelect = { page ->
+                vm.goToPage(page)
+                showOutline = false
+            },
+            onDismiss = { showOutline = false },
+        )
+    }
+    if (showProperties) {
+        PropertiesSheet(
+            metadata = metadata,
+            fileSize = vm.currentSourceFile()?.length() ?: 0L,
+            pageCount = state.pageCount,
+            onDismiss = { showProperties = false },
+            onEdit = {
+                showProperties = false
+                onOpenTools()
+            },
+        )
+    }
+    if (showStyle) {
+        DocumentStyleDialog(
+            initial = state.documentStyle,
+            pageCount = state.pageCount,
+            onDismiss = { showStyle = false },
+            onApply = {
+                vm.setDocumentStyle(it)
+                showStyle = false
+            },
+        )
     }
 
     textTarget?.let { point ->

@@ -2,6 +2,8 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -26,9 +28,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.data.DocumentStyle
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
+import com.hackerdjakodjo.mypdfwriter.pdf.DocumentOverlayPainter
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -62,6 +66,9 @@ fun PdfCanvas(
     fontSize: Float,
     opacity: Float,
     zoom: Float,
+    documentStyle: DocumentStyle = DocumentStyle(),
+    pageCount: Int = 1,
+    nightMode: Boolean = false,
     onZoomChange: (Float) -> Unit,
     onAddStroke: (List<NormalizedPoint>) -> Unit,
     onEraseStroke: (List<NormalizedPoint>) -> Unit,
@@ -272,14 +279,41 @@ fun PdfCanvas(
                 native.drawRect(left + 3f, top + 5f, left + pageW + 3f, top + pageH + 5f, shadowPaint)
 
                 if (bitmap != null) {
-                    native.drawBitmap(bitmap, left, top, null)
+                    val bitmapPaint = Paint().apply {
+                        if (nightMode) {
+                            colorFilter = ColorMatrixColorFilter(
+                                ColorMatrix().apply {
+                                    set(
+                                        floatArrayOf(
+                                            -1f, 0f, 0f, 0f, 255f,
+                                            0f, -1f, 0f, 0f, 255f,
+                                            0f, 0f, -1f, 0f, 255f,
+                                            0f, 0f, 0f, 1f, 0f,
+                                        ),
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    native.drawBitmap(bitmap, left, top, bitmapPaint)
                 } else {
-                    val paperPaint = Paint().apply { this.color = android.graphics.Color.WHITE }
+                    val paperPaint = Paint().apply {
+                        this.color = if (nightMode) android.graphics.Color.rgb(22, 25, 30)
+                        else android.graphics.Color.WHITE
+                    }
                     native.drawRect(left, top, left + pageW, top + pageH, paperPaint)
                 }
 
                 native.save()
                 native.translate(left, top)
+                DocumentOverlayPainter.draw(
+                    canvas = native,
+                    style = documentStyle,
+                    pageIndex = pageIndex,
+                    pageCount = pageCount,
+                    width = pageW,
+                    height = pageH,
+                )
                 AnnotationPainter.draw(
                     native,
                     annotations.filter { it.page == pageIndex },

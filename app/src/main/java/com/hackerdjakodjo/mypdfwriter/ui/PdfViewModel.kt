@@ -1,6 +1,9 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
@@ -10,15 +13,24 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.DocState
 import com.hackerdjakodjo.mypdfwriter.data.DocStateStore
+import com.hackerdjakodjo.mypdfwriter.data.DocumentStyle
+import com.hackerdjakodjo.mypdfwriter.data.DocumentStyleStore
 import com.hackerdjakodjo.mypdfwriter.data.LibraryStore
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
+import com.hackerdjakodjo.mypdfwriter.data.PageEdit
+import com.hackerdjakodjo.mypdfwriter.data.PageOps
+import com.hackerdjakodjo.mypdfwriter.data.PageSize
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
 import com.hackerdjakodjo.mypdfwriter.data.PageTransforms
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfExporter
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfMetadata
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfOutlineEntry
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfRepository
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfShare
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfTools
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -58,12 +70,16 @@ data class ViewerUiState(
     val searching: Boolean = false,
     val searchFailed: Boolean = false,
     val noteDraft: String = "",
+    val documentStyle: DocumentStyle = DocumentStyle(),
+    val nightMode: Boolean = false,
+    val revision: Int = 0,
 )
 
 class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repo = PdfRepository(application)
     private val docStore = DocStateStore(application)
+    private val docStyleStore = DocumentStyleStore(application)
     private val libraryStore = LibraryStore(application)
     private val resolver = application.contentResolver
 
@@ -82,15 +98,29 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private val _libraryMessage = MutableStateFlow<String?>(null)
     val libraryMessage: StateFlow<String?> = _libraryMessage.asStateFlow()
 
+    private val _outline = MutableStateFlow<List<PdfOutlineEntry>?>(null)
+    val outline: StateFlow<List<PdfOutlineEntry>?> = _outline.asStateFlow()
+
+    private val _metadata = MutableStateFlow<PdfMetadata?>(null)
+    val metadata: StateFlow<PdfMetadata?> = _metadata.asStateFlow()
+
     private var sourceFile: File? = null
     private var workingFile: File? = null
+    private var sourceSizes: List<PageSize> = emptyList()
     private var pageTexts: List<String>? = null
     private var renderJob: Job? = null
     private var searchJob: Job? = null
     private var currentPageTextsKey: String? = null
 
-    private val undoStack = ArrayDeque<List<Annotation>>()
-    private val redoStack = ArrayDeque<List<Annotation>>()
+    private data class DocSnapshot(
+        val pages: List<PageSpec>,
+        val annotations: List<Annotation>,
+        val notes: Map<Int, String>,
+        val pageIndex: Int,
+    )
+
+    private val undoStack = ArrayDeque<DocSnapshot>()
+    private val redoStack = ArrayDeque<DocSnapshot>()
 
     // ---------------------------------------------------------------- opening
 
@@ -106,6 +136,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 val source = File(sourceDir, "$docId.pdf")
                 repo.copyFromUri(uri, source)
                 val sourceCount = repo.pageCount(source)
+                val sizes = runCatching { repo.sourcePageSizes(source) }.getOrDefault(emptyList())
+                val style = docStyleStore.load(docId)
                 val saved = docStore.load(docId)?.normalized(sourceCount)
                 val pages = saved?.pages ?: List(sourceCount) { PageSpec(it) }
                 val annotations = saved?.annotations ?: emptyList()
@@ -115,8 +147,11 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
                 sourceFile = source
                 workingFile = working
+                sourceSizes = sizes
                 pageTexts = null
                 currentPageTextsKey = null
+                _outline.value = null
+                _metadata.value = null
                 undoStack.clear()
                 redoStack.clear()
 
@@ -136,6 +171,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     busy = true,
                     busyLabel = text(R.string.rendering_page),
                     noteDraft = notes[0] ?: "",
+                    documentStyle = style,
                 )
                 persistNow()
                 if (addToRecents) {
@@ -171,7 +207,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         persistNow()
         _viewer.value = null
         _pageBitmap.value = null
+        _outline.value = null
+        _metadata.value = null
         pageTexts = null
+        sourceSizes = emptyList()
         sourceFile = null
         workingFile = null
         repo.clearCache()
@@ -215,6 +254,120 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun nextPage() = goToPage((_viewer.value?.pageIndex ?: 0) + 1)
 
     fun previousPage() = goToPage((_viewer.value?.pageIndex ?: 0) - 1)
+
+    suspend fun loadThumbnail(index: Int): Bitmap? {
+        val file = workingFile ?: return null
+        return runCatching { repo.renderPage(file, index, 0.55f)?.bitmap }.getOrNull()
+    }
+
+    fun currentSourceFile(): File? = sourceFile
+
+    fun currentWorkingFile(): File? = workingFile
+
+    fun toggleNightMode() = _viewer.update { it?.copy(nightMode = !it.nightMode) }
+
+    fun setDocumentStyle(style: DocumentStyle) {
+        val state = _viewer.value ?: return
+        docStyleStore.save(state.docId, style)
+        _viewer.value = state.copy(documentStyle = style, message = "문서 스타일을 적용했습니다.")
+    }
+
+    fun loadOutline() {
+        val state = _viewer.value ?: return
+        val source = sourceFile ?: return
+        viewModelScope.launch {
+            _viewer.update { it?.copy(busy = true, busyLabel = "목차를 읽는 중…") }
+            val entries = runCatching { PdfTools.outline(source) }.getOrDefault(emptyList())
+            val mapped = entries.map { entry ->
+                val current = entry.pageIndex?.let { sourcePage ->
+                    state.pages.indexOfFirst { it.sourcePage == sourcePage }
+                }?.takeIf { it >= 0 }
+                entry.copy(pageIndex = current)
+            }
+            _outline.value = mapped
+            _viewer.update { it?.copy(busy = false, busyLabel = null) }
+        }
+    }
+
+    fun loadMetadata() {
+        val source = sourceFile ?: return
+        viewModelScope.launch {
+            _viewer.update { it?.copy(busy = true, busyLabel = "문서 정보를 읽는 중…") }
+            _metadata.value = runCatching { PdfTools.metadata(source) }.getOrNull()
+            _viewer.update { it?.copy(busy = false, busyLabel = null) }
+        }
+    }
+
+    fun copyPageText() {
+        val state = _viewer.value ?: return
+        val file = workingFile ?: return
+        viewModelScope.launch {
+            val texts = pageTexts ?: runCatching { repo.extractPagesText(file) }.getOrDefault(emptyList())
+            pageTexts = texts
+            val current = texts.getOrNull(state.pageIndex).orEmpty().trim()
+            val clipboard = getApplication<Application>().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(
+                ClipData.newPlainText(
+                    state.docName,
+                    current.ifBlank { "이 페이지에서 복사할 텍스트를 찾지 못했습니다." },
+                ),
+            )
+            _viewer.update {
+                it?.copy(message = if (current.isBlank()) "이 페이지에는 텍스트가 없습니다." else "현재 페이지 텍스트를 복사했습니다.")
+            }
+        }
+    }
+
+    suspend fun buildExportFile(): File? {
+        val state = _viewer.value ?: return null
+        val source = sourceFile ?: return null
+        val dir = File(getApplication<Application>().cacheDir, "exports").apply { mkdirs() }
+        val name = PdfShare.safeName("${state.docName.substringBeforeLast('.')}_주석.pdf", ".pdf")
+        val target = File(dir, name)
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                target.outputStream().use { output ->
+                    PdfExporter.export(
+                        source = source,
+                        specs = state.pages,
+                        annotations = state.annotations,
+                        out = output,
+                        style = state.documentStyle,
+                        pageCount = state.pageCount,
+                    )
+                }
+                target
+            }.getOrNull()
+        }
+    }
+
+    fun shareCurrent() {
+        val state = _viewer.value ?: return
+        viewModelScope.launch {
+            _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.preparing_export)) }
+            val file = buildExportFile()
+            _viewer.update { it?.copy(busy = false, busyLabel = null) }
+            if (file != null) {
+                PdfShare.sharePdf(getApplication(), file, state.docName)
+            } else {
+                _viewer.update { it?.copy(message = "공유할 PDF를 만들지 못했습니다.") }
+            }
+        }
+    }
+
+    fun printCurrent() {
+        val state = _viewer.value ?: return
+        viewModelScope.launch {
+            _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.preparing_export)) }
+            val file = buildExportFile()
+            _viewer.update { it?.copy(busy = false, busyLabel = null) }
+            if (file != null) {
+                PdfShare.printPdf(getApplication(), file, state.docName.substringBeforeLast('.'))
+            } else {
+                _viewer.update { it?.copy(message = "인쇄할 PDF를 만들지 못했습니다.") }
+            }
+        }
+    }
 
     // ---------------------------------------------------------------- tools
 
@@ -505,11 +658,43 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         return kotlin.math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
     }
 
-    private fun mutateAnnotations(block: (List<Annotation>) -> List<Annotation>) {
-        val state = _viewer.value ?: return
-        undoStack.addLast(state.annotations)
+    private fun snapshot(state: ViewerUiState) = DocSnapshot(
+        pages = state.pages,
+        annotations = state.annotations,
+        notes = state.notes,
+        pageIndex = state.pageIndex,
+    )
+
+    private fun pushHistory(state: ViewerUiState) {
+        undoStack.addLast(snapshot(state))
         if (undoStack.size > 60) undoStack.removeFirst()
         redoStack.clear()
+        _viewer.value = state.copy(canUndo = true, canRedo = false)
+    }
+
+    private fun restoreSnapshot(state: ViewerUiState, snapshot: DocSnapshot) {
+        val pagesChanged = snapshot.pages != state.pages
+        val restored = state.copy(
+            pages = snapshot.pages,
+            annotations = snapshot.annotations,
+            notes = snapshot.notes,
+            pageIndex = snapshot.pageIndex.coerceIn(0, (snapshot.pages.size - 1).coerceAtLeast(0)),
+            pageCount = snapshot.pages.size,
+            canUndo = undoStack.isNotEmpty(),
+            canRedo = redoStack.isNotEmpty(),
+        )
+        if (pagesChanged) {
+            rebuild(restored)
+        } else {
+            _viewer.value = restored
+            persistNow()
+            if (snapshot.pageIndex != state.pageIndex) renderPage(restored.pageIndex)
+        }
+    }
+
+    private fun mutateAnnotations(block: (List<Annotation>) -> List<Annotation>) {
+        val state = _viewer.value ?: return
+        pushHistory(state)
         _viewer.value = state.copy(
             annotations = block(state.annotations),
             canUndo = true,
@@ -521,106 +706,147 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun undo() {
         val state = _viewer.value ?: return
         val previous = undoStack.removeLastOrNull() ?: return
-        redoStack.addLast(state.annotations)
-        _viewer.value = state.copy(
-            annotations = previous,
-            canUndo = undoStack.isNotEmpty(),
-            canRedo = true,
-        )
-        persistNow()
+        redoStack.addLast(snapshot(state))
+        restoreSnapshot(state, previous)
     }
 
     fun redo() {
         val state = _viewer.value ?: return
         val next = redoStack.removeLastOrNull() ?: return
-        undoStack.addLast(state.annotations)
-        _viewer.value = state.copy(
-            annotations = next,
-            canUndo = true,
-            canRedo = redoStack.isNotEmpty(),
-        )
-        persistNow()
+        undoStack.addLast(snapshot(state))
+        restoreSnapshot(state, next)
     }
 
     // ---------------------------------------------------------------- page layout
 
     fun rotatePage(clockwise: Boolean) {
         val state = _viewer.value ?: return
+        rotatePages(setOf(state.pageIndex), if (clockwise) 90 else 270)
+    }
+
+    fun rotatePages(indices: Set<Int>, delta: Int) {
+        val state = _viewer.value ?: return
         if (state.busy || state.pages.isEmpty()) return
-        val index = state.pageIndex
-        val delta = if (clockwise) 90 else 270
-        val aspect = state.displayWidthPt / state.displayHeightPt
-        val pages = state.pages.toMutableList().also {
-            val spec = it[index]
-            it[index] = spec.copy(extraRotation = PageSpec.normalizeRotation(spec.extraRotation + delta))
-        }
-        val annotations = state.annotations.map { annotation ->
-            if (annotation.page == index) PageTransforms.rotate(annotation, delta, aspect) else annotation
-        }
-        rebuild(state.copy(pages = pages, annotations = annotations))
+        val edit = PageOps.rotate(
+            edit = PageEdit(state.pages, state.annotations, state.notes, state.pageIndex),
+            indices = indices,
+            delta = delta,
+            aspectForPage = ::aspectForPage,
+        )
+        applyPageEdit(state, edit, "페이지를 회전하는 중…")
     }
 
     fun movePage(index: Int, direction: Int) {
+        movePages(setOf(index), direction)
+    }
+
+    fun movePages(indices: Set<Int>, direction: Int) {
         val state = _viewer.value ?: return
         if (state.busy) return
-        val target = index + direction
-        if (index !in state.pages.indices || target !in state.pages.indices) return
-        val pages = state.pages.toMutableList()
-        val swap = pages[index]
-        pages[index] = pages[target]
-        pages[target] = swap
-        val annotations = state.annotations.map {
-            when (it.page) {
-                index -> it.copy(page = target)
-                target -> it.copy(page = index)
-                else -> it
-            }
-        }
-        val notes = state.notes.mapKeys { entry ->
-            when (entry.key) {
-                index -> target
-                target -> index
-                else -> entry.key
-            }
-        }
-        val current = when (state.pageIndex) {
-            index -> target
-            target -> index
-            else -> state.pageIndex
-        }
-        rebuild(state.copy(pages = pages, annotations = annotations, notes = notes, pageIndex = current))
+        val edit = PageOps.move(
+            PageEdit(state.pages, state.annotations, state.notes, state.pageIndex),
+            indices,
+            direction,
+        )
+        applyPageEdit(state, edit, "페이지를 이동하는 중…")
     }
 
     fun deletePage(index: Int) {
+        deletePages(setOf(index))
+    }
+
+    fun deletePages(indices: Set<Int>) {
         val state = _viewer.value ?: return
-        if (state.busy || state.pages.size <= 1 || index !in state.pages.indices) return
-        val pages = state.pages.toMutableList().also { it.removeAt(index) }
-        val annotations = state.annotations
-            .filterNot { it.page == index }
-            .map { if (it.page > index) it.copy(page = it.page - 1) else it }
-        val notes = state.notes.entries
-            .filterNot { it.key == index }
-            .associate { (key, value) -> (if (key > index) key - 1 else key) to value }
-        val current = when {
-            state.pageIndex > index -> state.pageIndex - 1
-            state.pageIndex == index -> state.pageIndex.coerceAtMost(pages.size - 1)
-            else -> state.pageIndex
-        }
-        rebuild(state.copy(pages = pages, annotations = annotations, notes = notes, pageIndex = current))
+        if (state.busy || state.pages.size <= 1) return
+        val edit = PageOps.delete(
+            PageEdit(state.pages, state.annotations, state.notes, state.pageIndex),
+            indices,
+        )
+        applyPageEdit(state, edit, "페이지를 삭제하는 중…")
+    }
+
+    fun duplicatePages(indices: Set<Int>) {
+        val state = _viewer.value ?: return
+        if (state.busy || state.pages.isEmpty()) return
+        val edit = PageOps.duplicate(
+            PageEdit(state.pages, state.annotations, state.notes, state.pageIndex),
+            indices,
+        )
+        applyPageEdit(state, edit, "페이지를 복제하는 중…")
     }
 
     fun insertBlankPage(afterIndex: Int) {
+        insertBlankPages(afterIndex)
+    }
+
+    fun insertBlankPages(afterIndex: Int, count: Int = 1) {
         val state = _viewer.value ?: return
         if (state.busy) return
-        val insertAt = (afterIndex + 1).coerceIn(0, state.pages.size)
-        val pages = state.pages.toMutableList().also { it.add(insertAt, PageSpec(null)) }
-        val annotations = state.annotations.map {
-            if (it.page >= insertAt) it.copy(page = it.page + 1) else it
+        val edit = PageOps.insertBlank(
+            PageEdit(state.pages, state.annotations, state.notes, state.pageIndex),
+            afterIndex,
+            count,
+        ).copy(currentPage = (afterIndex + 1).coerceIn(0, state.pages.size + count - 1))
+        applyPageEdit(state, edit, "빈 페이지를 추가하는 중…")
+    }
+
+    fun extractPages(indices: Set<Int>, uri: Uri) {
+        val state = _viewer.value ?: return
+        val source = sourceFile ?: return
+        val ordered = indices.filter { it in state.pages.indices }.sorted()
+        if (ordered.isEmpty()) return
+        viewModelScope.launch {
+            _viewer.update { it?.copy(busy = true, busyLabel = "페이지를 추출하는 중…") }
+            runCatching {
+                val specs = ordered.map { state.pages[it] }
+                val annotations = state.annotations
+                    .filter { it.page in indices }
+                    .map { it.copy(page = ordered.indexOf(it.page)) }
+                withContext(Dispatchers.IO) {
+                    resolver.openOutputStream(uri, "wt")?.use { output ->
+                        PdfExporter.export(
+                            source = source,
+                            specs = specs,
+                            annotations = annotations,
+                            out = output,
+                            style = state.documentStyle,
+                            pageCount = specs.size,
+                        )
+                    } ?: error("출력 파일을 열 수 없습니다.")
+                }
+            }.onSuccess {
+                _viewer.update { it?.copy(busy = false, busyLabel = null, message = "페이지 ${ordered.size}장을 추출했습니다.") }
+            }.onFailure { error ->
+                _viewer.update { it?.copy(busy = false, busyLabel = null, message = "추출하지 못했습니다: ${error.message}") }
+            }
         }
-        val notes = state.notes.entries.associate { (key, value) ->
-            (if (key >= insertAt) key + 1 else key) to value
+    }
+
+    private fun applyPageEdit(state: ViewerUiState, edit: PageEdit, label: String) {
+        if (edit.pages == state.pages &&
+            edit.annotations == state.annotations &&
+            edit.notes == state.notes &&
+            edit.currentPage == state.pageIndex
+        ) {
+            return
         }
-        rebuild(state.copy(pages = pages, annotations = annotations, notes = notes, pageIndex = insertAt))
+        pushHistory(state)
+        rebuild(
+            state.copy(
+                pages = edit.pages,
+                annotations = edit.annotations,
+                notes = edit.notes,
+                pageIndex = edit.currentPage,
+                pageCount = edit.pages.size,
+                busyLabel = label,
+            ),
+        )
+    }
+
+    private fun aspectForPage(@Suppress("UNUSED_PARAMETER") index: Int, spec: PageSpec): Float {
+        val size = spec.sourcePage?.let { sourceSizes.getOrNull(it) } ?: return 1f
+        val base = if (size.height > 0f) size.width / size.height else 1f
+        return if (spec.extraRotation % 180 == 0) base else 1f / base
     }
 
     fun resetPages() {
@@ -653,12 +879,14 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     if (sourcePage in specs.indices) put(sourcePage, value)
                 }
             }
+            pushHistory(state)
             rebuild(
                 state.copy(
                     pages = specs,
                     annotations = annotations,
                     notes = notes,
                     pageIndex = state.pageIndex.coerceIn(0, (specs.size - 1).coerceAtLeast(0)),
+                    pageCount = specs.size,
                 ),
             )
         }
@@ -673,15 +901,14 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 .onSuccess {
                     val pageCount = state.pages.size
                     val safeIndex = state.pageIndex.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
-                    undoStack.clear()
-                    redoStack.clear()
                     _viewer.value = state.copy(
                         pageCount = pageCount,
                         pageIndex = safeIndex,
                         busy = true,
                         busyLabel = text(R.string.rendering_page),
-                        canUndo = false,
-                        canRedo = false,
+                        canUndo = undoStack.isNotEmpty(),
+                        canRedo = redoStack.isNotEmpty(),
+                        revision = state.revision + 1,
                     )
                     pageTexts = null
                     currentPageTextsKey = null
@@ -790,7 +1017,14 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             runCatching {
                 withContext(Dispatchers.IO) {
                     resolver.openOutputStream(uri, "wt")?.use { output ->
-                        PdfExporter.export(source, state.pages, state.annotations, output)
+                        PdfExporter.export(
+                            source = source,
+                            specs = state.pages,
+                            annotations = state.annotations,
+                            out = output,
+                            style = state.documentStyle,
+                            pageCount = state.pageCount,
+                        )
                     } ?: error("출력 파일을 열 수 없습니다.")
                 }
             }.onSuccess {
@@ -816,6 +1050,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         if (deleteAnnotations) {
             val id = docIdFor(Uri.parse(uri))
             docStore.delete(id)
+            docStyleStore.delete(id)
             File(sourceDir, "$id.pdf").delete()
         }
     }

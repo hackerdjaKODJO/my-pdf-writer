@@ -82,6 +82,7 @@ fun OrganizeScreen(
     pages: List<PageSpec>,
     selected: Set<Int>,
     loadThumbnail: suspend (Int) -> Bitmap?,
+    revision: Int = 0,
     onBack: () -> Unit,
     onSelectionChange: (Set<Int>) -> Unit,
     onRotate: (Set<Int>, Int) -> Unit,
@@ -197,6 +198,7 @@ fun OrganizeScreen(
                         spec = spec,
                         selected = index in selection,
                         loadThumbnail = loadThumbnail,
+                        revision = revision,
                         onClick = {
                             onSelectionChange(
                                 if (index in selection) selection - index else selection + index,
@@ -215,9 +217,10 @@ private fun OrganizePageCard(
     spec: PageSpec,
     selected: Boolean,
     loadThumbnail: suspend (Int) -> Bitmap?,
+    revision: Int,
     onClick: () -> Unit,
 ) {
-    val thumbnail by produceState<Bitmap?>(initialValue = null, index, spec) {
+    val thumbnail by produceState<Bitmap?>(initialValue = null, index, spec, revision) {
         value = runCatching { loadThumbnail(index) }.getOrNull()
     }
     val bitmap = thumbnail
