@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.CallMerge
 import androidx.compose.material.icons.outlined.CallSplit
 import androidx.compose.material.icons.outlined.Compress
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FactCheck
 import androidx.compose.material.icons.outlined.FileDownload
@@ -38,6 +39,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -68,6 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.hackerdjakodjo.mypdfwriter.pdf.OcrLanguage
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfFormField
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfFormFieldType
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfMetadata
@@ -80,6 +83,8 @@ private sealed interface PendingOutput {
     data class Merge(val sources: List<Uri>) : PendingOutput
     data class ImagesToPdf(val images: List<Uri>) : PendingOutput
     data class ExtractText(val source: File) : PendingOutput
+    data class OcrText(val source: File, val language: OcrLanguage) : PendingOutput
+    data class OcrPdf(val source: File, val language: OcrLanguage) : PendingOutput
     data class Optimize(val source: File) : PendingOutput
     data class Protect(val source: File, val user: String, val owner: String) : PendingOutput
     data class Unlock(val source: File, val password: String) : PendingOutput
@@ -117,6 +122,7 @@ fun ToolsScreen(
     var showMetadata by remember { mutableStateOf(false) }
     var showForms by remember { mutableStateOf(false) }
     var rangeText by remember { mutableStateOf("1-3") }
+    var ocrLanguage by remember { mutableStateOf(OcrLanguage.KOREAN) }
     var everyText by remember { mutableStateOf("10") }
     var userPassword by remember { mutableStateOf("") }
     var ownerPassword by remember { mutableStateOf("") }
@@ -146,7 +152,8 @@ fun ToolsScreen(
             is PendingOutput.Unlock -> vm.unlock(action.source, action.password, out)
             is PendingOutput.SetMetadata -> vm.setMetadata(action.source, action.meta, out)
             is PendingOutput.FillForms -> vm.fillForms(action.source, action.values, action.checks, out)
-            is PendingOutput.ExtractText, is PendingOutput.Images, null -> Unit
+            is PendingOutput.OcrPdf -> vm.ocrPdf(action.source, out, action.language)
+            is PendingOutput.ExtractText, is PendingOutput.Images, is PendingOutput.OcrText, null -> Unit
         }
         pending = null
     }
@@ -156,6 +163,7 @@ fun ToolsScreen(
     ) { uri ->
         val out = uri ?: run { pending = null; return@rememberLauncherForActivityResult }
         (pending as? PendingOutput.ExtractText)?.let { vm.extractText(it.source, out) }
+        (pending as? PendingOutput.OcrText)?.let { vm.ocrText(it.source, out, it.language) }
         pending = null
     }
 
@@ -263,6 +271,8 @@ fun ToolsScreen(
             ) {
                 item { SourceCard(state, onPick = { pickPdf.launch(arrayOf("application/pdf")) }) }
 
+                item { OcrLanguageRow(ocrLanguage) { ocrLanguage = it } }
+
                 item {
                     ToolSection(
                         title = "새로 만들기",
@@ -283,6 +293,18 @@ fun ToolsScreen(
                     ToolSection(
                         title = "선택한 PDF로",
                         items = listOf(
+                            ToolItem("OCR 텍스트", "스캔 PDF에서 글자 추출", Icons.Outlined.DocumentScanner, {
+                                if (source != null) {
+                                    pending = PendingOutput.OcrText(source, ocrLanguage)
+                                    createText.launch("ocr.txt")
+                                }
+                            }, enabled),
+                            ToolItem("검색 가능한 PDF", "이미지 위에 보이지 않는 텍스트 레이어", Icons.Outlined.DocumentScanner, {
+                                if (source != null) {
+                                    pending = PendingOutput.OcrPdf(source, ocrLanguage)
+                                    createPdf.launch("searchable.pdf")
+                                }
+                            }, enabled),
                             ToolItem("페이지 추출", "원하는 페이지만 새 PDF로", Icons.Outlined.FileDownload, {
                                 if (source != null) showExtract = true
                             }, enabled),
@@ -337,7 +359,8 @@ fun ToolsScreen(
 
                 item {
                     Text(
-                        "도구는 선택한 파일을 임시로 읽고, 결과는 사용자가 고른 위치에만 저장합니다.",
+                        "도구는 선택한 파일을 임시로 읽고, 결과는 사용자가 고른 위치에만 저장합니다. " +
+                            "OCR은 기기에 포함된 ML Kit 모델로 오프라인 인식합니다.",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -553,6 +576,24 @@ private fun ToolCard(item: ToolItem, modifier: Modifier = Modifier) {
                 item.body,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OcrLanguageRow(selected: OcrLanguage, onSelect: (OcrLanguage) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("OCR 언어", style = MaterialTheme.typography.labelMedium)
+        OcrLanguage.entries.forEach { language ->
+            FilterChip(
+                selected = selected == language,
+                onClick = { onSelect(language) },
+                label = { Text(language.label) },
             )
         }
     }

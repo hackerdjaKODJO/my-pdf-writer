@@ -9,8 +9,10 @@ import android.os.ParcelFileDescriptor
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.hackerdjakodjo.mypdfwriter.pdf.OcrLanguage
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfFormField
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfMetadata
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfOcr
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfOutlineEntry
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfRange
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfShare
@@ -190,6 +192,48 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
                 } ?: error("출력 파일을 열 수 없습니다.")
                 _state.update { it.copy(lastOutput = out) }
                 if (text.isBlank()) "텍스트가 없습니다. 스캔 PDF일 수 있습니다." else "텍스트를 저장했습니다."
+            }
+        }
+    }
+
+    fun ocrText(source: File, out: Uri, language: OcrLanguage) {
+        viewModelScope.launch {
+            runTool("OCR 준비 중…") {
+                val pages = PdfOcr.recognizeText(source, language) { done, total ->
+                    _state.update { it.copy(label = "OCR $done / $total") }
+                }
+                val text = buildString {
+                    pages.forEach { page ->
+                        if (isNotEmpty()) append("\n\n")
+                        append("--- ").append(page.pageIndex + 1).append(" / ").append(pages.size).append(" ---\n")
+                        append(page.text)
+                    }
+                }
+                resolver.openOutputStream(out, "wt")?.use { output ->
+                    output.writer(Charsets.UTF_8).use { it.write(text) }
+                } ?: error("출력 파일을 열 수 없습니다.")
+                _state.update { it.copy(lastOutput = out) }
+                if (text.isBlank()) "인식된 텍스트가 없습니다." else "OCR 텍스트를 저장했습니다."
+            }
+        }
+    }
+
+    fun ocrPdf(source: File, out: Uri, language: OcrLanguage) {
+        viewModelScope.launch {
+            runTool("검색 가능한 PDF를 만드는 중…") {
+                writeTo(out) { stream ->
+                    PdfOcr.createSearchablePdf(
+                        context = getApplication(),
+                        source = source,
+                        out = stream,
+                        language = language,
+                        onProgress = { done, total ->
+                            _state.update { it.copy(label = "OCR $done / $total") }
+                        },
+                    )
+                }
+                _state.update { it.copy(lastOutput = out) }
+                "OCR 텍스트 레이어를 넣은 PDF를 저장했습니다."
             }
         }
     }

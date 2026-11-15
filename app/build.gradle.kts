@@ -104,6 +104,9 @@ dependencies {
 
     implementation(libs.pdfbox.android)
 
+    implementation(libs.mlkit.text.recognition)
+    implementation(libs.mlkit.text.recognition.korean)
+
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
 
