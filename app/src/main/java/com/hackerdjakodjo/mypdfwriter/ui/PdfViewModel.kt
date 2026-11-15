@@ -46,6 +46,7 @@ data class ViewerUiState(
     val color: Int = 0xFF1F4E79.toInt(),
     val strokeWidth: Float = 0.0035f,
     val fontSize: Float = 0.024f,
+    val opacity: Float = 1f,
     val zoom: Float = 1f,
     val busy: Boolean = false,
     val busyLabel: String? = null,
@@ -240,6 +241,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         it?.copy(fontSize = size.coerceIn(0.012f, 0.06f))
     }
 
+    fun setOpacity(opacity: Float) = _viewer.update {
+        it?.copy(opacity = opacity.coerceIn(0.1f, 1f))
+    }
+
     fun setZoom(zoom: Float) = _viewer.update { it?.copy(zoom = zoom.coerceIn(1f, 6f)) }
 
     // ---------------------------------------------------------------- annotations
@@ -252,9 +257,14 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             Tool.HIGHLIGHT -> AnnotationType.HIGHLIGHT
             Tool.RECT -> AnnotationType.RECT
             Tool.ARROW -> AnnotationType.ARROW
+            Tool.UNDERLINE -> AnnotationType.UNDERLINE
+            Tool.STRIKEOUT -> AnnotationType.STRIKEOUT
+            Tool.ELLIPSE -> AnnotationType.ELLIPSE
+            Tool.LINE -> AnnotationType.LINE
+            Tool.REDACT -> AnnotationType.REDACT
             else -> return
         }
-        val usablePoints = if (type == AnnotationType.RECT || type == AnnotationType.ARROW) {
+        val usablePoints = if (isTwoPointType(type)) {
             listOf(points.first(), points.last())
         } else {
             points
@@ -265,10 +275,19 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             color = state.color,
             width = when (type) {
                 AnnotationType.HIGHLIGHT -> 0.02f
-                AnnotationType.RECT, AnnotationType.ARROW -> maxOf(state.strokeWidth, 0.0025f)
+                AnnotationType.RECT,
+                AnnotationType.ARROW,
+                AnnotationType.LINE,
+                AnnotationType.ELLIPSE,
+                AnnotationType.UNDERLINE,
+                AnnotationType.STRIKEOUT -> maxOf(state.strokeWidth, 0.0025f)
                 else -> state.strokeWidth
             },
             points = usablePoints,
+            opacity = when (type) {
+                AnnotationType.HIGHLIGHT, AnnotationType.REDACT -> 1f
+                else -> state.opacity
+            },
         )
         mutateAnnotations { it + annotation }
     }
@@ -284,9 +303,53 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             points = listOf(point),
             text = text,
             fontSize = state.fontSize,
+            opacity = state.opacity,
         )
         mutateAnnotations { it + annotation }
     }
+
+    fun addStamp(point: NormalizedPoint, text: String) {
+        val state = _viewer.value ?: return
+        val label = text.trim()
+        if (label.isEmpty()) return
+        val annotation = Annotation(
+            type = AnnotationType.STAMP,
+            page = state.pageIndex,
+            color = state.color,
+            width = maxOf(state.strokeWidth, 0.003f),
+            points = listOf(point),
+            fontSize = maxOf(state.fontSize, 0.03f),
+            opacity = state.opacity,
+            stamp = label,
+        )
+        mutateAnnotations { it + annotation }
+    }
+
+    fun addSignature(point: NormalizedPoint, text: String) {
+        val state = _viewer.value ?: return
+        val signature = text.trim()
+        if (signature.isEmpty()) return
+        val annotation = Annotation(
+            type = AnnotationType.SIGNATURE,
+            page = state.pageIndex,
+            color = state.color,
+            width = maxOf(state.strokeWidth, 0.0025f),
+            points = listOf(point),
+            text = signature,
+            fontSize = maxOf(state.fontSize, 0.03f),
+            opacity = state.opacity,
+        )
+        mutateAnnotations { it + annotation }
+    }
+
+    fun deleteAnnotation(id: String) {
+        val state = _viewer.value ?: return
+        if (state.annotations.none { it.id == id }) return
+        mutateAnnotations { annotations -> annotations.filterNot { it.id == id } }
+    }
+
+    fun annotationsForPage(page: Int): List<Annotation> =
+        _viewer.value?.annotations?.filter { it.page == page }.orEmpty()
 
     fun eraseStroke(points: List<NormalizedPoint>) {
         val state = _viewer.value ?: return
@@ -323,11 +386,13 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     insideX && insideY && onEdge
                 }
             }
-            AnnotationType.ARROW -> {
+            AnnotationType.ARROW,
+            AnnotationType.LINE,
+            AnnotationType.UNDERLINE,
+            AnnotationType.STRIKEOUT -> nearPolyline(annotation, eraser, radius)
+            AnnotationType.ELLIPSE -> {
                 if (annotation.points.size < 2) return false
-                val a = annotation.points[0]
-                val b = annotation.points[1]
-                eraser.any { e -> distanceToSegment(e, a, b) <= radius }
+                nearEllipse(annotation.points[0], annotation.points[1], eraser, radius)
             }
             AnnotationType.TEXT -> {
                 if (annotation.points.isEmpty()) return false
@@ -340,7 +405,95 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                         e.y in (p.y - radius)..(p.y + height + radius)
                 }
             }
+            AnnotationType.STAMP -> {
+                if (annotation.points.isEmpty()) return false
+                val p = annotation.points.first()
+                val label = annotation.stamp.ifBlank { "APPROVED" }
+                val width = (label.length * annotation.fontSize * 0.66f + annotation.fontSize * 1.2f)
+                    .coerceAtMost(0.85f)
+                val height = annotation.fontSize * 1.9f
+                eraser.any { e ->
+                    e.x in (p.x - width / 2f - radius)..(p.x + width / 2f + radius) &&
+                        e.y in (p.y - height / 2f - radius)..(p.y + height / 2f + radius)
+                }
+            }
+            AnnotationType.SIGNATURE -> {
+                if (annotation.points.isEmpty()) return false
+                if (annotation.points.size > 1) {
+                    nearPolyline(annotation, eraser, radius)
+                } else {
+                    val p = annotation.points.first()
+                    val label = annotation.text.ifBlank { annotation.stamp }
+                    val width = (label.length * annotation.fontSize * 0.52f).coerceAtMost(0.85f)
+                    val height = annotation.fontSize * 1.5f
+                    eraser.any { e ->
+                        e.x in (p.x - radius)..(p.x + width + radius) &&
+                            e.y in (p.y - radius)..(p.y + height + radius)
+                    }
+                }
+            }
+            AnnotationType.REDACT -> {
+                if (annotation.points.size < 2) return false
+                val a = annotation.points[0]
+                val b = annotation.points[1]
+                val minX = minOf(a.x, b.x); val maxX = maxOf(a.x, b.x)
+                val minY = minOf(a.y, b.y); val maxY = maxOf(a.y, b.y)
+                eraser.any { e ->
+                    e.x in (minX - radius)..(maxX + radius) &&
+                        e.y in (minY - radius)..(maxY + radius)
+                }
+            }
         }
+    }
+
+    private fun nearPolyline(
+        annotation: Annotation,
+        eraser: List<NormalizedPoint>,
+        radius: Float,
+    ): Boolean {
+        val points = annotation.points
+        if (points.size < 2) return false
+        return points.zipWithNext().any { (a, b) ->
+            eraser.any { e -> distanceToSegment(e, a, b) <= radius }
+        }
+    }
+
+    private fun nearEllipse(
+        a: NormalizedPoint,
+        b: NormalizedPoint,
+        eraser: List<NormalizedPoint>,
+        radius: Float,
+    ): Boolean {
+        val cx = (a.x + b.x) / 2f
+        val cy = (a.y + b.y) / 2f
+        val rx = kotlin.math.abs(a.x - b.x) / 2f
+        val ry = kotlin.math.abs(a.y - b.y) / 2f
+        if (rx <= 0f || ry <= 0f) return false
+        val samples = 48
+        return eraser.any { e ->
+            if (e.x !in (cx - rx - radius)..(cx + rx + radius) ||
+                e.y !in (cy - ry - radius)..(cy + ry + radius)
+            ) {
+                return@any false
+            }
+            (0 until samples).any { i ->
+                val angle = i * (2.0 * Math.PI / samples)
+                val dx = e.x - (cx + rx * kotlin.math.cos(angle).toFloat())
+                val dy = e.y - (cy + ry * kotlin.math.sin(angle).toFloat())
+                dx * dx + dy * dy <= radius * radius
+            }
+        }
+    }
+
+    private fun isTwoPointType(type: AnnotationType): Boolean = when (type) {
+        AnnotationType.RECT,
+        AnnotationType.ARROW,
+        AnnotationType.LINE,
+        AnnotationType.ELLIPSE,
+        AnnotationType.UNDERLINE,
+        AnnotationType.STRIKEOUT,
+        AnnotationType.REDACT -> true
+        else -> false
     }
 
     private fun distanceToSegment(p: NormalizedPoint, a: NormalizedPoint, b: NormalizedPoint): Float {

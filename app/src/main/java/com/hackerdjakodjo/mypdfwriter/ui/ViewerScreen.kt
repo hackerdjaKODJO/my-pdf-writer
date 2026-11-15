@@ -23,16 +23,23 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Approval
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.CropSquare
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FitScreen
+import androidx.compose.material.icons.outlined.FormatStrikethrough
+import androidx.compose.material.icons.outlined.FormatUnderlined
 import androidx.compose.material.icons.outlined.Highlight
+import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.Redo
 import androidx.compose.material.icons.outlined.Search
@@ -40,8 +47,11 @@ import androidx.compose.material.icons.outlined.StickyNote2
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Undo
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.ZoomIn
 import androidx.compose.material.icons.outlined.ZoomOut
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -86,6 +96,13 @@ private val toolSpecs = listOf(
     ToolSpec(Tool.TEXT, Icons.Outlined.TextFields, R.string.tool_text),
     ToolSpec(Tool.RECT, Icons.Outlined.CropSquare, R.string.tool_rect),
     ToolSpec(Tool.ARROW, Icons.Outlined.NorthEast, R.string.tool_arrow),
+    ToolSpec(Tool.LINE, Icons.Outlined.HorizontalRule, R.string.tool_line),
+    ToolSpec(Tool.ELLIPSE, Icons.Outlined.Circle, R.string.tool_ellipse),
+    ToolSpec(Tool.UNDERLINE, Icons.Outlined.FormatUnderlined, R.string.tool_underline),
+    ToolSpec(Tool.STRIKEOUT, Icons.Outlined.FormatStrikethrough, R.string.tool_strikeout),
+    ToolSpec(Tool.STAMP, Icons.Outlined.Approval, R.string.tool_stamp),
+    ToolSpec(Tool.SIGNATURE, Icons.Outlined.Draw, R.string.tool_signature),
+    ToolSpec(Tool.REDACT, Icons.Outlined.VisibilityOff, R.string.tool_redact),
     ToolSpec(Tool.ERASER, Icons.Outlined.DeleteSweep, R.string.tool_eraser),
 )
 
@@ -111,9 +128,13 @@ fun ViewerScreen(vm: PdfViewModel, onExportRequest: (String) -> Unit) {
     var showPages by remember { mutableStateOf(false) }
     var showNotes by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
+    var showAnnotations by remember { mutableStateOf(false) }
     var textTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
+    var stampTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
+    var signatureTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
 
-    val sheetOpen = showPages || showNotes || showSearch || textTarget != null
+    val sheetOpen = showPages || showNotes || showSearch || showAnnotations ||
+        textTarget != null || stampTarget != null || signatureTarget != null
     BackHandler(enabled = !sheetOpen) { vm.closeDocument() }
 
     LaunchedEffect(state.message) {
@@ -155,6 +176,17 @@ fun ViewerScreen(vm: PdfViewModel, onExportRequest: (String) -> Unit) {
                     IconButton(onClick = { showNotes = true }) {
                         Icon(Icons.Outlined.StickyNote2, contentDescription = stringResource(R.string.notes))
                     }
+                    IconButton(onClick = { showAnnotations = true }) {
+                        BadgedBox(
+                            badge = {
+                                if (state.annotations.isNotEmpty()) {
+                                    Badge { Text(state.annotations.size.toString()) }
+                                }
+                            },
+                        ) {
+                            Icon(Icons.AutoMirrored.Outlined.Notes, contentDescription = stringResource(R.string.annotations_title))
+                        }
+                    }
                     IconButton(onClick = { onExportRequest(vm.exportSuggestedName()) }) {
                         Icon(Icons.Outlined.FileDownload, contentDescription = stringResource(R.string.export))
                     }
@@ -189,16 +221,22 @@ fun ViewerScreen(vm: PdfViewModel, onExportRequest: (String) -> Unit) {
                 color = state.color,
                 strokeWidth = state.strokeWidth,
                 fontSize = state.fontSize,
+                opacity = state.opacity,
                 zoom = state.zoom,
                 onZoomChange = vm::setZoom,
                 onAddStroke = vm::addStroke,
                 onEraseStroke = vm::eraseStroke,
                 onRequestText = { textTarget = it },
+                onRequestStamp = { stampTarget = it },
+                onRequestSignature = { signatureTarget = it },
             )
 
             val hintRes = when (state.tool) {
                 Tool.VIEW -> R.string.hint_view
                 Tool.TEXT -> R.string.hint_text
+                Tool.STAMP -> R.string.hint_stamp
+                Tool.SIGNATURE -> R.string.hint_signature
+                Tool.REDACT -> R.string.hint_redact
                 Tool.ERASER -> R.string.hint_eraser
                 else -> R.string.hint_draw
             }
@@ -230,6 +268,9 @@ fun ViewerScreen(vm: PdfViewModel, onExportRequest: (String) -> Unit) {
     if (showSearch) {
         SearchSheet(state, vm) { showSearch = false }
     }
+    if (showAnnotations) {
+        AnnotationSheet(state, vm) { showAnnotations = false }
+    }
 
     textTarget?.let { point ->
         TextAnnotationDialog(
@@ -239,6 +280,30 @@ fun ViewerScreen(vm: PdfViewModel, onExportRequest: (String) -> Unit) {
             onConfirm = { text ->
                 vm.addText(point, text)
                 textTarget = null
+            },
+        )
+    }
+
+    stampTarget?.let { point ->
+        StampDialog(
+            initialColor = state.color,
+            onDismiss = { stampTarget = null },
+            onConfirm = { text, color ->
+                vm.setColor(color)
+                vm.addStamp(point, text)
+                stampTarget = null
+            },
+        )
+    }
+
+    signatureTarget?.let { point ->
+        SignatureDialog(
+            initialColor = state.color,
+            onDismiss = { signatureTarget = null },
+            onConfirm = { text, color ->
+                vm.setColor(color)
+                vm.addSignature(point, text)
+                signatureTarget = null
             },
         )
     }
@@ -277,7 +342,7 @@ private fun AnnotationToolbar(state: ViewerUiState, vm: PdfViewModel) {
             }
         }
 
-        if (state.tool != Tool.VIEW && state.tool != Tool.ERASER) {
+        if (state.tool != Tool.VIEW && state.tool != Tool.ERASER && state.tool != Tool.REDACT) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -304,9 +369,14 @@ private fun AnnotationToolbar(state: ViewerUiState, vm: PdfViewModel) {
                             valueRange = 0.012f..0.05f,
                             modifier = Modifier.width(120.dp),
                         )
+                        OpacityControl(state.opacity, vm::setOpacity)
                     }
 
                     Tool.HIGHLIGHT -> Unit
+
+                    Tool.STAMP, Tool.SIGNATURE -> {
+                        OpacityControl(state.opacity, vm::setOpacity)
+                    }
 
                     else -> {
                         Text(stringResource(R.string.thickness), style = MaterialTheme.typography.labelMedium)
@@ -316,11 +386,28 @@ private fun AnnotationToolbar(state: ViewerUiState, vm: PdfViewModel) {
                             valueRange = 0.001f..0.012f,
                             modifier = Modifier.width(120.dp),
                         )
+                        OpacityControl(state.opacity, vm::setOpacity)
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun OpacityControl(value: Float, onValueChange: (Float) -> Unit) {
+    Text(stringResource(R.string.opacity), style = MaterialTheme.typography.labelMedium)
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        valueRange = 0.1f..1f,
+        modifier = Modifier.width(100.dp),
+    )
+    Text(
+        stringResource(R.string.opacity_percent, (value * 100).roundToInt()),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
@@ -344,7 +431,7 @@ private fun ToolChip(icon: ImageVector, label: String, selected: Boolean, onClic
 }
 
 @Composable
-private fun ColorDot(color: Int, selected: Boolean, onClick: () -> Unit) {
+internal fun ColorDot(color: Int, selected: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(28.dp)

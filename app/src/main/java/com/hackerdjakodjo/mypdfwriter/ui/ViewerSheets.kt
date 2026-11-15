@@ -23,9 +23,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Approval
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.RotateLeft
 import androidx.compose.material.icons.outlined.RotateRight
@@ -35,8 +37,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -59,6 +63,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,6 +71,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hackerdjakodjo.mypdfwriter.R
+import com.hackerdjakodjo.mypdfwriter.data.Annotation
+import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
@@ -457,6 +464,285 @@ private fun SearchHitRow(hit: SearchHit, query: String, onClick: () -> Unit) {
             Text(annotated, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AnnotationSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val annotations = remember(state.annotations) {
+        state.annotations.sortedWith(compareBy<Annotation>({ it.page }, { it.type.ordinal }))
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.annotations_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.annotations_count, annotations.size),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Spacer(Modifier.size(10.dp))
+            if (annotations.isEmpty()) {
+                Text(
+                    stringResource(R.string.annotations_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 24.dp),
+                )
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxWidth().heightIn(max = 460.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(bottom = 8.dp),
+                ) {
+                    items(annotations, key = { it.id }) { annotation ->
+                        AnnotationRow(
+                            annotation = annotation,
+                            onOpen = {
+                                vm.goToPage(annotation.page)
+                                onDismiss()
+                            },
+                            onDelete = { vm.deleteAnnotation(annotation.id) },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.size(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun AnnotationRow(annotation: Annotation, onOpen: () -> Unit, onDelete: () -> Unit) {
+    Surface(
+        onClick = onOpen,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .size(10.dp)
+                    .background(
+                        if (annotation.type == AnnotationType.REDACT) Color.Black else Color(annotation.color),
+                        CircleShape,
+                    ),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(annotationTypeLabelRes(annotation.type)),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        stringResource(R.string.page_number, annotation.page + 1),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.size(2.dp))
+                Text(
+                    annotationSummary(annotation),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    Icons.Outlined.Delete,
+                    contentDescription = stringResource(R.string.annotation_delete),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun annotationSummary(annotation: Annotation): String {
+    val text = annotation.text.trim()
+    val stamp = annotation.stamp.trim()
+    return when {
+        annotation.type == AnnotationType.STAMP && stamp.isNotEmpty() ->
+            stringResource(R.string.annotation_summary_stamp, stamp)
+        annotation.type == AnnotationType.SIGNATURE && text.isNotEmpty() ->
+            stringResource(R.string.annotation_summary_signature, text)
+        text.isNotEmpty() -> text
+        stamp.isNotEmpty() -> stamp
+        annotation.type == AnnotationType.PEN -> stringResource(R.string.annotation_summary_pen)
+        annotation.type == AnnotationType.HIGHLIGHT -> stringResource(R.string.annotation_summary_highlight)
+        annotation.type == AnnotationType.REDACT -> stringResource(R.string.annotation_summary_redact)
+        else -> stringResource(R.string.annotation_summary_shape)
+    }
+}
+
+private fun annotationTypeLabelRes(type: AnnotationType): Int = when (type) {
+    AnnotationType.PEN -> R.string.annotation_type_pen
+    AnnotationType.HIGHLIGHT -> R.string.annotation_type_highlight
+    AnnotationType.TEXT -> R.string.annotation_type_text
+    AnnotationType.RECT -> R.string.annotation_type_rect
+    AnnotationType.ARROW -> R.string.annotation_type_arrow
+    AnnotationType.UNDERLINE -> R.string.annotation_type_underline
+    AnnotationType.STRIKEOUT -> R.string.annotation_type_strikeout
+    AnnotationType.ELLIPSE -> R.string.annotation_type_ellipse
+    AnnotationType.LINE -> R.string.annotation_type_line
+    AnnotationType.STAMP -> R.string.annotation_type_stamp
+    AnnotationType.SIGNATURE -> R.string.annotation_type_signature
+    AnnotationType.REDACT -> R.string.annotation_type_redact
+}
+
+@Composable
+fun StampDialog(
+    initialColor: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (String, Int) -> Unit,
+) {
+    val presets = listOf(
+        stringResource(R.string.stamp_preset_approved),
+        stringResource(R.string.stamp_preset_draft),
+        stringResource(R.string.stamp_preset_confidential),
+        stringResource(R.string.stamp_preset_reviewed),
+    )
+    var value by remember { mutableStateOf(presets.first()) }
+    var color by remember(initialColor) { mutableStateOf(initialColor) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Approval, contentDescription = null) },
+        title = { Text(stringResource(R.string.stamp_dialog_title)) },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    presets.forEach { preset ->
+                        FilterChip(
+                            selected = value == preset,
+                            onClick = { value = preset },
+                            label = { Text(preset) },
+                        )
+                    }
+                }
+                Spacer(Modifier.size(10.dp))
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.stamp_custom)) },
+                    placeholder = { Text(stringResource(R.string.stamp_hint)) },
+                    singleLine = true,
+                )
+                Spacer(Modifier.size(12.dp))
+                Text(
+                    stringResource(R.string.stamp_color),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.size(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    annotationPalette.forEach { swatch ->
+                        ColorDot(color = swatch, selected = color == swatch, onClick = { color = swatch })
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(value.trim(), color) }, enabled = value.isNotBlank()) {
+                Text(stringResource(R.string.add))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+fun SignatureDialog(
+    initialColor: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (String, Int) -> Unit,
+) {
+    var value by remember { mutableStateOf("") }
+    var color by remember(initialColor) { mutableStateOf(initialColor) }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        delay(180)
+        runCatching { focusRequester.requestFocus() }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Draw, contentDescription = null) },
+        title = { Text(stringResource(R.string.signature_dialog_title)) },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                    label = { Text(stringResource(R.string.signature_hint)) },
+                    singleLine = true,
+                )
+                Spacer(Modifier.size(12.dp))
+                Text(
+                    stringResource(R.string.signature_preview),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.size(4.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                        Text(
+                            value.ifBlank { stringResource(R.string.signature_hint) },
+                            style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily.Cursive),
+                            color = Color(color),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        HorizontalDivider(Modifier.padding(top = 4.dp), color = Color(color))
+                    }
+                }
+                Spacer(Modifier.size(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    annotationPalette.forEach { swatch ->
+                        ColorDot(color = swatch, selected = color == swatch, onClick = { color = swatch })
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(value.trim(), color) }, enabled = value.isNotBlank()) {
+                Text(stringResource(R.string.add))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
 }
 
 @Composable
