@@ -212,6 +212,7 @@ Android 16(Pixel 7 AVD)에서 다음 흐름을 직접 확인했습니다.
 - 필기·페이지 구성·메모는 앱 전용 JSON(`files/docstates/`)에 저장됩니다.
 - 최근 문서 목록은 `SharedPreferences`에 최대 40개까지 저장됩니다.
 - 앱을 삭제하면 앱 전용 데이터도 함께 삭제됩니다. (원본 PDF는 삭제되지 않습니다.)
+- 개인정보 처리방침: <https://hackerdjakodjo.github.io/my-pdf-writer/privacy-policy.html>
 
 ---
 
