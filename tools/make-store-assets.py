@@ -165,41 +165,55 @@ def app_icon():
     def sy(y):
         return oy + y * scale
 
-    image = Image.new("RGB", (size, size), (30, 53, 80))
-    draw = ImageDraw.Draw(image)
+    image = gradient((size, size), (238, 68, 64), (196, 24, 24))
+    draw = ImageDraw.Draw(image, "RGBA")
     draw.rounded_rectangle(
-        (sx(33), sy(27), sx(75), sy(85)),
-        radius=round(4 * scale),
-        fill=(247, 245, 240),
+        (sx(33), sy(27), sx(81), sy(89)),
+        radius=round(6 * scale),
+        fill=(122, 14, 14, 102),
+    )
+    draw.rounded_rectangle(
+        (sx(30), sy(23), sx(78), sy(85)),
+        radius=round(5 * scale),
+        fill=(255, 251, 245),
     )
     draw.polygon(
-        [(sx(63), sy(27)), (sx(75), sy(39)), (sx(66), sy(39)), (sx(63), sy(36))],
-        fill=(199, 212, 226),
+        [(sx(67), sy(23)), (sx(78), sy(34)), (sx(67), sy(34))],
+        fill=(246, 213, 213),
     )
-    line_width = max(2, round(2.6 * scale))
-    for x1, y1, x2, y2 in [(42, 47, 64, 47), (42, 55, 64, 55), (42, 63, 56, 63)]:
-        draw.line((sx(x1), sy(y1), sx(x2), sy(y2)), fill=(30, 53, 80), width=line_width)
-    draw.polygon(
-        [
-            (sx(68.4), sy(58.2)),
-            (sx(73.2), sy(63.0)),
-            (sx(57.0), sy(79.2)),
-            (sx(50.6), sy(80.8)),
-            (sx(52.2), sy(74.4)),
-        ],
-        fill=(194, 112, 61),
-    )
-    draw.polygon(
-        [
-            (sx(68.4), sy(58.2)),
-            (sx(73.2), sy(63.0)),
-            (sx(75.4), sy(60.8)),
-            (sx(70.6), sy(56.0)),
-        ],
-        fill=(143, 78, 38),
-    )
-    image.save(OUT / "icon-512.png", optimize=True)
 
+    wordmark = font(74)
+    box = draw.textbbox((0, 0), "PDF", font=wordmark)
+    word_w = box[2] - box[0]
+    word_h = box[3] - box[1]
+    draw.text(
+        (sx(54) - word_w / 2 - box[0], sy(42.5) - word_h / 2 - box[1]),
+        "PDF",
+        font=wordmark,
+        fill=(198, 40, 40),
+    )
+
+    for y, width in ((55, 28), (62, 23)):
+        draw.rounded_rectangle(
+            (sx(54 - width / 2), sy(y), sx(54 + width / 2), sy(y + 2.2)),
+            radius=round(1 * scale),
+            fill=(240, 205, 205),
+        )
+
+    def line(x1, y1, x2, y2, width, color):
+        draw.line((sx(x1), sy(y1), sx(x2), sy(y2)), fill=color, width=round(width * scale))
+        r = width * scale / 2
+        for x, y in ((x1, y1), (x2, y2)):
+            draw.ellipse((sx(x) - r, sy(y) - r, sx(x) + r, sy(y) + r), fill=color)
+
+    line(57, 79, 75, 61, 9, (255, 255, 255, 64))
+    line(58, 78, 76, 60, 5.5, (188, 30, 30))
+    line(59.5, 76.5, 72, 64, 1.6, (232, 70, 65))
+    draw.polygon(
+        [(sx(76), sy(60)), (sx(72.5), sy(71)), (sx(65), sy(63.5))],
+        fill=(92, 10, 10),
+    )
+    image.convert("RGB").save(OUT / "icon-512.png", optimize=True)
 
 def main():
     shots = [
