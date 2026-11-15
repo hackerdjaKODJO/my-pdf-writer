@@ -222,7 +222,9 @@ fun ToolsScreen(
         formChecks.clear()
         state.forms?.forEach { field ->
             if (field.type == PdfFormFieldType.CHECKBOX) {
-                formChecks[field.name] = field.value.equals("true", true) || field.value == "1"
+                formChecks[field.name] = field.value.isNotBlank() &&
+                    !field.value.equals("Off", true) &&
+                    !field.value.equals("false", true)
             } else {
                 formValues[field.name] = field.value
             }

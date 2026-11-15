@@ -219,7 +219,8 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
                         out = it,
                     )
                 }
-                _state.update { it.copy(lastOutput = out) }
+                // Opening a password-protected result needs the password first.
+                _state.update { it.copy(lastOutput = null) }
                 "암호를 설정했습니다."
             }
         }
