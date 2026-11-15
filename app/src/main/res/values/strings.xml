@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">My PDF Writer</string>
+
+    <!-- Library -->
+    <string name="library_eyebrow">STUDY WORKBENCH</string>
+    <string name="library_tagline">전공 공부를 위한 PDF 작업대</string>
+    <string name="library_hero_title">강의자료 위에,\n바로 필기하세요</string>
+    <string name="library_hero_body">PDF를 열고 형광펜·펜·텍스트로 표시한 뒤, 주석이 새겨진 PDF로 한 번에 내보낼 수 있습니다. 광고 없이, 완전 오프라인으로 동작합니다.</string>
+    <string name="open_pdf">PDF 열기</string>
+    <string name="create_blank">빈 PDF</string>
+    <string name="recent_docs">최근 문서</string>
+    <string name="recent_empty_title">아직 연 문서가 없습니다</string>
+    <string name="recent_empty_body">기기에서 PDF를 선택하거나 빈 PDF를 만들어 시작하세요.</string>
+    <string name="remove_from_recent">목록에서 제거</string>
+    <string name="page_count">%1$d쪽</string>
+    <string name="last_opened">%1$s에 열어봄</string>
+    <string name="features_title">이런 점이 다릅니다</string>
+    <string name="feature_offline_title">완전 오프라인</string>
+    <string name="feature_offline_body">문서와 필기가 기기 밖으로 나가지 않습니다.</string>
+    <string name="feature_annotate_title">필기·형광펜·텍스트</string>
+    <string name="feature_annotate_body">손가락으로 쓰고, 색과 굵기를 즉시 바꿉니다.</string>
+    <string name="feature_pages_title">페이지 편집</string>
+    <string name="feature_pages_body">회전·삭제·순서 변경·빈 페이지 추가를 지원합니다.</string>
+    <string name="feature_export_title">평평하게 내보내기</string>
+    <string name="feature_export_body">주석을 PDF에 새겨 어디서나 똑같이 보입니다.</string>
+    <string name="privacy_note">모든 작업은 기기 안에서만 이루어집니다.</string>
+    <string name="version_label">버전 %1$s</string>
+
+    <!-- Viewer -->
+    <string name="back">뒤로</string>
+    <string name="search">검색</string>
+    <string name="pages">페이지</string>
+    <string name="notes">메모</string>
+    <string name="export">내보내기</string>
+    <string name="close">닫기</string>
+    <string name="tool_view">보기</string>
+    <string name="tool_pen">펜</string>
+    <string name="tool_highlight">형광펜</string>
+    <string name="tool_text">텍스트</string>
+    <string name="tool_rect">사각형</string>
+    <string name="tool_arrow">화살표</string>
+    <string name="tool_eraser">지우개</string>
+    <string name="undo">실행 취소</string>
+    <string name="redo">다시 실행</string>
+    <string name="page_of">%1$d / %2$d</string>
+    <string name="zoom_in">확대</string>
+    <string name="zoom_out">축소</string>
+    <string name="fit_page">화면에 맞추기</string>
+    <string name="hint_view">두 손가락으로 확대·이동하세요</string>
+    <string name="hint_draw">한 손가락으로 그리세요 · 확대는 보기 도구에서</string>
+    <string name="hint_text">텍스트를 놓을 위치를 탭하세요</string>
+    <string name="hint_eraser">지울 필기를 문지르세요</string>
+    <string name="color">색</string>
+    <string name="thickness">굵기</string>
+    <string name="rendering_page">페이지를 여는 중…</string>
+    <string name="building_pages">페이지를 구성하는 중…</string>
+    <string name="preparing_export">내보낼 PDF를 만드는 중…</string>
+    <string name="export_pdf">PDF 내보내기</string>
+    <string name="export_done">PDF를 내보냈습니다</string>
+    <string name="export_failed">내보내지 못했습니다: %1$s</string>
+    <string name="unsupported_pdf">이 PDF를 열 수 없습니다.</string>
+    <string name="blank_created">빈 PDF를 만들었습니다</string>
+
+    <!-- Text dialog -->
+    <string name="text_dialog_title">텍스트 입력</string>
+    <string name="text_hint">내용을 입력하세요</string>
+    <string name="add">추가</string>
+    <string name="cancel">취소</string>
+
+    <!-- Page sheet -->
+    <string name="page_actions">페이지 편집</string>
+    <string name="rotate_left">왼쪽 회전</string>
+    <string name="rotate_right">오른쪽 회전</string>
+    <string name="move_up">위로</string>
+    <string name="move_down">아래로</string>
+    <string name="delete_page">페이지 삭제</string>
+    <string name="delete_page_action">삭제</string>
+    <string name="insert_blank">빈 페이지</string>
+    <string name="insert_blank_after">현재 페이지 뒤에 빈 페이지를 추가합니다</string>
+    <string name="reset_pages">원본 구성으로 되돌리기</string>
+    <string name="reset_pages_short">초기화</string>
+    <string name="reset_pages_confirm">페이지 회전·삭제·순서 변경을 모두 되돌릴까요? 필기는 페이지 위치에 맞춰 함께 이동합니다.</string>
+    <string name="page_delete_warning">이 페이지의 필기와 메모도 함께 삭제됩니다.</string>
+    <string name="page_number">%1$d쪽</string>
+    <string name="blank_page">빈 페이지</string>
+    <string name="original_page">원본 %1$d쪽</string>
+
+    <!-- Search sheet -->
+    <string name="search_hint">문서에서 검색</string>
+    <string name="search_empty">일치하는 내용이 없습니다.</string>
+    <string name="search_results">%1$d개 결과</string>
+    <string name="searching">문서를 읽는 중…</string>
+    <string name="search_prompt">검색어를 입력하면 페이지별 결과를 보여줍니다.</string>
+    <string name="search_failed">텍스트를 추출할 수 없습니다. 스캔한 PDF는 검색이 제한될 수 있습니다.</string>
+
+    <!-- Notes sheet -->
+    <string name="notes_title">페이지 메모</string>
+    <string name="notes_body">필기와 별도로, 이 페이지에 대한 공부 메모를 남겨보세요.</string>
+    <string name="note_hint">예: 3장 정의 → 시험 출제 가능</string>
+    <string name="save">저장</string>
+    <string name="saved">저장했습니다</string>
+    <string name="note_saved_pages">메모가 있는 페이지</string>
+
+    <!-- Misc -->
+    <string name="delete">삭제</string>
+    <string name="retry">다시 시도</string>
+    <string name="error_generic">문제가 발생했습니다: %1$s</string>
+    <string name="delete_doc_title">최근 목록에서 제거</string>
+    <string name="delete_doc_body">기기에 저장된 원본 파일은 삭제되지 않습니다. 이 문서의 필기 데이터도 함께 지울까요?</string>
+    <string name="delete_doc_annotations">필기 데이터도 삭제</string>
+    <string name="about">정보</string>
+    <string name="about_body">My PDF Writer는 대학생의 전공 공부를 위해 만든 오프라인 PDF 작업대입니다. 강의자료에 직접 필기하고, 페이지를 정리하고, 주석이 새겨진 PDF로 내보내세요.</string>
+</resources>

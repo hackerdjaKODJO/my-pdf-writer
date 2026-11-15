@@ -1,0 +1,162 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 579 >>
+stream
+BT
+/F1 26 Tf
+72 760 Td
+(Study Notes - Lecture 1) Tj
+ET
+0.2 0.3 0.5 RG
+2 w
+72 742 m
+523 742 l
+S
+BT
+/F1 13 Tf
+72 706 Td
+(Linear Algebra: Vector Spaces) Tj
+ET
+BT
+/F1 13 Tf
+72 654 Td
+(1. A vector space V over a field F is a set with addition) Tj
+ET
+BT
+/F1 13 Tf
+72 628 Td
+(   and scalar multiplication satisfying eight axioms.) Tj
+ET
+BT
+/F1 13 Tf
+72 602 Td
+(2. A basis is a linearly independent spanning set.) Tj
+ET
+BT
+/F1 13 Tf
+72 576 Td
+(3. Dimension is the number of vectors in any basis.) Tj
+ET
+BT
+/F1 13 Tf
+72 524 Td
+(Key exam point: every spanning set contains a basis.) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 469 >>
+stream
+BT
+/F1 26 Tf
+72 760 Td
+(Study Notes - Lecture 2) Tj
+ET
+0.2 0.3 0.5 RG
+2 w
+72 742 m
+523 742 l
+S
+BT
+/F1 13 Tf
+72 706 Td
+(Linear Maps and Matrices) Tj
+ET
+BT
+/F1 13 Tf
+72 654 Td
+(A linear map T: V -> W satisfies T\(u+v\) = T\(u\) + T\(v\).) Tj
+ET
+BT
+/F1 13 Tf
+72 628 Td
+(The matrix of T depends on the chosen bases.) Tj
+ET
+BT
+/F1 13 Tf
+72 602 Td
+(Rank-nullity: dim V = rank T + nullity T.) Tj
+ET
+BT
+/F1 13 Tf
+72 550 Td
+(Practice: compute the kernel of a 3x3 matrix.) Tj
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 490 >>
+stream
+BT
+/F1 26 Tf
+72 760 Td
+(Study Notes - Lecture 3) Tj
+ET
+0.2 0.3 0.5 RG
+2 w
+72 742 m
+523 742 l
+S
+BT
+/F1 13 Tf
+72 706 Td
+(Eigenvalues and Diagonalization) Tj
+ET
+BT
+/F1 13 Tf
+72 654 Td
+(lambda is an eigenvalue when det\(A - lambda I\) = 0.) Tj
+ET
+BT
+/F1 13 Tf
+72 628 Td
+(Eigenvectors of distinct eigenvalues are independent.) Tj
+ET
+BT
+/F1 13 Tf
+72 602 Td
+(A is diagonalizable iff it has a full eigenbasis.) Tj
+ET
+BT
+/F1 13 Tf
+72 550 Td
+(Next week: inner product spaces and Gram-Schmidt.) Tj
+ET
+endstream
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000133 00000 n 
+0000000203 00000 n 
+0000000329 00000 n 
+0000000958 00000 n 
+0000001084 00000 n 
+0000001603 00000 n 
+0000001729 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+2269
+%%EOF
