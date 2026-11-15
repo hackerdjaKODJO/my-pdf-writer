@@ -7,9 +7,37 @@ import java.util.UUID
 /** Normalized point inside a page's displayed area. (0,0) is top-left, (1,1) is bottom-right. */
 data class NormalizedPoint(val x: Float, val y: Float)
 
-enum class AnnotationType { PEN, HIGHLIGHT, TEXT, RECT, ARROW }
+enum class AnnotationType {
+    PEN,
+    HIGHLIGHT,
+    TEXT,
+    RECT,
+    ARROW,
+    UNDERLINE,
+    STRIKEOUT,
+    ELLIPSE,
+    LINE,
+    STAMP,
+    SIGNATURE,
+    REDACT,
+}
 
-enum class Tool { VIEW, PEN, HIGHLIGHT, TEXT, RECT, ARROW, ERASER }
+enum class Tool {
+    VIEW,
+    PEN,
+    HIGHLIGHT,
+    TEXT,
+    RECT,
+    ARROW,
+    UNDERLINE,
+    STRIKEOUT,
+    ELLIPSE,
+    LINE,
+    STAMP,
+    SIGNATURE,
+    REDACT,
+    ERASER,
+}
 
 data class Annotation(
     val id: String = UUID.randomUUID().toString(),
@@ -21,6 +49,8 @@ data class Annotation(
     val text: String = "",
     val fontSize: Float = 0.024f,
     val textRotation: Int = 0,
+    val opacity: Float = 1f,
+    val stamp: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -34,6 +64,8 @@ data class Annotation(
         if (text.isNotEmpty()) put("tx", text)
         put("fs", fontSize.toDouble())
         put("tr", textRotation)
+        put("op", opacity.toDouble())
+        if (stamp.isNotEmpty()) put("st", stamp)
     }
 
     companion object {
@@ -61,6 +93,8 @@ data class Annotation(
                 text = o.optString("tx"),
                 fontSize = o.optDouble("fs", 0.024).toFloat(),
                 textRotation = PageSpec.normalizeRotation(o.optInt("tr")),
+                opacity = o.optDouble("op", 1.0).toFloat().coerceIn(0f, 1f),
+                stamp = o.optString("st"),
             )
         }
     }

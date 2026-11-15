@@ -1,0 +1,77 @@
+package com.hackerdjakodjo.mypdfwriter.data
+
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class AnnotationJsonTest {
+
+    @Test
+    fun fromJson_legacyAnnotation_defaultsNewFields() {
+        val legacy = JSONObject(
+            """{"id":"old","t":"PEN","p":2,"c":-16777216,"w":0.004,
+               "pts":[0.1,0.2,0.3,0.4],"tx":"note","fs":0.024,"tr":270}""",
+        )
+
+        val annotation = Annotation.fromJson(legacy)
+
+        assertNotNull(annotation)
+        annotation!!
+        assertEquals(AnnotationType.PEN, annotation.type)
+        assertEquals(2, annotation.page)
+        assertEquals("note", annotation.text)
+        assertEquals(1f, annotation.opacity, 1e-6f)
+        assertEquals("", annotation.stamp)
+        assertEquals(270, annotation.textRotation)
+    }
+
+    @Test
+    fun roundTrip_persistsOpacityAndStamp() {
+        val original = Annotation(
+            type = AnnotationType.STAMP,
+            page = 3,
+            color = 0xFFD32F2F.toInt(),
+            width = 0.004f,
+            points = listOf(NormalizedPoint(0.4f, 0.6f)),
+            fontSize = 0.03f,
+            textRotation = 90,
+            opacity = 0.42f,
+            stamp = "CONFIDENTIAL",
+        )
+
+        val restored = Annotation.fromJson(original.toJson())
+
+        assertNotNull(restored)
+        assertEquals(original, restored)
+    }
+
+    @Test
+    fun fromJson_parsesAllNewAnnotationTypes() {
+        val newTypes = listOf(
+            AnnotationType.UNDERLINE,
+            AnnotationType.STRIKEOUT,
+            AnnotationType.ELLIPSE,
+            AnnotationType.LINE,
+            AnnotationType.STAMP,
+            AnnotationType.SIGNATURE,
+            AnnotationType.REDACT,
+        )
+
+        newTypes.forEach { type ->
+            val json = JSONObject(
+                """{"id":"${type.name}","t":"${type.name}","p":0,"c":-16777216,"w":0.004,
+                   "pts":[0.1,0.1,0.9,0.9],"fs":0.024,"tr":0}""",
+            )
+            assertEquals(type, Annotation.fromJson(json)?.type)
+        }
+    }
+
+    @Test
+    fun fromJson_unknownTypeIsIgnored() {
+        val json = JSONObject("""{"t":"TELEPORT","p":0,"c":0,"w":0.004,"pts":[]}""")
+
+        assertNull(Annotation.fromJson(json))
+    }
+}

@@ -60,11 +60,14 @@ fun PdfCanvas(
     color: Int,
     strokeWidth: Float,
     fontSize: Float,
+    opacity: Float,
     zoom: Float,
     onZoomChange: (Float) -> Unit,
     onAddStroke: (List<NormalizedPoint>) -> Unit,
     onEraseStroke: (List<NormalizedPoint>) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
+    onRequestStamp: (NormalizedPoint) -> Unit,
+    onRequestSignature: (NormalizedPoint) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val pageW = (bitmap?.width?.toFloat() ?: (displayWidthPt * 2f)).coerceAtLeast(1f)
@@ -155,6 +158,14 @@ fun PdfCanvas(
                         onRequestText(transform.normalize(position))
                     }
 
+                    Tool.STAMP -> detectTapGestures { position ->
+                        onRequestStamp(transform.normalize(position))
+                    }
+
+                    Tool.SIGNATURE -> detectTapGestures { position ->
+                        onRequestSignature(transform.normalize(position))
+                    }
+
                     Tool.ERASER -> awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         down.consume()
@@ -181,7 +192,13 @@ fun PdfCanvas(
                         eraserPoint = null
                     }
 
-                    Tool.RECT, Tool.ARROW -> awaitEachGesture {
+                    Tool.RECT,
+                    Tool.ARROW,
+                    Tool.LINE,
+                    Tool.ELLIPSE,
+                    Tool.UNDERLINE,
+                    Tool.STRIKEOUT,
+                    Tool.REDACT -> awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         down.consume()
                         val start = transform.normalize(down.position)
@@ -281,6 +298,7 @@ fun PdfCanvas(
                             color = color,
                             width = if (type == AnnotationType.HIGHLIGHT) 0.02f else strokeWidth,
                             points = previewPoints,
+                            opacity = if (type == AnnotationType.HIGHLIGHT) 1f else opacity,
                         ),
                         pageW,
                         pageH,
@@ -289,15 +307,21 @@ fun PdfCanvas(
 
                 val start = shapeStart
                 val end = shapeEnd
-                if (start != null && end != null) {
+                val previewType = annotationTypeForTool(tool)
+                if (start != null && end != null && previewType != null) {
                     AnnotationPainter.drawOne(
                         native,
                         Annotation(
-                            type = if (tool == Tool.RECT) AnnotationType.RECT else AnnotationType.ARROW,
+                            type = previewType,
                             page = pageIndex,
-                            color = color,
+                            color = if (previewType == AnnotationType.REDACT) {
+                                android.graphics.Color.BLACK
+                            } else {
+                                color
+                            },
                             width = maxOf(strokeWidth, 0.0025f),
                             points = listOf(start, end),
+                            opacity = if (previewType == AnnotationType.REDACT) 1f else opacity,
                         ),
                         pageW,
                         pageH,
@@ -318,4 +342,15 @@ fun PdfCanvas(
             }
         }
     }
+}
+
+private fun annotationTypeForTool(tool: Tool): AnnotationType? = when (tool) {
+    Tool.RECT -> AnnotationType.RECT
+    Tool.ARROW -> AnnotationType.ARROW
+    Tool.LINE -> AnnotationType.LINE
+    Tool.ELLIPSE -> AnnotationType.ELLIPSE
+    Tool.UNDERLINE -> AnnotationType.UNDERLINE
+    Tool.STRIKEOUT -> AnnotationType.STRIKEOUT
+    Tool.REDACT -> AnnotationType.REDACT
+    else -> null
 }

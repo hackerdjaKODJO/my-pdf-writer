@@ -40,6 +40,13 @@
     <string name="tool_text">텍스트</string>
     <string name="tool_rect">사각형</string>
     <string name="tool_arrow">화살표</string>
+    <string name="tool_underline">밑줄</string>
+    <string name="tool_strikeout">취소선</string>
+    <string name="tool_ellipse">타원</string>
+    <string name="tool_line">직선</string>
+    <string name="tool_stamp">스탬프</string>
+    <string name="tool_signature">서명</string>
+    <string name="tool_redact">가림</string>
     <string name="tool_eraser">지우개</string>
     <string name="undo">실행 취소</string>
     <string name="redo">다시 실행</string>
@@ -50,9 +57,14 @@
     <string name="hint_view">두 손가락으로 확대·이동하세요</string>
     <string name="hint_draw">한 손가락으로 그리세요 · 확대는 보기 도구에서</string>
     <string name="hint_text">텍스트를 놓을 위치를 탭하세요</string>
+    <string name="hint_stamp">스탬프를 놓을 위치를 탭하세요</string>
+    <string name="hint_signature">서명을 놓을 위치를 탭하세요</string>
+    <string name="hint_redact">가릴 영역을 드래그하세요 · 내보내면 검게 덮입니다</string>
     <string name="hint_eraser">지울 필기를 문지르세요</string>
     <string name="color">색</string>
     <string name="thickness">굵기</string>
+    <string name="opacity">투명도</string>
+    <string name="opacity_percent">%1$d%%</string>
     <string name="rendering_page">페이지를 여는 중…</string>
     <string name="building_pages">페이지를 구성하는 중…</string>
     <string name="preparing_export">내보낼 PDF를 만드는 중…</string>
@@ -101,6 +113,43 @@
     <string name="save">저장</string>
     <string name="saved">저장했습니다</string>
     <string name="note_saved_pages">메모가 있는 페이지</string>
+
+    <!-- Stamp and signature dialogs -->
+    <string name="stamp_dialog_title">스탬프 추가</string>
+    <string name="stamp_hint">스탬프 문구</string>
+    <string name="stamp_custom">직접 입력</string>
+    <string name="stamp_preset_approved">APPROVED</string>
+    <string name="stamp_preset_draft">DRAFT</string>
+    <string name="stamp_preset_confidential">CONFIDENTIAL</string>
+    <string name="stamp_preset_reviewed">REVIEWED</string>
+    <string name="stamp_color">스탬프 색</string>
+    <string name="signature_dialog_title">서명 추가</string>
+    <string name="signature_hint">이름을 입력하세요</string>
+    <string name="signature_preview">미리보기</string>
+
+    <!-- Annotation list -->
+    <string name="annotations_title">주석 목록</string>
+    <string name="annotations_count">주석 %1$d개</string>
+    <string name="annotations_empty">아직 주석이 없습니다. 도구 모음에서 필기나 스탬프를 추가해 보세요.</string>
+    <string name="annotation_delete">주석 삭제</string>
+    <string name="annotation_type_pen">필기</string>
+    <string name="annotation_type_highlight">형광펜</string>
+    <string name="annotation_type_text">텍스트</string>
+    <string name="annotation_type_rect">사각형</string>
+    <string name="annotation_type_arrow">화살표</string>
+    <string name="annotation_type_underline">밑줄</string>
+    <string name="annotation_type_strikeout">취소선</string>
+    <string name="annotation_type_ellipse">타원</string>
+    <string name="annotation_type_line">직선</string>
+    <string name="annotation_type_stamp">스탬프</string>
+    <string name="annotation_type_signature">서명</string>
+    <string name="annotation_type_redact">가림</string>
+    <string name="annotation_summary_pen">자유 필기</string>
+    <string name="annotation_summary_highlight">형광펜 표시</string>
+    <string name="annotation_summary_shape">도형 주석</string>
+    <string name="annotation_summary_redact">가림 영역</string>
+    <string name="annotation_summary_stamp">스탬프: %1$s</string>
+    <string name="annotation_summary_signature">서명: %1$s</string>
 
     <!-- Misc -->
     <string name="delete">삭제</string>
