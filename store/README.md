@@ -109,5 +109,5 @@ My PDF Writer는 대학생의 전공 공부를 위해 만든 오프라인 PDF �
 ## 서명
 
 업로드 키스토어와 `keystore.properties`는 저장소에 커밋하지 않습니다.
-로컬 백업은 `C:\Jinwook\my_prj\release-backup\`에 있습니다.
+로컬 백업은 저장소 외부에 보관했습니다.
 Play App Signing을 사용할 경우 업로드 키만 보관하면 됩니다.
