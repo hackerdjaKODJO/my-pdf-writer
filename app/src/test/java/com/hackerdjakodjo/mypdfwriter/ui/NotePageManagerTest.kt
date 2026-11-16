@@ -1,0 +1,209 @@
+package com.hackerdjakodjo.mypdfwriter.ui
+
+import com.hackerdjakodjo.mypdfwriter.data.Annotation
+import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
+import com.hackerdjakodjo.mypdfwriter.data.NoteLayer
+import com.hackerdjakodjo.mypdfwriter.data.NotePage
+import com.hackerdjakodjo.mypdfwriter.data.Notebook
+import com.hackerdjakodjo.mypdfwriter.data.PageBookmark
+import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class NotePageManagerTest {
+
+    private fun annotation(id: String, layerId: String) = Annotation(
+        id = id,
+        type = AnnotationType.PEN,
+        page = 0,
+        color = 0xFF1F4E79.toInt(),
+        width = 0.004f,
+        points = listOf(NormalizedPoint(0.2f, 0.3f), NormalizedPoint(0.4f, 0.5f)),
+        layerId = layerId,
+    )
+
+    private fun page(id: String, template: PaperTemplate, annotationIds: List<String>, layerId: String? = null) =
+        NotePage(
+            id = id,
+            template = template,
+            layers = listOf(NoteLayer(id = layerId ?: "layer-$id")),
+            annotations = annotationIds.map { annotation(it, layerId ?: "layer-$id") },
+        )
+
+    private fun notebook(vararg pages: NotePage, bookmarks: List<PageBookmark> = emptyList()) =
+        Notebook(id = "notebook", pages = pages.toList(), bookmarks = bookmarks)
+
+    @Test
+    fun entriesExposeAllAndAnnotatedPagesInOrder() {
+        val pages = listOf(
+            page("p0", PaperTemplate.LINED, emptyList()),
+            page("p1", PaperTemplate.GRID, listOf("a", "b")),
+            page("p2", PaperTemplate.DOTTED, listOf("c")),
+        )
+
+        val all = NotePageManager.entries(pages, NotePageFilter.ALL)
+        assertEquals(listOf(0, 1, 2), all.map { it.index })
+        assertEquals(listOf("p0", "p1", "p2"), all.map { it.id })
+        assertEquals(listOf(0, 2, 1), all.map { it.annotationCount })
+        assertEquals(PaperTemplate.GRID, all[1].template)
+        assertEquals(2, NotePageManager.annotatedCount(pages))
+
+        val annotated = NotePageManager.entries(pages, NotePageFilter.ANNOTATED)
+        assertEquals(listOf(1, 2), annotated.map { it.index })
+        assertEquals(listOf("p1", "p2"), annotated.map { it.id })
+    }
+
+    @Test
+    fun annotatedFilterCountsAnnotationsOnHiddenLayers() {
+        val hidden = page("hidden", PaperTemplate.LINED, listOf("ink"), layerId = "hidden-layer")
+            .copy(layers = listOf(NoteLayer(id = "hidden-layer", visible = false)))
+
+        val entries = NotePageManager.entries(listOf(hidden), NotePageFilter.ANNOTATED)
+
+        assertEquals(1, entries.size)
+        assertEquals(0, entries.single().index)
+        assertEquals(1, entries.single().annotationCount)
+    }
+
+    @Test
+    fun selectionIgnoresUnknownIdsAndKeepsPageOrder() {
+        val pages = listOf(
+            page("p0", PaperTemplate.LINED, emptyList()),
+            page("p1", PaperTemplate.LINED, emptyList()),
+            page("p2", PaperTemplate.LINED, emptyList()),
+        )
+
+        val selected = NotePageManager.toggleSelection(
+            pages,
+            selectedPageIds = setOf("p2", "missing"),
+            pageId = "p0",
+        )
+
+        assertEquals(listOf("p0", "p2"), selected.toList())
+        assertEquals(setOf("p2"), NotePageManager.validSelection(pages, setOf("p2", "gone")))
+
+        val toggledOff = NotePageManager.toggleSelection(pages, selected, "p2")
+        assertEquals(setOf("p0"), toggledOff)
+
+        val unknown = NotePageManager.toggleSelection(pages, selected, "not-a-page")
+        assertEquals(selected, unknown)
+    }
+
+    @Test
+    fun duplicateInsertsCopiesAfterEachSelectedPageAndKeepsIds() {
+        val first = page("p0", PaperTemplate.LINED, listOf("a"))
+        val middle = page("p1", PaperTemplate.GRID, listOf("b"))
+        val last = page("p2", PaperTemplate.DOTTED, listOf("c"))
+        val source = notebook(
+            first,
+            middle,
+            last,
+            bookmarks = listOf(
+                PageBookmark(id = "b0", pageIndex = 0, title = "첫"),
+                PageBookmark(id = "b2", pageIndex = 2, title = "끝"),
+            ),
+        )
+
+        val result = NotePageManager.duplicatePages(
+            notebook = source,
+            selectedPageIds = setOf("p0", "p2"),
+            currentIndex = 2,
+        )
+
+        assertEquals(5, result.notebook.pages.size)
+        assertEquals(listOf("p0", null, "p1", "p2", null), result.notebook.pages.map { page ->
+            page.id.takeIf { it in setOf("p0", "p1", "p2") }
+        })
+        assertEquals(listOf("p0", "p1", "p2"), result.notebook.pages.filter { it.id in setOf("p0", "p1", "p2") }.map { it.id })
+        assertEquals("the copied page keeps the template", first.template, result.notebook.pages[1].template)
+        assertEquals("the copied page keeps the source layer", first.layers, result.notebook.pages[1].layers)
+        assertNotEquals("the copied page gets a fresh id", "p0", result.notebook.pages[1].id)
+        assertNotEquals("the copied annotation gets a fresh id", "a", result.notebook.pages[1].annotations.single().id)
+        assertEquals(0, result.notebook.pages[1].annotations.single().page)
+        assertEquals(setOf("p0", "p2"), result.selectedPageIds)
+        assertEquals("current page still points at p2", 3, result.currentIndex)
+        assertEquals(listOf("b0" to 0, "b2" to 3), result.notebook.bookmarks.map { it.id to it.pageIndex })
+
+        val copyOfMiddle = NotePageManager.duplicatePages(
+            notebook = source,
+            selectedPageIds = setOf("p1"),
+            currentIndex = 1,
+        )
+        assertEquals(listOf("p0", "p1", "copy", "p2"), copyOfMiddle.notebook.pages.map {
+            it.id.takeIf { id -> id in setOf("p0", "p1", "p2") } ?: "copy"
+        })
+        assertSame(middle.layers, copyOfMiddle.notebook.pages[2].layers)
+    }
+
+    @Test
+    fun duplicateWithNoSelectionIsIdentity() {
+        val source = notebook(page("p0", PaperTemplate.LINED, emptyList()))
+
+        val result = NotePageManager.duplicatePages(source, emptySet(), currentIndex = 9)
+
+        assertEquals(source, result.notebook)
+        assertEquals(0, result.currentIndex)
+        assertTrue(result.selectedPageIds.isEmpty())
+    }
+
+    @Test
+    fun deleteRemapsCurrentPageBookmarksAndSelection() {
+        val source = notebook(
+            page("p0", PaperTemplate.LINED, listOf("a")),
+            page("p1", PaperTemplate.GRID, listOf("b")),
+            page("p2", PaperTemplate.DOTTED, listOf("c")),
+            page("p3", PaperTemplate.BLANK, listOf("d")),
+            bookmarks = listOf(
+                PageBookmark(id = "b0", pageIndex = 0, title = "첫"),
+                PageBookmark(id = "b1", pageIndex = 1, title = "삭제"),
+                PageBookmark(id = "b3", pageIndex = 3, title = "끝"),
+            ),
+        )
+
+        val result = NotePageManager.deletePages(
+            notebook = source,
+            selectedPageIds = setOf("p1", "p2"),
+            currentIndex = 2,
+        )
+
+        assertEquals(listOf("p0", "p3"), result.notebook.pages.map { it.id })
+        assertEquals(1, result.currentIndex)
+        assertEquals(listOf("b0" to 0, "b3" to 1), result.notebook.bookmarks.map { it.id to it.pageIndex })
+        assertTrue(result.selectedPageIds.isEmpty())
+    }
+
+    @Test
+    fun deleteNeverRemovesTheLastPage() {
+        val source = notebook(
+            page("p0", PaperTemplate.LINED, emptyList()),
+            page("p1", PaperTemplate.GRID, emptyList()),
+        )
+
+        val result = NotePageManager.deletePages(
+            notebook = source,
+            selectedPageIds = setOf("p0", "p1"),
+            currentIndex = 1,
+        )
+
+        assertEquals(source, result.notebook)
+        assertEquals(1, result.currentIndex)
+        assertEquals(setOf("p0", "p1"), result.selectedPageIds)
+    }
+
+    @Test
+    fun deleteOnEmptyNotebookIsSafe() {
+        val source = Notebook(id = "empty", pages = emptyList())
+
+        val duplicate = NotePageManager.duplicatePages(source, setOf("gone"), currentIndex = 4)
+        val deleted = NotePageManager.deletePages(source, setOf("gone"), currentIndex = 4)
+
+        assertEquals(source, duplicate.notebook)
+        assertEquals(0, duplicate.currentIndex)
+        assertEquals(source, deleted.notebook)
+        assertEquals(0, deleted.currentIndex)
+    }
+}

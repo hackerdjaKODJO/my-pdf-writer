@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
+import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import kotlinx.coroutines.launch
 
 /**
@@ -54,7 +55,7 @@ fun StudyPaneSheet(
     onDismiss: () -> Unit,
     onChange: (Notebook) -> Unit,
     onPageIndexChange: (Int) -> Unit,
-    onExportPdf: () -> Unit,
+    onExportPdf: (NoteExportOptions) -> Unit,
     onOpenSourcePdf: (Int) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)

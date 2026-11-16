@@ -34,8 +34,18 @@ object NoteExporter {
     fun renderHeightPx(scale: Float = RENDER_SCALE): Int =
         (PaperBackground.A4_HEIGHT_PT * scale).roundToInt().coerceIn(1, 8192)
 
-    /** Renders one page for thumbnails or sharing. The caller owns the bitmap. */
-    fun renderPage(page: NotePage, width: Int, height: Int): Bitmap {
+    /**
+     * Renders one page for thumbnails or sharing. The caller owns the bitmap.
+     *
+     * [includeHiddenLayers] defaults to the editor's WYSIWYG visibility. Layer
+     * opacity is applied in both cases; only the hidden-layer filter changes.
+     */
+    fun renderPage(
+        page: NotePage,
+        width: Int,
+        height: Int,
+        includeHiddenLayers: Boolean = false,
+    ): Bitmap {
         val safeWidth = width.coerceIn(1, 8192)
         val safeHeight = height.coerceIn(1, 8192)
         val bitmap = Bitmap.createBitmap(safeWidth, safeHeight, Bitmap.Config.ARGB_8888)
@@ -50,7 +60,7 @@ object NoteExporter {
         val layers = page.layers.associateBy { it.id }
         val visible = page.annotations.filter { annotation ->
             val layer = layers[annotation.layerId] ?: page.layers.firstOrNull()
-            layer?.visible != false
+            includeHiddenLayers || layer?.visible != false
         }.map { annotation ->
             val layer = layers[annotation.layerId] ?: page.layers.firstOrNull()
             if (layer != null && layer.opacity < 1f) {
@@ -68,15 +78,33 @@ object NoteExporter {
         return bitmap
     }
 
+    /** Exports every page. Kept for the existing callers. */
     suspend fun export(notebook: Notebook, out: OutputStream) =
+        export(notebook, out, NoteExportOptions())
+
+    /**
+     * Exports the pages selected by [options]. When the requested range has no
+     * surviving pages, the full notebook is exported rather than an empty PDF.
+     */
+    suspend fun export(
+        notebook: Notebook,
+        out: OutputStream,
+        options: NoteExportOptions,
+    ) =
         withContext(Dispatchers.IO) {
-            val pages = notebook.pages.ifEmpty { listOf(NotePage(template = PaperTemplate.LINED)) }
+            val allPages = notebook.pages.ifEmpty { listOf(NotePage(template = PaperTemplate.LINED)) }
+            val requestedIndices = options.pageIndices(allPages)
+            val pages = if (requestedIndices.isEmpty()) {
+                allPages
+            } else {
+                requestedIndices.map { allPages[it] }
+            }
             val width = renderWidthPx()
             val height = renderHeightPx()
 
             PDDocument().use { document ->
                 pages.forEach { page ->
-                    val bitmap = renderPage(page, width, height)
+                    val bitmap = renderPage(page, width, height, options.includeHiddenLayers)
                     try {
                         val image = LosslessFactory.createFromImage(document, bitmap)
                         val pdfPage = PDPage(

@@ -64,8 +64,10 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -112,10 +114,20 @@ import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
+import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
+import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportPageRange
+import com.hackerdjakodjo.mypdfwriter.pdf.noteExportFileName
 import java.util.UUID
 
 private const val NOTE_TRACE_TAG = "NoteEditor"
 
+/**
+ * Full notebook editor used both full-screen and inside the PDF study pane.
+ *
+ * [onExportPdf] receives the page range and hidden-layer choice confirmed in the
+ * export sheet. Callers own the SAF launcher and pass the options to
+ * [com.hackerdjakodjo.mypdfwriter.pdf.NoteExporter].
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoteEditorScreen(
@@ -124,7 +136,7 @@ fun NoteEditorScreen(
     onBack: () -> Unit,
     onChange: (Notebook) -> Unit,
     onPageIndexChange: (Int) -> Unit,
-    onExportPdf: () -> Unit,
+    onExportPdf: (NoteExportOptions) -> Unit,
     onOpenSourcePdf: ((Int) -> Unit)? = null,
 ) {
     // The parent only echoes notebook changes after recomposition. Keep the newest
@@ -135,6 +147,13 @@ fun NoteEditorScreen(
     val pages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
     val safeIndex = pageIndex.coerceIn(0, pages.lastIndex)
     val page = pages[safeIndex]
+
+    // Page-manager selection is lifted here so the export sheet can offer it.
+    // Page ids are stable across inserts, deletes, duplicates and undo.
+    var pageSelection by remember(workingNotebook.id) { mutableStateOf<Set<String>>(emptySet()) }
+    val selectedPageIds = remember(pageSelection, pages) {
+        NotePageManager.validSelection(pages, pageSelection)
+    }
 
     // Adopt a genuinely newer notebook from the parent (for example a rename or a
     // save applied elsewhere) without clobbering edits that are newer locally.
@@ -203,6 +222,7 @@ fun NoteEditorScreen(
     // A page switch invalidates the selection; close the editor with it.
     LaunchedEffect(page.id) { showSelectionSheet = false }
     var showPageSheet by remember { mutableStateOf(false) }
+    var showExportOptions by remember { mutableStateOf(false) }
     var showAudioNotes by remember { mutableStateOf(false) }
     var showAudioReplay by remember { mutableStateOf(false) }
     var replayNote by remember { mutableStateOf<AudioNote?>(null) }
@@ -357,6 +377,44 @@ fun NoteEditorScreen(
         mutable.add(target, moved)
         applyChange(workingNotebook.copy(pages = mutable))
         onPageIndexChange(target)
+    }
+
+    fun duplicateSelectedPages() {
+        if (selectedPageIds.isEmpty()) return
+        val result = NotePageManager.duplicatePages(
+            notebook = workingNotebook,
+            selectedPageIds = selectedPageIds,
+            currentIndex = safeIndex,
+        )
+        if (result.notebook == workingNotebook) return
+        applyChange(result.notebook)
+        pageSelection = result.selectedPageIds
+        if (result.currentIndex != safeIndex) onPageIndexChange(result.currentIndex)
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "page_duplicate",
+            "selected" to selectedPageIds.size,
+            "pagesAfter" to result.notebook.pages.size,
+        )
+    }
+
+    fun deleteSelectedPages() {
+        if (selectedPageIds.isEmpty()) return
+        val result = NotePageManager.deletePages(
+            notebook = workingNotebook,
+            selectedPageIds = selectedPageIds,
+            currentIndex = safeIndex,
+        )
+        if (result.notebook == workingNotebook) return
+        applyChange(result.notebook)
+        pageSelection = result.selectedPageIds
+        if (result.currentIndex != safeIndex) onPageIndexChange(result.currentIndex)
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "page_delete",
+            "selected" to selectedPageIds.size,
+            "pagesAfter" to result.notebook.pages.size,
+        )
     }
 
     fun applyTemplate(template: PaperTemplate, allPages: Boolean) {
@@ -1053,10 +1111,15 @@ fun NoteEditorScreen(
     }
 
     if (showPageSheet) {
-        NotePageSheet(
+        NotePageManagerSheet(
             pages = pages,
             currentIndex = safeIndex,
             darkPaper = darkPaper,
+            selectedPageIds = selectedPageIds,
+            onToggleSelection = { pageId ->
+                pageSelection = NotePageManager.toggleSelection(pages, selectedPageIds, pageId)
+            },
+            onClearSelection = { pageSelection = emptySet() },
             onSelect = {
                 onPageIndexChange(it)
                 showPageSheet = false
@@ -1065,7 +1128,23 @@ fun NoteEditorScreen(
                 showPageSheet = false
                 addPage()
             },
+            onDuplicate = { duplicateSelectedPages() },
+            onDelete = { deleteSelectedPages() },
             onDismiss = { showPageSheet = false },
+        )
+    }
+
+    if (showExportOptions) {
+        NoteExportOptionsSheet(
+            notebookTitle = workingNotebook.title,
+            pageCount = pages.size,
+            currentIndex = safeIndex,
+            selectedPageIds = selectedPageIds,
+            onDismiss = { showExportOptions = false },
+            onExport = { options ->
+                showExportOptions = false
+                onExportPdf(options)
+            },
         )
     }
 
@@ -1145,7 +1224,7 @@ fun NoteEditorScreen(
             },
             onExportPdf = {
                 showOverflow = false
-                onExportPdf()
+                showExportOptions = true
             },
             onOpenTrace = if (BuildConfig.DEBUG) {
                 {
@@ -1649,56 +1728,106 @@ private fun NoteToolChip(label: String, selected: Boolean, onClick: () -> Unit) 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NotePageSheet(
+private fun NotePageManagerSheet(
     pages: List<NotePage>,
     currentIndex: Int,
     darkPaper: Boolean,
+    selectedPageIds: Set<String>,
+    onToggleSelection: (String) -> Unit,
+    onClearSelection: () -> Unit,
     onSelect: (Int) -> Unit,
     onAdd: () -> Unit,
+    onDuplicate: () -> Unit,
+    onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val safeCurrent = if (pages.isEmpty()) 0 else currentIndex.coerceIn(0, pages.lastIndex)
-    val templateLabel = pages.getOrNull(safeCurrent)?.template?.label.orEmpty()
-    val pageLabel = if (pages.isEmpty()) "0 / 0" else "${safeCurrent + 1} / ${pages.size}"
+    var filter by remember { mutableStateOf(NotePageFilter.ALL) }
+    var selectMode by remember { mutableStateOf(selectedPageIds.isNotEmpty()) }
+    val entries = remember(pages, filter) { NotePageManager.entries(pages, filter) }
+    val annotatedCount = remember(pages) { NotePageManager.annotatedCount(pages) }
+    val canDelete = selectedPageIds.isNotEmpty() && selectedPageIds.size < pages.size
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp)
-                .padding(bottom = 20.dp),
+                .padding(bottom = 16.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("페이지", style = MaterialTheme.typography.titleLarge)
+                    Text("페이지 관리", style = MaterialTheme.typography.titleLarge)
                     Text(
-                        pageLabel + if (templateLabel.isBlank()) "" else " · $templateLabel",
+                        "${pages.size}쪽 · 필기 ${annotatedCount}쪽 · 선택 ${selectedPageIds.size}개",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TextButton(onClick = onDismiss) { Text("닫기") }
+                TextButton(
+                    onClick = { selectMode = !selectMode },
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text(if (selectMode) "완료" else "선택")
+                }
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("닫기")
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    selected = filter == NotePageFilter.ALL,
+                    onClick = { filter = NotePageFilter.ALL },
+                    label = { Text(NotePageFilter.ALL.label) },
+                    modifier = Modifier.heightIn(min = 44.dp),
+                )
+                FilterChip(
+                    selected = filter == NotePageFilter.ANNOTATED,
+                    onClick = { filter = NotePageFilter.ANNOTATED },
+                    label = { Text(NotePageFilter.ANNOTATED.label) },
+                    modifier = Modifier.heightIn(min = 44.dp),
+                )
+            }
+            if (filter == NotePageFilter.ANNOTATED && entries.isEmpty()) {
+                Text(
+                    "아직 필기가 있는 페이지가 없습니다.",
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             Spacer(Modifier.height(8.dp))
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+                columns = GridCells.Fixed(2),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 180.dp, max = 340.dp),
+                    .heightIn(min = 180.dp, max = 360.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(count = pages.size, key = { pages[it].id }) { index ->
-                    NotePageThumbnail(
-                        page = pages[index],
-                        number = index,
-                        selected = index == safeCurrent,
+                items(items = entries, key = { it.id }) { entry ->
+                    NoteManagerPageCard(
+                        page = pages[entry.index],
+                        number = entry.index,
+                        current = entry.index == safeCurrent,
+                        checked = entry.id in selectedPageIds,
+                        showCheckbox = selectMode,
                         darkPaper = darkPaper,
-                        onClick = { onSelect(index) },
+                        onOpen = { onSelect(entry.index) },
+                        onCheckedChange = { onToggleSelection(entry.id) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -1707,6 +1836,290 @@ private fun NotePageSheet(
                         onClick = onAdd,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                }
+            }
+            HorizontalDivider(Modifier.padding(top = 8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = onAdd,
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("페이지 추가")
+                }
+                TextButton(
+                    onClick = onDuplicate,
+                    enabled = selectedPageIds.isNotEmpty(),
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("복제")
+                }
+                TextButton(
+                    onClick = onDelete,
+                    enabled = canDelete,
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("삭제")
+                }
+                TextButton(
+                    onClick = onClearSelection,
+                    enabled = selectedPageIds.isNotEmpty(),
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("선택 해제")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoteManagerPageCard(
+    page: NotePage,
+    number: Int,
+    current: Boolean,
+    checked: Boolean,
+    showCheckbox: Boolean,
+    darkPaper: Boolean,
+    onOpen: () -> Unit,
+    onCheckedChange: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.fillMaxWidth()) {
+            Surface(
+                onClick = onOpen,
+                shape = RoundedCornerShape(6.dp),
+                border = BorderStroke(
+                    width = if (current || checked) 2.dp else 1.dp,
+                    color = when {
+                        checked -> MaterialTheme.colorScheme.secondary
+                        current -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.outlineVariant
+                    },
+                ),
+                color = MaterialTheme.colorScheme.surface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(PaperBackground.A4_ASPECT),
+            ) {
+                NotePagePreview(
+                    page = page,
+                    darkPaper = darkPaper,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            if (showCheckbox) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp),
+                ) {
+                    Checkbox(
+                        checked = checked,
+                        onCheckedChange = { onCheckedChange() },
+                        modifier = Modifier.size(44.dp),
+                    )
+                }
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "${number + 1}쪽" + if (current) " · 현재" else "",
+                style = MaterialTheme.typography.labelMedium,
+                color = if (current) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "필기 ${page.annotations.size}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+        Text(
+            page.template.label,
+            modifier = Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NoteExportOptionsSheet(
+    notebookTitle: String,
+    pageCount: Int,
+    currentIndex: Int,
+    selectedPageIds: Set<String>,
+    onDismiss: () -> Unit,
+    onExport: (NoteExportOptions) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var range by remember { mutableStateOf(NoteExportPageRange.ALL) }
+    var includeHiddenLayers by remember { mutableStateOf(false) }
+    val selectedAvailable = selectedPageIds.isNotEmpty()
+    val safeCurrent = if (pageCount <= 0) 0 else currentIndex.coerceIn(0, pageCount - 1)
+    val safeRange = if (range == NoteExportPageRange.SELECTED && !selectedAvailable) {
+        NoteExportPageRange.ALL
+    } else {
+        range
+    }
+    val fileName = noteExportFileName(notebookTitle)
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 18.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("PDF로 내보내기", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "페이지 범위와 레이어를 선택하세요",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("닫기")
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("페이지 범위", style = MaterialTheme.typography.labelLarge)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    selected = safeRange == NoteExportPageRange.ALL,
+                    onClick = { range = NoteExportPageRange.ALL },
+                    label = { Text("전체 ($pageCount)") },
+                    modifier = Modifier.heightIn(min = 44.dp),
+                )
+                FilterChip(
+                    selected = safeRange == NoteExportPageRange.CURRENT,
+                    onClick = { range = NoteExportPageRange.CURRENT },
+                    label = { Text("현재 (${safeCurrent + 1})") },
+                    modifier = Modifier.heightIn(min = 44.dp),
+                )
+                FilterChip(
+                    selected = safeRange == NoteExportPageRange.SELECTED,
+                    onClick = { range = NoteExportPageRange.SELECTED },
+                    enabled = selectedAvailable,
+                    label = { Text("선택 (${selectedPageIds.size})") },
+                    modifier = Modifier.heightIn(min = 44.dp),
+                )
+            }
+            if (!selectedAvailable) {
+                Text(
+                    "페이지 관리에서 페이지를 선택하면 선택 내보내기를 사용할 수 있습니다.",
+                    modifier = Modifier.padding(top = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider()
+            Surface(
+                onClick = { includeHiddenLayers = !includeHiddenLayers },
+                shape = RoundedCornerShape(12.dp),
+                color = Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 44.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("숨긴 레이어 포함", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            if (includeHiddenLayers) {
+                                "숨긴 레이어의 필기도 내보냅니다"
+                            } else {
+                                "화면에 보이는 레이어만 내보냅니다"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = includeHiddenLayers,
+                        onCheckedChange = { includeHiddenLayers = it },
+                    )
+                }
+            }
+            Text(
+                "파일 이름: $fileName",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("취소")
+                }
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        onExport(
+                            NoteExportOptions(
+                                pageRange = safeRange,
+                                currentPageIndex = safeCurrent,
+                                selectedPageIds = selectedPageIds,
+                                includeHiddenLayers = includeHiddenLayers,
+                                suggestedFileName = fileName,
+                            ),
+                        )
+                    },
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("내보내기")
                 }
             }
         }
