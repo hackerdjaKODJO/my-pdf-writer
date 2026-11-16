@@ -73,6 +73,7 @@ data class PenPreset(
     val width: Float = 0.004f,
     val opacity: Float = 1f,
     val penStyle: PenStyle = PenStyle.BALLPOINT,
+    val tool: Tool = Tool.PEN,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -81,6 +82,7 @@ data class PenPreset(
         put("width", width.toDouble())
         put("opacity", opacity.toDouble())
         put("style", penStyle.name)
+        put("tool", tool.name)
     }
 
     companion object {
@@ -93,6 +95,9 @@ data class PenPreset(
             penStyle = runCatching {
                 PenStyle.valueOf(o.optString("style"))
             }.getOrDefault(PenStyle.BALLPOINT),
+            tool = runCatching {
+                Tool.valueOf(o.optString("tool"))
+            }.getOrDefault(Tool.PEN),
         )
     }
 }

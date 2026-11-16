@@ -9,10 +9,14 @@ import android.graphics.Typeface
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
+import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
@@ -32,7 +36,7 @@ object AnnotationPainter {
     fun drawOne(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
         if (annotation.points.isEmpty()) return
         when (annotation.type) {
-            AnnotationType.PEN -> drawStroke(canvas, annotation, width, height, baseAlpha = 255)
+            AnnotationType.PEN -> drawPen(canvas, annotation, width, height)
             AnnotationType.HIGHLIGHT -> drawStroke(canvas, annotation, width, height, baseAlpha = 96)
             AnnotationType.RECT -> drawRect(canvas, annotation, width, height)
             AnnotationType.ARROW -> drawArrow(canvas, annotation, width, height)
@@ -71,6 +75,19 @@ object AnnotationPainter {
             strokeJoin = Paint.Join.ROUND
         }
 
+    /**
+     * PEN keeps the original smooth constant-width stroke for BALLPOINT, so PDF
+     * annotations (which always use the default style) render exactly as before.
+     */
+    private fun drawPen(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
+        when (annotation.penStyle) {
+            PenStyle.BALLPOINT -> drawStroke(canvas, annotation, width, height, baseAlpha = 255)
+            PenStyle.FOUNTAIN -> drawFountain(canvas, annotation, width, height)
+            PenStyle.BRUSH -> drawBrush(canvas, annotation, width, height)
+            PenStyle.PENCIL -> drawPencil(canvas, annotation, width, height)
+        }
+    }
+
     private fun drawStroke(
         canvas: Canvas,
         annotation: Annotation,
@@ -108,6 +125,190 @@ object AnnotationPainter {
         val last = points.last()
         path.lineTo(last.x * width, last.y * height)
         return path
+    }
+
+    /**
+     * Calligraphic pen: a filled ribbon whose width follows the angle between the
+     * movement direction and a fixed nib angle. Strokes along the nib stay thin,
+     * strokes across it swell, which produces the familiar italic-nib feel without
+     * needing a custom font or texture.
+     */
+    private fun drawFountain(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
+        val points = annotation.points
+        val base = (annotation.width * width).coerceAtLeast(1.1f)
+        if (points.size == 1) {
+            drawPenDot(canvas, annotation, points.first(), width, height, base * 0.52f)
+            return
+        }
+        val nibAngle = (PI / 4.0).toFloat()
+        val factors = FloatArray(points.size) { index ->
+            val prev = points[(index - 1).coerceAtLeast(0)]
+            val next = points[(index + 1).coerceAtMost(points.lastIndex)]
+            val dx = (next.x - prev.x) * width
+            val dy = (next.y - prev.y) * height
+            if (abs(dx) + abs(dy) < 0.0001f) {
+                0.72f
+            } else {
+                0.30f + 0.95f * abs(sin(atan2(dy, dx) - nibAngle))
+            }
+        }
+        // Neighbour averaging removes single-point width spikes at sharp corners.
+        val smoothed = FloatArray(points.size) { index ->
+            val a = factors[(index - 1).coerceAtLeast(0)]
+            val b = factors[index]
+            val c = factors[(index + 1).coerceAtMost(points.lastIndex)]
+            (a + b + b + c) / 4f
+        }
+        val path = ribbonPath(points, width, height) { index ->
+            base * smoothed[index] * 0.5f
+        }
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = annotation.color
+            alpha = opacityAlpha(annotation)
+            style = Paint.Style.FILL
+        }
+        canvas.drawPath(path, paint)
+        canvas.drawCircle(points.first().x * width, points.first().y * height, base * smoothed.first() * 0.5f, paint)
+        canvas.drawCircle(points.last().x * width, points.last().y * height, base * smoothed.last() * 0.5f, paint)
+    }
+
+    /**
+     * Soft brush: a broad translucent pass under a tapered ink core. The envelope
+     * thins the ends and swells the middle while the halo keeps the edge fuzzy.
+     */
+    private fun drawBrush(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
+        val points = annotation.points
+        val base = (annotation.width * width).coerceAtLeast(1.1f)
+        if (points.size == 1) {
+            drawPenDot(canvas, annotation, points.first(), width, height, base * 0.58f)
+            return
+        }
+        val lastIndex = points.lastIndex
+        val envelope = FloatArray(points.size) { index ->
+            val t = if (lastIndex == 0) 0.5f else index.toFloat() / lastIndex
+            0.38f + 0.72f * sin(PI * t).pow(0.6).toFloat()
+        }
+        val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = annotation.color
+            alpha = (opacityAlpha(annotation) * 0.20f).roundToInt().coerceIn(0, 255)
+            style = Paint.Style.FILL
+        }
+        val halo = ribbonPath(points, width, height) { index ->
+            base * envelope[index] * 0.80f
+        }
+        canvas.drawPath(halo, haloPaint)
+
+        val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = annotation.color
+            alpha = opacityAlpha(annotation)
+            style = Paint.Style.FILL
+        }
+        val core = ribbonPath(points, width, height) { index ->
+            base * envelope[index] * 0.5f
+        }
+        canvas.drawPath(core, corePaint)
+        canvas.drawCircle(points.first().x * width, points.first().y * height, base * envelope.first() * 0.5f, corePaint)
+        canvas.drawCircle(points.last().x * width, points.last().y * height, base * envelope.last() * 0.5f, corePaint)
+    }
+
+    /**
+     * Pencil: three thin, slightly jittered passes at low alpha. The offsets are
+     * deterministic so the editor preview and the exported PDF look the same.
+     */
+    private fun drawPencil(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
+        val points = annotation.points
+        val base = (annotation.width * width).coerceAtLeast(1f)
+        if (points.size == 1) {
+            drawPenDot(canvas, annotation, points.first(), width, height, base * 0.34f)
+            return
+        }
+        val alpha = opacityAlpha(annotation)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = annotation.color
+            style = Paint.Style.STROKE
+            strokeWidth = base * 0.62f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        val offsets = floatArrayOf(-0.55f, 0f, 0.55f)
+        offsets.forEachIndexed { pass, offset ->
+            paint.alpha = (alpha * if (pass == 1) 0.52f else 0.34f)
+                .roundToInt()
+                .coerceIn(1, 255)
+            val grain = if (pass == 1) 0.0004f else 0.0011f
+            val jittered = if (pass == 1) {
+                points
+            } else {
+                points.mapIndexed { index, point ->
+                    val wobble = sin(index * 1.7 + pass * 4.3).toFloat()
+                    NormalizedPoint(
+                        (point.x + wobble * grain).coerceIn(0f, 1f),
+                        (point.y + wobble * grain * 0.65f).coerceIn(0f, 1f),
+                    )
+                }
+            }
+            canvas.save()
+            canvas.translate(offset, offset * 0.35f)
+            canvas.drawPath(smoothPath(jittered, width, height), paint)
+            canvas.restore()
+        }
+    }
+
+    /** Builds a closed ribbon around a centre line using per-vertex half-widths. */
+    private fun ribbonPath(
+        points: List<NormalizedPoint>,
+        width: Float,
+        height: Float,
+        halfWidthAt: (Int) -> Float,
+    ): Path {
+        val count = points.size
+        val xs = FloatArray(count) { points[it].x * width }
+        val ys = FloatArray(count) { points[it].y * height }
+        val leftX = FloatArray(count)
+        val leftY = FloatArray(count)
+        val rightX = FloatArray(count)
+        val rightY = FloatArray(count)
+        for (i in 0 until count) {
+            val prev = (i - 1).coerceAtLeast(0)
+            val next = (i + 1).coerceAtMost(count - 1)
+            var dx = xs[next] - xs[prev]
+            var dy = ys[next] - ys[prev]
+            var length = hypot(dx, dy)
+            if (length < 0.0001f) {
+                dx = 1f
+                dy = 0f
+                length = 1f
+            }
+            val nx = -dy / length
+            val ny = dx / length
+            val half = halfWidthAt(i).coerceAtLeast(0.15f)
+            leftX[i] = xs[i] + nx * half
+            leftY[i] = ys[i] + ny * half
+            rightX[i] = xs[i] - nx * half
+            rightY[i] = ys[i] - ny * half
+        }
+        return Path().apply {
+            moveTo(leftX[0], leftY[0])
+            for (i in 1 until count) lineTo(leftX[i], leftY[i])
+            for (i in count - 1 downTo 0) lineTo(rightX[i], rightY[i])
+            close()
+        }
+    }
+
+    private fun drawPenDot(
+        canvas: Canvas,
+        annotation: Annotation,
+        point: NormalizedPoint,
+        width: Float,
+        height: Float,
+        radius: Float,
+    ) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = annotation.color
+            alpha = opacityAlpha(annotation)
+            style = Paint.Style.FILL
+        }
+        canvas.drawCircle(point.x * width, point.y * height, radius, paint)
     }
 
     private fun drawRect(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {

@@ -74,6 +74,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
@@ -82,6 +83,9 @@ import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
+import com.hackerdjakodjo.mypdfwriter.data.PenBoxStore
+import com.hackerdjakodjo.mypdfwriter.data.PenPreset
+import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import java.util.UUID
@@ -106,6 +110,8 @@ private val NOTE_TOOLS = listOf(
     NoteToolOption(Tool.PEN, "펜"),
     NoteToolOption(Tool.HIGHLIGHT, "형광펜"),
     NoteToolOption(Tool.ERASER, "지우개"),
+    NoteToolOption(Tool.LASSO, "올가미"),
+    NoteToolOption(Tool.LASSO_RECT, "사각 올가미"),
     NoteToolOption(Tool.TEXT, "텍스트"),
     NoteToolOption(Tool.RECT, "사각형"),
     NoteToolOption(Tool.ARROW, "화살표"),
@@ -134,9 +140,19 @@ fun NoteEditorScreen(
     var strokeWidth by remember { mutableStateOf(0.004f) }
     var fontSize by remember { mutableStateOf(0.028f) }
     var opacity by remember { mutableStateOf(1f) }
+    var penStyle by remember { mutableStateOf(PenStyle.BALLPOINT) }
     var fingerWriting by remember { mutableStateOf(false) }
     var zoomLock by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    val penBoxStore = remember(context) { PenBoxStore(context) }
+    var penPresets by remember(penBoxStore) { mutableStateOf(penBoxStore.load()) }
+    var selection by remember(notebook.id, page.id) { mutableStateOf<Set<String>>(emptySet()) }
+    val selectedIds = remember(selection, page.annotations) {
+        selection.intersect(page.annotations.map { it.id }.toSet())
+    }
+
+    var showPenBox by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     var showTemplates by remember { mutableStateOf(false) }
@@ -268,8 +284,107 @@ fun NoteEditorScreen(
             width = noteStrokeWidth(type, strokeWidth),
             points = points,
             opacity = if (type == AnnotationType.HIGHLIGHT) 1f else opacity,
+            penStyle = if (type == AnnotationType.PEN) penStyle else PenStyle.BALLPOINT,
         )
         updateCurrentPage { it.copy(annotations = it.annotations + annotation) }
+    }
+
+    fun selectWithLasso(polygon: List<NormalizedPoint>, rectangular: Boolean) {
+        selection = noteLassoSelection(page.annotations, polygon, rectangular)
+    }
+
+    fun recolorSelection(newColor: Int) {
+        if (selectedIds.isEmpty()) return
+        color = newColor
+        updateCurrentPage { pageToEdit ->
+            pageToEdit.copy(
+                annotations = pageToEdit.annotations.map {
+                    if (it.id in selectedIds) it.copy(color = newColor) else it
+                },
+            )
+        }
+    }
+
+    fun duplicateSelection() {
+        if (selectedIds.isEmpty()) return
+        val duplicatedIds = mutableSetOf<String>()
+        updateCurrentPage { pageToEdit ->
+            val copies = pageToEdit.annotations
+                .filter { it.id in selectedIds }
+                .map { original ->
+                    val duplicate = original.copy(
+                        id = UUID.randomUUID().toString(),
+                        page = 0,
+                        points = original.points.map { point ->
+                            NormalizedPoint(
+                                (point.x + 0.012f).coerceIn(0f, 1f),
+                                (point.y + 0.012f).coerceIn(0f, 1f),
+                            )
+                        },
+                    )
+                    duplicatedIds.add(duplicate.id)
+                    duplicate
+                }
+            if (copies.isEmpty()) {
+                pageToEdit
+            } else {
+                pageToEdit.copy(annotations = pageToEdit.annotations + copies)
+            }
+        }
+        if (duplicatedIds.isNotEmpty()) selection = duplicatedIds
+    }
+
+    fun deleteSelection() {
+        if (selectedIds.isEmpty()) return
+        updateCurrentPage { pageToEdit ->
+            pageToEdit.copy(
+                annotations = pageToEdit.annotations.filterNot { it.id in selectedIds },
+            )
+        }
+        selection = emptySet()
+    }
+
+    fun applyPenPreset(preset: PenPreset) {
+        tool = preset.tool
+        color = preset.color
+        strokeWidth = preset.width
+        opacity = preset.opacity
+        penStyle = preset.penStyle
+        showPenBox = false
+    }
+
+    fun saveCurrentPen(name: String) {
+        val savedTool = if (tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN
+        val saved = PenPreset(
+            name = name,
+            color = color,
+            width = if (savedTool == Tool.HIGHLIGHT) {
+                noteStrokeWidth(AnnotationType.HIGHLIGHT, strokeWidth)
+            } else {
+                strokeWidth
+            },
+            opacity = opacity,
+            penStyle = penStyle,
+            tool = savedTool,
+        )
+        val updated = penPresets + saved
+        penPresets = updated
+        penBoxStore.save(updated)
+    }
+
+    fun deletePenPreset(preset: PenPreset) {
+        if (penPresets.size <= 1) return
+        val updated = penPresets.filterNot { it.id == preset.id }
+        penPresets = updated
+        penBoxStore.save(updated)
+    }
+
+    fun renamePenPreset(preset: PenPreset, name: String) {
+        val clean = name.trim().ifBlank { preset.name }
+        if (clean == preset.name) return
+        val updated = penPresets.map { if (it.id == preset.id) it.copy(name = clean) else it }
+        penPresets = updated
+        penBoxStore.save(updated)
     }
 
     fun erase(trail: List<NormalizedPoint>) {
@@ -325,6 +440,9 @@ fun NoteEditorScreen(
                     }
                 },
                 actions = {
+                    TextButton(onClick = { showPenBox = true }) {
+                        Text("필통")
+                    }
                     IconButton(onClick = { toggleFavorite() }) {
                         Icon(
                             if (notebook.favorite) Icons.Filled.Star else Icons.Outlined.Star,
@@ -407,26 +525,39 @@ fun NoteEditorScreen(
             )
         },
         bottomBar = {
-            NoteToolbar(
-                tool = tool,
-                onTool = { tool = it },
-                color = color,
-                onColor = { color = it },
-                strokeWidth = strokeWidth,
-                onStrokeWidth = { strokeWidth = it },
-                fontSize = fontSize,
-                onFontSize = { fontSize = it },
-                opacity = opacity,
-                onOpacity = { opacity = it },
-                fingerWriting = fingerWriting,
-                onFingerWriting = { fingerWriting = it },
-                zoomLock = zoomLock,
-                onZoomLock = { zoomLock = it },
-                canUndo = canUndo,
-                canRedo = canRedo,
-                onUndo = { undo() },
-                onRedo = { redo() },
-            )
+            Column {
+                if (selectedIds.isNotEmpty()) {
+                    NoteSelectionBar(
+                        count = selectedIds.size,
+                        onColor = { recolorSelection(it) },
+                        onDuplicate = { duplicateSelection() },
+                        onDelete = { deleteSelection() },
+                        onClear = { selection = emptySet() },
+                    )
+                }
+                NoteToolbar(
+                    tool = tool,
+                    onTool = { tool = it },
+                    color = color,
+                    onColor = { color = it },
+                    strokeWidth = strokeWidth,
+                    onStrokeWidth = { strokeWidth = it },
+                    fontSize = fontSize,
+                    onFontSize = { fontSize = it },
+                    opacity = opacity,
+                    onOpacity = { opacity = it },
+                    penStyle = penStyle,
+                    onPenStyle = { penStyle = it },
+                    fingerWriting = fingerWriting,
+                    onFingerWriting = { fingerWriting = it },
+                    zoomLock = zoomLock,
+                    onZoomLock = { zoomLock = it },
+                    canUndo = canUndo,
+                    canRedo = canRedo,
+                    onUndo = { undo() },
+                    onRedo = { redo() },
+                )
+            }
         },
     ) { padding ->
         BoxWithConstraints(
@@ -445,12 +576,14 @@ fun NoteEditorScreen(
                         strokeWidth = strokeWidth,
                         fontSize = fontSize,
                         opacity = opacity,
+                        penStyle = penStyle,
                         penOnly = !fingerWriting,
                         zoomLock = zoomLock,
                         hint = hint,
                         onAddStroke = { addStroke(it) },
                         onErase = { erase(it) },
                         onRequestText = { textPoint = it },
+                        onLassoSelect = { polygon, rectangular -> selectWithLasso(polygon, rectangular) },
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
                     Box(
@@ -477,12 +610,14 @@ fun NoteEditorScreen(
                         strokeWidth = strokeWidth,
                         fontSize = fontSize,
                         opacity = opacity,
+                        penStyle = penStyle,
                         penOnly = !fingerWriting,
                         zoomLock = zoomLock,
                         hint = hint,
                         onAddStroke = { addStroke(it) },
                         onErase = { erase(it) },
                         onRequestText = { textPoint = it },
+                        onLassoSelect = { polygon, rectangular -> selectWithLasso(polygon, rectangular) },
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                     )
                     NotePageStrip(
@@ -564,6 +699,31 @@ fun NoteEditorScreen(
             },
         )
     }
+
+    if (showPenBox) {
+        val currentTool = if (tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN
+        PenBoxSheet(
+            presets = penPresets,
+            current = PenPreset(
+                id = "current-pen",
+                name = "현재 펜",
+                color = color,
+                width = if (currentTool == Tool.HIGHLIGHT) {
+                    noteStrokeWidth(AnnotationType.HIGHLIGHT, strokeWidth)
+                } else {
+                    strokeWidth
+                },
+                opacity = if (currentTool == Tool.HIGHLIGHT) 1f else opacity,
+                penStyle = if (currentTool == Tool.PEN) penStyle else PenStyle.BALLPOINT,
+                tool = currentTool,
+            ),
+            onDismiss = { showPenBox = false },
+            onApply = { applyPenPreset(it) },
+            onSaveCurrent = { saveCurrentPen(it) },
+            onDelete = { deletePenPreset(it) },
+            onRename = { preset, name -> renamePenPreset(preset, name) },
+        )
+    }
 }
 
 @Composable
@@ -574,12 +734,14 @@ private fun NoteCanvasPane(
     strokeWidth: Float,
     fontSize: Float,
     opacity: Float,
+    penStyle: PenStyle,
     penOnly: Boolean,
     zoomLock: Boolean,
     hint: String,
     onAddStroke: (List<NormalizedPoint>) -> Unit,
     onErase: (List<NormalizedPoint>) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
+    onLassoSelect: (List<NormalizedPoint>, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -592,11 +754,13 @@ private fun NoteCanvasPane(
             strokeWidth = strokeWidth,
             fontSize = fontSize,
             opacity = opacity,
+            penStyle = penStyle,
             penOnly = penOnly,
             zoomLock = zoomLock,
             onAddStroke = onAddStroke,
             onErase = onErase,
             onRequestText = onRequestText,
+            onLassoSelect = onLassoSelect,
             modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp),
         )
         Surface(
@@ -628,6 +792,8 @@ private fun NoteToolbar(
     onFontSize: (Float) -> Unit,
     opacity: Float,
     onOpacity: (Float) -> Unit,
+    penStyle: PenStyle,
+    onPenStyle: (PenStyle) -> Unit,
     fingerWriting: Boolean,
     onFingerWriting: (Boolean) -> Unit,
     zoomLock: Boolean,
@@ -657,6 +823,32 @@ private fun NoteToolbar(
                         selected = tool == option.tool,
                         onClick = { onTool(option.tool) },
                     )
+                }
+            }
+
+            if (tool == Tool.PEN) {
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "펜 종류",
+                        modifier = Modifier.padding(end = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    PenStyle.entries.forEach { style ->
+                        NoteToolChip(
+                            label = penStyleLabel(style),
+                            selected = penStyle == style,
+                            onClick = { onPenStyle(style) },
+                        )
+                    }
                 }
             }
 
@@ -732,6 +924,51 @@ private fun NoteToolbar(
                     onValueChange = onOpacity,
                     modifier = Modifier.weight(1f),
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoteSelectionBar(
+    count: Int,
+    onColor: (Int) -> Unit,
+    onDuplicate: () -> Unit,
+    onDelete: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Surface(
+        tonalElevation = 2.dp,
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "${count}개 선택",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            NOTE_PALETTE.forEach { swatch ->
+                NoteColorDot(
+                    color = swatch,
+                    selected = false,
+                    onClick = { onColor(swatch) },
+                )
+            }
+            TextButton(onClick = onDuplicate) {
+                Text("복제")
+            }
+            TextButton(onClick = onDelete) {
+                Text("삭제")
+            }
+            TextButton(onClick = onClear) {
+                Text("선택 해제")
             }
         }
     }
@@ -1185,6 +1422,8 @@ private fun noteToolHint(tool: Tool): String = when (tool) {
     Tool.ERASER -> "획을 문질러 지우세요"
     Tool.TEXT -> "빈 곳을 눌러 텍스트 입력"
     Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> "끌어서 도형 그리기"
+    Tool.LASSO -> "끌어서 자유롭게 선택"
+    Tool.LASSO_RECT -> "끌어서 사각형으로 선택"
     else -> "필기"
 }
 
