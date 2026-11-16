@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.platform.testTag
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
@@ -77,6 +79,14 @@ fun NoteCanvas(
     // dark ink and the exported PDF match what is seen here.
     var pan by remember(page.id) { mutableStateOf(Offset.Zero) }
     var zoom by remember(page.id) { mutableStateOf(1f) }
+
+    // The pointerInput coroutine below lives across strokes and does not restart when
+    // the parent recomposes. Always read the newest callbacks so a stroke commits onto
+    // the latest notebook snapshot rather than the one captured at first composition.
+    val currentAddStroke by rememberUpdatedState(onAddStroke)
+    val currentErase by rememberUpdatedState(onErase)
+    val currentRequestText by rememberUpdatedState(onRequestText)
+    val currentLassoSelect by rememberUpdatedState(onLassoSelect)
 
     val livePoints = remember { mutableStateListOf<NormalizedPoint>() }
     var shapeStart by remember { mutableStateOf<NormalizedPoint?>(null) }
@@ -254,12 +264,12 @@ fun NoteCanvas(
                                 Tool.TEXT -> {
                                     val movement = (primary.position - down.position).getDistance()
                                     if (movement <= viewConfiguration.touchSlop) {
-                                        onRequestText(normalize(primary.position))
+                                        currentRequestText(normalize(primary.position))
                                     }
                                 }
 
                                 Tool.ERASER -> {
-                                    if (eraserTrail.isNotEmpty()) onErase(eraserTrail.toList())
+                                    if (eraserTrail.isNotEmpty()) currentErase(eraserTrail.toList())
                                 }
 
                                 Tool.RECT,
@@ -275,14 +285,14 @@ fun NoteCanvas(
                                         val dx = end.x - start.x
                                         val dy = end.y - start.y
                                         if (dx * dx + dy * dy > 0.000025f) {
-                                            onAddStroke(listOf(start, end), 0L)
+                                            currentAddStroke(listOf(start, end), 0L)
                                         }
                                     }
                                 }
 
                                 Tool.LASSO -> {
                                     if (lassoPoints.size >= 3) {
-                                        onLassoSelect(lassoPoints.toList(), false)
+                                        currentLassoSelect(lassoPoints.toList(), false)
                                     }
                                 }
 
@@ -293,7 +303,7 @@ fun NoteCanvas(
                                         val dx = end.x - start.x
                                         val dy = end.y - start.y
                                         if (dx * dx + dy * dy > 0.000025f) {
-                                            onLassoSelect(listOf(start, end), true)
+                                            currentLassoSelect(listOf(start, end), true)
                                         }
                                     }
                                 }
@@ -302,7 +312,7 @@ fun NoteCanvas(
                                     if (livePoints.isNotEmpty()) {
                                         val durationMs = (SystemClock.elapsedRealtime() - strokeStartMs)
                                             .coerceAtLeast(0L)
-                                        onAddStroke(livePoints.toList(), durationMs)
+                                        currentAddStroke(livePoints.toList(), durationMs)
                                     }
                                 }
                             }
@@ -363,7 +373,12 @@ fun NoteCanvas(
             }
         }
 
-        Canvas(modifier = Modifier.fillMaxSize().then(gestureModifier)) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("note_canvas")
+                .then(gestureModifier),
+        ) {
             drawIntoCanvas { canvas ->
                 val native = canvas.nativeCanvas
                 native.save()

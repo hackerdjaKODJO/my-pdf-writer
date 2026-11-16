@@ -80,6 +80,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -107,12 +108,14 @@ import com.hackerdjakodjo.mypdfwriter.data.PenBoxStore
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import java.util.UUID
 import kotlin.math.min
 import kotlin.math.sqrt
 
 private const val NOTE_ERASE_RADIUS = 0.03f
+private const val NOTE_TRACE_TAG = "NoteEditor"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -125,9 +128,42 @@ fun NoteEditorScreen(
     onExportPdf: () -> Unit,
     onOpenSourcePdf: ((Int) -> Unit)? = null,
 ) {
-    val pages = notebook.pages.ifEmpty { listOf(NotePage()) }
+    // The parent only echoes notebook changes after recomposition. Keep the newest
+    // locally committed notebook here so a second stroke that arrives before that
+    // echo is still built on top of the first stroke instead of replacing it.
+    var workingNotebook by remember(notebook.id) { mutableStateOf(notebook) }
+
+    val pages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
     val safeIndex = pageIndex.coerceIn(0, pages.lastIndex)
     val page = pages[safeIndex]
+
+    // Adopt a genuinely newer notebook from the parent (for example a rename or a
+    // save applied elsewhere) without clobbering edits that are newer locally.
+    LaunchedEffect(notebook) {
+        val local = workingNotebook
+        if (shouldAdoptExternalNotebook(local, notebook)) {
+            workingNotebook = notebook
+            NoteTrace.event(
+                NOTE_TRACE_TAG,
+                "parent-sync",
+                "adopt" to true,
+                "localUpdatedAt" to local.updatedAt,
+                "incomingUpdatedAt" to notebook.updatedAt,
+                "pages" to notebook.pages.size,
+                "annotations" to notebookAnnotationCount(notebook),
+            )
+        } else if (notebook != local) {
+            NoteTrace.event(
+                NOTE_TRACE_TAG,
+                "parent-sync",
+                "adopt" to false,
+                "localUpdatedAt" to local.updatedAt,
+                "incomingUpdatedAt" to notebook.updatedAt,
+                "pages" to local.pages.size,
+                "annotations" to notebookAnnotationCount(local),
+            )
+        }
+    }
 
     var tool by remember { mutableStateOf(Tool.PEN) }
     var color by remember { mutableStateOf(NOTE_PALETTE.first()) }
@@ -141,7 +177,9 @@ fun NoteEditorScreen(
     val context = LocalContext.current
     val penBoxStore = remember(context) { PenBoxStore(context) }
     var penPresets by remember(penBoxStore) { mutableStateOf(penBoxStore.load()) }
-    var selection by remember(notebook.id, page.id) { mutableStateOf<Set<String>>(emptySet()) }
+    var selection by remember(workingNotebook.id, page.id) {
+        mutableStateOf<Set<String>>(emptySet())
+    }
     val selectedIds = remember(selection, page.annotations) {
         selection.intersect(page.annotations.map { it.id }.toSet())
     }
@@ -155,7 +193,7 @@ fun NoteEditorScreen(
     var replayPositionMs by remember { mutableStateOf(0L) }
     var showLayers by remember { mutableStateOf(false) }
     var showOutline by remember { mutableStateOf(false) }
-    var activeLayerId by remember(notebook.id, page.id) {
+    var activeLayerId by remember(workingNotebook.id, page.id) {
         mutableStateOf(page.layers.firstOrNull()?.id.orEmpty())
     }
     val activeLayer = page.layers.firstOrNull { it.id == activeLayerId && !it.locked && it.visible }
@@ -181,60 +219,92 @@ fun NoteEditorScreen(
     var showDeletePage by remember { mutableStateOf(false) }
     var textPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
 
-    val undoStack = remember(notebook.id) { ArrayDeque<Notebook>() }
-    val redoStack = remember(notebook.id) { ArrayDeque<Notebook>() }
-    var historyVersion by remember(notebook.id) { mutableIntStateOf(0) }
+    val undoStack = remember(workingNotebook.id) { ArrayDeque<Notebook>() }
+    val redoStack = remember(workingNotebook.id) { ArrayDeque<Notebook>() }
+    var historyVersion by remember(workingNotebook.id) { mutableIntStateOf(0) }
 
     fun applyChange(next: Notebook) {
-        if (next == notebook) return
-        undoStack.addLast(notebook)
+        val previous = workingNotebook
+        if (next == previous) return
+        val saved = next.copy(updatedAt = System.currentTimeMillis())
+        undoStack.addLast(previous)
         while (undoStack.size > 60) undoStack.removeFirst()
         redoStack.clear()
         historyVersion++
-        onChange(next.copy(updatedAt = System.currentTimeMillis()))
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "apply",
+            "pages" to saved.pages.size,
+            "annotationsBefore" to notebookAnnotationCount(previous),
+            "annotationsAfter" to notebookAnnotationCount(saved),
+        )
+        // Publish locally before handing the change to the parent. A second stroke
+        // that lands before the parent's recomposition/echo must see this state.
+        workingNotebook = saved
+        onChange(saved)
     }
 
     fun updateCurrentPage(transform: (NotePage) -> NotePage) {
-        val currentPages = notebook.pages.ifEmpty { listOf(NotePage()) }
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
         val index = pageIndex.coerceIn(0, currentPages.lastIndex)
         val previous = currentPages[index]
         val updated = transform(previous)
         if (updated == previous) return
         val mutable = currentPages.toMutableList()
         mutable[index] = updated
-        applyChange(notebook.copy(pages = mutable))
+        applyChange(workingNotebook.copy(pages = mutable))
     }
 
     fun undo() {
         val previous = undoStack.removeLastOrNull() ?: return
-        redoStack.addLast(notebook)
+        redoStack.addLast(workingNotebook)
         historyVersion++
-        onChange(previous.copy(updatedAt = System.currentTimeMillis()))
+        val saved = previous.copy(updatedAt = System.currentTimeMillis())
+        workingNotebook = saved
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "undo",
+            "pages" to saved.pages.size,
+            "annotations" to notebookAnnotationCount(saved),
+            "undoDepth" to undoStack.size,
+            "redoDepth" to redoStack.size,
+        )
+        onChange(saved)
         val lastIndex = (previous.pages.size - 1).coerceAtLeast(0)
         if (pageIndex > lastIndex) onPageIndexChange(lastIndex)
     }
 
     fun redo() {
         val next = redoStack.removeLastOrNull() ?: return
-        undoStack.addLast(notebook)
+        undoStack.addLast(workingNotebook)
         historyVersion++
-        onChange(next.copy(updatedAt = System.currentTimeMillis()))
+        val saved = next.copy(updatedAt = System.currentTimeMillis())
+        workingNotebook = saved
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "redo",
+            "pages" to saved.pages.size,
+            "annotations" to notebookAnnotationCount(saved),
+            "undoDepth" to undoStack.size,
+            "redoDepth" to redoStack.size,
+        )
+        onChange(saved)
         val lastIndex = (next.pages.size - 1).coerceAtLeast(0)
         if (pageIndex > lastIndex) onPageIndexChange(lastIndex)
     }
 
     fun addPage() {
-        val currentPages = notebook.pages.ifEmpty { listOf(NotePage()) }
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
         val index = safeIndex.coerceIn(0, currentPages.lastIndex)
         val mutable = currentPages.toMutableList()
         val insertAt = index + 1
         mutable.add(insertAt, NotePage(template = currentPages[index].template))
-        applyChange(notebook.copy(pages = mutable))
+        applyChange(workingNotebook.copy(pages = mutable))
         onPageIndexChange(insertAt)
     }
 
     fun duplicatePage() {
-        val currentPages = notebook.pages.ifEmpty { listOf(NotePage()) }
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
         val index = safeIndex.coerceIn(0, currentPages.lastIndex)
         val source = currentPages[index]
         val duplicate = source.copy(
@@ -246,34 +316,34 @@ fun NoteEditorScreen(
         val mutable = currentPages.toMutableList()
         val insertAt = index + 1
         mutable.add(insertAt, duplicate)
-        applyChange(notebook.copy(pages = mutable))
+        applyChange(workingNotebook.copy(pages = mutable))
         onPageIndexChange(insertAt)
     }
 
     fun deletePage() {
-        val currentPages = notebook.pages.ifEmpty { listOf(NotePage()) }
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
         if (currentPages.size <= 1) return
         val index = safeIndex.coerceIn(0, currentPages.lastIndex)
         val mutable = currentPages.toMutableList()
         mutable.removeAt(index)
-        applyChange(notebook.copy(pages = mutable))
+        applyChange(workingNotebook.copy(pages = mutable))
         onPageIndexChange((index - 1).coerceAtLeast(0))
     }
 
     fun movePage(delta: Int) {
-        val currentPages = notebook.pages.ifEmpty { listOf(NotePage()) }
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
         val index = safeIndex.coerceIn(0, currentPages.lastIndex)
         val target = index + delta
         if (target !in currentPages.indices) return
         val mutable = currentPages.toMutableList()
         val moved = mutable.removeAt(index)
         mutable.add(target, moved)
-        applyChange(notebook.copy(pages = mutable))
+        applyChange(workingNotebook.copy(pages = mutable))
         onPageIndexChange(target)
     }
 
     fun applyTemplate(template: PaperTemplate, allPages: Boolean) {
-        val currentPages = notebook.pages.ifEmpty { listOf(NotePage()) }
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
         val updatedPages = if (allPages) {
             currentPages.map { it.copy(template = template) }
         } else {
@@ -283,17 +353,17 @@ fun NoteEditorScreen(
             }
         }
         if (updatedPages == currentPages) return
-        applyChange(notebook.copy(pages = updatedPages))
+        applyChange(workingNotebook.copy(pages = updatedPages))
     }
 
     fun rename(title: String) {
         val clean = title.trim().ifBlank { "새 노트" }
-        if (clean == notebook.title) return
-        applyChange(notebook.copy(title = clean))
+        if (clean == workingNotebook.title) return
+        applyChange(workingNotebook.copy(title = clean))
     }
 
     fun toggleFavorite() {
-        applyChange(notebook.copy(favorite = !notebook.favorite))
+        applyChange(workingNotebook.copy(favorite = !workingNotebook.favorite))
     }
 
     fun addStroke(points: List<NormalizedPoint>, durationMs: Long = 0L) {
@@ -314,7 +384,23 @@ fun NoteEditorScreen(
             createdAt = System.currentTimeMillis() - safeDuration,
             durationMs = safeDuration,
         )
-        updateCurrentPage { it.copy(annotations = it.annotations + annotation) }
+        val before = workingNotebook
+        val next = noteAppendAnnotation(before, safeIndex, annotation)
+        if (next == before) return
+        val beforePage = before.pages.getOrNull(safeIndex)
+        val afterPage = next.pages.getOrNull(safeIndex)
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "stroke",
+            "page" to (beforePage?.id ?: page.id),
+            "pageIndex" to safeIndex,
+            "annotation" to annotation.id,
+            "annotationsBefore" to (beforePage?.annotations?.size ?: 0),
+            "annotationsAfter" to (afterPage?.annotations?.size ?: 0),
+            "points" to points.size,
+            "tool" to tool.name,
+        )
+        applyChange(next)
     }
 
     fun selectWithLasso(polygon: List<NormalizedPoint>, rectangular: Boolean) {
@@ -433,8 +519,8 @@ fun NoteEditorScreen(
         }
     }
 
-    val canUndo = remember(notebook.id, historyVersion) { undoStack.isNotEmpty() }
-    val canRedo = remember(notebook.id, historyVersion) { redoStack.isNotEmpty() }
+    val canUndo = remember(workingNotebook.id, historyVersion) { undoStack.isNotEmpty() }
+    val canRedo = remember(workingNotebook.id, historyVersion) { redoStack.isNotEmpty() }
     val fingerMode = if (fingerWriting) "손가락 필기" else "스타일러스 필기 · 손가락 이동"
     val hint = buildString {
         append(fingerMode)
@@ -454,7 +540,7 @@ fun NoteEditorScreen(
             TopAppBar(
                 title = {
                     Text(
-                        notebook.title,
+                        workingNotebook.title,
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .clickable(onClickLabel = "제목 편집") { showRename = true }
@@ -478,9 +564,13 @@ fun NoteEditorScreen(
                     }
                     IconButton(onClick = { toggleFavorite() }) {
                         Icon(
-                            if (notebook.favorite) Icons.Filled.Star else Icons.Outlined.Star,
+                            if (workingNotebook.favorite) {
+                                Icons.Filled.Star
+                            } else {
+                                Icons.Outlined.Star
+                            },
                             contentDescription = "즐겨찾기",
-                            tint = if (notebook.favorite) {
+                            tint = if (workingNotebook.favorite) {
                                 MaterialTheme.colorScheme.secondary
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -595,7 +685,7 @@ fun NoteEditorScreen(
 
     if (showRename) {
         NoteRenameDialog(
-            initial = notebook.title,
+            initial = workingNotebook.title,
             onDismiss = { showRename = false },
             onConfirm = {
                 showRename = false
@@ -689,7 +779,7 @@ fun NoteEditorScreen(
 
     if (showAudioNotes) {
         AudioNotesSheet(
-            ownerId = notebook.id,
+            ownerId = workingNotebook.id,
             currentPage = safeIndex,
             onDismiss = { showAudioNotes = false },
         )
@@ -697,7 +787,7 @@ fun NoteEditorScreen(
 
     if (showAudioReplay) {
         AudioReplaySheet(
-            ownerId = notebook.id,
+            ownerId = workingNotebook.id,
             currentPage = safeIndex,
             onPlaybackState = { note, positionMs, _ ->
                 replayNote = note
@@ -729,7 +819,7 @@ fun NoteEditorScreen(
 
     if (showOutline) {
         NotebookOutlineSheet(
-            notebook = notebook,
+            notebook = workingNotebook,
             currentPage = safeIndex,
             onJump = { onPageIndexChange(it) },
             onBookmarksChange = { applyChange(it) },
@@ -777,7 +867,7 @@ fun NoteEditorScreen(
 
     if (showOverflow) {
         NoteOverflowSheet(
-            notebookTitle = notebook.title,
+            notebookTitle = workingNotebook.title,
             pageIndex = safeIndex,
             pageCount = pages.size,
             templateLabel = page.template.label,
@@ -810,10 +900,12 @@ fun NoteEditorScreen(
                 showOverflow = false
                 showAudioReplay = true
             },
-            onOpenSourcePdf = if (notebook.sourceDocumentUri.isNotBlank() && onOpenSourcePdf != null) {
+            onOpenSourcePdf = if (
+                workingNotebook.sourceDocumentUri.isNotBlank() && onOpenSourcePdf != null
+            ) {
                 {
                     showOverflow = false
-                    val sourcePage = StudyNoteBuilder.sourcePage(notebook, safeIndex) ?: 0
+                    val sourcePage = StudyNoteBuilder.sourcePage(workingNotebook, safeIndex) ?: 0
                     onOpenSourcePdf.invoke(sourcePage)
                 }
             } else {
@@ -1974,6 +2066,30 @@ private fun noteToolHint(tool: Tool): String = when (tool) {
     Tool.LASSO -> "끌어서 자유롭게 선택"
     Tool.LASSO_RECT -> "끌어서 사각형으로 선택"
     else -> "필기"
+}
+
+internal fun notebookAnnotationCount(notebook: Notebook): Int =
+    notebook.pages.sumOf { it.annotations.size }
+
+/**
+ * True when a notebook delivered by the parent is a genuinely newer version that
+ * the editor should adopt. Equal timestamps are treated as echoes of local edits
+ * and never overwrite the working copy, because two edits can share a millisecond.
+ */
+internal fun shouldAdoptExternalNotebook(local: Notebook, incoming: Notebook): Boolean =
+    incoming.id != local.id || incoming.updatedAt > local.updatedAt
+
+/** Appends one annotation to one page without touching the other pages. */
+internal fun noteAppendAnnotation(
+    notebook: Notebook,
+    pageIndex: Int,
+    annotation: Annotation,
+): Notebook {
+    val pages = notebook.pages.ifEmpty { listOf(NotePage()) }
+    val index = pageIndex.coerceIn(0, pages.lastIndex)
+    val updated = pages.toMutableList()
+    updated[index] = pages[index].copy(annotations = pages[index].annotations + annotation)
+    return notebook.copy(pages = updated)
 }
 
 private fun noteAnnotationHit(annotation: Annotation, trail: List<NormalizedPoint>): Boolean {
