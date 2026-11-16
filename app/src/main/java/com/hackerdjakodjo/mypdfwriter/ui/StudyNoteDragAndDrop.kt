@@ -31,6 +31,7 @@ import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 internal const val STUDY_NOTE_ADDED_MESSAGE = "스터디 노트에 추가했습니다"
@@ -78,9 +79,10 @@ private fun studyDragPayload(clipData: ClipData): StudyDragPayload? {
 }
 
 /**
- * Capture target shown by the viewer and excerpt sheet. [onDrop] receives the
- * dragged text and the page encoded at drag start; [enabled] keeps the card
- * visible but inert when there is nothing to drop yet.
+ * Capture target shown by the viewer, excerpt sheet and study pane header.
+ * [onDrop] receives the dragged text and the page encoded at drag start;
+ * [enabled] keeps the card visible but inert when there is nothing to drop yet;
+ * [compact] uses a single-line row that fits the pane header.
  */
 @Composable
 internal fun StudyNoteDropTarget(
@@ -88,6 +90,7 @@ internal fun StudyNoteDropTarget(
     modifier: Modifier = Modifier,
     caption: String? = null,
     enabled: Boolean = true,
+    compact: Boolean = false,
 ) {
     var active by remember { mutableStateOf(false) }
     val currentOnDrop by rememberUpdatedState(onDrop)
@@ -130,7 +133,7 @@ internal fun StudyNoteDropTarget(
         modifier = modifier
             .fillMaxWidth()
             .then(dropModifier),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(if (compact) 10.dp else 14.dp),
         color = if (active) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
@@ -149,33 +152,44 @@ internal fun StudyNoteDropTarget(
                 MaterialTheme.colorScheme.outlineVariant
             },
         ),
-        tonalElevation = 4.dp,
+        tonalElevation = if (compact) 0.dp else 4.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            modifier = Modifier.padding(
+                horizontal = if (compact) 8.dp else 14.dp,
+                vertical = if (compact) 5.dp else 10.dp,
+            ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 Icons.AutoMirrored.Outlined.Notes,
                 contentDescription = null,
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(if (compact) 16.dp else 22.dp),
                 tint = if (active) {
                     MaterialTheme.colorScheme.onPrimaryContainer
                 } else {
                     MaterialTheme.colorScheme.primary
                 },
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(if (compact) 6.dp else 10.dp))
             Column {
                 Text(
-                    "스터디 노트에 놓기",
-                    style = MaterialTheme.typography.titleSmall,
+                    if (compact) "PDF 발췌 놓기" else "스터디 노트에 놓기",
+                    style = if (compact) {
+                        MaterialTheme.typography.labelMedium
+                    } else {
+                        MaterialTheme.typography.titleSmall
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 if (caption != null) {
                     Text(
                         caption,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }

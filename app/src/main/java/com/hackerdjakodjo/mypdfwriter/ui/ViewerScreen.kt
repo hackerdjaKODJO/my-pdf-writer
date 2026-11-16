@@ -12,6 +12,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -122,6 +123,16 @@ fun ViewerScreen(
      * without closing the PDF.
      */
     onOpenStudyNote: ((StudySource) -> Unit)? = null,
+    /**
+     * Height of the embedded study pane as a fraction of the PDF content area.
+     * Ignored when [studyPane] is null.
+     */
+    studyPaneFraction: Float = 0f,
+    /**
+     * Live study-note pane content hosted below the PDF canvas and above the PDF
+     * tool/selection bar. The host owns the notebook and height state.
+     */
+    studyPane: (@Composable () -> Unit)? = null,
 ) {
     val stateFlow = vm.viewer.collectAsStateWithLifecycle()
     val bitmap by vm.pageBitmap.collectAsStateWithLifecycle()
@@ -514,6 +525,11 @@ fun ViewerScreen(
                             onCopy = { copySelection(context, selectedText) },
                             onTranslate = { TextActions.translate(context, selectedText) },
                             onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
+                            onAddToPane = if (studyPane != null) {
+                                { appendStudyExcerpt(selectedText, state.pageIndex) }
+                            } else {
+                                null
+                            },
                             onHighlight = {
                                 vm.addTextMarkup(
                                     selectedWords,
@@ -556,104 +572,130 @@ fun ViewerScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        Box(
+        BoxWithConstraints(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            PdfCanvas(
-                bitmap = bitmap,
-                pageIndex = state.pageIndex,
-                displayWidthPt = state.displayWidthPt,
-                displayHeightPt = state.displayHeightPt,
-                annotations = if (annotationsHidden) emptyList() else state.annotations,
-                tool = state.tool,
-                color = state.color,
-                strokeWidth = state.strokeWidth,
-                fontSize = state.fontSize,
-                opacity = state.opacity,
-                zoom = state.zoom,
-                documentStyle = state.documentStyle,
-                searchHighlights = searchHighlights,
-                pageCount = state.pageCount,
-                nightMode = state.nightMode,
-                textWords = pageTextWords,
-                textSelectMode = textSelectMode,
-                selectedWords = selectedWords,
-                annotationProgress = { annotation ->
-                    if (replayNote != null && replayNote?.pageIndex != state.pageIndex) 1f
-                    else annotationRevealFraction(annotation, replayNote, replayPositionMs)
-                },
-                onZoomChange = vm::setZoom,
-                onAddStroke = vm::addStroke,
-                onEraseStroke = vm::eraseStroke,
-                onRequestText = { textTarget = it },
-                onRequestStamp = { stampTarget = it },
-                onRequestSignature = { signatureTarget = it },
-                onTextSelection = { selectedWords = it },
-            )
-
-            val hintRes = when (state.tool) {
-                Tool.VIEW -> R.string.hint_view
-                Tool.TEXT -> R.string.hint_text
-                Tool.STAMP -> R.string.hint_stamp
-                Tool.SIGNATURE -> R.string.hint_signature
-                Tool.REDACT -> R.string.hint_redact
-                Tool.ERASER -> R.string.hint_eraser
-                else -> R.string.hint_draw
+            // The pane shares the content area with the PDF; the app bar and the
+            // PDF tool/selection bar stay visible, so the reader keeps context and
+            // can still start a text-selection drag while the note is open.
+            val paneFraction = if (studyPane != null) {
+                clampStudyPaneFraction(studyPaneFraction)
+            } else {
+                0f
             }
-            val hintText = when {
-                textSelectMode && state.textLoading -> "텍스트를 읽는 중…"
-                textSelectMode && pageTextWords.isEmpty() -> "이 페이지에는 선택할 수 있는 텍스트가 없습니다."
-                textSelectMode -> "텍스트를 드래그해 선택하세요."
-                else -> stringResource(hintRes)
-            }
-            Column(
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                if (annotationsHidden) {
-                    HiddenAnnotationsBanner(onShow = { annotationsHidden = false })
-                    Spacer(Modifier.height(6.dp))
-                }
-                Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                    shape = RoundedCornerShape(50),
+            Column(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .weight((1f - paneFraction).coerceAtLeast(0.10f)),
                 ) {
-                    Text(
-                        hintText,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    PdfCanvas(
+                        bitmap = bitmap,
+                        pageIndex = state.pageIndex,
+                        displayWidthPt = state.displayWidthPt,
+                        displayHeightPt = state.displayHeightPt,
+                        annotations = if (annotationsHidden) emptyList() else state.annotations,
+                        tool = state.tool,
+                        color = state.color,
+                        strokeWidth = state.strokeWidth,
+                        fontSize = state.fontSize,
+                        opacity = state.opacity,
+                        zoom = state.zoom,
+                        documentStyle = state.documentStyle,
+                        searchHighlights = searchHighlights,
+                        pageCount = state.pageCount,
+                        nightMode = state.nightMode,
+                        textWords = pageTextWords,
+                        textSelectMode = textSelectMode,
+                        selectedWords = selectedWords,
+                        annotationProgress = { annotation ->
+                            if (replayNote != null && replayNote?.pageIndex != state.pageIndex) 1f
+                            else annotationRevealFraction(annotation, replayNote, replayPositionMs)
+                        },
+                        onZoomChange = vm::setZoom,
+                        onAddStroke = vm::addStroke,
+                        onEraseStroke = vm::eraseStroke,
+                        onRequestText = { textTarget = it },
+                        onRequestStamp = { stampTarget = it },
+                        onRequestSignature = { signatureTarget = it },
+                        onTextSelection = { selectedWords = it },
                     )
+
+                    val hintRes = when (state.tool) {
+                        Tool.VIEW -> R.string.hint_view
+                        Tool.TEXT -> R.string.hint_text
+                        Tool.STAMP -> R.string.hint_stamp
+                        Tool.SIGNATURE -> R.string.hint_signature
+                        Tool.REDACT -> R.string.hint_redact
+                        Tool.ERASER -> R.string.hint_eraser
+                        else -> R.string.hint_draw
+                    }
+                    val hintText = when {
+                        textSelectMode && state.textLoading -> "텍스트를 읽는 중…"
+                        textSelectMode && pageTextWords.isEmpty() -> "이 페이지에는 선택할 수 있는 텍스트가 없습니다."
+                        textSelectMode -> "텍스트를 드래그해 선택하세요."
+                        else -> stringResource(hintRes)
+                    }
+                    Column(
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        if (annotationsHidden) {
+                            HiddenAnnotationsBanner(onShow = { annotationsHidden = false })
+                            Spacer(Modifier.height(6.dp))
+                        }
+                        Surface(
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                            shape = RoundedCornerShape(50),
+                        ) {
+                            Text(
+                                hintText,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    if (textSelectMode && selectedText.isNotBlank()) {
+                        StudyNoteDropTarget(
+                            onDrop = appendStudyExcerpt,
+                            caption = "선택한 텍스트를 여기로 끌어다 놓으세요",
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 74.dp),
+                        )
+                    }
+
+                    ViewerPageNavigator(
+                        pageIndex = state.pageIndex,
+                        pageCount = state.pageCount,
+                        onPrevious = vm::previousPage,
+                        onNext = vm::nextPage,
+                        onOpenPages = { showPages = true },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 14.dp),
+                    )
+
+                    if (state.busy) {
+                        BusyOverlay(state.busyLabel)
+                    }
                 }
-            }
 
-            if (textSelectMode && selectedText.isNotBlank()) {
-                StudyNoteDropTarget(
-                    onDrop = appendStudyExcerpt,
-                    caption = "선택한 텍스트를 여기로 끌어다 놓으세요",
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 74.dp),
-                )
-            }
-
-            ViewerPageNavigator(
-                pageIndex = state.pageIndex,
-                pageCount = state.pageCount,
-                onPrevious = vm::previousPage,
-                onNext = vm::nextPage,
-                onOpenPages = { showPages = true },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 14.dp),
-            )
-
-            if (state.busy) {
-                BusyOverlay(state.busyLabel)
+                if (studyPane != null) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(paneFraction.coerceAtLeast(0.10f)),
+                    ) {
+                        studyPane()
+                    }
+                }
             }
         }
     }
@@ -875,6 +917,7 @@ private fun TextSelectionActionBar(
     onCopy: () -> Unit,
     onTranslate: () -> Unit,
     onExcerpt: () -> Unit,
+    onAddToPane: (() -> Unit)?,
     onHighlight: () -> Unit,
     onUnderline: () -> Unit,
     onStrikeout: () -> Unit,
@@ -953,6 +996,9 @@ private fun TextSelectionActionBar(
             SelectionAction("복사", Icons.Outlined.ContentCopy, hasSelection, onCopy)
             SelectionAction("Google 번역", Icons.Outlined.Translate, hasSelection, onTranslate)
             SelectionAction("발췌", Icons.AutoMirrored.Outlined.Notes, hasSelection, onExcerpt)
+            if (onAddToPane != null) {
+                SelectionAction("패널에 추가", Icons.Outlined.EditNote, hasSelection, onAddToPane)
+            }
             SelectionAction("형광펜", Icons.Outlined.Highlight, hasSelection, onHighlight)
             SelectionAction("밑줄", Icons.Outlined.FormatUnderlined, hasSelection, onUnderline)
             SelectionAction("취소선", Icons.Outlined.FormatStrikethrough, hasSelection, onStrikeout)
