@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AutoFixNormal
 import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -96,6 +97,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hackerdjakodjo.mypdfwriter.BuildConfig
 import com.hackerdjakodjo.mypdfwriter.audio.annotationRevealFraction
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
@@ -214,6 +216,7 @@ fun NoteEditorScreen(
         else annotationRevealFraction(annotation, replayNote, replayPositionMs)
     }
     var showOverflow by remember { mutableStateOf(false) }
+    var showTrace by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     var showTemplates by remember { mutableStateOf(false) }
     var showDeletePage by remember { mutableStateOf(false) }
@@ -935,8 +938,20 @@ fun NoteEditorScreen(
                 showOverflow = false
                 onExportPdf()
             },
+            onOpenTrace = if (BuildConfig.DEBUG) {
+                {
+                    showOverflow = false
+                    showTrace = true
+                }
+            } else {
+                null
+            },
             onDismiss = { showOverflow = false },
         )
+    }
+
+    if (BuildConfig.DEBUG && showTrace) {
+        NoteTraceSheet(onDismiss = { showTrace = false })
     }
 }
 
@@ -1466,6 +1481,7 @@ private fun NoteOverflowSheet(
     onMovePageDown: () -> Unit,
     onDeletePage: () -> Unit,
     onExportPdf: () -> Unit,
+    onOpenTrace: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -1627,6 +1643,19 @@ private fun NoteOverflowSheet(
                     supporting = "현재 노트를 PDF 파일로 저장",
                     onClick = onExportPdf,
                 )
+            }
+
+            if (onOpenTrace != null) {
+                item { NoteMenuDivider() }
+                item { NoteMenuSection("디버그") }
+                item {
+                    NoteMenuRow(
+                        icon = Icons.Filled.BugReport,
+                        title = "필기 추적",
+                        supporting = "획·저장·주석 수 변화 기록 보기",
+                        onClick = onOpenTrace,
+                    )
+                }
             }
         }
     }
