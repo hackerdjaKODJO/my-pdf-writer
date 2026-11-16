@@ -153,6 +153,7 @@ fun ViewerScreen(
     var showAnnotations by remember { mutableStateOf(false) }
     var showOrganize by remember { mutableStateOf(false) }
     var showExcerpts by remember { mutableStateOf(false) }
+    var showContinuous by remember { mutableStateOf(false) }
     var showOutline by remember { mutableStateOf(false) }
     var showProperties by remember { mutableStateOf(false) }
     var showStyle by remember { mutableStateOf(false) }
@@ -172,9 +173,24 @@ fun ViewerScreen(
     }
 
     val sheetOpen = showPages || showNotes || showBookmarks || showSearch || showAnnotations ||
-        showOrganize || showExcerpts || showOutline || showProperties || showStyle || showMenu ||
+        showOrganize || showExcerpts || showContinuous || showOutline || showProperties || showStyle || showMenu ||
         textTarget != null || stampTarget != null || signatureTarget != null
     BackHandler(enabled = !sheetOpen) { vm.closeDocument() }
+
+    if (showContinuous) {
+        ContinuousReaderScreen(
+            title = state.docName,
+            pageCount = state.pageCount,
+            initialPage = state.pageIndex,
+            loadPage = { index -> vm.loadReaderPage(index) },
+            onBack = { showContinuous = false },
+            onOpenPage = { index ->
+                vm.goToPage(index)
+                showContinuous = false
+            },
+        )
+        return
+    }
 
     if (showOrganize) {
         OrganizeScreen(
@@ -343,6 +359,13 @@ fun ViewerScreen(
                                 onClick = {
                                     showMenu = false
                                     showExcerpts = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("연속 보기") },
+                                onClick = {
+                                    showMenu = false
+                                    showContinuous = true
                                 },
                             )
                             DropdownMenuItem(
