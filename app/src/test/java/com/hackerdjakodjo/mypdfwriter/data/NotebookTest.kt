@@ -89,4 +89,52 @@ class NotebookTest {
         )
         assertEquals(null, invalid.pages[0].sourcePageIndex)
     }
+
+    @Test
+    fun legacyPagesDefaultToPortraitAndWarmPaper() {
+        val notebook = Notebook.fromJson(
+            JSONObject("""{"id":"legacy","pages":[{"id":"p","template":"GRID"}]}"""),
+        )
+        val page = notebook.pages.single()
+
+        assertEquals(PageOrientation.PORTRAIT, page.orientation)
+        assertEquals(PaperTint.WARM, page.tint)
+        assertEquals(PaperTemplate.GRID, page.template)
+    }
+
+    @Test
+    fun orientationAndTintRoundTripThroughPageJson() {
+        val notebook = Notebook(
+            title = "가로 노트",
+            pages = listOf(
+                NotePage(
+                    template = PaperTemplate.MUSIC,
+                    orientation = PageOrientation.LANDSCAPE,
+                    tint = PaperTint.PALE_YELLOW,
+                ),
+                NotePage(tint = PaperTint.LIGHT_GRAY),
+            ),
+        )
+
+        val restored = Notebook.fromJson(JSONObject(notebook.toJson().toString()))
+
+        assertEquals(PageOrientation.LANDSCAPE, restored.pages[0].orientation)
+        assertEquals(PaperTint.PALE_YELLOW, restored.pages[0].tint)
+        assertEquals(PageOrientation.PORTRAIT, restored.pages[1].orientation)
+        assertEquals(PaperTint.LIGHT_GRAY, restored.pages[1].tint)
+        assertEquals(notebook.pages[0].id, restored.pages[0].id)
+    }
+
+    @Test
+    fun unknownPaperFieldsFallBackToLegacyDefaults() {
+        val notebook = Notebook.fromJson(
+            JSONObject(
+                """{"id":"x","pages":[{"id":"p","orientation":"SIDEWAYS","tint":"NEON"}]}""",
+            ),
+        )
+        val page = notebook.pages.single()
+
+        assertEquals(PageOrientation.PORTRAIT, page.orientation)
+        assertEquals(PaperTint.WARM, page.tint)
+    }
 }

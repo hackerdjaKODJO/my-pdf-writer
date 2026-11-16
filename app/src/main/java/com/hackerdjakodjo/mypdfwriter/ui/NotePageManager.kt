@@ -2,7 +2,9 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
+import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
+import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 import java.util.UUID
 
 /** Page-manager filter chips. */
@@ -16,6 +18,8 @@ data class NotePageEntry(
     val index: Int,
     val id: String,
     val template: PaperTemplate,
+    val orientation: PageOrientation,
+    val tint: PaperTint,
     val annotationCount: Int,
 )
 
@@ -54,6 +58,8 @@ object NotePageManager {
                 index = index,
                 id = page.id,
                 template = page.template,
+                orientation = page.orientation,
+                tint = page.tint,
                 annotationCount = page.annotations.size,
             )
         }

@@ -3,7 +3,9 @@ package com.hackerdjakodjo.mypdfwriter.pdf
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
+import com.hackerdjakodjo.mypdfwriter.data.NotePaper
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
+import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.ui.PaperBackground
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -20,19 +22,43 @@ import kotlin.math.roundToInt
  * Raster PDF export for local notebooks.
  *
  * Every page is composed with the same paper painter and annotation painter used by
- * the editor, then embedded as a lossless image on an A4 PDF page. Notebooks have no
- * source PDF, so flattening is both simpler and visually safer than reconstructing
- * vector primitives from the normalized annotation points.
+ * the editor, then embedded as a lossless image on an A4 PDF page. Portrait and
+ * landscape pages use their own physical page box and matching rendered pixels, so
+ * a mixed-orientation notebook exports without stretching either kind of page.
+ * Notebooks have no source PDF, so flattening is both simpler and visually safer
+ * than reconstructing vector primitives from the normalized annotation points.
  */
 object NoteExporter {
 
     const val RENDER_SCALE = 2f
 
-    fun renderWidthPx(scale: Float = RENDER_SCALE): Int =
-        (PaperBackground.A4_WIDTH_PT * scale).roundToInt().coerceIn(1, 8192)
+    /** One page's PDF points and raster pixels at [scale]. */
+    data class PageSize(
+        val widthPt: Float,
+        val heightPt: Float,
+        val widthPx: Int,
+        val heightPx: Int,
+    )
 
-    fun renderHeightPx(scale: Float = RENDER_SCALE): Int =
-        (PaperBackground.A4_HEIGHT_PT * scale).roundToInt().coerceIn(1, 8192)
+    fun pageSize(
+        orientation: PageOrientation = PageOrientation.PORTRAIT,
+        scale: Float = RENDER_SCALE,
+    ): PageSize = PageSize(
+        widthPt = NotePaper.widthPt(orientation),
+        heightPt = NotePaper.heightPt(orientation),
+        widthPx = (NotePaper.widthPt(orientation) * scale).roundToInt().coerceIn(1, 8192),
+        heightPx = (NotePaper.heightPt(orientation) * scale).roundToInt().coerceIn(1, 8192),
+    )
+
+    fun renderWidthPx(
+        scale: Float = RENDER_SCALE,
+        orientation: PageOrientation = PageOrientation.PORTRAIT,
+    ): Int = pageSize(orientation, scale).widthPx
+
+    fun renderHeightPx(
+        scale: Float = RENDER_SCALE,
+        orientation: PageOrientation = PageOrientation.PORTRAIT,
+    ): Int = pageSize(orientation, scale).heightPx
 
     /**
      * Renders one page for thumbnails or sharing. The caller owns the bitmap.
@@ -56,6 +82,7 @@ object NoteExporter {
             width = safeWidth.toFloat(),
             height = safeHeight.toFloat(),
             dark = false,
+            tint = page.tint,
         )
         val layers = page.layers.associateBy { it.id }
         val visible = page.annotations.filter { annotation ->
@@ -99,25 +126,27 @@ object NoteExporter {
             } else {
                 requestedIndices.map { allPages[it] }
             }
-            val width = renderWidthPx()
-            val height = renderHeightPx()
 
             PDDocument().use { document ->
                 pages.forEach { page ->
-                    val bitmap = renderPage(page, width, height, options.includeHiddenLayers)
+                    val size = pageSize(page.orientation)
+                    val bitmap = renderPage(
+                        page,
+                        size.widthPx,
+                        size.heightPx,
+                        options.includeHiddenLayers,
+                    )
                     try {
                         val image = LosslessFactory.createFromImage(document, bitmap)
-                        val pdfPage = PDPage(
-                            PDRectangle(PaperBackground.A4_WIDTH_PT, PaperBackground.A4_HEIGHT_PT),
-                        )
+                        val pdfPage = PDPage(PDRectangle(size.widthPt, size.heightPt))
                         document.addPage(pdfPage)
                         PDPageContentStream(document, pdfPage).use { stream ->
                             stream.drawImage(
                                 image,
                                 0f,
                                 0f,
-                                PaperBackground.A4_WIDTH_PT,
-                                PaperBackground.A4_HEIGHT_PT,
+                                size.widthPt,
+                                size.heightPt,
                             )
                         }
                     } finally {

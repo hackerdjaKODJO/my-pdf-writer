@@ -6,6 +6,7 @@ import com.hackerdjakodjo.mypdfwriter.data.CoverStyle
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.NoteLayer
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
+import com.hackerdjakodjo.mypdfwriter.data.NotePaper
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
@@ -27,7 +28,7 @@ object StudyNoteBuilder {
 
     private const val INK_COLOR = 0xFF1B1C19.toInt()
     /** A4 portrait, matching PaperBackground.A4_ASPECT. */
-    private const val PAGE_ASPECT = 595f / 842f
+    private const val PAGE_ASPECT = NotePaper.PORTRAIT_ASPECT
     private const val TEXT_LEFT = 0.075f
     private const val TEXT_TOP = 0.09f
     private const val TEXT_WIDTH_FRACTION = 0.86f

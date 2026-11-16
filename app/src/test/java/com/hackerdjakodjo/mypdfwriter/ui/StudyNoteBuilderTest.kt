@@ -4,7 +4,9 @@ import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
+import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
+import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -42,6 +44,8 @@ class StudyNoteBuilderTest {
             assertEquals("원본 PDF p.${excerpt.pageIndex + 1}", page.memo)
             assertEquals(excerpt.pageIndex, page.sourcePageIndex)
             assertEquals(excerpt.pageIndex, StudyNoteBuilder.sourcePage(notebook, index))
+            assertEquals(PageOrientation.PORTRAIT, page.orientation)
+            assertEquals(PaperTint.WARM, page.tint)
             assertEquals(1, page.layers.size)
             assertEquals(page.layers.single().id, annotation.layerId)
         }

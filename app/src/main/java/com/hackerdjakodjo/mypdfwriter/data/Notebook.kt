@@ -20,6 +20,23 @@ enum class PaperTemplate(val label: String, val category: String) {
 
 enum class CoverStyle { SOLID, GRID, DOTS, STRIPES }
 
+/** Physical paper orientation for one notebook page. Legacy JSON is portrait. */
+enum class PageOrientation(val label: String) {
+    PORTRAIT("세로"),
+    LANDSCAPE("가로"),
+}
+
+/**
+ * Small, original paper palette. The colour is a fill tint; line work is derived
+ * by [com.hackerdjakodjo.mypdfwriter.ui.PaperBackground] so every tint stays legible.
+ */
+enum class PaperTint(val label: String, val paperColor: Int) {
+    WARM("따뜻한 종이", 0xFFFCF8ED.toInt()),
+    WHITE("흰 종이", 0xFFFFFFFF.toInt()),
+    PALE_YELLOW("연노랑", 0xFFFDF6D8.toInt()),
+    LIGHT_GRAY("연회색", 0xFFF2F4F3.toInt()),
+}
+
 data class NoteLayer(
     val id: String = UUID.randomUUID().toString(),
     val name: String = "레이어 1",
@@ -105,6 +122,8 @@ data class PenPreset(
 data class NotePage(
     val id: String = UUID.randomUUID().toString(),
     val template: PaperTemplate = PaperTemplate.LINED,
+    val orientation: PageOrientation = PageOrientation.PORTRAIT,
+    val tint: PaperTint = PaperTint.WARM,
     val annotations: List<Annotation> = emptyList(),
     val memo: String = "",
     val layers: List<NoteLayer> = listOf(NoteLayer()),
@@ -126,6 +145,8 @@ data class NotePage(
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
         put("template", template.name)
+        put("orientation", orientation.name)
+        put("tint", tint.name)
         put("memo", memo)
         put("annotations", JSONArray().apply { annotations.forEach { put(it.toJson()) } })
         sourcePageIndex?.let { put("sourcePage", it) }
@@ -149,6 +170,12 @@ data class NotePage(
                 template = runCatching {
                     PaperTemplate.valueOf(o.optString("template"))
                 }.getOrDefault(PaperTemplate.LINED),
+                orientation = runCatching {
+                    PageOrientation.valueOf(o.optString("orientation"))
+                }.getOrDefault(PageOrientation.PORTRAIT),
+                tint = runCatching {
+                    PaperTint.valueOf(o.optString("tint"))
+                }.getOrDefault(PaperTint.WARM),
                 annotations = annotations,
                 memo = o.optString("memo"),
                 sourcePageIndex = o.optInt("sourcePage", -1).takeIf { it >= 0 },

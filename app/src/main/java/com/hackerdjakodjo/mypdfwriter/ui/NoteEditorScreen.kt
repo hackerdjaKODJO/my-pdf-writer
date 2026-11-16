@@ -92,6 +92,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
@@ -106,8 +107,11 @@ import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.AudioNote
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
+import com.hackerdjakodjo.mypdfwriter.data.NotePaper
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
+import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
+import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 import com.hackerdjakodjo.mypdfwriter.data.PenBoxStore
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
@@ -209,7 +213,7 @@ fun NoteEditorScreen(
         page.annotations.filter { it.id in selectedIds }
     }
     val selectionBounds = remember(selectedAnnotations) {
-        noteSelectionBounds(selectedAnnotations)
+        noteSelectionBounds(selectedAnnotations, NotePaper.aspect(page.orientation))
     }
     // Session-only and notebook-scoped: page switches keep the clipboard, closing
     // the notebook (or opening another one) discards it.
@@ -252,7 +256,8 @@ fun NoteEditorScreen(
     var showOverflow by remember { mutableStateOf(false) }
     var showTrace by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
-    var showTemplates by remember { mutableStateOf(false) }
+    var showStudio by remember { mutableStateOf(false) }
+    var showQuickTemplates by remember { mutableStateOf(false) }
     var showDeletePage by remember { mutableStateOf(false) }
     var textPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
 
@@ -335,7 +340,15 @@ fun NoteEditorScreen(
         val index = safeIndex.coerceIn(0, currentPages.lastIndex)
         val mutable = currentPages.toMutableList()
         val insertAt = index + 1
-        mutable.add(insertAt, NotePage(template = currentPages[index].template))
+        val source = currentPages[index]
+        mutable.add(
+            insertAt,
+            NotePage(
+                template = source.template,
+                orientation = source.orientation,
+                tint = source.tint,
+            ),
+        )
         applyChange(workingNotebook.copy(pages = mutable))
         onPageIndexChange(insertAt)
     }
@@ -429,6 +442,24 @@ fun NoteEditorScreen(
         }
         if (updatedPages == currentPages) return
         applyChange(workingNotebook.copy(pages = updatedPages))
+    }
+
+    fun applyStudio(choice: NoteTemplateStudioChoice) {
+        val before = workingNotebook
+        val next = NoteTemplateStudio.apply(before, safeIndex, choice)
+        if (next == before) return
+        applyChange(next)
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "template_studio",
+            "template" to choice.template.name,
+            "tint" to choice.tint.name,
+            "orientation" to choice.orientation.name,
+            "applyAll" to choice.applyToAllPages,
+            "coverStyle" to choice.coverStyle.name,
+            "pages" to next.pages.size,
+            "annotations" to notebookAnnotationCount(next),
+        )
     }
 
     fun rename(title: String) {
@@ -592,7 +623,10 @@ fun NoteEditorScreen(
             if (selected.isEmpty()) {
                 pageToEdit
             } else {
-                val transformed = transform.applyTo(selected)
+                val transformed = transform.applyTo(
+                    selected,
+                    pageAspect = NotePaper.aspect(page.orientation),
+                )
                 if (transformed == selected) {
                     pageToEdit
                 } else {
@@ -928,12 +962,26 @@ fun NoteEditorScreen(
         )
     }
 
-    if (showTemplates) {
+    if (showStudio) {
+        NoteTemplateStudioSheet(
+            notebook = workingNotebook,
+            currentIndex = safeIndex,
+            onDismiss = { showStudio = false },
+            onApply = { choice ->
+                showStudio = false
+                applyStudio(choice)
+            },
+        )
+    }
+
+    if (showQuickTemplates) {
         NoteTemplateDialog(
             current = page.template,
-            onDismiss = { showTemplates = false },
+            tint = page.tint,
+            orientation = page.orientation,
+            onDismiss = { showQuickTemplates = false },
             onApply = { template, allPages ->
-                showTemplates = false
+                showQuickTemplates = false
                 applyTemplate(template, allPages)
             },
         )
@@ -1173,7 +1221,11 @@ fun NoteEditorScreen(
             onPressureInk = { pressureInk = it },
             onTemplate = {
                 showOverflow = false
-                showTemplates = true
+                showStudio = true
+            },
+            onQuickTemplate = {
+                showOverflow = false
+                showQuickTemplates = true
             },
             onLayers = {
                 showOverflow = false
@@ -1833,6 +1885,8 @@ private fun NotePageManagerSheet(
                 }
                 item(key = "add-page") {
                     NoteAddPageCard(
+                        orientation = pages.getOrNull(safeCurrent)?.orientation
+                            ?: PageOrientation.PORTRAIT,
                         onClick = onAdd,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -1906,7 +1960,7 @@ private fun NoteManagerPageCard(
                 color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(PaperBackground.A4_ASPECT),
+                    .aspectRatio(NotePaper.aspect(page.orientation)),
             ) {
                 NotePagePreview(
                     page = page,
@@ -1956,7 +2010,7 @@ private fun NoteManagerPageCard(
             )
         }
         Text(
-            page.template.label,
+            "${page.template.label} · ${page.orientation.label} · ${page.tint.label}",
             modifier = Modifier.fillMaxWidth(),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2151,6 +2205,7 @@ private fun NoteOverflowSheet(
     onPartialEraser: (Boolean) -> Unit,
     onPressureInk: (Boolean) -> Unit,
     onTemplate: () -> Unit,
+    onQuickTemplate: () -> Unit,
     onLayers: () -> Unit,
     onOutline: () -> Unit,
     onAudioNotes: () -> Unit,
@@ -2196,8 +2251,16 @@ private fun NoteOverflowSheet(
                 NoteMenuRow(
                     icon = Icons.Filled.Dashboard,
                     title = "템플릿",
-                    supporting = "현재: $templateLabel",
+                    supporting = "스튜디오 · 종이·방향·색·표지",
                     onClick = onTemplate,
+                )
+            }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.Dashboard,
+                    title = "빠른 템플릿",
+                    supporting = "현재: $templateLabel",
+                    onClick = onQuickTemplate,
                 )
             }
             item {
@@ -2574,7 +2637,9 @@ private fun NotePageThumbnail(
                 },
             ),
             color = MaterialTheme.colorScheme.surface,
-            modifier = Modifier.fillMaxWidth().aspectRatio(PaperBackground.A4_ASPECT),
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(NotePaper.aspect(page.orientation)),
         ) {
             NotePagePreview(page = page, darkPaper = darkPaper, modifier = Modifier.fillMaxSize())
         }
@@ -2592,7 +2657,11 @@ private fun NotePageThumbnail(
 }
 
 @Composable
-private fun NoteAddPageCard(onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun NoteAddPageCard(
+    orientation: PageOrientation,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -2604,7 +2673,7 @@ private fun NoteAddPageCard(onClick: () -> Unit, modifier: Modifier = Modifier) 
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(PaperBackground.A4_ASPECT),
+                .aspectRatio(NotePaper.aspect(orientation)),
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Icon(
@@ -2625,7 +2694,7 @@ private fun NoteAddPageCard(onClick: () -> Unit, modifier: Modifier = Modifier) 
 
 @Composable
 private fun NotePagePreview(page: NotePage, darkPaper: Boolean, modifier: Modifier = Modifier) {
-    Canvas(modifier) {
+    Canvas(modifier.clipToBounds()) {
         drawIntoCanvas { canvas ->
             PaperBackground.draw(
                 canvas = canvas.nativeCanvas,
@@ -2633,6 +2702,7 @@ private fun NotePagePreview(page: NotePage, darkPaper: Boolean, modifier: Modifi
                 width = size.width,
                 height = size.height,
                 dark = darkPaper,
+                tint = page.tint,
             )
             AnnotationPainter.draw(
                 canvas = canvas.nativeCanvas,
@@ -2647,6 +2717,8 @@ private fun NotePagePreview(page: NotePage, darkPaper: Boolean, modifier: Modifi
 @Composable
 private fun NoteTemplateDialog(
     current: PaperTemplate,
+    tint: PaperTint,
+    orientation: PageOrientation,
     onDismiss: () -> Unit,
     onApply: (PaperTemplate, Boolean) -> Unit,
 ) {
@@ -2673,6 +2745,8 @@ private fun NoteTemplateDialog(
                     items(PaperTemplate.entries) { template ->
                         NoteTemplateCard(
                             template = template,
+                            tint = tint,
+                            orientation = orientation,
                             selected = selected == template,
                             onClick = { selected = template },
                         )
@@ -2703,6 +2777,8 @@ private fun NoteTemplateDialog(
 @Composable
 private fun NoteTemplateCard(
     template: PaperTemplate,
+    tint: PaperTint,
+    orientation: PageOrientation,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
@@ -2725,7 +2801,7 @@ private fun NoteTemplateCard(
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(PaperBackground.A4_ASPECT)
+                .aspectRatio(NotePaper.aspect(orientation))
                 .clip(RoundedCornerShape(3.dp)),
         ) {
             drawIntoCanvas { canvas ->
@@ -2735,6 +2811,7 @@ private fun NoteTemplateCard(
                     width = size.width,
                     height = size.height,
                     dark = false,
+                    tint = tint,
                 )
             }
         }
