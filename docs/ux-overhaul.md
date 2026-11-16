@@ -54,7 +54,25 @@ behavioral notes in `starnote-reverse-engineering.md`, `flexcil-analysis.md`, an
   source PDF, page add/duplicate/move/delete, export, finger-writing and zoom lock.
 - Wide screens keep the page rail; phones use the page pill and thumbnail sheet.
 
-## Verification
+## Focused study pane (0.8.6)
+
+- The PDF study pane opens at **85%** of the PDF content area (clamped 35–85%,
+  presets 50/70/85%). 95% is intentionally not offered: it leaves only a 5% PDF
+  strip, below the 15% minimum needed to keep the source page readable.
+- The pane header is one compact stack: drag handle, notebook title + source,
+  link and close actions, and a slim capture strip with the size presets. The
+  redundant "PDF 위 스터디 노트" heading is gone.
+- `NoteEditorScreen(compact = true)` hides the editor's own top app bar, replaces
+  the large always-on hint pill with a one-line contextual hint for non-pen tools,
+  and uses a 42 dp tool row plus a 34 dp action row instead of the full dock.
+  Colour/style, undo/redo, favourite, overflow and the page pill sit in the slim
+  row; templates, layers, outline, search, audio, source PDF, page tools, export,
+  finger writing, pressure curves and trace stay in the existing sheets.
+- Compact mode has no page rail and tighter canvas padding, so the paper occupies
+  more of the pane. Full-screen note editing keeps its original top bar, dock and
+  hint behaviour.
+
+## Verification (0.8.1)
 
 - `:app:assembleDebug`, `:app:testDebugUnitTest` (168 tests), and
   `:app:assembleRelease` (R8, unsigned locally) pass.

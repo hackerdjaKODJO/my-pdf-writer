@@ -55,9 +55,12 @@ import kotlinx.coroutines.delay
  *
  * The pane is not a modal sheet: the caller gives it a fraction of the PDF content
  * area. The handle resizes live, preset chips set 50/70/85%, and pulling below the
- * minimum height dismisses it. The header capture strip accepts the same in-app
- * drag payload as the PDF selection bar, and the link action opens the local
- * To/From index built from [com.hackerdjakodjo.mypdfwriter.data.NotePage.sourcePageIndex].
+ * minimum height dismisses it. The compact header only keeps the drag handle,
+ * notebook title/source, link and close actions plus one slim capture strip; the
+ * hosted note editor hides its own app bar and hint strip so the writing canvas
+ * takes the available height. The capture strip accepts the same in-app drag
+ * payload as the PDF selection bar, and the link action opens the local To/From
+ * index built from [com.hackerdjakodjo.mypdfwriter.data.NotePage.sourcePageIndex].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -134,6 +137,7 @@ fun StudyPaneSheet(
                         onPageIndexChange = onPageIndexChange,
                         onExportPdf = onExportPdf,
                         onOpenSourcePdf = onOpenSourcePdf,
+                        compact = true,
                     )
                 }
             }
@@ -179,7 +183,7 @@ private fun StudyPaneHeader(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(18.dp)
+                .height(16.dp)
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
                         onDragStart = {
@@ -220,8 +224,8 @@ private fun StudyPaneHeader(
         ) {
             Box(
                 Modifier
-                    .width(38.dp)
-                    .height(4.dp)
+                    .width(36.dp)
+                    .height(3.dp)
                     .background(
                         color = MaterialTheme.colorScheme.outlineVariant,
                         shape = RoundedCornerShape(50),
@@ -232,24 +236,29 @@ private fun StudyPaneHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
-                .padding(start = 14.dp, end = 2.dp),
+                .height(40.dp)
+                .padding(start = 12.dp, end = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 Icons.Outlined.EditNote,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(16.dp),
                 tint = MaterialTheme.colorScheme.primary,
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    "PDF 위 스터디 노트",
-                    style = MaterialTheme.typography.labelLarge,
+                    notebookTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    "$notebookTitle · $sourceName",
+                    buildString {
+                        append(sourceName)
+                        if (linkCount > 0) append(" · 링크 $linkCount")
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -258,7 +267,7 @@ private fun StudyPaneHeader(
             }
             IconButton(
                 onClick = onOpenLinks,
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(36.dp),
             ) {
                 Icon(
                     Icons.Outlined.Link,
@@ -267,15 +276,17 @@ private fun StudyPaneHeader(
                     } else {
                         "원본 페이지 링크 ${linkCount}개"
                     },
+                    modifier = Modifier.size(18.dp),
                 )
             }
             IconButton(
                 onClick = onClose,
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(36.dp),
             ) {
                 Icon(
                     Icons.Outlined.Close,
                     contentDescription = "스터디 노트 닫기",
+                    modifier = Modifier.size(20.dp),
                 )
             }
         }
@@ -283,7 +294,7 @@ private fun StudyPaneHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 12.dp, end = 12.dp, bottom = 6.dp),
+                .padding(start = 8.dp, end = 8.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             StudyNoteDropTarget(
@@ -292,8 +303,8 @@ private fun StudyPaneHeader(
                 compact = true,
                 modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.width(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Spacer(Modifier.width(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 STUDY_PANE_PRESETS.forEach { preset ->
                     StudyPaneSizeChip(
                         fraction = preset,
@@ -328,7 +339,7 @@ private fun StudyPaneSizeChip(
     ) {
         Text(
             studyPanePresetLabel(fraction),
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
             style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
         )

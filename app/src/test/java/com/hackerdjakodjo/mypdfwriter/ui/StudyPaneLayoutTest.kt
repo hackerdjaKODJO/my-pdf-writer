@@ -26,6 +26,39 @@ class StudyPaneLayoutTest {
     }
 
     @Test
+    fun defaultPaneOpensAtEightyFivePercentWithAPdfStripVisible() {
+        assertEquals(0.85f, STUDY_PANE_DEFAULT_FRACTION, 0.0001f)
+        assertEquals(STUDY_PANE_MAX_FRACTION, STUDY_PANE_DEFAULT_FRACTION, 0.0001f)
+        assertEquals("85%", studyPanePresetLabel(STUDY_PANE_DEFAULT_FRACTION))
+        assertTrue(isStudyPanePresetSelected(STUDY_PANE_DEFAULT_FRACTION, 0.85f))
+        assertEquals(
+            STUDY_PANE_MIN_VISIBLE_PDF_FRACTION,
+            visiblePdfFractionForPaneRequest(STUDY_PANE_DEFAULT_FRACTION),
+            0.0001f,
+        )
+    }
+
+    @Test
+    fun everyPresetLeavesAReadablePdfStripAndNinetyFivePercentIsRejected() {
+        assertTrue(
+            STUDY_PANE_PRESETS.all { preset ->
+                visiblePdfFractionForPaneRequest(preset) >=
+                    STUDY_PANE_MIN_VISIBLE_PDF_FRACTION - 0.0001f
+            },
+        )
+        // A 95% pane would leave only 5% of the PDF content area, so it stays
+        // outside the policy even though a caller can pass it in.
+        val ninetyFive = visiblePdfFractionForPaneRequest(0.95f)
+        assertTrue(ninetyFive < STUDY_PANE_MIN_VISIBLE_PDF_FRACTION)
+        assertEquals(0.05f, ninetyFive, 0.0001f)
+        assertEquals(
+            STUDY_PANE_MIN_VISIBLE_PDF_FRACTION,
+            visiblePdfFractionForPaneRequest(Float.NaN),
+            0.0001f,
+        )
+    }
+
+    @Test
     fun draggingUpGrowsAndDraggingDownShrinksThePane() {
         val total = 1000f
         val up = studyPaneFractionAfterDrag(0.70f, -120f, total)
@@ -52,17 +85,17 @@ class StudyPaneLayoutTest {
     @Test
     fun invalidDragMeasurementsLeaveTheCurrentHeightAlone() {
         assertEquals(
-            STUDY_PANE_DEFAULT_FRACTION,
+            0.70f,
             studyPaneFractionAfterDrag(0.70f, -100f, 0f),
             0.0001f,
         )
         assertEquals(
-            STUDY_PANE_DEFAULT_FRACTION,
+            0.70f,
             studyPaneFractionAfterDrag(0.70f, Float.NaN, 1000f),
             0.0001f,
         )
         assertEquals(
-            STUDY_PANE_DEFAULT_FRACTION,
+            0.70f,
             studyPaneFractionAfterDrag(0.70f, -100f, Float.POSITIVE_INFINITY),
             0.0001f,
         )

@@ -1,6 +1,7 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,5 +63,65 @@ class NoteEditorControlsTest {
         assertFalse(notePageNextEnabled(2, 3))
         assertFalse(notePageNextEnabled(0, 1))
         assertFalse(notePageNextEnabled(0, 0))
+    }
+
+    @Test
+    fun `compact dock keeps six unique primary tools in one row`() {
+        assertEquals(
+            listOf(
+                Tool.PEN,
+                Tool.HIGHLIGHT,
+                Tool.ERASER,
+                Tool.LASSO,
+                Tool.TEXT,
+                Tool.RECT,
+            ),
+            NOTE_COMPACT_DOCK_TOOLS,
+        )
+        assertEquals(6, NOTE_COMPACT_DOCK_TOOLS.toSet().size)
+        val labels = NOTE_COMPACT_DOCK_TOOLS.map(::noteCompactToolLabel)
+        assertEquals(6, labels.toSet().size)
+        assertTrue(labels.all { it.isNotBlank() })
+        assertEquals("펜", noteCompactToolLabel(Tool.PEN))
+        assertEquals("형광펜", noteCompactToolLabel(Tool.HIGHLIGHT))
+    }
+
+    @Test
+    fun `compact dock is shorter than the full dock`() {
+        val compact = noteCompactDockHeightDp(showContextTray = false)
+        val full = noteFullDockHeightDp(showContextTray = false)
+
+        assertTrue(compact < full)
+        assertTrue("compact dock should stay under 80 dp, was $compact", compact <= 80)
+        assertEquals(
+            compact + NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP,
+            noteCompactDockHeightDp(showContextTray = true),
+        )
+        assertEquals(
+            full + NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP,
+            noteFullDockHeightDp(showContextTray = true),
+        )
+    }
+
+    @Test
+    fun `compact hint is hidden for pen tools and stays one line`() {
+        assertFalse(noteCompactHintVisible(Tool.PEN))
+        assertFalse(noteCompactHintVisible(Tool.HIGHLIGHT))
+        assertTrue(noteCompactHintVisible(Tool.TEXT))
+        assertTrue(noteCompactHintVisible(Tool.ERASER))
+        assertTrue(noteCompactHintVisible(Tool.LASSO))
+
+        val hint = noteCompactHint(
+            tool = Tool.TEXT,
+            layerName = "레이어 1",
+            layerLocked = true,
+            zoomLock = true,
+        )
+        assertTrue(hint.isNotBlank())
+        assertFalse(hint.contains('\n'))
+        assertTrue(hint.contains("텍스트"))
+        assertTrue(hint.contains("레이어 1"))
+        assertTrue(hint.contains("잠김"))
+        assertTrue(hint.contains("줌 잠금"))
     }
 }
