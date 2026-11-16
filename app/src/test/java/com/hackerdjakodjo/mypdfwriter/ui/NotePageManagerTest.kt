@@ -7,7 +7,9 @@ import com.hackerdjakodjo.mypdfwriter.data.NoteLayer
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.PageBookmark
+import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
+import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertSame
@@ -137,6 +139,48 @@ class NotePageManagerTest {
             it.id.takeIf { id -> id in setOf("p0", "p1", "p2") } ?: "copy"
         })
         assertSame(middle.layers, copyOfMiddle.notebook.pages[2].layers)
+    }
+
+    @Test
+    fun duplicateCarriesOrientationAndTint() {
+        val sourcePage = NotePage(
+            id = "p0",
+            template = PaperTemplate.GRID,
+            orientation = PageOrientation.LANDSCAPE,
+            tint = PaperTint.LIGHT_GRAY,
+            layers = listOf(NoteLayer(id = "layer-p0")),
+        )
+        val source = notebook(sourcePage)
+
+        val result = NotePageManager.duplicatePages(
+            notebook = source,
+            selectedPageIds = setOf("p0"),
+            currentIndex = 0,
+        )
+
+        val copy = result.notebook.pages[1]
+        assertNotEquals("p0", copy.id)
+        assertEquals(PaperTemplate.GRID, copy.template)
+        assertEquals(PageOrientation.LANDSCAPE, copy.orientation)
+        assertEquals(PaperTint.LIGHT_GRAY, copy.tint)
+        assertEquals(sourcePage.layers, copy.layers)
+    }
+
+    @Test
+    fun pageEntriesExposePaperOrientationAndTint() {
+        val entries = NotePageManager.entries(
+            listOf(
+                NotePage(
+                    id = "p0",
+                    template = PaperTemplate.DOTTED,
+                    orientation = PageOrientation.LANDSCAPE,
+                    tint = PaperTint.PALE_YELLOW,
+                ),
+            ),
+        )
+
+        assertEquals(PageOrientation.LANDSCAPE, entries.single().orientation)
+        assertEquals(PaperTint.PALE_YELLOW, entries.single().tint)
     }
 
     @Test

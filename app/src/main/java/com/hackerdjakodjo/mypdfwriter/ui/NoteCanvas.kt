@@ -43,15 +43,16 @@ private const val NOTE_PAGE_SCALE = 2.5f
 private const val MAX_NOTE_ZOOM = 6f
 private const val ERASER_RADIUS_FRACTION = 0.028f
 
-private val notePageWidth = PaperBackground.pageWidthPx(NOTE_PAGE_SCALE)
-private val notePageHeight = PaperBackground.pageHeightPx(NOTE_PAGE_SCALE)
-
 /**
  * A template page plus its annotation layer.
  *
- * The paper is painted in page space at 2.5x A4 points; pan/zoom is applied by the
+ * The paper is painted in page space at 2.5x PDF points; pan/zoom is applied by the
  * native canvas transform. Drawing previews use the same painter as the committed
  * annotations, so what the user sees is what gets saved and exported.
+ *
+ * Orientation is per page: portrait is 595 x 842 pt and landscape is 842 x 595 pt.
+ * Gesture normalization, pan limits, selection bounds and the eraser preview all
+ * use that page's dimensions, so one notebook can mix page orientations.
  *
  * Input rules:
  *  - penOnly = true: only a stylus (or a stylus eraser) draws. Fingers pan/pinch.
@@ -81,10 +82,13 @@ fun NoteCanvas(
     onLassoSelect: (polygon: List<NormalizedPoint>, rectangular: Boolean) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
-    // Notebooks are a paper metaphor: keep the sheet cream even in a dark app theme so
-    // dark ink and the exported PDF match what is seen here.
+    // Notebooks are a paper metaphor: keep the chosen sheet tint even in a dark app
+    // theme so dark ink and the exported PDF match what is seen here.
     var pan by remember(page.id) { mutableStateOf(Offset.Zero) }
     var zoom by remember(page.id) { mutableStateOf(1f) }
+
+    val pageWidth = PaperBackground.pageWidthPx(NOTE_PAGE_SCALE, page.orientation)
+    val pageHeight = PaperBackground.pageHeightPx(NOTE_PAGE_SCALE, page.orientation)
 
     // The pointerInput coroutine below lives across strokes and does not restart when
     // the parent recomposes. Always read the newest callbacks so a stroke commits onto
@@ -101,7 +105,7 @@ fun NoteCanvas(
     val eraserTrail = remember { mutableStateListOf<NormalizedPoint>() }
     val lassoPoints = remember { mutableStateListOf<NormalizedPoint>() }
 
-    LaunchedEffect(page.id) {
+    LaunchedEffect(page.id, page.orientation) {
         livePoints.clear()
         eraserTrail.clear()
         lassoPoints.clear()
@@ -115,12 +119,12 @@ fun NoteCanvas(
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val viewW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
         val viewH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
-        val fit = min(viewW / notePageWidth, viewH / notePageHeight)
+        val fit = min(viewW / pageWidth, viewH / pageHeight)
         val total = fit * zoom
 
-        LaunchedEffect(total, viewW, viewH) {
-            val limitX = ((notePageWidth * total - viewW) / 2f).coerceAtLeast(0f)
-            val limitY = ((notePageHeight * total - viewH) / 2f).coerceAtLeast(0f)
+        LaunchedEffect(total, viewW, viewH, pageWidth, pageHeight) {
+            val limitX = ((pageWidth * total - viewW) / 2f).coerceAtLeast(0f)
+            val limitY = ((pageHeight * total - viewH) / 2f).coerceAtLeast(0f)
             val clamped = Offset(
                 pan.x.coerceIn(-limitX, limitX),
                 pan.y.coerceIn(-limitY, limitY),
@@ -130,6 +134,7 @@ fun NoteCanvas(
 
         val gestureModifier = Modifier.pointerInput(
             page.id,
+            page.orientation,
             tool,
             penOnly,
             zoomLock,
@@ -144,18 +149,18 @@ fun NoteCanvas(
 
             fun normalize(position: Offset, pressure: Float = 1f): NormalizedPoint {
                 val scale = (fit * zoom).coerceAtLeast(0.0001f)
-                val x = (position.x - widthPx / 2f - pan.x) / scale + notePageWidth / 2f
-                val y = (position.y - heightPx / 2f - pan.y) / scale + notePageHeight / 2f
+                val x = (position.x - widthPx / 2f - pan.x) / scale + pageWidth / 2f
+                val y = (position.y - heightPx / 2f - pan.y) / scale + pageHeight / 2f
                 return NormalizedPoint(
-                    (x / notePageWidth).coerceIn(0f, 1f),
-                    (y / notePageHeight).coerceIn(0f, 1f),
+                    (x / pageWidth).coerceIn(0f, 1f),
+                    (y / pageHeight).coerceIn(0f, 1f),
                     pressure,
                 )
             }
 
             fun clampPan(candidate: Offset, scale: Float): Offset {
-                val limitX = ((notePageWidth * scale - widthPx) / 2f).coerceAtLeast(0f)
-                val limitY = ((notePageHeight * scale - heightPx) / 2f).coerceAtLeast(0f)
+                val limitX = ((pageWidth * scale - widthPx) / 2f).coerceAtLeast(0f)
+                val limitY = ((pageHeight * scale - heightPx) / 2f).coerceAtLeast(0f)
                 return Offset(
                     candidate.x.coerceIn(-limitX, limitX),
                     candidate.y.coerceIn(-limitY, limitY),
@@ -403,33 +408,34 @@ fun NoteCanvas(
                 native.save()
                 native.translate(size.width / 2f + pan.x, size.height / 2f + pan.y)
                 native.scale(total, total)
-                native.translate(-notePageWidth / 2f, -notePageHeight / 2f)
+                native.translate(-pageWidth / 2f, -pageHeight / 2f)
 
                 val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     this.color = android.graphics.Color.argb(34, 0, 0, 0)
                     style = Paint.Style.FILL
                 }
-                native.drawRect(6f, 8f, notePageWidth + 6f, notePageHeight + 8f, shadow)
+                native.drawRect(6f, 8f, pageWidth + 6f, pageHeight + 8f, shadow)
 
                 PaperBackground.draw(
                     canvas = native,
                     template = page.template,
-                    width = notePageWidth,
-                    height = notePageHeight,
+                    width = pageWidth,
+                    height = pageHeight,
                     dark = false,
+                    tint = page.tint,
                 )
 
                 native.save()
-                native.clipRect(0f, 0f, notePageWidth, notePageHeight)
+                native.clipRect(0f, 0f, pageWidth, pageHeight)
                 AnnotationPainter.draw(
                     canvas = native,
                     annotations = page.annotations,
-                    width = notePageWidth,
-                    height = notePageHeight,
+                    width = pageWidth,
+                    height = pageHeight,
                     progress = annotationProgress,
                 )
 
-                selectionBounds?.let { drawSelectionBounds(native, it) }
+                selectionBounds?.let { drawSelectionBounds(native, it, pageWidth, pageHeight) }
 
                 val previewPoints = livePoints.toList()
                 if (previewPoints.isNotEmpty()) {
@@ -453,8 +459,8 @@ fun NoteCanvas(
                                 PenStyle.BALLPOINT
                             },
                         ),
-                        width = notePageWidth,
-                        height = notePageHeight,
+                        width = pageWidth,
+                        height = pageHeight,
                     )
                 }
 
@@ -476,16 +482,16 @@ fun NoteCanvas(
                             points = listOf(start, end),
                             opacity = if (previewType == AnnotationType.REDACT) 1f else opacity,
                         ),
-                        width = notePageWidth,
-                        height = notePageHeight,
+                        width = pageWidth,
+                        height = pageHeight,
                     )
                 }
 
                 if (tool == Tool.LASSO && lassoPoints.size >= 2) {
-                    drawLassoPreview(native, lassoPoints.toList(), rectangular = false)
+                    drawLassoPreview(native, lassoPoints.toList(), rectangular = false, width = pageWidth, height = pageHeight)
                 }
                 if (tool == Tool.LASSO_RECT && start != null && end != null) {
-                    drawLassoPreview(native, listOf(start, end), rectangular = true)
+                    drawLassoPreview(native, listOf(start, end), rectangular = true, width = pageWidth, height = pageHeight)
                 }
 
                 val eraser = eraserPoint
@@ -493,10 +499,10 @@ fun NoteCanvas(
                     AnnotationPainter.drawEraserPreview(
                         canvas = native,
                         point = NormalizedPoint(
-                            eraser.x * notePageWidth,
-                            eraser.y * notePageHeight,
+                            eraser.x * pageWidth,
+                            eraser.y * pageHeight,
                         ),
-                        radiusPx = ERASER_RADIUS_FRACTION * notePageWidth,
+                        radiusPx = ERASER_RADIUS_FRACTION * pageWidth,
                     )
                 }
 
@@ -511,11 +517,13 @@ fun NoteCanvas(
 private fun drawSelectionBounds(
     canvas: android.graphics.Canvas,
     bounds: NoteSelectionBounds,
+    width: Float,
+    height: Float,
 ) {
-    val left = bounds.left * notePageWidth
-    val top = bounds.top * notePageHeight
-    val right = bounds.right * notePageWidth
-    val bottom = bounds.bottom * notePageHeight
+    val left = bounds.left * width
+    val top = bounds.top * height
+    val right = bounds.right * width
+    val bottom = bounds.bottom * height
     if (right - left < 0.5f || bottom - top < 0.5f) return
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.argb(220, 31, 78, 121)
@@ -531,6 +539,8 @@ private fun drawLassoPreview(
     canvas: android.graphics.Canvas,
     points: List<NormalizedPoint>,
     rectangular: Boolean,
+    width: Float,
+    height: Float,
 ) {
     if (points.size < 2) return
     val path = Path()
@@ -538,16 +548,16 @@ private fun drawLassoPreview(
         val a = points.first()
         val b = points.last()
         path.addRect(
-            minOf(a.x, b.x) * notePageWidth,
-            minOf(a.y, b.y) * notePageHeight,
-            maxOf(a.x, b.x) * notePageWidth,
-            maxOf(a.y, b.y) * notePageHeight,
+            minOf(a.x, b.x) * width,
+            minOf(a.y, b.y) * height,
+            maxOf(a.x, b.x) * width,
+            maxOf(a.y, b.y) * height,
             Path.Direction.CW,
         )
     } else {
-        path.moveTo(points.first().x * notePageWidth, points.first().y * notePageHeight)
+        path.moveTo(points.first().x * width, points.first().y * height)
         for (i in 1 until points.size) {
-            path.lineTo(points[i].x * notePageWidth, points[i].y * notePageHeight)
+            path.lineTo(points[i].x * width, points[i].y * height)
         }
         path.close()
     }

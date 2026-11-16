@@ -3,7 +3,10 @@ package com.hackerdjakodjo.mypdfwriter.ui
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
+import com.hackerdjakodjo.mypdfwriter.data.NotePaper
+import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
+import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 import kotlin.math.max
 
 /**
@@ -16,18 +19,29 @@ import kotlin.math.max
  */
 object PaperBackground {
 
-    const val A4_WIDTH_PT = 595f
-    const val A4_HEIGHT_PT = 842f
-    const val A4_ASPECT = A4_WIDTH_PT / A4_HEIGHT_PT
+    const val A4_WIDTH_PT = NotePaper.PORTRAIT_WIDTH_PT
+    const val A4_HEIGHT_PT = NotePaper.PORTRAIT_HEIGHT_PT
+    const val A4_ASPECT = NotePaper.PORTRAIT_ASPECT
 
     /** The editor renders the writing surface at 2.5x PDF points. */
     const val DEFAULT_SCALE = 2.5f
 
-    fun pageAspect(template: PaperTemplate): Float = A4_ASPECT
+    fun pageAspect(
+        template: PaperTemplate,
+        orientation: PageOrientation = PageOrientation.PORTRAIT,
+    ): Float = NotePaper.aspect(orientation)
 
-    fun pageWidthPx(scale: Float = DEFAULT_SCALE): Float = A4_WIDTH_PT * scale
+    fun pageAspect(orientation: PageOrientation): Float = NotePaper.aspect(orientation)
 
-    fun pageHeightPx(scale: Float = DEFAULT_SCALE): Float = A4_HEIGHT_PT * scale
+    fun pageWidthPx(
+        scale: Float = DEFAULT_SCALE,
+        orientation: PageOrientation = PageOrientation.PORTRAIT,
+    ): Float = NotePaper.widthPt(orientation) * scale
+
+    fun pageHeightPx(
+        scale: Float = DEFAULT_SCALE,
+        orientation: PageOrientation = PageOrientation.PORTRAIT,
+    ): Float = NotePaper.heightPt(orientation) * scale
 
     fun draw(
         canvas: Canvas,
@@ -35,9 +49,10 @@ object PaperBackground {
         width: Float,
         height: Float,
         dark: Boolean = false,
+        tint: PaperTint = PaperTint.WARM,
     ) {
         if (width <= 0f || height <= 0f) return
-        val colors = if (dark) DarkColors else LightColors
+        val colors = colors(tint, dark)
         canvas.drawRect(0f, 0f, width, height, fillPaint(colors.paper))
 
         when (template) {
@@ -387,6 +402,79 @@ object PaperBackground {
         ink = 0xFFA39884.toInt(),
         edge = 0xFF3B362E.toInt(),
     )
+
+    /**
+     * Tint changes the sheet fill and its paper-line contrast. The notebook stays
+     * paper-like in dark theme: it is dimmed, not turned into a black app surface.
+     */
+    private fun colors(tint: PaperTint, dark: Boolean): Colors {
+        if (!dark) {
+            return when (tint) {
+                PaperTint.WARM -> LightColors
+                PaperTint.WHITE -> Colors(
+                    paper = 0xFFFFFFFF.toInt(),
+                    shade = 0xFFF4F4F1.toInt(),
+                    minor = 0xFFE5E5E0.toInt(),
+                    major = 0xFFC9C9C2.toInt(),
+                    accent = 0xFFC88E7B.toInt(),
+                    ink = 0xFF8A7B63.toInt(),
+                    edge = 0xFFE2E2DD.toInt(),
+                )
+
+                PaperTint.PALE_YELLOW -> Colors(
+                    paper = 0xFFFDF6D8.toInt(),
+                    shade = 0xFFF5ECC4.toInt(),
+                    minor = 0xFFEADFAF.toInt(),
+                    major = 0xFFD3C58D.toInt(),
+                    accent = 0xFFC08A6E.toInt(),
+                    ink = 0xFF88794F.toInt(),
+                    edge = 0xFFE8DCB4.toInt(),
+                )
+
+                PaperTint.LIGHT_GRAY -> Colors(
+                    paper = 0xFFF2F4F3.toInt(),
+                    shade = 0xFFE9ECEA.toInt(),
+                    minor = 0xFFDDE1DE.toInt(),
+                    major = 0xFFC4CBC7.toInt(),
+                    accent = 0xFFB48678.toInt(),
+                    ink = 0xFF777F7B.toInt(),
+                    edge = 0xFFDCE1DE.toInt(),
+                )
+            }
+        }
+        return when (tint) {
+            PaperTint.WARM -> DarkColors
+            PaperTint.WHITE -> Colors(
+                paper = 0xFF242524.toInt(),
+                shade = 0xFF2E302F.toInt(),
+                minor = 0xFF414442.toInt(),
+                major = 0xFF565A57.toInt(),
+                accent = 0xFF8C6255.toInt(),
+                ink = 0xFFA6ABA8.toInt(),
+                edge = 0xFF3D403E.toInt(),
+            )
+
+            PaperTint.PALE_YELLOW -> Colors(
+                paper = 0xFF2A2719.toInt(),
+                shade = 0xFF342F1E.toInt(),
+                minor = 0xFF463F2A.toInt(),
+                major = 0xFF5C5338.toInt(),
+                accent = 0xFF8C6255.toInt(),
+                ink = 0xFFB0A582.toInt(),
+                edge = 0xFF423B27.toInt(),
+            )
+
+            PaperTint.LIGHT_GRAY -> Colors(
+                paper = 0xFF232625.toInt(),
+                shade = 0xFF2C302E.toInt(),
+                minor = 0xFF3D4240.toInt(),
+                major = 0xFF4F5552.toInt(),
+                accent = 0xFF8C6255.toInt(),
+                ink = 0xFFA0A9A5.toInt(),
+                edge = 0xFF363B39.toInt(),
+            )
+        }
+    }
 
     private fun fillPaint(color: Int): Paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         this.color = color

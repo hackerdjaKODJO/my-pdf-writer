@@ -10,7 +10,9 @@ import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NotebookDraft
 import com.hackerdjakodjo.mypdfwriter.data.NotebookStore
+import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
+import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExporter
@@ -223,8 +225,13 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
 
     fun addPage(template: PaperTemplate? = null) {
         val current = _current.value ?: return
-        val pageTemplate = template ?: current.pages.lastOrNull()?.template ?: PaperTemplate.LINED
-        val pages = current.pages + NotePage(template = pageTemplate)
+        val previous = current.pages.lastOrNull()
+        val pageTemplate = template ?: previous?.template ?: PaperTemplate.LINED
+        val pages = current.pages + NotePage(
+            template = pageTemplate,
+            orientation = previous?.orientation ?: PageOrientation.PORTRAIT,
+            tint = previous?.tint ?: PaperTint.WARM,
+        )
         updateCurrent(current.copy(pages = pages))
         _pageIndex.value = pages.lastIndex
     }
