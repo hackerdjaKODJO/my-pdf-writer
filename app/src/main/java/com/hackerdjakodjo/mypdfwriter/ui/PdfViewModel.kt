@@ -24,6 +24,9 @@ import com.hackerdjakodjo.mypdfwriter.data.PageOps
 import com.hackerdjakodjo.mypdfwriter.data.PageSize
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
 import com.hackerdjakodjo.mypdfwriter.data.PageTransforms
+import com.hackerdjakodjo.mypdfwriter.data.PdfBookmark
+import com.hackerdjakodjo.mypdfwriter.data.PdfReadingState
+import com.hackerdjakodjo.mypdfwriter.data.PdfReadingStore
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
 import com.hackerdjakodjo.mypdfwriter.data.Tool
@@ -84,6 +87,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private val docStyleStore = DocumentStyleStore(application)
     private val libraryStore = LibraryStore(application)
     private val excerptStore = ExcerptStore(application)
+    private val readingStore = PdfReadingStore(application)
     private val resolver = application.contentResolver
 
     private val sourceDir = File(application.filesDir, "sources").apply { mkdirs() }
@@ -110,12 +114,16 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private val _excerpts = MutableStateFlow<List<Excerpt>>(emptyList())
     val excerpts: StateFlow<List<Excerpt>> = _excerpts.asStateFlow()
 
+    private val _bookmarks = MutableStateFlow<List<PdfBookmark>>(emptyList())
+    val bookmarks: StateFlow<List<PdfBookmark>> = _bookmarks.asStateFlow()
+
     private var sourceFile: File? = null
     private var workingFile: File? = null
     private var sourceSizes: List<PageSize> = emptyList()
     private var pageTexts: List<String>? = null
     private var renderJob: Job? = null
     private var searchJob: Job? = null
+    private var readingSaveJob: Job? = null
     private var currentPageTextsKey: String? = null
 
     private data class DocSnapshot(
@@ -131,6 +139,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     // ---------------------------------------------------------------- opening
 
     fun openDocument(uri: Uri, addToRecents: Boolean = true) {
+        saveReadingNow()
         viewModelScope.launch {
             _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.rendering_page)) }
             runCatching {
@@ -148,6 +157,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 val pages = saved?.pages ?: List(sourceCount) { PageSpec(it) }
                 val annotations = saved?.annotations ?: emptyList()
                 val notes = saved?.notes ?: emptyMap()
+                val reading = (readingStore.load(docId) ?: PdfReadingState()).normalized(pages.size)
                 val working = File(workingDir, "$docId.pdf")
                 repo.assemble(source, pages, working)
 
@@ -155,6 +165,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 workingFile = working
                 sourceSizes = sizes
                 _excerpts.value = excerptStore.load(docId)
+                _bookmarks.value = reading.bookmarks
                 pageTexts = null
                 currentPageTextsKey = null
                 _outline.value = null
@@ -163,12 +174,13 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 redoStack.clear()
 
                 val displayName = saved?.displayName?.takeIf { it.isNotBlank() } ?: name
+                val restoredPage = reading.lastPage.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
                 _pageBitmap.value = null
                 _viewer.value = ViewerUiState(
                     docId = docId,
                     docName = displayName,
                     pageCount = pages.size,
-                    pageIndex = 0,
+                    pageIndex = restoredPage,
                     pages = pages,
                     sourcePageCount = sourceCount,
                     annotations = annotations,
@@ -177,7 +189,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     canRedo = false,
                     busy = true,
                     busyLabel = text(R.string.rendering_page),
-                    noteDraft = notes[0] ?: "",
+                    noteDraft = notes[restoredPage] ?: "",
                     documentStyle = style,
                 )
                 persistNow()
@@ -186,11 +198,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                         RecentDoc(uri.toString(), displayName, pages.size, System.currentTimeMillis()),
                     )
                 }
-                renderPage(0)
+                renderPage(restoredPage)
             }.onFailure { error ->
                 _viewer.value = null
                 _pageBitmap.value = null
                 _excerpts.value = emptyList()
+                _bookmarks.value = emptyList()
                 _libraryMessage.value = text(R.string.error_generic, error.message ?: text(R.string.unsupported_pdf))
             }
         }
@@ -212,12 +225,14 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun closeDocument() {
         renderJob?.cancel()
         searchJob?.cancel()
+        saveReadingNow()
         persistNow()
         _viewer.value = null
         _pageBitmap.value = null
         _outline.value = null
         _metadata.value = null
         _excerpts.value = emptyList()
+        _bookmarks.value = emptyList()
         pageTexts = null
         sourceSizes = emptyList()
         sourceFile = null
@@ -250,6 +265,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     noteDraft = it.notes[index] ?: "",
                 )
             }
+            scheduleReadingSave(index)
         }
     }
 
@@ -258,6 +274,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val target = index.coerceIn(0, (state.pageCount - 1).coerceAtLeast(0))
         if (target == state.pageIndex && _pageBitmap.value != null) return
         renderPage(target)
+        scheduleReadingSave(target)
     }
 
     fun nextPage() = goToPage((_viewer.value?.pageIndex ?: 0) + 1)
@@ -1007,6 +1024,43 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         return texts.getOrNull(state.pageIndex).orEmpty().trim()
     }
 
+    // ---------------------------------------------------------------- reading
+
+    fun addCurrentPageBookmark(title: String) {
+        val state = _viewer.value ?: return
+        if (_bookmarks.value.any { it.pageIndex == state.pageIndex }) {
+            _viewer.update { it?.copy(message = "이미 북마크한 페이지입니다.") }
+            return
+        }
+        val label = title.trim().ifBlank { "${state.pageIndex + 1}쪽" }
+        val bookmark = PdfBookmark(pageIndex = state.pageIndex, title = label)
+        _bookmarks.value = PdfReadingState(bookmarks = _bookmarks.value)
+            .withBookmark(bookmark)
+            .bookmarks
+        saveReadingNow()
+        _viewer.update { it?.copy(message = "북마크를 추가했습니다.") }
+    }
+
+    fun deleteBookmark(id: String) {
+        val updated = _bookmarks.value.filterNot { it.id == id }
+        if (updated.size == _bookmarks.value.size) return
+        _bookmarks.value = updated
+        saveReadingNow()
+        _viewer.update { it?.copy(message = "북마크를 삭제했습니다.") }
+    }
+
+    fun renameBookmark(id: String, title: String) {
+        val label = title.trim()
+        if (label.isEmpty()) return
+        val current = _bookmarks.value.firstOrNull { it.id == id } ?: return
+        if (current.title == label) return
+        _bookmarks.value = PdfReadingState(bookmarks = _bookmarks.value)
+            .withRenamedBookmark(id, label)
+            .bookmarks
+        saveReadingNow()
+        _viewer.update { it?.copy(message = "북마크 이름을 바꿨습니다.") }
+    }
+
     // ---------------------------------------------------------------- search
 
     fun search(query: String) {
@@ -1119,6 +1173,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             docStore.delete(id)
             docStyleStore.delete(id)
             excerptStore.delete(id)
+            readingStore.delete(id)
             File(sourceDir, "$id.pdf").delete()
         }
     }
@@ -1147,6 +1202,32 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) { docStore.save(doc) }
     }
 
+    /** Saves the page the user landed on after a short pause so page flipping stays cheap. */
+    private fun scheduleReadingSave(pageIndex: Int) {
+        val state = _viewer.value ?: return
+        val reading = PdfReadingState(
+            lastPage = pageIndex.coerceIn(0, (state.pageCount - 1).coerceAtLeast(0)),
+            bookmarks = _bookmarks.value,
+        ).normalized(state.pageCount)
+        readingSaveJob?.cancel()
+        readingSaveJob = viewModelScope.launch {
+            delay(READING_SAVE_DELAY_MS)
+            withContext(Dispatchers.IO) { readingStore.save(state.docId, reading) }
+        }
+    }
+
+    /** Flushes progress and bookmarks without debounce (bookmark edits, document close). */
+    private fun saveReadingNow() {
+        readingSaveJob?.cancel()
+        readingSaveJob = null
+        val state = _viewer.value ?: return
+        val reading = PdfReadingState(
+            lastPage = state.pageIndex.coerceIn(0, (state.pageCount - 1).coerceAtLeast(0)),
+            bookmarks = _bookmarks.value,
+        ).normalized(state.pageCount)
+        viewModelScope.launch(Dispatchers.IO) { readingStore.save(state.docId, reading) }
+    }
+
     private fun text(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
 
     private fun docIdFor(uri: Uri): String {
@@ -1156,5 +1237,6 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     private companion object {
         const val RENDER_SCALE = 2.2f
+        const val READING_SAVE_DELAY_MS = 450L
     }
 }
