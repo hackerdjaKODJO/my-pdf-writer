@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.0`** — `versionCode = 9`.
-- **Next version is `0.8.1` — `versionCode = 10`.**
+- Current delivered version: **`0.8.1`** — `versionCode = 10`.
+- **Next version is `0.8.2` — `versionCode = 11`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -52,6 +52,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.1` | 10 | 2026-11-16 | `v0.8.1` | PDF viewer hub/tool dock, home continue/quick actions, note editor style dock |
 | `0.8.0` | 9 | 2026-11-16 | `95a4a87` | Point-level audio stroke replay, search-result highlights, local ZIP backup/restore |
 | `0.7.0` | 8 | 2026-11-16 | `d7673a8` | Study-note drag & drop, audio timeline playback with whole-stroke reveal |
 | `0.6.0` | 7 | 2026-11-16 | `8dfe4bc` | PDF canvas text selection/markup, study notes, 2/4-page spread, popup, local audio notes |
