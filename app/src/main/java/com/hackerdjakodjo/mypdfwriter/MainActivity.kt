@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.ui.BackupSheet
 import com.hackerdjakodjo.mypdfwriter.ui.BackupViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.NoteEditorScreen
+import com.hackerdjakodjo.mypdfwriter.ui.NoteTraceSheet
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookHomeScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.PdfViewModel
@@ -69,6 +70,7 @@ class MainActivity : ComponentActivity() {
             MyPdfWriterTheme {
                 var showTools by remember { mutableStateOf(false) }
                 var showBackup by remember { mutableStateOf(false) }
+                var showTrace by remember { mutableStateOf(false) }
                 val viewer by viewModel.viewer.collectAsStateWithLifecycle()
                 val notebooks by notebookViewModel.notebooks.collectAsStateWithLifecycle()
                 val currentNote by notebookViewModel.current.collectAsStateWithLifecycle()
@@ -126,6 +128,7 @@ class MainActivity : ComponentActivity() {
                             onMoveFolder = { id, folder -> notebookViewModel.moveFolder(id, folder) },
                             onSetTags = { id, tags -> notebookViewModel.setTags(id, tags) },
                             onOpenBackup = { showBackup = true },
+                            onOpenTrace = { showTrace = true },
                         )
                         else -> ViewerScreen(
                             vm = viewModel,
@@ -162,6 +165,9 @@ class MainActivity : ComponentActivity() {
                         progress = backupState.progress,
                         message = backupState.message,
                     )
+                }
+                if (BuildConfig.DEBUG && showTrace) {
+                    NoteTraceSheet(onDismiss = { showTrace = false })
                 }
             }
         }
