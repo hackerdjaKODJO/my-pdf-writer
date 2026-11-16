@@ -185,9 +185,22 @@ fun NoteEditorScreen(
     val selectedIds = remember(selection, page.annotations) {
         selection.intersect(page.annotations.map { it.id }.toSet())
     }
+    val selectedAnnotations = remember(selectedIds, page.annotations) {
+        page.annotations.filter { it.id in selectedIds }
+    }
+    val selectionBounds = remember(selectedAnnotations) {
+        noteSelectionBounds(selectedAnnotations)
+    }
+    // Session-only and notebook-scoped: page switches keep the clipboard, closing
+    // the notebook (or opening another one) discards it.
+    var clipboard by remember(workingNotebook.id) { mutableStateOf(NoteClipboard()) }
 
     var showPenBox by remember { mutableStateOf(false) }
     var showStyle by remember { mutableStateOf(false) }
+    var showSelectionSheet by remember { mutableStateOf(false) }
+
+    // A page switch invalidates the selection; close the editor with it.
+    LaunchedEffect(page.id) { showSelectionSheet = false }
     var showPageSheet by remember { mutableStateOf(false) }
     var showAudioNotes by remember { mutableStateOf(false) }
     var showAudioReplay by remember { mutableStateOf(false) }
@@ -498,6 +511,82 @@ fun NoteEditorScreen(
         selection = emptySet()
     }
 
+    fun transformSelection(transform: NoteSelectionTransform, kind: String) {
+        if (selectedIds.isEmpty() || transform.isIdentity) return
+        var changedCount = 0
+        updateCurrentPage { pageToEdit ->
+            val selected = pageToEdit.annotations.filter { it.id in selectedIds }
+            if (selected.isEmpty()) {
+                pageToEdit
+            } else {
+                val transformed = transform.applyTo(selected)
+                if (transformed == selected) {
+                    pageToEdit
+                } else {
+                    val byId = transformed.associateBy { it.id }
+                    changedCount = transformed.size
+                    pageToEdit.copy(
+                        annotations = pageToEdit.annotations.map { byId[it.id] ?: it },
+                    )
+                }
+            }
+        }
+        if (changedCount == 0) return
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "transform",
+            "kind" to kind,
+            "count" to changedCount,
+            "dx" to transform.translateX,
+            "dy" to transform.translateY,
+            "scale" to transform.scale,
+            "rotation" to transform.rotationDegrees,
+            "pageIndex" to safeIndex,
+            "annotations" to notebookAnnotationCount(workingNotebook),
+        )
+    }
+
+    fun copySelection() {
+        if (selectedIds.isEmpty()) return
+        val currentPage = workingNotebook.pages.getOrNull(safeIndex) ?: return
+        val selected = currentPage.annotations.filter { it.id in selectedIds }
+        if (selected.isEmpty()) return
+        clipboard = NoteClipboard.fromSelection(selected, safeIndex)
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "copy",
+            "count" to selected.size,
+            "clipboard" to clipboard.size,
+            "sourcePageIndex" to safeIndex,
+        )
+    }
+
+    fun pasteClipboard() {
+        if (clipboard.isEmpty) return
+        val layer = activeLayer ?: page.layers.firstOrNull() ?: return
+        if (layer.locked) return
+        val pasted = clipboard.paste(targetLayerId = layer.id)
+        if (pasted.isEmpty()) return
+        val pastedIds = pasted.map { it.id }.toSet()
+        updateCurrentPage { pageToEdit ->
+            pageToEdit.copy(annotations = pageToEdit.annotations + pasted)
+        }
+        // Keep the pasted ink selected so follow-up nudges/scales apply to it.
+        selection = pastedIds
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "paste",
+            "count" to pasted.size,
+            "clipboard" to clipboard.size,
+            "sourcePageIndex" to clipboard.sourcePageIndex,
+            "pageIndex" to safeIndex,
+            "offsetX" to NOTE_CLIPBOARD_PASTE_OFFSET,
+            "offsetY" to NOTE_CLIPBOARD_PASTE_OFFSET,
+            "layer" to layer.name,
+            "annotations" to notebookAnnotationCount(workingNotebook),
+        )
+    }
+
     fun applyPenPreset(preset: PenPreset) {
         tool = preset.tool
         color = preset.color
@@ -650,10 +739,19 @@ fun NoteEditorScreen(
                 if (selectedIds.isNotEmpty()) {
                     NoteSelectionBar(
                         count = selectedIds.size,
+                        onEdit = { showSelectionSheet = true },
                         onColor = { recolorSelection(it) },
                         onDuplicate = { duplicateSelection() },
                         onDelete = { deleteSelection() },
                         onClear = { selection = emptySet() },
+                    )
+                } else if (clipboard.isNotEmpty) {
+                    NoteClipboardBar(
+                        count = clipboard.size,
+                        sourcePageIndex = clipboard.sourcePageIndex,
+                        onPaste = { pasteClipboard() },
+                        onEdit = { showSelectionSheet = true },
+                        onClear = { clipboard = NoteClipboard() },
                     )
                 }
                 NoteDock(
@@ -696,6 +794,7 @@ fun NoteEditorScreen(
                         penStyle = penStyle,
                         penOnly = !fingerWriting,
                         zoomLock = zoomLock,
+                        selectionBounds = selectionBounds,
                         annotationProgress = annotationProgress,
                         hint = hint,
                         onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
@@ -730,6 +829,7 @@ fun NoteEditorScreen(
                     penStyle = penStyle,
                     penOnly = !fingerWriting,
                     zoomLock = zoomLock,
+                    selectionBounds = selectionBounds,
                     annotationProgress = annotationProgress,
                     hint = hint,
                     onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
@@ -907,6 +1007,34 @@ fun NoteEditorScreen(
         )
     }
 
+    if (showSelectionSheet) {
+        NoteSelectionSheet(
+            selectedCount = selectedIds.size,
+            clipboardCount = clipboard.size,
+            clipboardSourcePage = clipboard.sourcePageIndex.takeIf { clipboard.isNotEmpty },
+            onNudge = { dx, dy ->
+                transformSelection(NoteSelectionTransform.translate(dx, dy), "nudge")
+            },
+            onScale = { factor ->
+                transformSelection(NoteSelectionTransform.scaleAroundCenter(factor), "scale")
+            },
+            onRotate = { degrees ->
+                transformSelection(
+                    NoteSelectionTransform.rotateAroundCenter(degrees.toFloat()),
+                    "rotate",
+                )
+            },
+            onCopy = { copySelection() },
+            onPaste = { pasteClipboard() },
+            onDuplicate = { duplicateSelection() },
+            onDelete = {
+                deleteSelection()
+                showSelectionSheet = false
+            },
+            onDismiss = { showSelectionSheet = false },
+        )
+    }
+
     if (showPageSheet) {
         NotePageSheet(
             pages = pages,
@@ -1028,6 +1156,7 @@ private fun NoteCanvasPane(
     penStyle: PenStyle,
     penOnly: Boolean,
     zoomLock: Boolean,
+    selectionBounds: NoteSelectionBounds?,
     annotationProgress: (Annotation) -> Float,
     hint: String,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
@@ -1049,6 +1178,7 @@ private fun NoteCanvasPane(
             penStyle = penStyle,
             penOnly = penOnly,
             zoomLock = zoomLock,
+            selectionBounds = selectionBounds,
             annotationProgress = annotationProgress,
             onAddStroke = onAddStroke,
             onErase = onErase,
@@ -1377,6 +1507,7 @@ private fun noteLassoLabel(tool: Tool): String =
 @Composable
 private fun NoteSelectionBar(
     count: Int,
+    onEdit: () -> Unit,
     onColor: (Int) -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
@@ -1399,6 +1530,9 @@ private fun NoteSelectionBar(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
+            TextButton(onClick = onEdit) {
+                Text("편집")
+            }
             NOTE_PALETTE.forEach { swatch ->
                 NoteColorDot(
                     color = swatch,
@@ -1414,6 +1548,49 @@ private fun NoteSelectionBar(
             }
             TextButton(onClick = onClear) {
                 Text("선택 해제")
+            }
+        }
+    }
+}
+
+/**
+ * Small always-available paste strip shown when a clipboard exists but nothing is
+ * selected. This is what makes copy → switch page → paste work without having to
+ * select an unrelated annotation first.
+ */
+@Composable
+private fun NoteClipboardBar(
+    count: Int,
+    sourcePageIndex: Int,
+    onPaste: () -> Unit,
+    onEdit: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Surface(
+        tonalElevation = 2.dp,
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "클립보드 ${count}개 · ${sourcePageIndex + 1}쪽",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            TextButton(onClick = onPaste) {
+                Text("붙여넣기")
+            }
+            TextButton(onClick = onEdit) {
+                Text("편집")
+            }
+            TextButton(onClick = onClear) {
+                Text("비우기")
             }
         }
     }
