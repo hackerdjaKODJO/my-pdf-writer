@@ -153,6 +153,24 @@ fun NoteEditorScreen(
     }
 
     var showPenBox by remember { mutableStateOf(false) }
+    var showLayers by remember { mutableStateOf(false) }
+    var showOutline by remember { mutableStateOf(false) }
+    var activeLayerId by remember(notebook.id, page.id) {
+        mutableStateOf(page.layers.firstOrNull()?.id.orEmpty())
+    }
+    val activeLayer = page.layers.firstOrNull { it.id == activeLayerId && !it.locked && it.visible }
+        ?: page.layers.firstOrNull { !it.locked && it.visible }
+        ?: page.layers.firstOrNull()
+    val visibleAnnotations = NoteLayers.visibleAnnotations(page).map { annotation ->
+        val layer = page.layers.firstOrNull { it.id == annotation.layerId }
+            ?: page.layers.firstOrNull()
+        if (layer != null && layer.opacity < 1f) {
+            annotation.copy(opacity = (annotation.opacity * layer.opacity).coerceIn(0f, 1f))
+        } else {
+            annotation
+        }
+    }
+    val visiblePage = page.copy(annotations = visibleAnnotations)
     var showMenu by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     var showTemplates by remember { mutableStateOf(false) }
@@ -276,6 +294,8 @@ fun NoteEditorScreen(
 
     fun addStroke(points: List<NormalizedPoint>) {
         if (points.isEmpty()) return
+        val layer = activeLayer ?: return
+        if (layer.locked) return
         val type = noteAnnotationTypeForTool(tool) ?: return
         val annotation = Annotation(
             type = type,
@@ -285,12 +305,13 @@ fun NoteEditorScreen(
             points = points,
             opacity = if (type == AnnotationType.HIGHLIGHT) 1f else opacity,
             penStyle = if (type == AnnotationType.PEN) penStyle else PenStyle.BALLPOINT,
+            layerId = layer.id,
         )
         updateCurrentPage { it.copy(annotations = it.annotations + annotation) }
     }
 
     fun selectWithLasso(polygon: List<NormalizedPoint>, rectangular: Boolean) {
-        selection = noteLassoSelection(page.annotations, polygon, rectangular)
+        selection = noteLassoSelection(NoteLayers.visibleAnnotations(page), polygon, rectangular)
     }
 
     fun recolorSelection(newColor: Int) {
@@ -389,8 +410,14 @@ fun NoteEditorScreen(
 
     fun erase(trail: List<NormalizedPoint>) {
         if (trail.isEmpty()) return
+        val layer = activeLayer ?: return
+        if (layer.locked) return
         updateCurrentPage { pageToEdit ->
-            val kept = pageToEdit.annotations.filterNot { noteAnnotationHit(it, trail) }
+            val defaultLayerId = pageToEdit.layers.firstOrNull()?.id
+            val kept = pageToEdit.annotations.filterNot { annotation ->
+                val annotationLayer = annotation.layerId ?: defaultLayerId
+                annotationLayer == layer.id && noteAnnotationHit(annotation, trail)
+            }
             if (kept.size == pageToEdit.annotations.size) {
                 pageToEdit
             } else {
@@ -406,6 +433,8 @@ fun NoteEditorScreen(
         append(fingerMode)
         append(" · ")
         append(noteToolHint(tool))
+        append(" · ${activeLayer?.name ?: "레이어"}")
+        if (activeLayer?.locked == true) append(" · 잠김")
         append(if (zoomLock) " · 줌 잠금" else " · 줌 가능")
     }
 
@@ -474,6 +503,20 @@ fun NoteEditorScreen(
                                 onClick = {
                                     showMenu = false
                                     showTemplates = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("레이어") },
+                                onClick = {
+                                    showMenu = false
+                                    showLayers = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("아웃라인·북마크") },
+                                onClick = {
+                                    showMenu = false
+                                    showOutline = true
                                 },
                             )
                             HorizontalDivider()
@@ -570,7 +613,7 @@ fun NoteEditorScreen(
             if (wide) {
                 Row(Modifier.fillMaxSize()) {
                     NoteCanvasPane(
-                        page = page,
+                        page = visiblePage,
                         tool = tool,
                         color = color,
                         strokeWidth = strokeWidth,
@@ -604,7 +647,7 @@ fun NoteEditorScreen(
             } else {
                 Column(Modifier.fillMaxSize()) {
                     NoteCanvasPane(
-                        page = page,
+                        page = visiblePage,
                         tool = tool,
                         color = color,
                         strokeWidth = strokeWidth,
@@ -693,6 +736,7 @@ fun NoteEditorScreen(
                         text = value,
                         fontSize = fontSize,
                         opacity = opacity,
+                        layerId = activeLayer?.id,
                     )
                     updateCurrentPage { it.copy(annotations = it.annotations + annotation) }
                 }
@@ -722,6 +766,31 @@ fun NoteEditorScreen(
             onSaveCurrent = { saveCurrentPen(it) },
             onDelete = { deletePenPreset(it) },
             onRename = { preset, name -> renamePenPreset(preset, name) },
+        )
+    }
+
+    if (showLayers) {
+        NoteLayersSheet(
+            page = page,
+            activeLayerId = activeLayer?.id.orEmpty(),
+            onChange = { updated ->
+                updateCurrentPage { updated }
+                if (updated.layers.none { it.id == activeLayerId }) {
+                    activeLayerId = updated.layers.firstOrNull()?.id.orEmpty()
+                }
+            },
+            onActiveChange = { activeLayerId = it },
+            onDismiss = { showLayers = false },
+        )
+    }
+
+    if (showOutline) {
+        NotebookOutlineSheet(
+            notebook = notebook,
+            currentPage = safeIndex,
+            onJump = { onPageIndexChange(it) },
+            onBookmarksChange = { applyChange(it) },
+            onDismiss = { showOutline = false },
         )
     }
 }
