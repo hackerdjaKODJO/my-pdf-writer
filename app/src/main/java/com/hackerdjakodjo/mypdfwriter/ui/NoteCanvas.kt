@@ -35,14 +35,19 @@ import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.data.clampInkPressure
+import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
+import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
+import kotlin.math.abs
 import kotlin.math.min
 
 private const val NOTE_PAGE_SCALE = 2.5f
 private const val MAX_NOTE_ZOOM = 6f
 private const val ERASER_RADIUS_FRACTION = 0.028f
+private const val CANVAS_TRACE_TAG = "NoteCanvas"
 
 /**
  * A template page plus its annotation layer.
@@ -61,7 +66,13 @@ private const val ERASER_RADIUS_FRACTION = 0.028f
  *    pan/pinch. A stylus always draws and ignores palm/finger contacts.
  *  - zoomLock = true: pan/zoom and double-tap reset are disabled while writing.
  *  - pressureEnabled = true: stylus pressure is stored with each point and drives
- *    fountain/brush width. Fingers and unknown pointers always store 1f.
+ *    fountain/brush width. [pressureCurve] maps raw stylus pressure to effective
+ *    pressure before storage; curve presets preserve 1f exactly. Fingers and
+ *    unknown pointers always store 1f.
+ *  - gestureUndoEnabled = true: a short two-finger tap requests undo and a
+ *    three-finger tap requests redo when [onGestureUndo]/[onGestureRedo] are
+ *    supplied. Taps are ignored after drawing, panning, zooming, lasso or any
+ *    stylus contact.
  */
 @Composable
 fun NoteCanvas(
@@ -75,6 +86,8 @@ fun NoteCanvas(
     penOnly: Boolean,
     zoomLock: Boolean,
     pressureEnabled: Boolean = true,
+    pressureCurve: PressureCurve = PressureCurve.DEFAULT,
+    gestureUndoEnabled: Boolean = NOTE_GESTURE_UNDO_DEFAULT,
     selectionBounds: NoteSelectionBounds? = null,
     annotationProgress: (Annotation) -> Float = { 1f },
     backgroundBitmap: Bitmap? = null,
@@ -82,6 +95,8 @@ fun NoteCanvas(
     onErase: (List<NormalizedPoint>) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
     onLassoSelect: (polygon: List<NormalizedPoint>, rectangular: Boolean) -> Unit = { _, _ -> },
+    onGestureUndo: (() -> Unit)? = null,
+    onGestureRedo: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     // Notebooks are a paper metaphor: keep the chosen sheet tint even in a dark app
@@ -99,6 +114,8 @@ fun NoteCanvas(
     val currentErase by rememberUpdatedState(onErase)
     val currentRequestText by rememberUpdatedState(onRequestText)
     val currentLassoSelect by rememberUpdatedState(onLassoSelect)
+    val currentGestureUndo by rememberUpdatedState(onGestureUndo)
+    val currentGestureRedo by rememberUpdatedState(onGestureRedo)
 
     val livePoints = remember { mutableStateListOf<NormalizedPoint>() }
     var shapeStart by remember { mutableStateOf<NormalizedPoint?>(null) }
@@ -141,13 +158,12 @@ fun NoteCanvas(
             penOnly,
             zoomLock,
             pressureEnabled,
+            pressureCurve,
+            gestureUndoEnabled,
             fit,
         ) {
             val widthPx = size.width.toFloat().coerceAtLeast(1f)
             val heightPx = size.height.toFloat().coerceAtLeast(1f)
-
-            fun pressureOf(change: PointerInputChange, stylus: Boolean): Float =
-                if (pressureEnabled && stylus) clampInkPressure(change.pressure) else 1f
 
             fun normalize(position: Offset, pressure: Float = 1f): NormalizedPoint {
                 val scale = (fit * zoom).coerceAtLeast(0.0001f)
@@ -189,12 +205,33 @@ fun NoteCanvas(
                 val canDraw = gestureTool != Tool.VIEW && (!penOnly || stylusDown || eraserStylus)
                 var drawing = canDraw
                 var tapCandidate = !canDraw
+                val drawingSeen = canDraw
+                var stylusSeen = stylusDown || eraserStylus
                 var maxPointers = 1
                 var traveled = 0f
+                var navigationMovement = 0f
+                var viewChanged = false
                 var lastPosition = down.position
                 val gestureStart = SystemClock.uptimeMillis()
                 val strokeStartMs = SystemClock.elapsedRealtime()
-                val downPressure = pressureOf(down, stylusDown)
+                val gestureStartPan = pan
+                val gestureStartZoom = zoom
+
+                // Raw pressure is tracked only for the concise trace below. The
+                // stored point always receives the selected curve's effective value.
+                var rawPressureMin = Float.POSITIVE_INFINITY
+                var rawPressureMax = Float.NEGATIVE_INFINITY
+                fun capturePressure(change: PointerInputChange, stylus: Boolean): Float {
+                    if (!pressureEnabled || !stylus) return 1f
+                    val raw = clampInkPressure(change.pressure)
+                    if (change.pressed) {
+                        rawPressureMin = minOf(rawPressureMin, raw)
+                        rawPressureMax = maxOf(rawPressureMax, raw)
+                    }
+                    return pressureCurve.applyTo(raw)
+                }
+
+                val downPressure = capturePressure(down, stylusDown)
 
                 if (canDraw) {
                     down.consume()
@@ -236,6 +273,12 @@ fun NoteCanvas(
                     val event = awaitPointerEvent()
                     val pressed = event.changes.filter { it.pressed }
                     maxPointers = maxOf(maxPointers, pressed.size)
+                    if (event.changes.any {
+                            it.type == PointerType.Stylus || it.type == PointerType.Eraser
+                        }
+                    ) {
+                        stylusSeen = true
+                    }
                     val primary = event.changes.firstOrNull { it.id == down.id }
 
                     if (drawing) {
@@ -244,7 +287,7 @@ fun NoteCanvas(
                             break
                         }
                         val otherPointerDown = event.changes.any { it.pressed && it.id != down.id }
-                        val primaryPressure = pressureOf(primary, stylusDown)
+                        val primaryPressure = capturePressure(primary, stylusDown)
 
                         // A second finger while drawing with a finger turns the rest of
                         // this gesture into pan/zoom. Never cancel a stylus stroke when a
@@ -358,10 +401,19 @@ fun NoteCanvas(
                         lastPosition = navPrimary.position
                     }
 
+                    // Track centroid movement and pinch intent even while zoom is locked,
+                    // so a pan/zoom attempt can never be mistaken for an undo tap.
+                    val navigationPan = event.calculatePan()
+                    val zoomFactor = event.calculateZoom()
+                    navigationMovement += navigationPan.getDistance()
+                    if (zoomFactor.isFinite() && abs(zoomFactor - 1f) > 0.02f) {
+                        viewChanged = true
+                    }
+
                     if (!zoomLock) {
                         val oldZoom = zoom
                         val oldTotal = fit * oldZoom
-                        val newZoom = (oldZoom * event.calculateZoom()).coerceIn(1f, MAX_NOTE_ZOOM)
+                        val newZoom = (oldZoom * zoomFactor).coerceIn(1f, MAX_NOTE_ZOOM)
                         val newTotal = fit * newZoom
                         val centroid = event.calculateCentroid(useCurrent = true)
                         val pivot = centroid - Offset(widthPx / 2f, heightPx / 2f)
@@ -370,10 +422,59 @@ fun NoteCanvas(
                         } else {
                             pan
                         }
-                        val updatedPan = clampPan(scaledPan + event.calculatePan(), newTotal)
+                        val updatedPan = clampPan(scaledPan + navigationPan, newTotal)
                         if (newZoom != oldZoom) zoom = newZoom
                         if (updatedPan != pan) pan = updatedPan
                     }
+                }
+
+                val gestureEnd = SystemClock.uptimeMillis()
+                val gestureDuration = (gestureEnd - gestureStart).coerceAtLeast(0L)
+
+                if (pressureEnabled && stylusSeen &&
+                    rawPressureMin.isFinite() && rawPressureMax.isFinite() &&
+                    (gestureTool == Tool.PEN || gestureTool == Tool.HIGHLIGHT)
+                ) {
+                    val range = pressureCurveRange(pressureCurve, rawPressureMin, rawPressureMax)
+                    NoteTrace.event(
+                        CANVAS_TRACE_TAG,
+                        "pressure-range",
+                        "curve" to range.curve.name,
+                        "rawMin" to range.rawMin,
+                        "rawMax" to range.rawMax,
+                        "effectiveMin" to range.effectiveMin,
+                        "effectiveMax" to range.effectiveMax,
+                    )
+                }
+
+                val gestureAction = NoteGestureClassifier.classify(
+                    NoteGestureSample(
+                        maxPointers = maxPointers,
+                        durationMs = gestureDuration,
+                        movementPx = maxOf(traveled, navigationMovement),
+                        touchSlopPx = viewConfiguration.touchSlop,
+                        enabled = gestureUndoEnabled,
+                        drawingSeen = drawingSeen,
+                        stylusInvolved = stylusSeen,
+                        viewChanged = viewChanged,
+                    ),
+                )
+                val gestureHandler: (() -> Unit)? = when (gestureAction) {
+                    NoteGestureAction.UNDO -> currentGestureUndo
+                    NoteGestureAction.REDO -> currentGestureRedo
+                    null -> null
+                }
+                if (gestureAction != null && gestureHandler != null) {
+                    // A tap must not leave a sub-slop pan behind.
+                    pan = gestureStartPan
+                    zoom = gestureStartZoom
+                    NoteTrace.event(
+                        CANVAS_TRACE_TAG,
+                        "gesture",
+                        "action" to gestureAction.name,
+                        "pointers" to maxPointers,
+                    )
+                    gestureHandler()
                 }
 
                 // Double-tap reset is only armed for a navigation gesture (finger in

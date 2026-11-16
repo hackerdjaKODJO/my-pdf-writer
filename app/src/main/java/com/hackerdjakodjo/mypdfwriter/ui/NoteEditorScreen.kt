@@ -120,7 +120,9 @@ import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 import com.hackerdjakodjo.mypdfwriter.data.PenBoxStore
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
 import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
@@ -204,6 +206,8 @@ fun NoteEditorScreen(
     var shapeRecognition by remember { mutableStateOf(false) }
     var partialEraser by remember { mutableStateOf(true) }
     var pressureInk by remember { mutableStateOf(true) }
+    var pressureCurve by remember { mutableStateOf(PressureCurve.DEFAULT) }
+    var gestureUndo by remember { mutableStateOf(NOTE_GESTURE_UNDO_DEFAULT) }
 
     val context = LocalContext.current
     val penBoxStore = remember(context) { PenBoxStore(context) }
@@ -587,6 +591,7 @@ fun NoteEditorScreen(
                 NOTE_TRACE_TAG,
                 "pressure",
                 "enabled" to pressureInk,
+                "curve" to pressureCurve.name,
                 "style" to penStyle.name,
                 "points" to committedPoints.size,
                 "pressured" to pressured,
@@ -981,6 +986,8 @@ fun NoteEditorScreen(
                         penOnly = !fingerWriting,
                         zoomLock = zoomLock,
                         pressureEnabled = pressureInk,
+                        pressureCurve = pressureCurve,
+                        gestureUndoEnabled = gestureUndo,
                         selectionBounds = selectionBounds,
                         annotationProgress = annotationProgress,
                         backgroundBitmap = pageBackground,
@@ -989,6 +996,8 @@ fun NoteEditorScreen(
                         onErase = { erase(it) },
                         onRequestText = { textPoint = it },
                         onLassoSelect = { polygon, rectangular -> selectWithLasso(polygon, rectangular) },
+                        onGestureUndo = { undo() },
+                        onGestureRedo = { redo() },
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
                     Box(
@@ -1019,6 +1028,8 @@ fun NoteEditorScreen(
                     penOnly = !fingerWriting,
                     zoomLock = zoomLock,
                     pressureEnabled = pressureInk,
+                    pressureCurve = pressureCurve,
+                    gestureUndoEnabled = gestureUndo,
                     selectionBounds = selectionBounds,
                     annotationProgress = annotationProgress,
                     backgroundBitmap = pageBackground,
@@ -1027,6 +1038,8 @@ fun NoteEditorScreen(
                     onErase = { erase(it) },
                     onRequestText = { textPoint = it },
                     onLassoSelect = { polygon, rectangular -> selectWithLasso(polygon, rectangular) },
+                    onGestureUndo = { undo() },
+                    onGestureRedo = { redo() },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -1298,12 +1311,16 @@ fun NoteEditorScreen(
             shapeRecognition = shapeRecognition,
             partialEraser = partialEraser,
             pressureInk = pressureInk,
+            pressureCurve = pressureCurve,
+            gestureUndo = gestureUndo,
             onFingerWriting = { fingerWriting = it },
             onZoomLock = { zoomLock = it },
             onStrokeStabilization = { strokeStabilization = it },
             onShapeRecognition = { shapeRecognition = it },
             onPartialEraser = { partialEraser = it },
             onPressureInk = { pressureInk = it },
+            onPressureCurve = { pressureCurve = it },
+            onGestureUndo = { gestureUndo = it },
             onTemplate = {
                 showOverflow = false
                 showStudio = true
@@ -1392,6 +1409,8 @@ private fun NoteCanvasPane(
     penOnly: Boolean,
     zoomLock: Boolean,
     pressureEnabled: Boolean,
+    pressureCurve: PressureCurve,
+    gestureUndoEnabled: Boolean,
     selectionBounds: NoteSelectionBounds?,
     annotationProgress: (Annotation) -> Float,
     backgroundBitmap: android.graphics.Bitmap?,
@@ -1400,6 +1419,8 @@ private fun NoteCanvasPane(
     onErase: (List<NormalizedPoint>) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
     onLassoSelect: (List<NormalizedPoint>, Boolean) -> Unit,
+    onGestureUndo: () -> Unit,
+    onGestureRedo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -1416,6 +1437,8 @@ private fun NoteCanvasPane(
             penOnly = penOnly,
             zoomLock = zoomLock,
             pressureEnabled = pressureEnabled,
+            pressureCurve = pressureCurve,
+            gestureUndoEnabled = gestureUndoEnabled,
             selectionBounds = selectionBounds,
             annotationProgress = annotationProgress,
             backgroundBitmap = backgroundBitmap,
@@ -1423,6 +1446,8 @@ private fun NoteCanvasPane(
             onErase = onErase,
             onRequestText = onRequestText,
             onLassoSelect = onLassoSelect,
+            onGestureUndo = onGestureUndo,
+            onGestureRedo = onGestureRedo,
             modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp),
         )
         Surface(
@@ -2296,12 +2321,16 @@ private fun NoteOverflowSheet(
     shapeRecognition: Boolean,
     partialEraser: Boolean,
     pressureInk: Boolean,
+    pressureCurve: PressureCurve,
+    gestureUndo: Boolean,
     onFingerWriting: (Boolean) -> Unit,
     onZoomLock: (Boolean) -> Unit,
     onStrokeStabilization: (Boolean) -> Unit,
     onShapeRecognition: (Boolean) -> Unit,
     onPartialEraser: (Boolean) -> Unit,
     onPressureInk: (Boolean) -> Unit,
+    onPressureCurve: (PressureCurve) -> Unit,
+    onGestureUndo: (Boolean) -> Unit,
     onTemplate: () -> Unit,
     onQuickTemplate: () -> Unit,
     onLayers: () -> Unit,
@@ -2498,6 +2527,26 @@ private fun NoteOverflowSheet(
                 )
             }
             item {
+                NotePressureCurveRow(
+                    curve = pressureCurve,
+                    enabled = pressureInk,
+                    onCurve = onPressureCurve,
+                )
+            }
+            item {
+                NoteMenuToggleRow(
+                    icon = Icons.Filled.Gesture,
+                    title = "제스처 실행 취소",
+                    supporting = if (gestureUndo) {
+                        "두 손가락 탭 실행 취소 · 세 손가락 탭 다시 실행"
+                    } else {
+                        "다중 손가락 탭 제스처 사용 안 함"
+                    },
+                    checked = gestureUndo,
+                    onCheckedChange = onGestureUndo,
+                )
+            }
+            item {
                 NoteMenuToggleRow(
                     icon = Icons.Filled.Category,
                     title = "도형 자동 인식",
@@ -2654,6 +2703,83 @@ private fun NoteMenuToggleRow(
             }
             Switch(checked = checked, onCheckedChange = onCheckedChange)
         }
+    }
+}
+
+private fun pressureCurveLabel(curve: PressureCurve): String = when (curve) {
+    PressureCurve.SOFT -> "부드럽게"
+    PressureCurve.LINEAR -> "선형"
+    PressureCurve.FIRM -> "강하게"
+}
+
+private fun pressureCurveDescription(curve: PressureCurve): String = when (curve) {
+    PressureCurve.SOFT -> "가벼운 필압을 더 굵게 반영"
+    PressureCurve.LINEAR -> "필압에 비례해 굵기 변화"
+    PressureCurve.FIRM -> "충분히 눌러야 굵어짐"
+}
+
+@Composable
+private fun NotePressureCurveRow(
+    curve: PressureCurve,
+    enabled: Boolean,
+    onCurve: (PressureCurve) -> Unit,
+) {
+    // 25% and 75% are a compact, device-neutral illustration only. Real stylus
+    // digitizers still need on-device pressure tuning.
+    val sample = remember(curve) { pressureCurveRange(curve, 0.25f, 0.75f) }
+    val diagnostic = "필압 25→75% = 반영 " +
+        "${(sample.effectiveMin * 100).toInt()}→${(sample.effectiveMax * 100).toInt()}%"
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Filled.Draw,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                tint = if (enabled) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                },
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("필압 반응", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "${pressureCurveDescription(curve)} · $diagnostic",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.padding(start = 34.dp, top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            PressureCurve.values().forEach { option ->
+                FilterChip(
+                    selected = option == curve,
+                    enabled = enabled,
+                    onClick = { onCurve(option) },
+                    label = { Text(pressureCurveLabel(option)) },
+                )
+            }
+        }
+        Text(
+            if (enabled) {
+                "기기별 필압 보정은 아직 필요합니다"
+            } else {
+                "필압 잉크를 켜면 적용됩니다 · 기기별 보정 필요"
+            },
+            modifier = Modifier.padding(start = 34.dp, top = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+        )
     }
 }
 
