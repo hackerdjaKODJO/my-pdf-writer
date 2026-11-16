@@ -131,8 +131,14 @@ My PDF Writer는 다음 한 가지에 집중합니다.
 | 저장 | `org.json` 기반 JSON 파일 + `SharedPreferences` |
 | 파일 접근 | Storage Access Framework (`ActivityResultContracts`) |
 
-**빌드 크기**: 디버그 APK 약 72 MB(전체 ABI) / **43 MB(arm64 전용)**, 릴리스 APK 약 **51 MB**.
+**빌드 크기**: **arm64 디버그 약 44 MB(기본 배포)**, universal 디버그 약 72 MB,
+R8 릴리스 약 51 MB(전체 ABI).
 ML Kit OCR 모델·한국어 폰트가 APK에 포함되어 이전 버전보다 커졌습니다. R8 코드/리소스 축소 적용.
+
+**APK 차이**: arm64 APK는 `lib/arm64-v8a` 네이티브 라이브러리만 포함합니다.
+universal APK는 arm64·32-bit ARM·x86·x86_64 라이브러리를 모두 넣은 같은 앱이라
+최신 arm64 폰에서는 기능 차이가 없고 용량만 커집니다. 기본 배포는 arm64 전용이며,
+32-bit ARM 폰이나 x86 에뮬레이터에서만 universal이 필요합니다.
 
 ---
 
@@ -180,11 +186,11 @@ cd my-pdf-writer
 #    Windows 예: sdk.dir=C\:\\Users\\<user>\\AppData\\Local\\Android\\Sdk
 #    macOS/Linux 예: sdk.dir=/Users/<user>/Library/Android/sdk
 
-# 3) 디버그 빌드
-./gradlew assembleDebug          # Windows: gradlew.bat assembleDebug
+# 3) 디버그 빌드 (기본: arm64 전용, 작은 APK)
+./gradlew assembleDebug -Parm64Only=true   # Windows: gradlew.bat assembleDebug -Parm64Only=true
 
 # 4) 설치
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 ```
 
 디버그 빌드는 `applicationIdSuffix = ".debug"`가 붙어

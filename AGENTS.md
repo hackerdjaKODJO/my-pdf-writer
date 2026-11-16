@@ -39,9 +39,11 @@ must always have two decimal points.
   1. `app/build.gradle.kts` — `versionCode` and `versionName`
   2. `README.md` — displayed version and build-size/test notes when relevant
   3. this `AGENTS.md` — changelog row below
-- The debug artifact name is:
-  `MyPDFWriter-<version>-arm64.apk` (preferred, arm64-only) and
-  `MyPDFWriter-<version>-universal.apk` (all ABIs).
+- **Default APK policy: arm64-only.** Build and publish the smaller
+  `MyPDFWriter-<version>-arm64.apk` (only `lib/arm64-v8a`). Do not build or copy a
+  universal APK unless the user explicitly asks for 32-bit ARM/x86 emulator
+  compatibility. The universal APK has the same code/features; it only adds
+  duplicate native libraries for other CPU architectures.
 - A version is not “delivered” until `assembleDebug`, `testDebugUnitTest`, and
   (for release candidates) `assembleRelease` pass, the APK is copied to
   Downloads, and the commit is pushed.
@@ -65,11 +67,13 @@ The Termux build wrapper (local-only, gitignored) is:
 
 ```bash
 cd ~/my-pdf-writer
-./.termux-build.sh :app:assembleDebug
+# Default review build: small arm64-only APK
+./.termux-build.sh :app:assembleDebug -Parm64Only=true
 ./.termux-build.sh :app:testDebugUnitTest
 ./.termux-build.sh :app:assembleRelease
-# arm64-only review APK:
-./.termux-build.sh :app:assembleDebug -Parm64Only=true
+# Universal APK ONLY when the user asks for 32-bit/x86 compatibility.
+# It is the same app plus duplicate native libs for other ABIs.
+./.termux-build.sh :app:assembleDebug
 ```
 
 The phone SDK lives at `~/android-sdk`; the setup is documented in
@@ -109,6 +113,7 @@ outside this phone.
 1. Bump PATCH version and versionCode per policy.
 2. Run debug build, unit tests, and release build.
 3. Verify APK permissions: no `INTERNET`; `RECORD_AUDIO` only for audio.
-4. Copy to `~/Downloads` and `/sdcard/Download/` with the versioned filename.
+4. Copy the arm64 APK to `~/Downloads` and `/sdcard/Download/` with the
+   versioned filename. Do not copy a universal APK unless explicitly requested.
 5. Update README and this changelog.
 6. Commit, push `feature/starnote`, fast-forward `main`, push `main`.
