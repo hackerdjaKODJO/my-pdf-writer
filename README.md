@@ -6,7 +6,7 @@
 광고·계정·인터넷 권한 없이 **기기 안에서만** 동작합니다.
 
 - **패키지**: `com.hackerdjakodjo.mypdfwriter`
-- **버전**: `0.4.1` (개발 빌드)
+- **버전**: `0.5.0` (개발 빌드)
 - **지원 OS**: Android 8.0 (API 26) 이상
 - **타깃 SDK**: 36 (Android 16)
 
@@ -37,6 +37,9 @@ My PDF Writer는 다음 한 가지에 집중합니다.
 | 레이어 | 페이지별 레이어 추가·이름변경·숨김·잠금·투명도·순서 |
 | 페이지 | 페이지 사이드바, 추가·복제·삭제·순서 이동, 템플릿 일괄/현재 페이지 적용, 노트 PDF 내보내기 |
 | 북마크 | 페이지 아웃라인, 페이지 북마크 추가·이름변경·이동·삭제 |
+| 읽기 모드 | 단일 페이지, 세로 연속 보기, 마지막 페이지/진행률 복원 |
+| Reflow | PDF 텍스트를 화면 폭에 재배치, 글자 크기·줄 간격·종이/세피아/다크, 텍스트 선택·복사 |
+| 읽어주기 | 시스템 TTS로 페이지 읽기, 속도·한국어/English, 페이지 자동 넘김 |
 | 발췌·번역 | PDF 현재 페이지 텍스트 발췌 저장, 발췌 목록/페이지 이동, **Google 번역** 앱/웹으로 바로 열기, 공유 |
 | 필기 | 펜, 형광펜, 텍스트, 사각형, 화살표, 선, 타원, 밑줄, 취소선, 지우개 |
 | 스탬프 | APPROVED / DRAFT / CONFIDENTIAL / REVIEWED / 사용자 문구 |
@@ -222,7 +225,7 @@ Android 16(Pixel 7 AVD)에서 다음 흐름을 직접 확인했습니다.
   - 내보낸 PDF를 앱에서 다시 열어 편집 가능한 주석이 없음을 확인
 - **R8 릴리스 APK**에서 PDF 열기, 펜, 검색(2건), 페이지 회전, 내보내기 재검증
   - `release-r8-test.pdf` (14,545 bytes), `pdfinfo`: 3 pages, A4, Page rot 90
-- **단위 테스트 93개 통과** (페이지 회전/정규화, 주석 JSON, 노트북/레이어/북마크, 펜박스/올가미,
+- **단위 테스트 113개 통과** (페이지 회전/정규화, 주석 JSON, 노트북/레이어/북마크, 펜박스/올가미,
   발췌 JSON, OCR 범위, 페이지 정리 등)
 - 릴리스 APK 권한 확인: `INTERNET`/저장소/카메라/알림/광고 ID 없음
 - 네이티브 라이브러리 16 KB 페이지 정렬 확인 (`zipalign -c -P 16`)
@@ -273,6 +276,7 @@ app/src/test/java/com/hackerdjakodjo/mypdfwriter/data/
 기타:
 
 - `tools/make-sample-pdf.js`, `tools/mypdf-lecture.pdf` — 테스트용 3페이지 샘플
+- `docs/flexcil-analysis.md`, `docs/all-pdf-reader-analysis.md` — 경쟁 PDF/노트 앱 정적 분석
 - `tools/make-store-assets.py` — Play Store 스크린샷/피처 그래픽/아이콘 생성
 - `store/` — Play Store 등록용 1080×2160 스크린샷 7장, 피처 그래픽, 512px 아이콘
 - `docs/screenshots/` — 기능 검증 스크린샷
@@ -304,8 +308,9 @@ app/src/test/java/com/hackerdjakodjo/mypdfwriter/data/
   목차·야간 모드·인쇄/공유, 스탬프·서명·가림, 페이지 작업 undo/redo
 - **v0.3**: StarNote 리버스 엔지니어링 기반 노트 홈·템플릿 노트북 에디터·PDF 탭 통합
 - **v0.4**: 올가미 선택, 볼펜/만년필/붓/연필, 펜박스, 레이어, 페이지 북마크/아웃라인, PDF 발췌
-- **v0.4.1 (현재)**: 발췌 번역을 Google 번역 앱/웹으로 바로 연결 (앱 자체는 INTERNET 권한 없음)
-- **v0.5**: 텍스트 선택·복사, 이미지 삽입, 오디오 녹음/전사, 로컬 백업, EPUB/Word/PPT 가져오기, 접근성 개선
+- **v0.4.1**: 발췌 번역을 Google 번역 앱/웹으로 바로 연결 (앱 자체는 INTERNET 권한 없음)
+- **v0.5.0 (현재)**: 읽기 진행률/PDF 북마크, 세로 연속 보기, Reflow 텍스트 모드, 시스템 TTS 읽어주기
+- **v0.6**: PDF 캔버스 직접 텍스트 선택, 검색 결과 하이라이트, 이미지 삽입, 오디오 녹음/전사, 로컬 백업, EPUB/Word/PPT 가져오기, 접근성 개선
 - **v1.0**: Play Store 정식 출시, 영어/일본어 UI, 온보딩
 
 자세한 출시 체크리스트는 [`docs/play-store-roadmap.md`](docs/play-store-roadmap.md)를 참고하세요.

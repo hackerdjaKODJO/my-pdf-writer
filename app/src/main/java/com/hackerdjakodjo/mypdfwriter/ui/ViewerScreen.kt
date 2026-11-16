@@ -154,6 +154,8 @@ fun ViewerScreen(
     var showOrganize by remember { mutableStateOf(false) }
     var showExcerpts by remember { mutableStateOf(false) }
     var showContinuous by remember { mutableStateOf(false) }
+    var showReflow by remember { mutableStateOf(false) }
+    var showReadAloud by remember { mutableStateOf(false) }
     var showOutline by remember { mutableStateOf(false) }
     var showProperties by remember { mutableStateOf(false) }
     var showStyle by remember { mutableStateOf(false) }
@@ -173,9 +175,29 @@ fun ViewerScreen(
     }
 
     val sheetOpen = showPages || showNotes || showBookmarks || showSearch || showAnnotations ||
-        showOrganize || showExcerpts || showContinuous || showOutline || showProperties || showStyle || showMenu ||
+        showOrganize || showExcerpts || showContinuous || showReflow || showReadAloud ||
+        showOutline || showProperties || showStyle || showMenu ||
         textTarget != null || stampTarget != null || signatureTarget != null
     BackHandler(enabled = !sheetOpen) { vm.closeDocument() }
+
+    if (showReflow) {
+        val source = vm.currentWorkingFile() ?: vm.currentSourceFile()
+        if (source == null) {
+            showReflow = false
+        } else {
+            ReflowReaderScreen(
+                sourceFile = source,
+                docName = state.docName,
+                initialPage = state.pageIndex,
+                onBack = { showReflow = false },
+                onOpenPage = { page ->
+                    vm.goToPage(page)
+                    showReflow = false
+                },
+            )
+            return
+        }
+    }
 
     if (showContinuous) {
         ContinuousReaderScreen(
@@ -362,6 +384,20 @@ fun ViewerScreen(
                                 },
                             )
                             DropdownMenuItem(
+                                text = { Text("텍스트 모드") },
+                                onClick = {
+                                    showMenu = false
+                                    showReflow = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("소리 내어 읽기") },
+                                onClick = {
+                                    showMenu = false
+                                    showReadAloud = true
+                                },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("연속 보기") },
                                 onClick = {
                                     showMenu = false
@@ -515,6 +551,16 @@ fun ViewerScreen(
     }
     if (showNotes) {
         NoteSheet(state, vm) { showNotes = false }
+    }
+    if (showReadAloud) {
+        vm.currentWorkingFile()?.let { working ->
+            ReadAloudLoaderSheet(
+                workingFile = working,
+                initialPage = state.pageIndex,
+                onPageChange = { page -> vm.goToPage(page) },
+                onDismiss = { showReadAloud = false },
+            )
+        } ?: run { showReadAloud = false }
     }
     if (showBookmarks) {
         PdfBookmarksSheet(
