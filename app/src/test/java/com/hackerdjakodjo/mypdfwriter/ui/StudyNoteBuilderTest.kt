@@ -107,4 +107,61 @@ class StudyNoteBuilderTest {
         assertNull(notebook.pages.single().sourcePageIndex)
         assertEquals("", notebook.sourceDocumentName)
     }
+
+    @Test
+    fun appendExcerptAddsOnePageWithSameLayoutAndSourceLink() {
+        val source = StudySource("biology.pdf", "content://docs/biology")
+        val base = StudyNoteBuilder.fromExcerpts(
+            title = "세포 생물학",
+            source = source,
+            excerpts = listOf(Excerpt(pageIndex = 0, text = "첫 번째 발췌")),
+        ).copy(updatedAt = 1L)
+
+        val appended = StudyNoteBuilder.appendExcerpt(
+            notebook = base,
+            source = source,
+            excerpt = Excerpt(pageIndex = 4, text = "두 번째 발췌"),
+            coverColor = 0xFF123456.toInt(),
+        )
+
+        assertEquals(2, appended.pageCount)
+        assertEquals(base.pages[0], appended.pages[0])
+        assertEquals("원본 PDF p.5", appended.pages[1].memo)
+        assertEquals(4, appended.pages[1].sourcePageIndex)
+        assertEquals(4, StudyNoteBuilder.sourcePage(appended, 1))
+        val annotation = appended.pages[1].annotations.single()
+        assertEquals(AnnotationType.TEXT, annotation.type)
+        assertEquals("두 번째 발췌", annotation.text)
+        assertTrue(annotation.fontSize in 0.012f..0.019f)
+        assertEquals(appended.pages[1].layers.single().id, annotation.layerId)
+        assertEquals(0xFF123456.toInt(), appended.coverColor)
+        assertTrue(appended.updatedAt > 1L)
+        assertEquals("biology.pdf", appended.sourceDocumentName)
+        assertEquals("content://docs/biology", appended.sourceDocumentUri)
+    }
+
+    @Test
+    fun appendExcerptIgnoresBlankTextAndKeepsExistingCoverByDefault() {
+        val source = StudySource("biology.pdf")
+        val base = StudyNoteBuilder.fromExcerpts(
+            title = "세포 생물학",
+            source = source,
+            excerpts = listOf(Excerpt(pageIndex = 0, text = "본문")),
+        )
+
+        val unchanged = StudyNoteBuilder.appendExcerpt(
+            notebook = base,
+            source = source,
+            excerpt = Excerpt(pageIndex = 2, text = "   "),
+        )
+        val appended = StudyNoteBuilder.appendExcerpt(
+            notebook = base,
+            source = source,
+            excerpt = Excerpt(pageIndex = 2, text = "추가"),
+        )
+
+        assertEquals(base, unchanged)
+        assertEquals(base.coverColor, appended.coverColor)
+        assertEquals(2, appended.pageCount)
+    }
 }

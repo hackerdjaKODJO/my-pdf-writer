@@ -58,6 +58,31 @@ object StudyNoteBuilder {
     }
 
     /**
+     * Appends one captured excerpt to an existing study notebook. The new page uses
+     * the exact layout of [fromExcerpts] so a drag-and-drop capture and a button
+     * capture open identically in the note editor.
+     *
+     * [coverColor] is optional; pass it only when the caller is initializing a
+     * notebook cover, otherwise the notebook keeps its current cover.
+     */
+    fun appendExcerpt(
+        notebook: Notebook,
+        source: StudySource,
+        excerpt: Excerpt,
+        coverColor: Int? = null,
+    ): Notebook {
+        if (excerpt.text.isBlank()) return notebook
+        val base = notebook.normalized()
+        return base.copy(
+            coverColor = coverColor ?: base.coverColor,
+            pages = base.pages + excerptPage(excerpt),
+            sourceDocumentName = base.sourceDocumentName.ifBlank { source.docName.trim() },
+            sourceDocumentUri = base.sourceDocumentUri.ifBlank { source.docUri?.trim().orEmpty() },
+            updatedAt = System.currentTimeMillis(),
+        ).normalized()
+    }
+
+    /**
      * Source PDF page for a notebook page, or null for plain pages. The integration
      * can use this to show a "원본 PDF로" action without depending on note internals.
      */
