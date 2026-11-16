@@ -69,6 +69,13 @@ class MainActivity : ComponentActivity() {
                             onChange = { notebookViewModel.updateCurrent(it) },
                             onPageIndexChange = { notebookViewModel.setPageIndex(it) },
                             onExportPdf = { exportNote.launch(notebookViewModel.exportSuggestedName()) },
+                            onOpenSourcePdf = { page ->
+                                val uri = note.sourceDocumentUri
+                                if (uri.isNotBlank()) {
+                                    notebookViewModel.close()
+                                    viewModel.openDocumentAt(Uri.parse(uri), page)
+                                }
+                            },
                         )
                         showTools -> ToolsScreen(
                             onBack = { showTools = false },
@@ -100,6 +107,10 @@ class MainActivity : ComponentActivity() {
                             vm = viewModel,
                             onExportRequest = { suggestedName -> exportPdf.launch(suggestedName) },
                             onOpenTools = { showTools = true },
+                            onCreateStudyNote = { notebook ->
+                                notebookViewModel.importNotebook(notebook)
+                                viewModel.closeDocument()
+                            },
                         )
                     }
                 }

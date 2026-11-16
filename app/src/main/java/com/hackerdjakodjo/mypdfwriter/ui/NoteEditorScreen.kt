@@ -130,6 +130,7 @@ fun NoteEditorScreen(
     onChange: (Notebook) -> Unit,
     onPageIndexChange: (Int) -> Unit,
     onExportPdf: () -> Unit,
+    onOpenSourcePdf: ((Int) -> Unit)? = null,
 ) {
     val pages = notebook.pages.ifEmpty { listOf(NotePage()) }
     val safeIndex = pageIndex.coerceIn(0, pages.lastIndex)
@@ -153,6 +154,7 @@ fun NoteEditorScreen(
     }
 
     var showPenBox by remember { mutableStateOf(false) }
+    var showAudioNotes by remember { mutableStateOf(false) }
     var showLayers by remember { mutableStateOf(false) }
     var showOutline by remember { mutableStateOf(false) }
     var activeLayerId by remember(notebook.id, page.id) {
@@ -506,6 +508,23 @@ fun NoteEditorScreen(
                                 },
                             )
                             DropdownMenuItem(
+                                text = { Text("오디오 노트") },
+                                onClick = {
+                                    showMenu = false
+                                    showAudioNotes = true
+                                },
+                            )
+                            if (notebook.sourceDocumentUri.isNotBlank() && onOpenSourcePdf != null) {
+                                DropdownMenuItem(
+                                    text = { Text("원본 PDF 열기") },
+                                    onClick = {
+                                        showMenu = false
+                                        val page = StudyNoteBuilder.sourcePage(notebook, safeIndex) ?: 0
+                                        onOpenSourcePdf.invoke(page)
+                                    },
+                                )
+                            }
+                            DropdownMenuItem(
                                 text = { Text("레이어") },
                                 onClick = {
                                     showMenu = false
@@ -766,6 +785,14 @@ fun NoteEditorScreen(
             onSaveCurrent = { saveCurrentPen(it) },
             onDelete = { deletePenPreset(it) },
             onRename = { preset, name -> renamePenPreset(preset, name) },
+        )
+    }
+
+    if (showAudioNotes) {
+        AudioNotesSheet(
+            ownerId = notebook.id,
+            currentPage = safeIndex,
+            onDismiss = { showAudioNotes = false },
         )
     }
 

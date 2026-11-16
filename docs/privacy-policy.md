@@ -47,7 +47,10 @@ OCR 모델은 APK에 포함되어 있어 별도 다운로드도 하지 않습니
 사용자가 선택한 위치에 파일이 저장됩니다. 앱은 노트북을 외부로 전송하지 않습니다.
 
 PDF에서 저장한 발췌, 읽기 진행률·PDF 페이지 북마크, 노트의 페이지 북마크·레이어·펜 프리셋 정보도
-앱 전용 저장소(`files/excerpts/`, `files/reading/`, `files/notebooks/`)에만 보관됩니다. **Google 번역**을 선택하면 텍스트가 Google 번역 앱 또는 브라우저로
+앱 전용 저장소(`files/excerpts/`, `files/reading/`, `files/notebooks/`)에만 보관됩니다.
+오디오 노트 녹음 파일과 페이지 마커는 `files/audio/`에만 저장되며 외부로 전송되지 않습니다.
+
+**Google 번역**을 선택하면 텍스트가 Google 번역 앱 또는 브라우저로
 전달되며, 그 이후의 네트워크 처리와 데이터 처리는 Google의 개인정보 처리방침을 따릅니다.
 My PDF Writer 자체는 발췌를 서버에 전송하지 않고 `INTERNET` 권한도 사용하지 않습니다.
 소리 내어 읽기는 기기에 설치된 시스템 TTS 엔진을 사용합니다. 일부 TTS 음성은 엔진이 네트워크를
@@ -57,7 +60,8 @@ My PDF Writer 자체는 발췌를 서버에 전송하지 않고 `INTERNET` 권�
 
 - 이름, 이메일, 전화번호, 주소 등 계정 정보
 - 위치 정보
-- 연락처, 사진, 마이크, 카메라
+- 연락처, 사진, 카메라
+- 마이크 입력은 사용자가 **녹음**을 시작한 동안에만 처리되며 저장/전송되지 않는 오디오 노트 파일로만 남습니다.
 - 광고 식별자(Advertising ID)
 - 기기 식별자 또는 분석 이벤트
 - 사용자가 선택하지 않은 파일
@@ -70,12 +74,14 @@ My PDF Writer 자체는 발췌를 서버에 전송하지 않고 `INTERNET` 권�
 - `ACCESS_NETWORK_STATE`
 - `READ_EXTERNAL_STORAGE` / `WRITE_EXTERNAL_STORAGE` / `MANAGE_EXTERNAL_STORAGE`
 - `CAMERA`
-- `RECORD_AUDIO`
 - `POST_NOTIFICATIONS`
 - `AD_ID`
 
 PDF 파일 접근은 사용자가 SAF 화면에서 직접 선택한 파일에 한해, 그 순간 부여된 권한으로만
 이루어집니다. 앱은 기기 전체 저장소를 스캔하지 않습니다.
+
+`RECORD_AUDIO`는 **오디오 노트 녹음 버튼을 처음 누를 때만** 런타임으로 요청합니다. 녹음을
+시작하지 않으면 마이크에 접근하지 않습니다.
 
 ## 4. 제3자 제공 및 SDK
 
@@ -86,7 +92,7 @@ PDF 파일 접근은 사용자가 SAF 화면에서 직접 선택한 파일에 �
 - 온디바이스 OCR: Google ML Kit Text Recognition (한국어/English). 모델이 APK에 포함되어
   있으며, 이미지·인식 결과를 외부로 전송하지 않습니다. 앱 매니페스트에서 `INTERNET`과
   `ACCESS_NETWORK_STATE` 권한을 제거했습니다.
-- 결제 SDK: 없음 (v0.5 기준)
+- 결제 SDK: 없음 (v0.6 기준)
 
 따라서 개발자가 제3자에게 사용자 데이터를 제공하는 경우는 없습니다. ML Kit은 기기 내에서만 동작하는 로컬 SDK입니다.
 

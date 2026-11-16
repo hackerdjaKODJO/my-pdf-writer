@@ -103,6 +103,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
+import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
@@ -145,6 +146,7 @@ fun ViewerScreen(
     vm: PdfViewModel,
     onExportRequest: (String) -> Unit,
     onOpenTools: () -> Unit,
+    onCreateStudyNote: (Notebook) -> Unit = {},
 ) {
     val stateFlow = vm.viewer.collectAsStateWithLifecycle()
     val bitmap by vm.pageBitmap.collectAsStateWithLifecycle()
@@ -165,6 +167,10 @@ fun ViewerScreen(
     var showOrganize by remember { mutableStateOf(false) }
     var showExcerpts by remember { mutableStateOf(false) }
     var showContinuous by remember { mutableStateOf(false) }
+    var showSpread by remember { mutableStateOf(false) }
+    var showPopup by remember { mutableStateOf(false) }
+    var showAudioNotes by remember { mutableStateOf(false) }
+    var showStudyNote by remember { mutableStateOf(false) }
     var showReflow by remember { mutableStateOf(false) }
     var showReadAloud by remember { mutableStateOf(false) }
     var showOutline by remember { mutableStateOf(false) }
@@ -200,8 +206,8 @@ fun ViewerScreen(
     }
 
     val sheetOpen = showPages || showNotes || showBookmarks || showSearch || showAnnotations ||
-        showOrganize || showExcerpts || showContinuous || showReflow || showReadAloud ||
-        showOutline || showProperties || showStyle || showMenu ||
+        showOrganize || showExcerpts || showContinuous || showSpread || showPopup || showAudioNotes ||
+        showStudyNote || showReflow || showReadAloud || showOutline || showProperties || showStyle || showMenu ||
         textTarget != null || stampTarget != null || signatureTarget != null
     BackHandler(enabled = !sheetOpen) {
         if (textSelectMode || selectedWords.isNotEmpty()) {
@@ -229,6 +235,21 @@ fun ViewerScreen(
             )
             return
         }
+    }
+
+    if (showSpread) {
+        SpreadReaderScreen(
+            title = state.docName,
+            pageCount = state.pageCount,
+            initialPage = state.pageIndex,
+            loadPage = { index -> vm.loadReaderPage(index) },
+            onBack = { showSpread = false },
+            onOpenPage = { index ->
+                vm.goToPage(index)
+                showSpread = false
+            },
+        )
+        return
     }
 
     if (showContinuous) {
@@ -450,6 +471,27 @@ fun ViewerScreen(
                                 onClick = {
                                     showMenu = false
                                     showContinuous = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("스프레드 보기") },
+                                onClick = {
+                                    showMenu = false
+                                    showSpread = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("팝업으로 보기") },
+                                onClick = {
+                                    showMenu = false
+                                    showPopup = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("오디오 노트") },
+                                onClick = {
+                                    showMenu = false
+                                    showAudioNotes = true
                                 },
                             )
                             DropdownMenuItem(
@@ -688,7 +730,40 @@ fun ViewerScreen(
             },
             onTranslate = { text, target -> TextActions.translate(context, text, target) },
             onShare = { text -> TextActions.shareText(context, text) },
+            onStudyNote = {
+                showExcerpts = false
+                showStudyNote = true
+            },
             onDismiss = { showExcerpts = false },
+        )
+    }
+    if (showStudyNote) {
+        StudyNoteSheet(
+            source = StudySource(state.docName, vm.currentDocumentUri()),
+            excerpts = excerpts,
+            onDismiss = { showStudyNote = false },
+            onCreate = { notebook ->
+                showStudyNote = false
+                onCreateStudyNote(notebook)
+            },
+        )
+    }
+    if (showAudioNotes) {
+        AudioNotesSheet(
+            ownerId = state.docId,
+            currentPage = state.pageIndex,
+            onDismiss = { showAudioNotes = false },
+        )
+    }
+    if (showPopup) {
+        PopupPageDialog(
+            title = state.docName,
+            bitmap = bitmap,
+            pageIndex = state.pageIndex,
+            pageCount = state.pageCount,
+            onPrevious = { vm.previousPage() },
+            onNext = { vm.nextPage() },
+            onDismiss = { showPopup = false },
         )
     }
     if (showOutline) {

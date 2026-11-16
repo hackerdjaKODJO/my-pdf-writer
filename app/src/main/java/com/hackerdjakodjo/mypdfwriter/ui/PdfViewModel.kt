@@ -128,6 +128,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     private var sourceFile: File? = null
     private var workingFile: File? = null
+    private var currentUriString: String? = null
+    private var pendingInitialPage: Int? = null
     private var sourceSizes: List<PageSize> = emptyList()
     private var pageTexts: List<String>? = null
     private var renderJob: Job? = null
@@ -176,6 +178,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
                 sourceFile = source
                 workingFile = working
+                currentUriString = uri.toString()
                 sourceSizes = sizes
                 resetTextLayout()
                 _excerpts.value = excerptStore.load(docId)
@@ -188,7 +191,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 redoStack.clear()
 
                 val displayName = saved?.displayName?.takeIf { it.isNotBlank() } ?: name
-                val restoredPage = reading.lastPage.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+                val requestedPage = pendingInitialPage
+                pendingInitialPage = null
+                val restoredPage = (requestedPage ?: reading.lastPage)
+                    .coerceIn(0, (pages.size - 1).coerceAtLeast(0))
                 _pageBitmap.value = null
                 _viewer.value = ViewerUiState(
                     docId = docId,
@@ -218,10 +224,20 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 _pageBitmap.value = null
                 _excerpts.value = emptyList()
                 _bookmarks.value = emptyList()
+                currentUriString = null
+                pendingInitialPage = null
                 _libraryMessage.value = text(R.string.error_generic, error.message ?: text(R.string.unsupported_pdf))
             }
         }
     }
+
+    /** Opens a document at a requested page, used by study-note source links. */
+    fun openDocumentAt(uri: Uri, pageIndex: Int) {
+        pendingInitialPage = pageIndex.coerceAtLeast(0)
+        openDocument(uri)
+    }
+
+    fun currentDocumentUri(): String? = currentUriString
 
     fun createBlankDocument(uri: Uri) {
         viewModelScope.launch {
@@ -252,6 +268,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         sourceSizes = emptyList()
         sourceFile = null
         workingFile = null
+        currentUriString = null
+        pendingInitialPage = null
         repo.clearCache()
     }
 
