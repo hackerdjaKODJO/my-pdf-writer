@@ -113,10 +113,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import java.util.UUID
-import kotlin.math.min
-import kotlin.math.sqrt
 
-private const val NOTE_ERASE_RADIUS = 0.03f
 private const val NOTE_TRACE_TAG = "NoteEditor"
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -175,6 +172,9 @@ fun NoteEditorScreen(
     var penStyle by remember { mutableStateOf(PenStyle.BALLPOINT) }
     var fingerWriting by remember { mutableStateOf(false) }
     var zoomLock by remember { mutableStateOf(false) }
+    var strokeStabilization by remember { mutableStateOf(true) }
+    var shapeRecognition by remember { mutableStateOf(false) }
+    var partialEraser by remember { mutableStateOf(true) }
 
     val context = LocalContext.current
     val penBoxStore = remember(context) { PenBoxStore(context) }
@@ -373,14 +373,49 @@ fun NoteEditorScreen(
         if (points.isEmpty()) return
         val layer = activeLayer ?: return
         if (layer.locked) return
-        val type = noteAnnotationTypeForTool(tool) ?: return
+        var type = noteAnnotationTypeForTool(tool) ?: return
+        var committedPoints = points
         val safeDuration = durationMs.coerceAtLeast(0L)
+
+        if (tool == Tool.PEN && type == AnnotationType.PEN && shapeRecognition) {
+            val recognized = NoteInk.recognizeShape(points)
+            NoteTrace.event(
+                NOTE_TRACE_TAG,
+                "shape",
+                "recognized" to (recognized != null),
+                "type" to (recognized?.type?.name ?: AnnotationType.PEN.name),
+                "pointsBefore" to points.size,
+                "pointsAfter" to (recognized?.points?.size ?: points.size),
+                "confidence" to (recognized?.confidence ?: 0f),
+            )
+            if (recognized != null) {
+                type = recognized.type
+                committedPoints = recognized.points
+            }
+        }
+
+        if (strokeStabilization &&
+            (type == AnnotationType.PEN || type == AnnotationType.HIGHLIGHT)
+        ) {
+            val stabilized = NoteInk.stabilize(points, NOTE_STABILIZE_STRENGTH)
+            NoteTrace.event(
+                NOTE_TRACE_TAG,
+                "stabilize",
+                "tool" to tool.name,
+                "before" to points.size,
+                "after" to stabilized.size,
+                "strength" to NOTE_STABILIZE_STRENGTH,
+                "applied" to (stabilized !== points),
+            )
+            committedPoints = stabilized
+        }
+
         val annotation = Annotation(
             type = type,
             page = 0,
             color = color,
             width = noteStrokeWidth(type, strokeWidth),
-            points = points,
+            points = committedPoints,
             opacity = if (type == AnnotationType.HIGHLIGHT) 1f else opacity,
             penStyle = if (type == AnnotationType.PEN) penStyle else PenStyle.BALLPOINT,
             layerId = layer.id,
@@ -400,7 +435,9 @@ fun NoteEditorScreen(
             "annotation" to annotation.id,
             "annotationsBefore" to (beforePage?.annotations?.size ?: 0),
             "annotationsAfter" to (afterPage?.annotations?.size ?: 0),
-            "points" to points.size,
+            "points" to committedPoints.size,
+            "rawPoints" to points.size,
+            "type" to type.name,
             "tool" to tool.name,
         )
         applyChange(next)
@@ -508,18 +545,37 @@ fun NoteEditorScreen(
         if (trail.isEmpty()) return
         val layer = activeLayer ?: return
         if (layer.locked) return
+        var removed = 0
+        var split = 0
+        var segments = 0
         updateCurrentPage { pageToEdit ->
-            val defaultLayerId = pageToEdit.layers.firstOrNull()?.id
-            val kept = pageToEdit.annotations.filterNot { annotation ->
-                val annotationLayer = annotation.layerId ?: defaultLayerId
-                annotationLayer == layer.id && noteAnnotationHit(annotation, trail)
-            }
-            if (kept.size == pageToEdit.annotations.size) {
-                pageToEdit
+            val result = NoteInk.eraseAnnotations(
+                annotations = pageToEdit.annotations,
+                trail = trail,
+                radius = NOTE_ERASE_RADIUS,
+                targetLayerId = layer.id,
+                defaultLayerId = pageToEdit.layers.firstOrNull()?.id,
+                partial = partialEraser,
+            )
+            removed = result.removed
+            split = result.split
+            segments = result.segments
+            if (result.changed) {
+                pageToEdit.copy(annotations = result.annotations)
             } else {
-                pageToEdit.copy(annotations = kept)
+                pageToEdit
             }
         }
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "erase",
+            "partial" to partialEraser,
+            "removed" to removed,
+            "split" to split,
+            "segments" to segments,
+            "trailPoints" to trail.size,
+            "layer" to layer.name,
+        )
     }
 
     val canUndo = remember(workingNotebook.id, historyVersion) { undoStack.isNotEmpty() }
@@ -881,8 +937,14 @@ fun NoteEditorScreen(
             canDeletePage = pages.size > 1,
             fingerWriting = fingerWriting,
             zoomLock = zoomLock,
+            strokeStabilization = strokeStabilization,
+            shapeRecognition = shapeRecognition,
+            partialEraser = partialEraser,
             onFingerWriting = { fingerWriting = it },
             onZoomLock = { zoomLock = it },
+            onStrokeStabilization = { strokeStabilization = it },
+            onShapeRecognition = { shapeRecognition = it },
+            onPartialEraser = { partialEraser = it },
             onTemplate = {
                 showOverflow = false
                 showTemplates = true
@@ -1467,8 +1529,14 @@ private fun NoteOverflowSheet(
     canDeletePage: Boolean,
     fingerWriting: Boolean,
     zoomLock: Boolean,
+    strokeStabilization: Boolean,
+    shapeRecognition: Boolean,
+    partialEraser: Boolean,
     onFingerWriting: (Boolean) -> Unit,
     onZoomLock: (Boolean) -> Unit,
+    onStrokeStabilization: (Boolean) -> Unit,
+    onShapeRecognition: (Boolean) -> Unit,
+    onPartialEraser: (Boolean) -> Unit,
     onTemplate: () -> Unit,
     onLayers: () -> Unit,
     onOutline: () -> Unit,
@@ -1631,6 +1699,37 @@ private fun NoteOverflowSheet(
                     supporting = "필기 중 페이지 확대·이동 잠금",
                     checked = zoomLock,
                     onCheckedChange = onZoomLock,
+                )
+            }
+            item {
+                NoteMenuToggleRow(
+                    icon = Icons.Filled.Draw,
+                    title = "필기 보정",
+                    supporting = "획의 미세한 떨림을 부드럽게 정리 (강도 25%)",
+                    checked = strokeStabilization,
+                    onCheckedChange = onStrokeStabilization,
+                )
+            }
+            item {
+                NoteMenuToggleRow(
+                    icon = Icons.Filled.Category,
+                    title = "도형 자동 인식",
+                    supporting = "펜으로 그린 선·사각형·원을 도형으로 변환",
+                    checked = shapeRecognition,
+                    onCheckedChange = onShapeRecognition,
+                )
+            }
+            item {
+                NoteMenuToggleRow(
+                    icon = Icons.Filled.AutoFixNormal,
+                    title = "부분 지우개",
+                    supporting = if (partialEraser) {
+                        "닿은 부분만 지우고 획을 나눔 · 텍스트/도장/도형은 통째로"
+                    } else {
+                        "닿은 주석을 통째로 지움"
+                    },
+                    checked = partialEraser,
+                    onCheckedChange = onPartialEraser,
                 )
             }
 
@@ -2119,102 +2218,4 @@ internal fun noteAppendAnnotation(
     val updated = pages.toMutableList()
     updated[index] = pages[index].copy(annotations = pages[index].annotations + annotation)
     return notebook.copy(pages = updated)
-}
-
-private fun noteAnnotationHit(annotation: Annotation, trail: List<NormalizedPoint>): Boolean {
-    if (trail.isEmpty() || annotation.points.isEmpty()) return false
-    return trail.any { eraser ->
-        when (annotation.type) {
-            AnnotationType.PEN,
-            AnnotationType.HIGHLIGHT,
-            AnnotationType.SIGNATURE,
-            AnnotationType.UNDERLINE,
-            AnnotationType.STRIKEOUT,
-            AnnotationType.LINE,
-            AnnotationType.ARROW -> distanceToPolyline(eraser, annotation.points) <= NOTE_ERASE_RADIUS
-
-            AnnotationType.RECT,
-            AnnotationType.ELLIPSE -> annotation.points.size >= 2 &&
-                distanceToRectBorder(eraser, annotation.points[0], annotation.points[1]) <= NOTE_ERASE_RADIUS
-
-            AnnotationType.TEXT,
-            AnnotationType.STAMP -> distance(eraser, annotation.points[0]) <= NOTE_ERASE_RADIUS * 2.4f
-
-            AnnotationType.REDACT -> annotation.points.size >= 2 &&
-                insideRect(eraser, annotation.points[0], annotation.points[1])
-        }
-    }
-}
-
-private fun distance(a: NormalizedPoint, b: NormalizedPoint): Float {
-    val dx = a.x - b.x
-    val dy = a.y - b.y
-    return sqrt(dx * dx + dy * dy)
-}
-
-private fun distanceToPolyline(point: NormalizedPoint, points: List<NormalizedPoint>): Float {
-    if (points.isEmpty()) return Float.MAX_VALUE
-    if (points.size == 1) return distance(point, points[0])
-    var best = Float.MAX_VALUE
-    for (i in 1 until points.size) {
-        best = min(
-            best,
-            distanceToSegment(point, points[i - 1], points[i]),
-        )
-    }
-    return best
-}
-
-private fun distanceToSegment(
-    point: NormalizedPoint,
-    a: NormalizedPoint,
-    b: NormalizedPoint,
-): Float {
-    val dx = b.x - a.x
-    val dy = b.y - a.y
-    val lengthSq = dx * dx + dy * dy
-    val t = if (lengthSq <= 0.0000001f) {
-        0f
-    } else {
-        (((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSq).coerceIn(0f, 1f)
-    }
-    val x = a.x + t * dx
-    val y = a.y + t * dy
-    val ex = point.x - x
-    val ey = point.y - y
-    return sqrt(ex * ex + ey * ey)
-}
-
-private fun distanceToRectBorder(
-    point: NormalizedPoint,
-    a: NormalizedPoint,
-    b: NormalizedPoint,
-): Float {
-    val left = minOf(a.x, b.x)
-    val right = maxOf(a.x, b.x)
-    val top = minOf(a.y, b.y)
-    val bottom = maxOf(a.y, b.y)
-    val corners = listOf(
-        NormalizedPoint(left, top),
-        NormalizedPoint(right, top),
-        NormalizedPoint(right, bottom),
-        NormalizedPoint(left, bottom),
-    )
-    var best = Float.MAX_VALUE
-    for (i in corners.indices) {
-        best = min(best, distanceToSegment(point, corners[i], corners[(i + 1) % corners.size]))
-    }
-    return best
-}
-
-private fun insideRect(
-    point: NormalizedPoint,
-    a: NormalizedPoint,
-    b: NormalizedPoint,
-): Boolean {
-    val left = minOf(a.x, b.x)
-    val right = maxOf(a.x, b.x)
-    val top = minOf(a.y, b.y)
-    val bottom = maxOf(a.y, b.y)
-    return point.x in left..right && point.y in top..bottom
 }
