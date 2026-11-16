@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.1`** — `versionCode = 10`.
-- **Next version is `0.8.2` — `versionCode = 11`.**
+- Current delivered version: **`0.8.2`** — `versionCode = 11`.
+- **Next version is `0.8.3` — `versionCode = 12`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.2` | 11 | 2026-11-16 | `v0.8.2` | Fix multi-stroke note loss, note trace debugger, multi-stroke E2E regression tests |
 | `0.8.1` | 10 | 2026-11-16 | `v0.8.1` | PDF viewer hub/tool dock, home continue/quick actions, note editor style dock |
 | `0.8.0` | 9 | 2026-11-16 | `95a4a87` | Point-level audio stroke replay, search-result highlights, local ZIP backup/restore |
 | `0.7.0` | 8 | 2026-11-16 | `d7673a8` | Study-note drag & drop, audio timeline playback with whole-stroke reveal |
@@ -70,6 +71,7 @@ cd ~/my-pdf-writer
 # Default review build: small arm64-only APK
 ./.termux-build.sh :app:assembleDebug -Parm64Only=true
 ./.termux-build.sh :app:testDebugUnitTest
+./.termux-build.sh :app:assembleDebugAndroidTest
 ./.termux-build.sh :app:assembleRelease
 # Universal APK ONLY when the user asks for 32-bit/x86 compatibility.
 # It is the same app plus duplicate native libs for other ABIs.
@@ -105,13 +107,17 @@ outside this phone.
   `durationMs` for audio replay.
 - New UI strings in Korean literals for new screens; existing UI uses
   `strings.xml`.
+- Note persistence changes should use the synchronous working-notebook pattern in
+  `NoteEditorScreen` and emit `NoteTrace` events. Stroke loss has E2E coverage in
+  `app/src/androidTest/.../Note*StrokeE2ETest.kt`; compile it with
+  `assembleDebugAndroidTest` when a change affects note input.
 - Keep the existing PDF/OCR/bookmark/reflow/TTS/search/backup behavior intact
   when adding features.
 
 ## Release checklist
 
 1. Bump PATCH version and versionCode per policy.
-2. Run debug build, unit tests, and release build.
+2. Run debug build, unit tests, Android-test compilation, and release build.
 3. Verify APK permissions: no `INTERNET`; `RECORD_AUDIO` only for audio.
 4. Copy the arm64 APK to `~/Downloads` and `/sdcard/Download/` with the
    versioned filename. Do not copy a universal APK unless explicitly requested.

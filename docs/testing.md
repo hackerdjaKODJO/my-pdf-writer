@@ -36,8 +36,9 @@ adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell am instrument -w com.hackerdjakodjo.mypdfwriter.debug.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-Drop `-Parm64Only=true` for a universal APK and install
-`app/build/outputs/apk/debug/app-debug.apk` instead.
+Normal arm64 phones and the default review build use the arm64 APK only.
+Build a universal APK only for a 32-bit ARM or x86 emulator, and install
+`app/build/outputs/apk/debug/app-debug.apk` in that case.
 
 When a device is already connected, Gradle can build, install and run in one
 step:
@@ -53,3 +54,15 @@ adb shell am instrument -w \
   -e class com.hackerdjakodjo.mypdfwriter.ui.NoteCanvasStrokeE2ETest,com.hackerdjakodjo.mypdfwriter.ui.NoteEditorStrokeE2ETest \
   com.hackerdjakodjo.mypdfwriter.debug.test/androidx.test.runner.AndroidJUnitRunner
 ```
+
+## Note trace debugger
+
+Debug builds expose two local trace viewers:
+
+- Home overflow (`⋮`) → `노트 추적`
+- Note editor overflow (`더보기`) → `디버그` → `필기 추적`
+
+The sheet shows `NoteTrace` entries (stroke commit counts, editor apply/undo,
+ViewModel update/save timings, and annotation-count decreases). Use `복사` to
+copy the text into a bug report, or `비우기` to clear it. The trace is in-memory
+only and is never written to disk or sent over the network.
