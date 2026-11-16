@@ -34,6 +34,8 @@ import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.DocumentOverlayPainter
+import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
+import com.hackerdjakodjo.mypdfwriter.ui.SearchHighlightOverlay
 import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import kotlin.math.min
@@ -75,6 +77,7 @@ fun PdfCanvas(
     textWords: List<PdfTextWord> = emptyList(),
     textSelectMode: Boolean = false,
     selectedWords: List<PdfTextWord> = emptyList(),
+    searchHighlights: List<SearchMatchRect> = emptyList(),
     annotationProgress: (Annotation) -> Float = { 1f },
     onZoomChange: (Float) -> Unit,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
@@ -382,6 +385,12 @@ fun PdfCanvas(
                     style = documentStyle,
                     pageIndex = pageIndex,
                     pageCount = pageCount,
+                    width = pageW,
+                    height = pageH,
+                )
+                SearchHighlightOverlay.draw(
+                    canvas = native,
+                    rects = searchHighlights,
                     width = pageW,
                     height = pageH,
                 )

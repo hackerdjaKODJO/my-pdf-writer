@@ -1433,6 +1433,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         _libraryMessage.value = null
     }
 
+    fun reloadLibrary() {
+        _library.value = libraryStore.load()
+    }
+
     fun dismissError() {
         _viewer.value = null
     }

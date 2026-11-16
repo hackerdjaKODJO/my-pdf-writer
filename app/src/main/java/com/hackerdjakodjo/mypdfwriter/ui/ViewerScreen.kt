@@ -111,6 +111,8 @@ import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
+import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchLayout
+import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
 import com.hackerdjakodjo.mypdfwriter.pdf.TextActions
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -198,6 +200,7 @@ fun ViewerScreen(
     var signatureTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
     var textSelectMode by remember { mutableStateOf(false) }
     var selectedWords by remember { mutableStateOf<List<PdfTextWord>>(emptyList()) }
+    var searchHighlights by remember { mutableStateOf<List<SearchMatchRect>>(emptyList()) }
     val selectedText = remember(selectedWords) { PdfTextLayout.selectionText(selectedWords) }
 
     LaunchedEffect(state.pageIndex, state.revision) {
@@ -209,6 +212,20 @@ fun ViewerScreen(
             textSelectMode = false
             selectedWords = emptyList()
         }
+    }
+    LaunchedEffect(state.searchQuery, state.pageIndex, state.revision) {
+        val query = state.searchQuery.trim()
+        if (query.isEmpty()) {
+            searchHighlights = emptyList()
+            return@LaunchedEffect
+        }
+        val file = vm.currentWorkingFile()
+        if (file == null) {
+            searchHighlights = emptyList()
+            return@LaunchedEffect
+        }
+        val lines = runCatching { PdfTextLayout.lines(file) }.getOrDefault(emptyList())
+        searchHighlights = SearchMatchLayout.matchesForPage(lines, state.pageIndex, query)
     }
 
     val extractPdf = rememberLauncherForActivityResult(
@@ -659,13 +676,15 @@ fun ViewerScreen(
                 opacity = state.opacity,
                 zoom = state.zoom,
                 documentStyle = state.documentStyle,
+                searchHighlights = searchHighlights,
                 pageCount = state.pageCount,
                 nightMode = state.nightMode,
                 textWords = pageTextWords,
                 textSelectMode = textSelectMode,
                 selectedWords = selectedWords,
                 annotationProgress = { annotation ->
-                    annotationRevealFraction(annotation, replayNote, replayPositionMs)
+                    if (replayNote != null && replayNote?.pageIndex != state.pageIndex) 1f
+                    else annotationRevealFraction(annotation, replayNote, replayPositionMs)
                 },
                 onZoomChange = vm::setZoom,
                 onAddStroke = vm::addStroke,

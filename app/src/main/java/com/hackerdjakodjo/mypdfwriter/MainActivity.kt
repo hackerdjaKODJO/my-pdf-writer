@@ -11,12 +11,15 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.hackerdjakodjo.mypdfwriter.ui.BackupSheet
+import com.hackerdjakodjo.mypdfwriter.ui.BackupViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.NoteEditorScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookHomeScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookViewModel
@@ -30,6 +33,8 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: PdfViewModel by viewModels()
     private val notebookViewModel: NotebookViewModel by viewModels()
+    private val backupViewModel: BackupViewModel by viewModels()
+    private var backupIncludeSources = false
 
     private val openPdf = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.openDocument(it) }
@@ -47,6 +52,14 @@ class MainActivity : ComponentActivity() {
         uri?.let { notebookViewModel.exportCurrent(it) }
     }
 
+    private val saveBackup = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        uri?.let { backupViewModel.backup(it, backupIncludeSources) }
+    }
+
+    private val openBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { backupViewModel.restore(it) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -55,11 +68,20 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyPdfWriterTheme {
                 var showTools by remember { mutableStateOf(false) }
+                var showBackup by remember { mutableStateOf(false) }
                 val viewer by viewModel.viewer.collectAsStateWithLifecycle()
                 val notebooks by notebookViewModel.notebooks.collectAsStateWithLifecycle()
                 val currentNote by notebookViewModel.current.collectAsStateWithLifecycle()
                 val notePage by notebookViewModel.pageIndex.collectAsStateWithLifecycle()
                 val pdfs by viewModel.library.collectAsStateWithLifecycle()
+                val backupState by backupViewModel.state.collectAsStateWithLifecycle()
+                LaunchedEffect(backupState.restoredAt) {
+                    if (backupState.restoredAt != null) {
+                        notebookViewModel.refresh()
+                        viewModel.reloadLibrary()
+                        backupViewModel.consumeRestored()
+                    }
+                }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val note = currentNote
                     when {
@@ -103,6 +125,7 @@ class MainActivity : ComponentActivity() {
                             onRename = { id, title -> notebookViewModel.rename(id, title) },
                             onMoveFolder = { id, folder -> notebookViewModel.moveFolder(id, folder) },
                             onSetTags = { id, tags -> notebookViewModel.setTags(id, tags) },
+                            onOpenBackup = { showBackup = true },
                         )
                         else -> ViewerScreen(
                             vm = viewModel,
@@ -124,6 +147,21 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     }
+                }
+                if (showBackup) {
+                    BackupSheet(
+                        onDismiss = { showBackup = false },
+                        onBackup = { includeSources ->
+                            backupIncludeSources = includeSources
+                            saveBackup.launch(backupViewModel.suggestedBackupName())
+                        },
+                        onRestore = {
+                            openBackup.launch(arrayOf("application/zip", "application/octet-stream"))
+                        },
+                        busy = backupState.busy,
+                        progress = backupState.progress,
+                        message = backupState.message,
+                    )
                 }
             }
         }

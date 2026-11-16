@@ -179,7 +179,8 @@ fun NoteEditorScreen(
     }
     val visiblePage = page.copy(annotations = visibleAnnotations)
     val annotationProgress: (Annotation) -> Float = { annotation ->
-        annotationRevealFraction(annotation, replayNote, replayPositionMs)
+        if (replayNote != null && replayNote?.pageIndex != safeIndex) 1f
+        else annotationRevealFraction(annotation, replayNote, replayPositionMs)
     }
     var showMenu by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }

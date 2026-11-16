@@ -42,6 +42,7 @@ import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.NoteAdd
 import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
@@ -155,6 +156,7 @@ fun NotebookHomeScreen(
     onRename: (String, String) -> Unit,
     onMoveFolder: (String, String) -> Unit,
     onSetTags: (String, List<String>) -> Unit,
+    onOpenBackup: () -> Unit = {},
 ) {
     var section by remember { mutableStateOf(LibrarySection.NOTES) }
     var scope by remember { mutableStateOf(NoteScope.ALL) }
@@ -313,6 +315,14 @@ fun NotebookHomeScreen(
                                             onClick = {
                                                 showOverflow = false
                                                 onOpenTools()
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("백업/복원") },
+                                            leadingIcon = { Icon(Icons.Outlined.Archive, contentDescription = null) },
+                                            onClick = {
+                                                showOverflow = false
+                                                onOpenBackup()
                                             },
                                         )
                                     }
