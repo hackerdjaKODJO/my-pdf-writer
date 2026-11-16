@@ -77,8 +77,10 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hackerdjakodjo.mypdfwriter.audio.annotationVisibleDuringReplay
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.data.AudioNote
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
@@ -155,6 +157,9 @@ fun NoteEditorScreen(
 
     var showPenBox by remember { mutableStateOf(false) }
     var showAudioNotes by remember { mutableStateOf(false) }
+    var showAudioReplay by remember { mutableStateOf(false) }
+    var replayNote by remember { mutableStateOf<AudioNote?>(null) }
+    var replayPositionMs by remember { mutableStateOf(0L) }
     var showLayers by remember { mutableStateOf(false) }
     var showOutline by remember { mutableStateOf(false) }
     var activeLayerId by remember(notebook.id, page.id) {
@@ -163,7 +168,12 @@ fun NoteEditorScreen(
     val activeLayer = page.layers.firstOrNull { it.id == activeLayerId && !it.locked && it.visible }
         ?: page.layers.firstOrNull { !it.locked && it.visible }
         ?: page.layers.firstOrNull()
-    val visibleAnnotations = NoteLayers.visibleAnnotations(page).map { annotation ->
+    val replayAnnotations = if (replayNote != null && replayNote?.pageIndex == safeIndex) {
+        page.annotations.filter { annotationVisibleDuringReplay(it, replayNote, replayPositionMs) }
+    } else {
+        page.annotations
+    }
+    val visibleAnnotations = NoteLayers.visibleAnnotations(page.copy(annotations = replayAnnotations)).map { annotation ->
         val layer = page.layers.firstOrNull { it.id == annotation.layerId }
             ?: page.layers.firstOrNull()
         if (layer != null && layer.opacity < 1f) {
@@ -514,6 +524,13 @@ fun NoteEditorScreen(
                                     showAudioNotes = true
                                 },
                             )
+                            DropdownMenuItem(
+                                text = { Text("오디오 재생") },
+                                onClick = {
+                                    showMenu = false
+                                    showAudioReplay = true
+                                },
+                            )
                             if (notebook.sourceDocumentUri.isNotBlank() && onOpenSourcePdf != null) {
                                 DropdownMenuItem(
                                     text = { Text("원본 PDF 열기") },
@@ -793,6 +810,23 @@ fun NoteEditorScreen(
             ownerId = notebook.id,
             currentPage = safeIndex,
             onDismiss = { showAudioNotes = false },
+        )
+    }
+
+    if (showAudioReplay) {
+        AudioReplaySheet(
+            ownerId = notebook.id,
+            currentPage = safeIndex,
+            onPlaybackState = { note, positionMs, _ ->
+                replayNote = note
+                replayPositionMs = positionMs
+                if (note != null && note.pageIndex != safeIndex) onPageIndexChange(note.pageIndex)
+            },
+            onDismiss = {
+                replayNote = null
+                replayPositionMs = 0L
+                showAudioReplay = false
+            },
         )
     }
 

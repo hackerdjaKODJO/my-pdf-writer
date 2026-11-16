@@ -104,6 +104,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.audio.annotationVisibleDuringReplay
+import com.hackerdjakodjo.mypdfwriter.data.AudioNote
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.Tool
@@ -180,6 +182,9 @@ fun ViewerScreen(
     var showSpread by remember { mutableStateOf(false) }
     var showPopup by remember { mutableStateOf(false) }
     var showAudioNotes by remember { mutableStateOf(false) }
+    var showAudioReplay by remember { mutableStateOf(false) }
+    var replayNote by remember { mutableStateOf<AudioNote?>(null) }
+    var replayPositionMs by remember { mutableStateOf(0L) }
     var showStudyNote by remember { mutableStateOf(false) }
     var showReflow by remember { mutableStateOf(false) }
     var showReadAloud by remember { mutableStateOf(false) }
@@ -217,8 +222,15 @@ fun ViewerScreen(
 
     val sheetOpen = showPages || showNotes || showBookmarks || showSearch || showAnnotations ||
         showOrganize || showExcerpts || showContinuous || showSpread || showPopup || showAudioNotes ||
-        showStudyNote || showReflow || showReadAloud || showOutline || showProperties || showStyle || showMenu ||
+        showAudioReplay || showStudyNote || showReflow || showReadAloud || showOutline || showProperties ||
+        showStyle || showMenu ||
         textTarget != null || stampTarget != null || signatureTarget != null
+    val visibleAnnotations = if (replayNote != null && replayNote?.pageIndex == state.pageIndex) {
+        state.annotations.filter { annotationVisibleDuringReplay(it, replayNote, replayPositionMs) }
+    } else {
+        state.annotations
+    }
+
     BackHandler(enabled = !sheetOpen) {
         if (textSelectMode || selectedWords.isNotEmpty()) {
             textSelectMode = false
@@ -505,6 +517,13 @@ fun ViewerScreen(
                                 },
                             )
                             DropdownMenuItem(
+                                text = { Text("오디오 재생") },
+                                onClick = {
+                                    showMenu = false
+                                    showAudioReplay = true
+                                },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("목차") },
                                 onClick = {
                                     showMenu = false
@@ -637,7 +656,7 @@ fun ViewerScreen(
                 pageIndex = state.pageIndex,
                 displayWidthPt = state.displayWidthPt,
                 displayHeightPt = state.displayHeightPt,
-                annotations = state.annotations,
+                annotations = visibleAnnotations,
                 tool = state.tool,
                 color = state.color,
                 strokeWidth = state.strokeWidth,
@@ -778,6 +797,24 @@ fun ViewerScreen(
             ownerId = state.docId,
             currentPage = state.pageIndex,
             onDismiss = { showAudioNotes = false },
+        )
+    }
+    if (showAudioReplay) {
+        AudioReplaySheet(
+            ownerId = state.docId,
+            currentPage = state.pageIndex,
+            onPlaybackState = { note, positionMs, _ ->
+                replayNote = note
+                replayPositionMs = positionMs
+                if (note != null && note.pageIndex != state.pageIndex) {
+                    vm.goToPage(note.pageIndex)
+                }
+            },
+            onDismiss = {
+                replayNote = null
+                replayPositionMs = 0L
+                showAudioReplay = false
+            },
         )
     }
     if (showPopup) {

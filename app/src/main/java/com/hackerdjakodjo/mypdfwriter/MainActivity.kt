@@ -21,6 +21,7 @@ import com.hackerdjakodjo.mypdfwriter.ui.NoteEditorScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookHomeScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.PdfViewModel
+import com.hackerdjakodjo.mypdfwriter.ui.StudySource
 import com.hackerdjakodjo.mypdfwriter.ui.ToolsScreen
 import com.hackerdjakodjo.mypdfwriter.ui.ViewerScreen
 import com.hackerdjakodjo.mypdfwriter.ui.theme.MyPdfWriterTheme
@@ -110,6 +111,16 @@ class MainActivity : ComponentActivity() {
                             onCreateStudyNote = { notebook ->
                                 notebookViewModel.importNotebook(notebook)
                                 viewModel.closeDocument()
+                            },
+                            onAppendStudyExcerpt = { text, page ->
+                                notebookViewModel.appendStudyExcerpt(
+                                    StudySource(
+                                        docName = viewer?.docName.orEmpty(),
+                                        docUri = viewModel.currentDocumentUri(),
+                                    ),
+                                    text,
+                                    page,
+                                )
                             },
                         )
                     }
