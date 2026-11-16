@@ -47,9 +47,21 @@ object NoteExporter {
             height = safeHeight.toFloat(),
             dark = false,
         )
+        val layers = page.layers.associateBy { it.id }
+        val visible = page.annotations.filter { annotation ->
+            val layer = layers[annotation.layerId] ?: page.layers.firstOrNull()
+            layer?.visible != false
+        }.map { annotation ->
+            val layer = layers[annotation.layerId] ?: page.layers.firstOrNull()
+            if (layer != null && layer.opacity < 1f) {
+                annotation.copy(opacity = (annotation.opacity * layer.opacity).coerceIn(0f, 1f))
+            } else {
+                annotation
+            }
+        }
         AnnotationPainter.draw(
             canvas = canvas,
-            annotations = page.annotations,
+            annotations = visible,
             width = safeWidth.toFloat(),
             height = safeHeight.toFloat(),
         )
