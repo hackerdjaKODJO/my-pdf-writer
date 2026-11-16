@@ -86,9 +86,13 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
     fun duplicatePage(index: Int) {
         val current = _current.value ?: return
         val page = current.pages.getOrNull(index) ?: return
-        val pages = current.pages.toMutableList().also {
-            it.add(index + 1, page.copy(id = java.util.UUID.randomUUID().toString()))
-        }
+        val copy = page.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            annotations = page.annotations.map {
+                it.copy(id = java.util.UUID.randomUUID().toString())
+            },
+        )
+        val pages = current.pages.toMutableList().also { it.add(index + 1, copy) }
         updateCurrent(current.copy(pages = pages))
         _pageIndex.value = index + 1
     }
@@ -146,7 +150,8 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun mutate(id: String, block: (Notebook) -> Notebook) {
-        val original = store.load(id)
+        val original = _current.value?.takeIf { it.id == id }
+            ?: store.load(id)
             ?: _notebooks.value.firstOrNull { it.id == id }
             ?: return
         val updated = block(original).normalized().copy(updatedAt = System.currentTimeMillis())
