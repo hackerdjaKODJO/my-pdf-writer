@@ -108,11 +108,14 @@ data class NotePage(
     val annotations: List<Annotation> = emptyList(),
     val memo: String = "",
     val layers: List<NoteLayer> = listOf(NoteLayer()),
+    /** Zero-based page in the linked source PDF, or null for a plain notebook page. */
+    val sourcePageIndex: Int? = null,
 ) {
     fun normalized(): NotePage {
         val safeLayers = layers.ifEmpty { listOf(NoteLayer()) }
         val defaultLayer = safeLayers.first().id
         return copy(
+            sourcePageIndex = sourcePageIndex?.takeIf { it >= 0 },
             layers = safeLayers,
             annotations = annotations.map {
                 if (it.layerId == null) it.copy(layerId = defaultLayer) else it
@@ -125,6 +128,7 @@ data class NotePage(
         put("template", template.name)
         put("memo", memo)
         put("annotations", JSONArray().apply { annotations.forEach { put(it.toJson()) } })
+        sourcePageIndex?.let { put("sourcePage", it) }
         put("layers", JSONArray().apply { layers.forEach { put(it.toJson()) } })
     }
 
@@ -147,6 +151,7 @@ data class NotePage(
                 }.getOrDefault(PaperTemplate.LINED),
                 annotations = annotations,
                 memo = o.optString("memo"),
+                sourcePageIndex = o.optInt("sourcePage", -1).takeIf { it >= 0 },
                 layers = layers.ifEmpty { listOf(NoteLayer()) },
             ).normalized()
         }
@@ -171,6 +176,10 @@ data class Notebook(
     val updatedAt: Long = System.currentTimeMillis(),
     val favorite: Boolean = false,
     val trashed: Boolean = false,
+    /** Display name of the PDF this study notebook was built from, or blank. */
+    val sourceDocumentName: String = "",
+    /** Best-effort local URI of the source PDF; never required to open the notebook. */
+    val sourceDocumentUri: String = "",
 ) {
     val pageCount: Int get() = pages.size
 
@@ -181,6 +190,8 @@ data class Notebook(
             pages = safePages.map { it.normalized() },
             bookmarks = bookmarks.filter { it.pageIndex in safePages.indices },
             tags = tags.map { it.trim() }.filter { it.isNotBlank() }.distinct(),
+            sourceDocumentName = sourceDocumentName.trim(),
+            sourceDocumentUri = sourceDocumentUri.trim(),
         )
     }
 
@@ -194,6 +205,8 @@ data class Notebook(
         put("tags", JSONArray().apply { tags.forEach { put(it) } })
         put("pages", JSONArray().apply { pages.forEach { put(it.toJson()) } })
         put("bookmarks", JSONArray().apply { bookmarks.forEach { put(it.toJson()) } })
+        put("sourceDocumentName", sourceDocumentName)
+        put("sourceDocumentUri", sourceDocumentUri)
         put("createdAt", createdAt)
         put("updatedAt", updatedAt)
         put("favorite", favorite)
@@ -228,6 +241,8 @@ data class Notebook(
                 tags = tags,
                 pages = pages.ifEmpty { listOf(NotePage()) },
                 bookmarks = bookmarks,
+                sourceDocumentName = o.optString("sourceDocumentName"),
+                sourceDocumentUri = o.optString("sourceDocumentUri"),
                 createdAt = o.optLong("createdAt", System.currentTimeMillis()),
                 updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
                 favorite = o.optBoolean("favorite"),

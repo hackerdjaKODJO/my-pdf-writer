@@ -64,6 +64,19 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         return notebook
     }
 
+    /**
+     * Persists a notebook produced elsewhere (for example by [StudyNoteBuilder]),
+     * refreshes the library and opens it in the editor.
+     */
+    fun importNotebook(notebook: Notebook): Notebook {
+        saveNow()
+        val imported = notebook.normalized().copy(updatedAt = System.currentTimeMillis())
+        store.save(imported)
+        refresh()
+        open(imported.id)
+        return imported
+    }
+
     fun updateCurrent(notebook: Notebook) {
         val updated = notebook.normalized().copy(updatedAt = System.currentTimeMillis())
         _current.value = updated
