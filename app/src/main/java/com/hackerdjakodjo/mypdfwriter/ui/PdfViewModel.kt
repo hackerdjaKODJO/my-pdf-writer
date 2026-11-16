@@ -15,6 +15,8 @@ import com.hackerdjakodjo.mypdfwriter.data.DocState
 import com.hackerdjakodjo.mypdfwriter.data.DocStateStore
 import com.hackerdjakodjo.mypdfwriter.data.DocumentStyle
 import com.hackerdjakodjo.mypdfwriter.data.DocumentStyleStore
+import com.hackerdjakodjo.mypdfwriter.data.Excerpt
+import com.hackerdjakodjo.mypdfwriter.data.ExcerptStore
 import com.hackerdjakodjo.mypdfwriter.data.LibraryStore
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PageEdit
@@ -81,6 +83,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private val docStore = DocStateStore(application)
     private val docStyleStore = DocumentStyleStore(application)
     private val libraryStore = LibraryStore(application)
+    private val excerptStore = ExcerptStore(application)
     private val resolver = application.contentResolver
 
     private val sourceDir = File(application.filesDir, "sources").apply { mkdirs() }
@@ -103,6 +106,9 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _metadata = MutableStateFlow<PdfMetadata?>(null)
     val metadata: StateFlow<PdfMetadata?> = _metadata.asStateFlow()
+
+    private val _excerpts = MutableStateFlow<List<Excerpt>>(emptyList())
+    val excerpts: StateFlow<List<Excerpt>> = _excerpts.asStateFlow()
 
     private var sourceFile: File? = null
     private var workingFile: File? = null
@@ -148,6 +154,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 sourceFile = source
                 workingFile = working
                 sourceSizes = sizes
+                _excerpts.value = excerptStore.load(docId)
                 pageTexts = null
                 currentPageTextsKey = null
                 _outline.value = null
@@ -183,6 +190,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             }.onFailure { error ->
                 _viewer.value = null
                 _pageBitmap.value = null
+                _excerpts.value = emptyList()
                 _libraryMessage.value = text(R.string.error_generic, error.message ?: text(R.string.unsupported_pdf))
             }
         }
@@ -209,6 +217,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         _pageBitmap.value = null
         _outline.value = null
         _metadata.value = null
+        _excerpts.value = emptyList()
         pageTexts = null
         sourceSizes = emptyList()
         sourceFile = null
@@ -940,6 +949,64 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         persistNow()
     }
 
+    // ---------------------------------------------------------------- excerpts
+
+    fun addCurrentPageExcerpt(title: String = "") {
+        val state = _viewer.value ?: return
+        val file = workingFile ?: return
+        viewModelScope.launch {
+            val texts = pageTexts ?: runCatching { repo.extractPagesText(file) }.getOrNull()
+            if (texts == null) {
+                _viewer.update { it?.copy(message = "페이지 텍스트를 읽지 못했습니다.") }
+                return@launch
+            }
+            pageTexts = texts
+            val excerptText = texts.getOrNull(state.pageIndex).orEmpty().trim()
+            if (excerptText.isBlank()) {
+                _viewer.update { it?.copy(message = "이 페이지에는 발췌할 텍스트가 없습니다.") }
+                return@launch
+            }
+            if (_viewer.value?.docId != state.docId) return@launch
+            val excerpt = Excerpt(
+                pageIndex = state.pageIndex,
+                text = excerptText,
+                title = title.trim(),
+            )
+            val updated = (listOf(excerpt) + _excerpts.value).sortedByDescending { it.createdAt }
+            _excerpts.value = updated
+            withContext(Dispatchers.IO) { excerptStore.save(state.docId, updated) }
+            _viewer.update { it?.copy(message = "발췌를 저장했습니다.") }
+        }
+    }
+
+    fun deleteExcerpt(id: String) {
+        val state = _viewer.value ?: return
+        val updated = _excerpts.value.filterNot { it.id == id }
+        if (updated.size == _excerpts.value.size) return
+        _excerpts.value = updated
+        viewModelScope.launch(Dispatchers.IO) { excerptStore.save(state.docId, updated) }
+        _viewer.update { it?.copy(message = "발췌를 삭제했습니다.") }
+    }
+
+    fun updateExcerptTitle(id: String, title: String) {
+        val state = _viewer.value ?: return
+        val updated = _excerpts.value.map { excerpt ->
+            if (excerpt.id == id) excerpt.copy(title = title.trim()) else excerpt
+        }
+        if (updated == _excerpts.value) return
+        _excerpts.value = updated
+        viewModelScope.launch(Dispatchers.IO) { excerptStore.save(state.docId, updated) }
+    }
+
+    /** Current page text for the excerpt sheet; extracts once and reuses the page-text cache. */
+    suspend fun currentPageText(): String {
+        val state = _viewer.value ?: return ""
+        val file = workingFile ?: return ""
+        val texts = pageTexts ?: runCatching { repo.extractPagesText(file) }.getOrNull() ?: return ""
+        pageTexts = texts
+        return texts.getOrNull(state.pageIndex).orEmpty().trim()
+    }
+
     // ---------------------------------------------------------------- search
 
     fun search(query: String) {
@@ -1051,6 +1118,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             val id = docIdFor(Uri.parse(uri))
             docStore.delete(id)
             docStyleStore.delete(id)
+            excerptStore.delete(id)
             File(sourceDir, "$id.pdf").delete()
         }
     }

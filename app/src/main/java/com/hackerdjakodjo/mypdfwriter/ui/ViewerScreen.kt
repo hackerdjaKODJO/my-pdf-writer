@@ -83,6 +83,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -91,6 +92,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.pdf.TextActions
 import kotlin.math.roundToInt
 
 private data class ToolSpec(val tool: Tool, val icon: ImageVector, val labelRes: Int)
@@ -134,6 +136,8 @@ fun ViewerScreen(
     val bitmap by vm.pageBitmap.collectAsStateWithLifecycle()
     val outline by vm.outline.collectAsStateWithLifecycle()
     val metadata by vm.metadata.collectAsStateWithLifecycle()
+    val excerpts by vm.excerpts.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val state = stateFlow.value ?: return
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -142,6 +146,7 @@ fun ViewerScreen(
     var showSearch by remember { mutableStateOf(false) }
     var showAnnotations by remember { mutableStateOf(false) }
     var showOrganize by remember { mutableStateOf(false) }
+    var showExcerpts by remember { mutableStateOf(false) }
     var showOutline by remember { mutableStateOf(false) }
     var showProperties by remember { mutableStateOf(false) }
     var showStyle by remember { mutableStateOf(false) }
@@ -161,7 +166,7 @@ fun ViewerScreen(
     }
 
     val sheetOpen = showPages || showNotes || showSearch || showAnnotations ||
-        showOrganize || showOutline || showProperties || showStyle || showMenu ||
+        showOrganize || showExcerpts || showOutline || showProperties || showStyle || showMenu ||
         textTarget != null || stampTarget != null || signatureTarget != null
     BackHandler(enabled = !sheetOpen) { vm.closeDocument() }
 
@@ -275,6 +280,18 @@ fun ViewerScreen(
                                 onClick = {
                                     showMenu = false
                                     showAnnotations = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (excerpts.isEmpty()) "발췌·번역"
+                                        else "발췌·번역 (${excerpts.size})",
+                                    )
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    showExcerpts = true
                                 },
                             )
                             DropdownMenuItem(
@@ -424,6 +441,21 @@ fun ViewerScreen(
     }
     if (showAnnotations) {
         AnnotationSheet(state, vm) { showAnnotations = false }
+    }
+    if (showExcerpts) {
+        ExcerptSheet(
+            excerpts = excerpts,
+            currentPage = state.pageIndex,
+            onAdd = { title -> vm.addCurrentPageExcerpt(title) },
+            onDelete = { id -> vm.deleteExcerpt(id) },
+            onJump = { page ->
+                vm.goToPage(page)
+                showExcerpts = false
+            },
+            onTranslate = { text -> TextActions.translate(context, text) },
+            onShare = { text -> TextActions.shareText(context, text) },
+            onDismiss = { showExcerpts = false },
+        )
     }
     if (showOutline) {
         OutlineSheet(

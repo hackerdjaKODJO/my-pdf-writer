@@ -1,0 +1,261 @@
+package com.hackerdjakodjo.mypdfwriter.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Translate
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.hackerdjakodjo.mypdfwriter.data.Excerpt
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExcerptSheet(
+    excerpts: List<Excerpt>,
+    currentPage: Int,
+    onAdd: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    onJump: (Int) -> Unit,
+    onTranslate: (String) -> Unit,
+    onShare: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showTitleDialog by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "발췌·번역",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "${excerpts.size}개",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Text(
+                "현재 ${currentPage + 1}쪽에서 텍스트를 발췌하고, 모은 발췌를 설치된 외부 번역 앱으로 넘길 수 있습니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.size(12.dp))
+            Button(onClick = { showTitleDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("현재 페이지 발췌 추가")
+            }
+            Spacer(Modifier.size(12.dp))
+            HorizontalDivider()
+            Spacer(Modifier.size(10.dp))
+
+            if (excerpts.isEmpty()) {
+                Text(
+                    "아직 발췌가 없습니다. 현재 페이지의 텍스트를 발췌로 저장해 보세요.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 24.dp),
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(bottom = 8.dp),
+                ) {
+                    items(excerpts, key = { it.id }) { excerpt ->
+                        ExcerptRow(
+                            excerpt = excerpt,
+                            onJump = { onJump(excerpt.pageIndex) },
+                            onTranslate = { onTranslate(excerpt.text) },
+                            onShare = { onShare(excerpt.text) },
+                            onDelete = { onDelete(excerpt.id) },
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.size(10.dp))
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    "번역과 공유는 Android 텍스트 처리/공유 화면을 통해 선택한 외부 앱에 텍스트를 전달합니다. " +
+                        "이 앱은 발췌를 서버에 올리지 않으며 인터넷 권한을 사용하지 않습니다.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                )
+            }
+            Spacer(Modifier.size(24.dp))
+        }
+    }
+
+    if (showTitleDialog) {
+        ExcerptTitleDialog(
+            currentPage = currentPage,
+            onDismiss = { showTitleDialog = false },
+            onConfirm = { title ->
+                showTitleDialog = false
+                onAdd(title)
+            },
+        )
+    }
+}
+
+@Composable
+private fun ExcerptRow(
+    excerpt: Excerpt,
+    onJump: () -> Unit,
+    onTranslate: () -> Unit,
+    onShare: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val snippet = remember(excerpt.text) {
+        excerpt.text.replace(Regex("\\s+"), " ").trim()
+    }
+    val date = remember(excerpt.createdAt) {
+        SimpleDateFormat("yyyy.MM.dd HH:mm", Locale.getDefault()).format(Date(excerpt.createdAt))
+    }
+
+    Surface(
+        onClick = onJump,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(start = 12.dp, top = 10.dp, end = 4.dp, bottom = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${excerpt.pageIndex + 1}쪽",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                if (excerpt.title.isNotBlank()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        excerpt.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+                Text(
+                    date,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.size(4.dp))
+            Text(
+                snippet,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(end = 8.dp),
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onTranslate) {
+                    Icon(Icons.Outlined.Translate, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("번역")
+                }
+                TextButton(onClick = onShare) {
+                    Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("공유")
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Outlined.Delete,
+                        contentDescription = "발췌 삭제",
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExcerptTitleDialog(
+    currentPage: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var title by remember { mutableStateOf("${currentPage + 1}쪽 발췌") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+        title = { Text("현재 페이지 발췌") },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                Text(
+                    "${currentPage + 1}쪽의 텍스트를 발췌로 저장합니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.size(10.dp))
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("제목 (선택)") },
+                    singleLine = true,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(title.trim()) }) { Text("발췌") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("취소") }
+        },
+    )
+}
