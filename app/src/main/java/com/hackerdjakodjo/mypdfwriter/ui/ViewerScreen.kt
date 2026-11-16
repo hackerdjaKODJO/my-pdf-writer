@@ -104,7 +104,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
-import com.hackerdjakodjo.mypdfwriter.audio.annotationVisibleDuringReplay
+import com.hackerdjakodjo.mypdfwriter.audio.annotationRevealFraction
 import com.hackerdjakodjo.mypdfwriter.data.AudioNote
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
@@ -225,11 +225,6 @@ fun ViewerScreen(
         showAudioReplay || showStudyNote || showReflow || showReadAloud || showOutline || showProperties ||
         showStyle || showMenu ||
         textTarget != null || stampTarget != null || signatureTarget != null
-    val visibleAnnotations = if (replayNote != null && replayNote?.pageIndex == state.pageIndex) {
-        state.annotations.filter { annotationVisibleDuringReplay(it, replayNote, replayPositionMs) }
-    } else {
-        state.annotations
-    }
 
     BackHandler(enabled = !sheetOpen) {
         if (textSelectMode || selectedWords.isNotEmpty()) {
@@ -656,7 +651,7 @@ fun ViewerScreen(
                 pageIndex = state.pageIndex,
                 displayWidthPt = state.displayWidthPt,
                 displayHeightPt = state.displayHeightPt,
-                annotations = visibleAnnotations,
+                annotations = state.annotations,
                 tool = state.tool,
                 color = state.color,
                 strokeWidth = state.strokeWidth,
@@ -669,6 +664,9 @@ fun ViewerScreen(
                 textWords = pageTextWords,
                 textSelectMode = textSelectMode,
                 selectedWords = selectedWords,
+                annotationProgress = { annotation ->
+                    annotationRevealFraction(annotation, replayNote, replayPositionMs)
+                },
                 onZoomChange = vm::setZoom,
                 onAddStroke = vm::addStroke,
                 onEraseStroke = vm::eraseStroke,

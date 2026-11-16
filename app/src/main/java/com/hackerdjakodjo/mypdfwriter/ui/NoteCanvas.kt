@@ -66,7 +66,8 @@ fun NoteCanvas(
     penStyle: PenStyle = PenStyle.BALLPOINT,
     penOnly: Boolean,
     zoomLock: Boolean,
-    onAddStroke: (List<NormalizedPoint>) -> Unit,
+    annotationProgress: (Annotation) -> Float = { 1f },
+    onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
     onErase: (List<NormalizedPoint>) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
     onLassoSelect: (polygon: List<NormalizedPoint>, rectangular: Boolean) -> Unit = { _, _ -> },
@@ -158,6 +159,7 @@ fun NoteCanvas(
                 var traveled = 0f
                 var lastPosition = down.position
                 val gestureStart = SystemClock.uptimeMillis()
+                val strokeStartMs = SystemClock.elapsedRealtime()
 
                 if (canDraw) {
                     down.consume()
@@ -273,7 +275,7 @@ fun NoteCanvas(
                                         val dx = end.x - start.x
                                         val dy = end.y - start.y
                                         if (dx * dx + dy * dy > 0.000025f) {
-                                            onAddStroke(listOf(start, end))
+                                            onAddStroke(listOf(start, end), 0L)
                                         }
                                     }
                                 }
@@ -297,7 +299,11 @@ fun NoteCanvas(
                                 }
 
                                 else -> {
-                                    if (livePoints.isNotEmpty()) onAddStroke(livePoints.toList())
+                                    if (livePoints.isNotEmpty()) {
+                                        val durationMs = (SystemClock.elapsedRealtime() - strokeStartMs)
+                                            .coerceAtLeast(0L)
+                                        onAddStroke(livePoints.toList(), durationMs)
+                                    }
                                 }
                             }
                             clearPreview()
@@ -386,6 +392,7 @@ fun NoteCanvas(
                     annotations = page.annotations,
                     width = notePageWidth,
                     height = notePageHeight,
+                    progress = annotationProgress,
                 )
 
                 val previewPoints = livePoints.toList()

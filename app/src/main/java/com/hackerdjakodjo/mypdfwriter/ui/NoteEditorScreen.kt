@@ -77,7 +77,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.hackerdjakodjo.mypdfwriter.audio.annotationVisibleDuringReplay
+import com.hackerdjakodjo.mypdfwriter.audio.annotationRevealFraction
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.AudioNote
@@ -168,12 +168,7 @@ fun NoteEditorScreen(
     val activeLayer = page.layers.firstOrNull { it.id == activeLayerId && !it.locked && it.visible }
         ?: page.layers.firstOrNull { !it.locked && it.visible }
         ?: page.layers.firstOrNull()
-    val replayAnnotations = if (replayNote != null && replayNote?.pageIndex == safeIndex) {
-        page.annotations.filter { annotationVisibleDuringReplay(it, replayNote, replayPositionMs) }
-    } else {
-        page.annotations
-    }
-    val visibleAnnotations = NoteLayers.visibleAnnotations(page.copy(annotations = replayAnnotations)).map { annotation ->
+    val visibleAnnotations = NoteLayers.visibleAnnotations(page).map { annotation ->
         val layer = page.layers.firstOrNull { it.id == annotation.layerId }
             ?: page.layers.firstOrNull()
         if (layer != null && layer.opacity < 1f) {
@@ -183,6 +178,9 @@ fun NoteEditorScreen(
         }
     }
     val visiblePage = page.copy(annotations = visibleAnnotations)
+    val annotationProgress: (Annotation) -> Float = { annotation ->
+        annotationRevealFraction(annotation, replayNote, replayPositionMs)
+    }
     var showMenu by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     var showTemplates by remember { mutableStateOf(false) }
@@ -304,11 +302,12 @@ fun NoteEditorScreen(
         applyChange(notebook.copy(favorite = !notebook.favorite))
     }
 
-    fun addStroke(points: List<NormalizedPoint>) {
+    fun addStroke(points: List<NormalizedPoint>, durationMs: Long = 0L) {
         if (points.isEmpty()) return
         val layer = activeLayer ?: return
         if (layer.locked) return
         val type = noteAnnotationTypeForTool(tool) ?: return
+        val safeDuration = durationMs.coerceAtLeast(0L)
         val annotation = Annotation(
             type = type,
             page = 0,
@@ -318,6 +317,8 @@ fun NoteEditorScreen(
             opacity = if (type == AnnotationType.HIGHLIGHT) 1f else opacity,
             penStyle = if (type == AnnotationType.PEN) penStyle else PenStyle.BALLPOINT,
             layerId = layer.id,
+            createdAt = System.currentTimeMillis() - safeDuration,
+            durationMs = safeDuration,
         )
         updateCurrentPage { it.copy(annotations = it.annotations + annotation) }
     }
@@ -658,8 +659,9 @@ fun NoteEditorScreen(
                         penStyle = penStyle,
                         penOnly = !fingerWriting,
                         zoomLock = zoomLock,
+                        annotationProgress = annotationProgress,
                         hint = hint,
-                        onAddStroke = { addStroke(it) },
+                        onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
                         onErase = { erase(it) },
                         onRequestText = { textPoint = it },
                         onLassoSelect = { polygon, rectangular -> selectWithLasso(polygon, rectangular) },
@@ -692,8 +694,9 @@ fun NoteEditorScreen(
                         penStyle = penStyle,
                         penOnly = !fingerWriting,
                         zoomLock = zoomLock,
+                        annotationProgress = annotationProgress,
                         hint = hint,
-                        onAddStroke = { addStroke(it) },
+                        onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
                         onErase = { erase(it) },
                         onRequestText = { textPoint = it },
                         onLassoSelect = { polygon, rectangular -> selectWithLasso(polygon, rectangular) },
@@ -867,8 +870,9 @@ private fun NoteCanvasPane(
     penStyle: PenStyle,
     penOnly: Boolean,
     zoomLock: Boolean,
+    annotationProgress: (Annotation) -> Float,
     hint: String,
-    onAddStroke: (List<NormalizedPoint>) -> Unit,
+    onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
     onErase: (List<NormalizedPoint>) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
     onLassoSelect: (List<NormalizedPoint>, Boolean) -> Unit,
@@ -887,6 +891,7 @@ private fun NoteCanvasPane(
             penStyle = penStyle,
             penOnly = penOnly,
             zoomLock = zoomLock,
+            annotationProgress = annotationProgress,
             onAddStroke = onAddStroke,
             onErase = onErase,
             onRequestText = onRequestText,

@@ -5,6 +5,7 @@ import android.graphics.BlurMaskFilter
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -74,8 +75,9 @@ fun PdfCanvas(
     textWords: List<PdfTextWord> = emptyList(),
     textSelectMode: Boolean = false,
     selectedWords: List<PdfTextWord> = emptyList(),
+    annotationProgress: (Annotation) -> Float = { 1f },
     onZoomChange: (Float) -> Unit,
-    onAddStroke: (List<NormalizedPoint>) -> Unit,
+    onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
     onEraseStroke: (List<NormalizedPoint>) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
     onRequestStamp: (NormalizedPoint) -> Unit,
@@ -293,7 +295,7 @@ fun PdfCanvas(
                             val dx = endPoint.x - startPoint.x
                             val dy = endPoint.y - startPoint.y
                             if (dx * dx + dy * dy > 0.000025f) {
-                                onAddStroke(listOf(startPoint, endPoint))
+                                onAddStroke(listOf(startPoint, endPoint), 0L)
                             }
                         }
                         shapeStart = null
@@ -303,6 +305,7 @@ fun PdfCanvas(
                     else -> awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         down.consume()
+                        val strokeStartMs = SystemClock.elapsedRealtime()
                         livePoints.clear()
                         livePoints.add(transform.normalize(down.position))
                         var pressed = true
@@ -317,7 +320,11 @@ fun PdfCanvas(
                                 change.consume()
                             }
                         }
-                        if (livePoints.isNotEmpty()) onAddStroke(livePoints.toList())
+                        if (livePoints.isNotEmpty()) {
+                            val durationMs = (SystemClock.elapsedRealtime() - strokeStartMs)
+                                .coerceAtLeast(0L)
+                            onAddStroke(livePoints.toList(), durationMs)
+                        }
                         livePoints.clear()
                     }
                 }
@@ -383,6 +390,7 @@ fun PdfCanvas(
                     annotations.filter { it.page == pageIndex },
                     pageW,
                     pageH,
+                    progress = annotationProgress,
                 )
 
                 if (textSelectMode && textWords.isNotEmpty()) {
