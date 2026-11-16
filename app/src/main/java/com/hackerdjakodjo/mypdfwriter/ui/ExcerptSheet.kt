@@ -27,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -58,6 +59,8 @@ fun ExcerptSheet(
     onTranslate: (String, TranslateTarget) -> Unit,
     onShare: (String) -> Unit,
     onDismiss: () -> Unit,
+    /** Optional integration hook; the viewer supplies it to open [StudyNoteSheet]. */
+    onStudyNote: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showTitleDialog by remember { mutableStateOf(false) }
@@ -98,6 +101,12 @@ fun ExcerptSheet(
                 Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("현재 페이지 발췌 추가")
+            }
+            if (onStudyNote != null) {
+                Spacer(Modifier.size(8.dp))
+                OutlinedButton(onClick = onStudyNote, modifier = Modifier.fillMaxWidth()) {
+                    Text("PDF → 스터디 노트")
+                }
             }
             Spacer(Modifier.size(12.dp))
             HorizontalDivider()

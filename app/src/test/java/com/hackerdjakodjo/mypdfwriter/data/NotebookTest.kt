@@ -55,4 +55,38 @@ class NotebookTest {
         assertEquals(1, restored.pages.size)
         assertEquals(PaperTemplate.LINED, restored.pages[0].template)
     }
+
+    @Test
+    fun sourceLinksRoundTripWithoutChangingPageContent() {
+        val notebook = Notebook(
+            title = "세포 생물학",
+            pages = listOf(
+                NotePage(memo = "원본 PDF p.3", sourcePageIndex = 2),
+                NotePage(template = PaperTemplate.GRID),
+            ),
+            sourceDocumentName = "biology.pdf",
+            sourceDocumentUri = "content://docs/biology",
+        )
+
+        val restored = Notebook.fromJson(JSONObject(notebook.toJson().toString()))
+
+        assertEquals("biology.pdf", restored.sourceDocumentName)
+        assertEquals("content://docs/biology", restored.sourceDocumentUri)
+        assertEquals(2, restored.pages[0].sourcePageIndex)
+        assertEquals("원본 PDF p.3", restored.pages[0].memo)
+        assertEquals(null, restored.pages[1].sourcePageIndex)
+    }
+
+    @Test
+    fun legacyNotebookGetsBlankSourceMetadataAndNegativePagesNormalize() {
+        val legacy = Notebook.fromJson(JSONObject("""{"id":"x","pages":[{"id":"p","memo":"옛 노트"}]}"""))
+        assertEquals("", legacy.sourceDocumentName)
+        assertEquals("", legacy.sourceDocumentUri)
+        assertEquals(null, legacy.pages[0].sourcePageIndex)
+
+        val invalid = Notebook.fromJson(
+            JSONObject("""{"id":"y","pages":[{"id":"p","sourcePage":-4}]}"""),
+        )
+        assertEquals(null, invalid.pages[0].sourcePageIndex)
+    }
 }
