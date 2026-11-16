@@ -14,11 +14,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.ui.BackupSheet
@@ -28,10 +30,13 @@ import com.hackerdjakodjo.mypdfwriter.ui.NoteTraceSheet
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookHomeScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.PdfViewModel
+import com.hackerdjakodjo.mypdfwriter.ui.STUDY_PANE_DEFAULT_FRACTION
+import com.hackerdjakodjo.mypdfwriter.ui.StudyNoteBuilder
 import com.hackerdjakodjo.mypdfwriter.ui.StudyPaneSheet
 import com.hackerdjakodjo.mypdfwriter.ui.StudySource
 import com.hackerdjakodjo.mypdfwriter.ui.ToolsScreen
 import com.hackerdjakodjo.mypdfwriter.ui.ViewerScreen
+import com.hackerdjakodjo.mypdfwriter.ui.clampStudyPaneFraction
 import com.hackerdjakodjo.mypdfwriter.ui.theme.MyPdfWriterTheme
 
 class MainActivity : ComponentActivity() {
@@ -98,6 +103,11 @@ class MainActivity : ComponentActivity() {
                 var studyPaneNotebook by remember { mutableStateOf<Notebook?>(null) }
                 var studyPanePageIndex by remember { mutableStateOf(0) }
                 var studyPaneDocId by remember { mutableStateOf<String?>(null) }
+                // Session-only: survives note page changes and PDF page changes
+                // while the pane stays open, and resets with activity recreation.
+                var studyPaneFraction by remember {
+                    mutableFloatStateOf(STUDY_PANE_DEFAULT_FRACTION)
+                }
                 LaunchedEffect(backupState.restoredAt) {
                     if (backupState.restoredAt != null) {
                         notebookViewModel.refresh()
@@ -183,6 +193,37 @@ class MainActivity : ComponentActivity() {
                             onOpenTrace = { showTrace = true },
                         )
                         else -> Box(Modifier.fillMaxSize()) {
+                            val studySource = StudySource(
+                                docName = viewer?.docName.orEmpty(),
+                                docUri = viewModel.currentDocumentUri(),
+                            )
+                            // With the pane open, captures go straight to the pane
+                            // notebook instead of re-resolving a library match.
+                            val appendToOpenPane: (String, Int) -> Boolean = { text, page ->
+                                val pane = studyPaneNotebook
+                                if (pane == null) {
+                                    false
+                                } else {
+                                    val updated = StudyNoteBuilder.appendExcerpt(
+                                        notebook = pane,
+                                        source = studySource,
+                                        excerpt = Excerpt(
+                                            pageIndex = page.coerceAtLeast(0),
+                                            text = text.trim(),
+                                        ),
+                                    )
+                                    if (updated == pane) {
+                                        false
+                                    } else {
+                                        val saved = notebookViewModel.saveDetached(updated)
+                                        studyPaneNotebook = saved
+                                        studyPanePageIndex =
+                                            (saved.pages.size - 1).coerceAtLeast(0)
+                                        true
+                                    }
+                                }
+                            }
+                            val paneNotebook = studyPaneNotebook
                             ViewerScreen(
                                 vm = viewModel,
                                 onExportRequest = { suggestedName -> exportPdf.launch(suggestedName) },
@@ -193,21 +234,14 @@ class MainActivity : ComponentActivity() {
                                     openStudyPane(notebookViewModel.saveDetached(notebook))
                                 },
                                 onAppendStudyExcerpt = { text, page ->
-                                    val updated = notebookViewModel.appendStudyExcerpt(
-                                        StudySource(
-                                            docName = viewer?.docName.orEmpty(),
-                                            docUri = viewModel.currentDocumentUri(),
-                                        ),
-                                        text,
-                                        page,
-                                    )
-                                    val pane = studyPaneNotebook
-                                    if (pane != null && pane.id == updated.id) {
-                                        studyPaneNotebook = updated
-                                        studyPanePageIndex = studyPanePageIndex.coerceIn(
-                                            0,
-                                            (updated.pages.size - 1).coerceAtLeast(0),
+                                    if (studyPaneNotebook == null) {
+                                        notebookViewModel.appendStudyExcerpt(
+                                            studySource,
+                                            text,
+                                            page,
                                         )
+                                    } else {
+                                        appendToOpenPane(text, page)
                                     }
                                 },
                                 onOpenStudyNote = { source ->
@@ -215,43 +249,68 @@ class MainActivity : ComponentActivity() {
                                         ?: notebookViewModel.createBlankStudyNote(source)
                                     openStudyPane(notebook)
                                 },
-                            )
-                            studyPaneNotebook?.let { pane ->
-                                StudyPaneSheet(
-                                    notebook = pane,
-                                    pageIndex = studyPanePageIndex,
-                                    onDismiss = closeStudyPane,
-                                    onChange = { updated ->
-                                        studyPaneNotebook = notebookViewModel.saveDetached(updated)
-                                    },
-                                    onPageIndexChange = { index ->
-                                        val latest = studyPaneNotebook
-                                        studyPanePageIndex = index.coerceIn(
-                                            0,
-                                            ((latest?.pages?.size ?: 1) - 1).coerceAtLeast(0),
+                                studyPaneFraction = studyPaneFraction,
+                                studyPane = if (paneNotebook != null) {
+                                    {
+                                        StudyPaneSheet(
+                                            notebook = paneNotebook,
+                                            pageIndex = studyPanePageIndex,
+                                            heightFraction = studyPaneFraction,
+                                            onHeightFractionChange = { fraction ->
+                                                studyPaneFraction =
+                                                    clampStudyPaneFraction(fraction)
+                                            },
+                                            onDismiss = closeStudyPane,
+                                            onChange = { updated ->
+                                                studyPaneNotebook =
+                                                    notebookViewModel.saveDetached(updated)
+                                            },
+                                            onPageIndexChange = { index ->
+                                                val latest = studyPaneNotebook
+                                                studyPanePageIndex = index.coerceIn(
+                                                    0,
+                                                    ((latest?.pages?.size ?: 1) - 1)
+                                                        .coerceAtLeast(0),
+                                                )
+                                            },
+                                            onExportPdf = { options ->
+                                                val exportNotebook = studyPaneNotebook
+                                                if (exportNotebook != null) {
+                                                    pendingNoteExport = exportNotebook
+                                                    pendingNoteExportOptions = options
+                                                    exportNote.launch(
+                                                        options.suggestedFileName.ifBlank {
+                                                            notebookViewModel.exportSuggestedName(
+                                                                exportNotebook,
+                                                            )
+                                                        },
+                                                    )
+                                                }
+                                            },
+                                            onOpenSourcePdf = { page ->
+                                                closeStudyPane()
+                                                viewModel.goToPage(page)
+                                            },
+                                            onCaptureExcerpt = appendToOpenPane,
+                                            onJumpToSourcePage = { sourcePage, notePage ->
+                                                studyPaneNotebook?.let {
+                                                    notebookViewModel.saveDetached(it)
+                                                }
+                                                studyPanePageIndex = notePage.coerceIn(
+                                                    0,
+                                                    ((studyPaneNotebook?.pages?.size ?: 1) - 1)
+                                                        .coerceAtLeast(0),
+                                                )
+                                                // Keep the pane open so the note and the
+                                                // PDF page move together.
+                                                viewModel.goToPage(sourcePage)
+                                            },
                                         )
-                                    },
-                                    onExportPdf = { options ->
-                                        val exportNotebook = studyPaneNotebook
-                                        if (exportNotebook != null) {
-                                            pendingNoteExport = exportNotebook
-                                            pendingNoteExportOptions = options
-                                            exportNote.launch(
-                                                options.suggestedFileName.ifBlank {
-                                                    notebookViewModel.exportSuggestedName(exportNotebook)
-                                                },
-                                            )
-                                        }
-                                    },
-                                    onOpenSourcePdf = { page ->
-                                        studyPaneNotebook?.let { notebookViewModel.saveDetached(it) }
-                                        studyPaneNotebook = null
-                                        studyPanePageIndex = 0
-                                        studyPaneDocId = null
-                                        viewModel.goToPage(page)
-                                    },
-                                )
-                            }
+                                    }
+                                } else {
+                                    null
+                                },
+                            )
                         }
                     }
                 }
