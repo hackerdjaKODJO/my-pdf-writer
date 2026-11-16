@@ -136,8 +136,8 @@ object NotePaper {
             }
             annotation.copy(
                 points = points,
-                width = (annotation.width * widthFactor).coerceAtLeast(MIN_NORMALIZED),
-                fontSize = (annotation.fontSize * heightFactor).coerceAtLeast(MIN_NORMALIZED),
+                width = annotation.width * widthFactor,
+                fontSize = annotation.fontSize * heightFactor,
                 textRotation = PageSpec.normalizeRotation(annotation.textRotation + degrees),
             )
         }
