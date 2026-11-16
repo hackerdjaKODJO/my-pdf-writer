@@ -9,6 +9,7 @@
 - **버전**: `0.8.5` (개발 빌드)
 - **지원 OS**: Android 8.0 (API 26) 이상
 - **타깃 SDK**: 36 (Android 16)
+- **PC 인계 문서**: [`HANDOFF.md`](HANDOFF.md)
 
 ---
 
