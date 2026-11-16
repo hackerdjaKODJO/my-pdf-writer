@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
@@ -34,6 +35,7 @@ import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.data.clampInkPressure
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import kotlin.math.min
 
@@ -56,6 +58,8 @@ private val notePageHeight = PaperBackground.pageHeightPx(NOTE_PAGE_SCALE)
  *  - penOnly = false: one finger draws; a second finger switches that gesture to
  *    pan/pinch. A stylus always draws and ignores palm/finger contacts.
  *  - zoomLock = true: pan/zoom and double-tap reset are disabled while writing.
+ *  - pressureEnabled = true: stylus pressure is stored with each point and drives
+ *    fountain/brush width. Fingers and unknown pointers always store 1f.
  */
 @Composable
 fun NoteCanvas(
@@ -68,6 +72,7 @@ fun NoteCanvas(
     penStyle: PenStyle = PenStyle.BALLPOINT,
     penOnly: Boolean,
     zoomLock: Boolean,
+    pressureEnabled: Boolean = true,
     selectionBounds: NoteSelectionBounds? = null,
     annotationProgress: (Annotation) -> Float = { 1f },
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
@@ -123,17 +128,28 @@ fun NoteCanvas(
             if (clamped != pan) pan = clamped
         }
 
-        val gestureModifier = Modifier.pointerInput(page.id, tool, penOnly, zoomLock, fit) {
+        val gestureModifier = Modifier.pointerInput(
+            page.id,
+            tool,
+            penOnly,
+            zoomLock,
+            pressureEnabled,
+            fit,
+        ) {
             val widthPx = size.width.toFloat().coerceAtLeast(1f)
             val heightPx = size.height.toFloat().coerceAtLeast(1f)
 
-            fun normalize(position: Offset): NormalizedPoint {
+            fun pressureOf(change: PointerInputChange, stylus: Boolean): Float =
+                if (pressureEnabled && stylus) clampInkPressure(change.pressure) else 1f
+
+            fun normalize(position: Offset, pressure: Float = 1f): NormalizedPoint {
                 val scale = (fit * zoom).coerceAtLeast(0.0001f)
                 val x = (position.x - widthPx / 2f - pan.x) / scale + notePageWidth / 2f
                 val y = (position.y - heightPx / 2f - pan.y) / scale + notePageHeight / 2f
                 return NormalizedPoint(
                     (x / notePageWidth).coerceIn(0f, 1f),
                     (y / notePageHeight).coerceIn(0f, 1f),
+                    pressure,
                 )
             }
 
@@ -171,13 +187,14 @@ fun NoteCanvas(
                 var lastPosition = down.position
                 val gestureStart = SystemClock.uptimeMillis()
                 val strokeStartMs = SystemClock.elapsedRealtime()
+                val downPressure = pressureOf(down, stylusDown)
 
                 if (canDraw) {
                     down.consume()
                     when (gestureTool) {
                         Tool.TEXT -> Unit
                         Tool.ERASER -> {
-                            val point = normalize(down.position)
+                            val point = normalize(down.position, downPressure)
                             eraserTrail.clear()
                             eraserTrail.add(point)
                             eraserPoint = point
@@ -191,19 +208,19 @@ fun NoteCanvas(
                         Tool.STRIKEOUT,
                         Tool.REDACT,
                         Tool.LASSO_RECT -> {
-                            val point = normalize(down.position)
+                            val point = normalize(down.position, downPressure)
                             shapeStart = point
                             shapeEnd = point
                         }
 
                         Tool.LASSO -> {
                             lassoPoints.clear()
-                            lassoPoints.add(normalize(down.position))
+                            lassoPoints.add(normalize(down.position, downPressure))
                         }
 
                         else -> {
                             livePoints.clear()
-                            livePoints.add(normalize(down.position))
+                            livePoints.add(normalize(down.position, downPressure))
                         }
                     }
                 }
@@ -220,6 +237,7 @@ fun NoteCanvas(
                             break
                         }
                         val otherPointerDown = event.changes.any { it.pressed && it.id != down.id }
+                        val primaryPressure = pressureOf(primary, stylusDown)
 
                         // A second finger while drawing with a finger turns the rest of
                         // this gesture into pan/zoom. Never cancel a stylus stroke when a
@@ -239,7 +257,7 @@ fun NoteCanvas(
                                 when (gestureTool) {
                                     Tool.TEXT -> Unit
                                     Tool.ERASER -> {
-                                        val point = normalize(primary.position)
+                                        val point = normalize(primary.position, primaryPressure)
                                         eraserTrail.add(point)
                                         eraserPoint = point
                                     }
@@ -251,11 +269,11 @@ fun NoteCanvas(
                                     Tool.UNDERLINE,
                                     Tool.STRIKEOUT,
                                     Tool.REDACT,
-                                    Tool.LASSO_RECT -> shapeEnd = normalize(primary.position)
+                                    Tool.LASSO_RECT -> shapeEnd = normalize(primary.position, primaryPressure)
 
-                                    Tool.LASSO -> lassoPoints.add(normalize(primary.position))
+                                    Tool.LASSO -> lassoPoints.add(normalize(primary.position, primaryPressure))
 
-                                    else -> livePoints.add(normalize(primary.position))
+                                    else -> livePoints.add(normalize(primary.position, primaryPressure))
                                 }
                                 primary.consume()
                             }
@@ -265,7 +283,7 @@ fun NoteCanvas(
                                 Tool.TEXT -> {
                                     val movement = (primary.position - down.position).getDistance()
                                     if (movement <= viewConfiguration.touchSlop) {
-                                        currentRequestText(normalize(primary.position))
+                                        currentRequestText(normalize(primary.position, primaryPressure))
                                     }
                                 }
 

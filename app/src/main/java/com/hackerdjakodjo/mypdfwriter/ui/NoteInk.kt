@@ -3,6 +3,7 @@ package com.hackerdjakodjo.mypdfwriter.ui
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
+import com.hackerdjakodjo.mypdfwriter.data.clampInkPressure
 import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.abs
@@ -78,10 +79,15 @@ object NoteInk {
             val next = points[index + 1]
             val averageX = (previous.x + current.x * 2f + next.x) * 0.25f
             val averageY = (previous.y + current.y * 2f + next.y) * 0.25f
+            val averagePressure =
+                (previous.pressure + current.pressure * 2f + next.pressure) * 0.25f
             output.add(
-                NormalizedPoint(
-                    current.x + (averageX - current.x) * blend,
-                    current.y + (averageY - current.y) * blend,
+                current.copy(
+                    x = current.x + (averageX - current.x) * blend,
+                    y = current.y + (averageY - current.y) * blend,
+                    pressure = clampInkPressure(
+                        current.pressure + (averagePressure - current.pressure) * blend,
+                    ),
                 ),
             )
         }
@@ -430,9 +436,9 @@ object NoteInk {
         bins[index] = true
     }
 
-    private fun clampPoint(point: NormalizedPoint): NormalizedPoint = NormalizedPoint(
-        point.x.coerceIn(0f, 1f),
-        point.y.coerceIn(0f, 1f),
+    private fun clampPoint(point: NormalizedPoint): NormalizedPoint = point.copy(
+        x = point.x.coerceIn(0f, 1f),
+        y = point.y.coerceIn(0f, 1f),
     )
 
     private data class Bounds(
@@ -579,9 +585,12 @@ private fun eraserProbes(trail: List<NormalizedPoint>, radius: Float): List<Norm
         for (step in 0 until steps) {
             val t = step.toFloat() / steps
             probes.add(
-                NormalizedPoint(
-                    a.x + (b.x - a.x) * t,
-                    a.y + (b.y - a.y) * t,
+                a.copy(
+                    x = a.x + (b.x - a.x) * t,
+                    y = a.y + (b.y - a.y) * t,
+                    pressure = clampInkPressure(
+                        a.pressure + (b.pressure - a.pressure) * t,
+                    ),
                 ),
             )
         }
@@ -724,7 +733,10 @@ private fun cutIntervals(
 }
 
 private fun interpolate(a: NormalizedPoint, b: NormalizedPoint, t: Float): NormalizedPoint =
-    NormalizedPoint(
-        a.x + (b.x - a.x) * t,
-        a.y + (b.y - a.y) * t,
+    a.copy(
+        x = a.x + (b.x - a.x) * t,
+        y = a.y + (b.y - a.y) * t,
+        pressure = clampInkPressure(
+            a.pressure + (b.pressure - a.pressure) * t,
+        ),
     )

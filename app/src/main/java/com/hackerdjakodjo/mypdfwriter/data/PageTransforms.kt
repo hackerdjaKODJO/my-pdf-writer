@@ -13,9 +13,9 @@ object PageTransforms {
     fun rotate(annotation: Annotation, delta: Int, aspect: Float): Annotation {
         val rotation = PageSpec.normalizeRotation(delta)
         val points = when (rotation) {
-            90 -> annotation.points.map { NormalizedPoint(1f - it.y, it.x) }
-            180 -> annotation.points.map { NormalizedPoint(1f - it.x, 1f - it.y) }
-            270 -> annotation.points.map { NormalizedPoint(it.y, 1f - it.x) }
+            90 -> annotation.points.map { it.copy(x = 1f - it.y, y = it.x) }
+            180 -> annotation.points.map { it.copy(x = 1f - it.x, y = 1f - it.y) }
+            270 -> annotation.points.map { it.copy(x = it.y, y = 1f - it.x) }
             else -> annotation.points
         }
         val widthScale = if (rotation == 0 || rotation == 180) 1f else aspect

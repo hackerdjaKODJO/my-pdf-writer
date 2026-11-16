@@ -4,8 +4,49 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-/** Normalized point inside a page's displayed area. (0,0) is top-left, (1,1) is bottom-right. */
-data class NormalizedPoint(val x: Float, val y: Float)
+/**
+ * Normalized point inside a page's displayed area. (0,0) is top-left, (1,1) is
+ * bottom-right.
+ *
+ * [pressure] is the stylus pressure sample at this point in 0..1; 1 is the
+ * neutral value used by fingers, mice, legacy files and recognized shapes.
+ * The constructor clamps it so no path can store NaN or an out-of-range value.
+ * This is deliberately a regular class rather than a data class: Kotlin cannot
+ * clamp a data-class primary-constructor value without exposing the raw one.
+ */
+class NormalizedPoint(
+    val x: Float,
+    val y: Float,
+    pressure: Float = DEFAULT_INK_PRESSURE,
+) {
+    val pressure: Float = clampInkPressure(pressure)
+
+    fun copy(
+        x: Float = this.x,
+        y: Float = this.y,
+        pressure: Float = this.pressure,
+    ): NormalizedPoint = NormalizedPoint(x, y, pressure)
+
+    operator fun component1(): Float = x
+    operator fun component2(): Float = y
+    operator fun component3(): Float = pressure
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is NormalizedPoint) return false
+        return x == other.x && y == other.y && pressure == other.pressure
+    }
+
+    override fun hashCode(): Int {
+        var result = x.hashCode()
+        result = 31 * result + y.hashCode()
+        result = 31 * result + pressure.hashCode()
+        return result
+    }
+
+    override fun toString(): String =
+        "NormalizedPoint(x=$x, y=$y, pressure=$pressure)"
+}
 
 enum class AnnotationType {
     PEN,
@@ -85,6 +126,14 @@ data class Annotation(
         val flat = JSONArray()
         points.forEach { flat.put(it.x.toDouble()); flat.put(it.y.toDouble()) }
         put("pts", flat)
+        // Opt-in parallel array: legacy files and uniform-pressure strokes keep
+        // the exact old size because `prs` is omitted entirely when it adds no
+        // information.
+        if (points.any { it.pressure != DEFAULT_INK_PRESSURE }) {
+            val pressures = JSONArray()
+            points.forEach { pressures.put(it.pressure.toDouble()) }
+            put("prs", pressures)
+        }
         if (text.isNotEmpty()) put("tx", text)
         put("fs", fontSize.toDouble())
         put("tr", textRotation)
@@ -100,16 +149,27 @@ data class Annotation(
         fun fromJson(o: JSONObject): Annotation? {
             val type = runCatching { AnnotationType.valueOf(o.optString("t")) }.getOrNull() ?: return null
             val flat = o.optJSONArray("pts") ?: JSONArray()
+            val pressures = o.optJSONArray("prs")
             val points = ArrayList<NormalizedPoint>(flat.length() / 2)
             var i = 0
+            var pointIndex = 0
             while (i + 1 < flat.length()) {
+                val pressure = if (pressures != null) {
+                    clampInkPressure(
+                        pressures.optDouble(pointIndex, DEFAULT_INK_PRESSURE.toDouble()).toFloat(),
+                    )
+                } else {
+                    DEFAULT_INK_PRESSURE
+                }
                 points.add(
                     NormalizedPoint(
                         flat.optDouble(i).toFloat(),
                         flat.optDouble(i + 1).toFloat(),
+                        pressure,
                     ),
                 )
                 i += 2
+                pointIndex++
             }
             return Annotation(
                 id = o.optString("id").ifEmpty { UUID.randomUUID().toString() },

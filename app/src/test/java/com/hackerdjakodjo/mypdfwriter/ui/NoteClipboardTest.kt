@@ -82,6 +82,27 @@ class NoteClipboardTest {
     }
 
     @Test
+    fun `paste preserves per-point pressure`() {
+        val clipboard = NoteClipboard.fromSelection(
+            listOf(
+                annotation(
+                    id = "pressure-source",
+                    points = listOf(
+                        NormalizedPoint(0.20f, 0.20f, 0.25f),
+                        NormalizedPoint(0.30f, 0.30f, 0.80f),
+                    ),
+                ),
+            ),
+            sourcePageIndex = 0,
+        )
+
+        val pasted = clipboard.paste(targetLayerId = "layer").single()
+
+        assertEquals(listOf(0.25f, 0.80f), pasted.points.map { it.pressure })
+        assertEquals(PenStyle.BRUSH, pasted.penStyle)
+    }
+
+    @Test
     fun `paste clamps near the page edge`() {
         val clipboard = NoteClipboard.fromSelection(
             listOf(

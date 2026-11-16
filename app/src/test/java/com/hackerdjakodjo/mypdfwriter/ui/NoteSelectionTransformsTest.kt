@@ -46,6 +46,33 @@ class NoteSelectionTransformsTest {
     }
 
     @Test
+    fun `translate scale and rotate preserve per-point pressure`() {
+        val stroke = annotation(
+            points = listOf(
+                NormalizedPoint(0.20f, 0.20f, 0.30f),
+                NormalizedPoint(0.40f, 0.45f, 0.65f),
+                NormalizedPoint(0.60f, 0.60f, 1f),
+            ),
+            penStyle = PenStyle.FOUNTAIN,
+        )
+        val expected = listOf(0.30f, 0.65f, 1f)
+
+        val moved = NoteSelectionTransform.translate(0.02f, -0.02f)
+            .applyTo(listOf(stroke))
+            .single()
+        val scaled = NoteSelectionTransform.scaleAroundCenter(1.1f)
+            .applyTo(listOf(stroke))
+            .single()
+        val rotated = NoteSelectionTransform.rotateAroundCenter(90f)
+            .applyTo(listOf(stroke))
+            .single()
+
+        assertEquals(expected, moved.points.map { it.pressure })
+        assertEquals(expected, scaled.points.map { it.pressure })
+        assertEquals(expected, rotated.points.map { it.pressure })
+    }
+
+    @Test
     fun `proportional scale uses the selection centre and scales style`() {
         val stroke = annotation(
             points = listOf(point(0.20f, 0.20f), point(0.60f, 0.60f)),
