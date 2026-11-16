@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
+import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.ui.BackupSheet
 import com.hackerdjakodjo.mypdfwriter.ui.BackupViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.NoteEditorScreen
@@ -41,6 +42,8 @@ class MainActivity : ComponentActivity() {
     private var backupIncludeSources = false
     /** Set only by the PDF study pane; the activity result then exports this detached note. */
     private var pendingNoteExport: Notebook? = null
+    /** Page-range/layer choices paired with [pendingNoteExport] or the current editor. */
+    private var pendingNoteExportOptions: NoteExportOptions = NoteExportOptions()
 
     private val openPdf = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.openDocument(it) }
@@ -56,12 +59,14 @@ class MainActivity : ComponentActivity() {
 
     private val exportNote = registerForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val detached = pendingNoteExport
+        val options = pendingNoteExportOptions
         pendingNoteExport = null
+        pendingNoteExportOptions = NoteExportOptions()
         uri?.let {
             if (detached != null) {
-                notebookViewModel.exportDetached(detached, it)
+                notebookViewModel.exportDetached(detached, it, options)
             } else {
-                notebookViewModel.exportCurrent(it)
+                notebookViewModel.exportCurrent(it, options)
             }
         }
     }
@@ -132,7 +137,15 @@ class MainActivity : ComponentActivity() {
                             onBack = { notebookViewModel.close() },
                             onChange = { notebookViewModel.updateCurrent(it) },
                             onPageIndexChange = { notebookViewModel.setPageIndex(it) },
-                            onExportPdf = { exportNote.launch(notebookViewModel.exportSuggestedName()) },
+                            onExportPdf = { options ->
+                                pendingNoteExport = null
+                                pendingNoteExportOptions = options
+                                exportNote.launch(
+                                    options.suggestedFileName.ifBlank {
+                                        notebookViewModel.exportSuggestedName()
+                                    },
+                                )
+                            },
                             onOpenSourcePdf = { page ->
                                 val uri = note.sourceDocumentUri
                                 if (uri.isNotBlank()) {
@@ -218,12 +231,15 @@ class MainActivity : ComponentActivity() {
                                             ((latest?.pages?.size ?: 1) - 1).coerceAtLeast(0),
                                         )
                                     },
-                                    onExportPdf = {
+                                    onExportPdf = { options ->
                                         val exportNotebook = studyPaneNotebook
                                         if (exportNotebook != null) {
                                             pendingNoteExport = exportNotebook
+                                            pendingNoteExportOptions = options
                                             exportNote.launch(
-                                                notebookViewModel.exportSuggestedName(exportNotebook),
+                                                options.suggestedFileName.ifBlank {
+                                                    notebookViewModel.exportSuggestedName(exportNotebook)
+                                                },
                                             )
                                         }
                                     },

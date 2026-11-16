@@ -12,7 +12,9 @@ import com.hackerdjakodjo.mypdfwriter.data.NotebookDraft
 import com.hackerdjakodjo.mypdfwriter.data.NotebookStore
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
+import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExporter
+import com.hackerdjakodjo.mypdfwriter.pdf.noteExportFileName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -285,21 +287,25 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
 
     fun exportSuggestedName(notebook: Notebook): String = suggestedExportName(notebook.title)
 
-    fun exportCurrent(uri: Uri) {
-        _current.value?.let { exportNotebook(it, uri) }
+    fun exportCurrent(uri: Uri, options: NoteExportOptions = NoteExportOptions()) {
+        _current.value?.let { exportNotebook(it, uri, options) }
     }
 
     /** Exports a detached pane notebook through the same launcher as the editor. */
-    fun exportDetached(notebook: Notebook, uri: Uri) {
-        exportNotebook(notebook, uri)
+    fun exportDetached(
+        notebook: Notebook,
+        uri: Uri,
+        options: NoteExportOptions = NoteExportOptions(),
+    ) {
+        exportNotebook(notebook, uri, options)
     }
 
-    private fun exportNotebook(notebook: Notebook, uri: Uri) {
+    private fun exportNotebook(notebook: Notebook, uri: Uri, options: NoteExportOptions) {
         viewModelScope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
                     resolver.openOutputStream(uri, "wt")?.use { stream ->
-                        NoteExporter.export(notebook, stream)
+                        NoteExporter.export(notebook, stream, options)
                     } ?: error("출력 파일을 열 수 없습니다.")
                 }
             }
@@ -359,10 +365,7 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
     }
 }
 
-private fun suggestedExportName(title: String?): String {
-    val safeTitle = title?.ifBlank { "노트" } ?: "노트"
-    return safeTitle.replace(Regex("[\\/:*?\"<>|]"), "_").take(60) + ".pdf"
-}
+private fun suggestedExportName(title: String?): String = noteExportFileName(title)
 
 private fun noteAnnotationCounts(notebook: Notebook): String =
     notebook.pages.joinToString(",") { it.annotations.size.toString() }
