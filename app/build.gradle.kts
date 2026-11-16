@@ -23,6 +23,8 @@ android {
         versionCode = 10
         versionName = "0.8.1"
 
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -123,5 +125,12 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
 
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+
     debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
