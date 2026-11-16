@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Notes
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Approval
 import androidx.compose.material.icons.outlined.ChevronLeft
@@ -47,6 +49,7 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.Redo
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.StickyNote2
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Undo
@@ -63,6 +66,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -137,12 +141,14 @@ fun ViewerScreen(
     val outline by vm.outline.collectAsStateWithLifecycle()
     val metadata by vm.metadata.collectAsStateWithLifecycle()
     val excerpts by vm.excerpts.collectAsStateWithLifecycle()
+    val bookmarks by vm.bookmarks.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val state = stateFlow.value ?: return
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showPages by remember { mutableStateOf(false) }
     var showNotes by remember { mutableStateOf(false) }
+    var showBookmarks by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var showAnnotations by remember { mutableStateOf(false) }
     var showOrganize by remember { mutableStateOf(false) }
@@ -165,7 +171,7 @@ fun ViewerScreen(
         }
     }
 
-    val sheetOpen = showPages || showNotes || showSearch || showAnnotations ||
+    val sheetOpen = showPages || showNotes || showBookmarks || showSearch || showAnnotations ||
         showOrganize || showExcerpts || showOutline || showProperties || showStyle || showMenu ||
         textTarget != null || stampTarget != null || signatureTarget != null
     BackHandler(enabled = !sheetOpen) { vm.closeDocument() }
@@ -216,6 +222,14 @@ fun ViewerScreen(
         vm.clearMessage()
     }
 
+    val progress = if (state.pageCount > 0) {
+        (state.pageIndex + 1).toFloat() / state.pageCount
+    } else {
+        0f
+    }
+    val progressPercent = (progress * 100).roundToInt()
+    val currentBookmark = bookmarks.firstOrNull { it.pageIndex == state.pageIndex }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -228,9 +242,11 @@ fun ViewerScreen(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            stringResource(R.string.page_of, state.pageIndex + 1, state.pageCount),
+                            "${stringResource(R.string.page_of, state.pageIndex + 1, state.pageCount)} · 읽음 $progressPercent%",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 },
@@ -268,6 +284,41 @@ fun ViewerScreen(
                                 onClick = {
                                     showMenu = false
                                     showNotes = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (bookmarks.isEmpty()) "북마크"
+                                        else "북마크 (${bookmarks.size})",
+                                    )
+                                },
+                                leadingIcon = { Icon(Icons.Outlined.StarBorder, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    showBookmarks = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (currentBookmark != null) "현재 페이지 북마크 해제"
+                                        else "현재 페이지 북마크",
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        if (currentBookmark != null) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    if (currentBookmark != null) {
+                                        vm.deleteBookmark(currentBookmark.id)
+                                    } else {
+                                        vm.addCurrentPageBookmark("${state.pageIndex + 1}쪽")
+                                    }
                                 },
                             )
                             DropdownMenuItem(
@@ -365,6 +416,12 @@ fun ViewerScreen(
         bottomBar = {
             Surface(tonalElevation = 3.dp) {
                 Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth().height(3.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
                     AnnotationToolbar(state, vm)
                     HorizontalDivider()
                     PageBar(state, vm)
@@ -435,6 +492,20 @@ fun ViewerScreen(
     }
     if (showNotes) {
         NoteSheet(state, vm) { showNotes = false }
+    }
+    if (showBookmarks) {
+        PdfBookmarksSheet(
+            bookmarks = bookmarks,
+            currentPage = state.pageIndex,
+            onAdd = { title -> vm.addCurrentPageBookmark(title) },
+            onDelete = { id -> vm.deleteBookmark(id) },
+            onRename = { id, title -> vm.renameBookmark(id, title) },
+            onJump = { page ->
+                vm.goToPage(page)
+                showBookmarks = false
+            },
+            onDismiss = { showBookmarks = false },
+        )
     }
     if (showSearch) {
         SearchSheet(state, vm) { showSearch = false }
