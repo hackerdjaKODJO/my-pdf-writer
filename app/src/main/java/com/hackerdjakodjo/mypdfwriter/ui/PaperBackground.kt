@@ -1,7 +1,9 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import com.hackerdjakodjo.mypdfwriter.data.NotePaper
 import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
@@ -42,6 +44,43 @@ object PaperBackground {
         scale: Float = DEFAULT_SCALE,
         orientation: PageOrientation = PageOrientation.PORTRAIT,
     ): Float = NotePaper.heightPt(orientation) * scale
+
+    /**
+     * Draws an imported background over the paper using the shared **cover**
+     * policy: uniform scale, centred, clipped by the page. An opaque image hides
+     * the template/tint; a transparent image lets the selected paper show through.
+     * The editor, page thumbnails, studio preview and PDF export call this method,
+     * so all four surfaces crop identically.
+     */
+    fun drawCustomBackground(
+        canvas: Canvas,
+        bitmap: Bitmap,
+        width: Float,
+        height: Float,
+    ) {
+        if (bitmap.isRecycled || width <= 0f || height <= 0f) return
+        val placement = CustomTemplateGeometry.cover(
+            imageWidth = bitmap.width,
+            imageHeight = bitmap.height,
+            pageWidth = width,
+            pageHeight = height,
+        ) ?: return
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        canvas.save()
+        canvas.clipRect(0f, 0f, width, height)
+        canvas.drawBitmap(
+            bitmap,
+            null,
+            RectF(
+                placement.left,
+                placement.top,
+                placement.left + placement.width,
+                placement.top + placement.height,
+            ),
+            paint,
+        )
+        canvas.restore()
+    }
 
     fun draw(
         canvas: Canvas,

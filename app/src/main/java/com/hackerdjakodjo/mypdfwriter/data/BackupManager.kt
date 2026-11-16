@@ -44,6 +44,7 @@ class BackupException(message: String, cause: Throwable? = null) : IOException(m
  * files/excerpts/<docId>.json
  * files/reading/<docId>.json
  * files/docstyles/<docId>.json
+ * files/templates/<assetKey>.png
  * files/audio/<ownerId>/index.json
  * files/audio/<ownerId>/<noteId>.m4a
  * files/sources/<docId>.pdf          (optional)
@@ -124,6 +125,7 @@ internal object BackupArchive {
         "excerpts",
         "reading",
         "docstyles",
+        "templates",
         "audio",
         "sources",
     )

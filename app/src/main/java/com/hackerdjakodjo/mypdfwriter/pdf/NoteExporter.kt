@@ -71,6 +71,7 @@ object NoteExporter {
         width: Int,
         height: Int,
         includeHiddenLayers: Boolean = false,
+        backgroundLoader: (String) -> Bitmap? = { null },
     ): Bitmap {
         val safeWidth = width.coerceIn(1, 8192)
         val safeHeight = height.coerceIn(1, 8192)
@@ -84,6 +85,16 @@ object NoteExporter {
             dark = false,
             tint = page.tint,
         )
+        page.customBackground?.let { key ->
+            backgroundLoader(key)?.let { background ->
+                PaperBackground.drawCustomBackground(
+                    canvas = canvas,
+                    bitmap = background,
+                    width = safeWidth.toFloat(),
+                    height = safeHeight.toFloat(),
+                )
+            }
+        }
         val layers = page.layers.associateBy { it.id }
         val visible = page.annotations.filter { annotation ->
             val layer = layers[annotation.layerId] ?: page.layers.firstOrNull()
@@ -106,17 +117,25 @@ object NoteExporter {
     }
 
     /** Exports every page. Kept for the existing callers. */
-    suspend fun export(notebook: Notebook, out: OutputStream) =
-        export(notebook, out, NoteExportOptions())
+    suspend fun export(
+        notebook: Notebook,
+        out: OutputStream,
+        backgroundLoader: (String) -> Bitmap? = { null },
+    ) = export(notebook, out, NoteExportOptions(), backgroundLoader)
 
     /**
      * Exports the pages selected by [options]. When the requested range has no
      * surviving pages, the full notebook is exported rather than an empty PDF.
+     *
+     * [backgroundLoader] resolves a page's portable custom-template key to an
+     * app-private bitmap. It is resolved once per page at export time; hidden-layer
+     * filtering and WYSIWYG annotation painting are unchanged.
      */
     suspend fun export(
         notebook: Notebook,
         out: OutputStream,
         options: NoteExportOptions,
+        backgroundLoader: (String) -> Bitmap? = { null },
     ) =
         withContext(Dispatchers.IO) {
             val allPages = notebook.pages.ifEmpty { listOf(NotePage(template = PaperTemplate.LINED)) }
@@ -135,6 +154,7 @@ object NoteExporter {
                         size.widthPx,
                         size.heightPx,
                         options.includeHiddenLayers,
+                        backgroundLoader,
                     )
                     try {
                         val image = LosslessFactory.createFromImage(document, bitmap)

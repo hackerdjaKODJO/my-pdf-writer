@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
+import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateStore
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NotebookDraft
@@ -30,6 +31,7 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
 
     private val store = NotebookStore(application)
     private val resolver = application.contentResolver
+    private val customTemplateStore = CustomTemplateStore(application)
     private val _notebooks = MutableStateFlow(store.loadAll())
     val notebooks: StateFlow<List<Notebook>> = _notebooks.asStateFlow()
 
@@ -312,7 +314,7 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             val result = runCatching {
                 withContext(Dispatchers.IO) {
                     resolver.openOutputStream(uri, "wt")?.use { stream ->
-                        NoteExporter.export(notebook, stream, options)
+                        NoteExporter.export(notebook, stream, options, customTemplateStore::load)
                     } ?: error("출력 파일을 열 수 없습니다.")
                 }
             }

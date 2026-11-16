@@ -198,6 +198,76 @@ class BackupManagerTest {
     }
 
     @Test
+    fun zipRoundTrip_includesAndRestoresCustomTemplateAssets() {
+        withTempRoot { root ->
+            val files = File(root, "files")
+            val assetBytes = byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte())
+            writeBytes(File(files, "templates/tpl-custom.png"), assetBytes)
+            write(File(files, "notebooks/note.json"), "{\"id\":\"n\"}")
+
+            val archive = ByteArrayOutputStream()
+            val summary = BackupArchive.create(
+                filesDir = files,
+                prefsDir = null,
+                includeSources = false,
+                appVersion = "test",
+                out = archive,
+                onProgress = { _, _ -> },
+            )
+            assertEquals(2, summary.fileCount)
+
+            val target = File(root, "target")
+            write(File(target, "templates/tpl-old.png"), "old-asset")
+            write(File(target, "notebooks/old.json"), "old")
+            write(File(target, "unrelated.txt"), "keep")
+
+            val work = File(root, "work")
+            val extracted = BackupArchive.extract(
+                input = ByteArrayInputStream(archive.toByteArray()),
+                workDir = work,
+                onProgress = { _, _ -> },
+            )
+            assertEquals(listOf("notebooks", "templates"), extracted.manifest.directories)
+            assertTrue(File(extracted.dataDir, "templates/tpl-custom.png").isFile)
+
+            BackupArchive.replaceDirectories(
+                filesDir = target,
+                stagedFilesDir = extracted.dataDir,
+                directories = extracted.manifest.directories,
+                rollbackDir = File(work, "rollback"),
+            )
+
+            val restored = File(target, "templates/tpl-custom.png")
+            assertTrue(restored.isFile)
+            assertTrue(assetBytes.contentEquals(restored.readBytes()))
+            assertFalse(File(target, "templates/tpl-old.png").exists())
+            assertEquals("keep", File(target, "unrelated.txt").readText())
+            assertEquals("{\"id\":\"n\"}", File(target, "notebooks/note.json").readText())
+        }
+    }
+
+    @Test
+    fun templateEntryTraversal_isRejected() {
+        withTempRoot { root ->
+            val archive = ByteArrayOutputStream()
+            ZipOutputStream(archive).use { zip ->
+                zip.putNextEntry(ZipEntry("files/templates/../../escape.png"))
+                zip.write("bad".toByteArray())
+                zip.closeEntry()
+            }
+            val error = assertThrows(BackupException::class.java) {
+                BackupArchive.extract(
+                    ByteArrayInputStream(archive.toByteArray()),
+                    File(root, "work"),
+                    onProgress = { _, _ -> },
+                )
+            }
+            assertTrue(error.message.orEmpty().contains("안전하지 않은"))
+            assertFalse(File(root, "escape.png").exists())
+        }
+    }
+
+    @Test
     fun corruptZip_isReportedAsBackupException() {
         withTempRoot { root ->
             val work = File(root, "work")
@@ -277,6 +347,11 @@ class BackupManagerTest {
     private fun write(file: File, text: String) {
         file.parentFile?.mkdirs()
         file.writeText(text)
+    }
+
+    private fun writeBytes(file: File, bytes: ByteArray) {
+        file.parentFile?.mkdirs()
+        file.writeBytes(bytes)
     }
 
     private companion object {
