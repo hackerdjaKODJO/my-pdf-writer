@@ -33,6 +33,8 @@ import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.DocumentOverlayPainter
+import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -69,12 +71,16 @@ fun PdfCanvas(
     documentStyle: DocumentStyle = DocumentStyle(),
     pageCount: Int = 1,
     nightMode: Boolean = false,
+    textWords: List<PdfTextWord> = emptyList(),
+    textSelectMode: Boolean = false,
+    selectedWords: List<PdfTextWord> = emptyList(),
     onZoomChange: (Float) -> Unit,
     onAddStroke: (List<NormalizedPoint>) -> Unit,
     onEraseStroke: (List<NormalizedPoint>) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
     onRequestStamp: (NormalizedPoint) -> Unit,
     onRequestSignature: (NormalizedPoint) -> Unit,
+    onTextSelection: (List<PdfTextWord>) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val pageW = (bitmap?.width?.toFloat() ?: (displayWidthPt * 2f)).coerceAtLeast(1f)
@@ -85,7 +91,10 @@ fun PdfCanvas(
     var shapeStart by remember { mutableStateOf<NormalizedPoint?>(null) }
     var shapeEnd by remember { mutableStateOf<NormalizedPoint?>(null) }
     var eraserPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
+    var selectionStart by remember { mutableStateOf<NormalizedPoint?>(null) }
+    var selectionEnd by remember { mutableStateOf<NormalizedPoint?>(null) }
     val eraserTrail = remember { mutableStateListOf<NormalizedPoint>() }
+    val selectedWordSet = remember(selectedWords) { selectedWords.toSet() }
     val transform = remember { CanvasTransform() }
 
     LaunchedEffect(pageIndex) {
@@ -94,6 +103,15 @@ fun PdfCanvas(
         shapeStart = null
         shapeEnd = null
         eraserPoint = null
+        selectionStart = null
+        selectionEnd = null
+    }
+
+    LaunchedEffect(textSelectMode) {
+        if (!textSelectMode) {
+            selectionStart = null
+            selectionEnd = null
+        }
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -127,7 +145,53 @@ fun PdfCanvas(
             return Offset(candidate.x.coerceIn(-limitX, limitX), candidate.y.coerceIn(-limitY, limitY))
         }
 
-        val gestureModifier = if (tool == Tool.VIEW) {
+        fun wordsInSelection(a: NormalizedPoint, b: NormalizedPoint): List<PdfTextWord> {
+            val left = minOf(a.x, b.x)
+            val top = minOf(a.y, b.y)
+            val right = maxOf(a.x, b.x)
+            val bottom = maxOf(a.y, b.y)
+            if (right - left < 0.008f && bottom - top < 0.008f) {
+                val x = (a.x + b.x) / 2f
+                val y = (a.y + b.y) / 2f
+                return textWords
+                    .filter { it.pageIndex == pageIndex && it.rect.contains(x, y) }
+                    .minByOrNull { it.rect.width * it.rect.height }
+                    ?.let { listOf(it) }
+                    .orEmpty()
+            }
+            val drag = NormalizedRect(left, top, right, bottom)
+            return textWords.filter { it.pageIndex == pageIndex && it.rect.intersects(drag) }
+        }
+
+        val gestureModifier = if (textSelectMode && textWords.isNotEmpty()) {
+            Modifier.pointerInput(pageIndex, textWords) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    down.consume()
+                    val start = transform.normalize(down.position)
+                    selectionStart = start
+                    selectionEnd = start
+                    var pressed = true
+                    while (pressed) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) {
+                            change.consume()
+                            pressed = false
+                        } else if (change.positionChanged()) {
+                            val point = transform.normalize(change.position)
+                            selectionEnd = point
+                            change.consume()
+                            onTextSelection(wordsInSelection(start, point))
+                        }
+                    }
+                    val end = selectionEnd ?: start
+                    onTextSelection(wordsInSelection(start, end))
+                    selectionStart = null
+                    selectionEnd = null
+                }
+            }
+        } else if (tool == Tool.VIEW) {
             Modifier
                 .pointerInput(Unit) {
                     detectTransformGestures { centroid, panChange, zoomChange, _ ->
@@ -320,6 +384,70 @@ fun PdfCanvas(
                     pageW,
                     pageH,
                 )
+
+                if (textSelectMode && textWords.isNotEmpty()) {
+                    val subtleFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.FILL
+                        this.color = android.graphics.Color.argb(16, 31, 78, 121)
+                    }
+                    val selectedFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.FILL
+                        this.color = android.graphics.Color.argb(72, 31, 78, 121)
+                    }
+                    val selectedBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.STROKE
+                        this.color = android.graphics.Color.argb(190, 31, 78, 121)
+                        this.strokeWidth = (1.2f / total).coerceAtLeast(0.2f)
+                    }
+                    textWords.filter { it.pageIndex == pageIndex }.forEach { word ->
+                        val left = word.rect.left * pageW
+                        val top = word.rect.top * pageH
+                        val right = word.rect.right * pageW
+                        val bottom = word.rect.bottom * pageH
+                        if (word in selectedWordSet) {
+                            native.drawRect(left, top, right, bottom, selectedFill)
+                            native.drawRect(left, top, right, bottom, selectedBorder)
+                        } else {
+                            native.drawRect(left, top, right, bottom, subtleFill)
+                        }
+                    }
+
+                    val start = selectionStart
+                    val end = selectionEnd
+                    if (start != null && end != null) {
+                        val drag = NormalizedRect(
+                            minOf(start.x, end.x),
+                            minOf(start.y, end.y),
+                            maxOf(start.x, end.x),
+                            maxOf(start.y, end.y),
+                        )
+                        if (drag.width > 0.002f || drag.height > 0.002f) {
+                            val dragFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                style = Paint.Style.FILL
+                                this.color = android.graphics.Color.argb(36, 31, 78, 121)
+                            }
+                            val dragBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                style = Paint.Style.STROKE
+                                this.color = android.graphics.Color.argb(170, 31, 78, 121)
+                                this.strokeWidth = (1.5f / total).coerceAtLeast(0.25f)
+                            }
+                            native.drawRect(
+                                drag.left * pageW,
+                                drag.top * pageH,
+                                drag.right * pageW,
+                                drag.bottom * pageH,
+                                dragFill,
+                            )
+                            native.drawRect(
+                                drag.left * pageW,
+                                drag.top * pageH,
+                                drag.right * pageW,
+                                drag.bottom * pageH,
+                                dragBorder,
+                            )
+                        }
+                    }
+                }
 
                 val previewPoints = livePoints.toList()
                 if (previewPoints.isNotEmpty()) {

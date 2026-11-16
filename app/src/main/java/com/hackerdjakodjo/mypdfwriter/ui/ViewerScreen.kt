@@ -1,5 +1,9 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,6 +37,8 @@ import androidx.compose.material.icons.outlined.Approval
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.CropSquare
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Description
@@ -52,6 +58,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.StickyNote2
 import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.Undo
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -94,8 +101,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.R
+import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import com.hackerdjakodjo.mypdfwriter.pdf.TextActions
 import kotlin.math.roundToInt
 
@@ -142,6 +152,7 @@ fun ViewerScreen(
     val metadata by vm.metadata.collectAsStateWithLifecycle()
     val excerpts by vm.excerpts.collectAsStateWithLifecycle()
     val bookmarks by vm.bookmarks.collectAsStateWithLifecycle()
+    val pageTextWords by vm.textWords.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val state = stateFlow.value ?: return
 
@@ -164,6 +175,20 @@ fun ViewerScreen(
     var textTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
     var stampTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
     var signatureTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
+    var textSelectMode by remember { mutableStateOf(false) }
+    var selectedWords by remember { mutableStateOf<List<PdfTextWord>>(emptyList()) }
+    val selectedText = remember(selectedWords) { PdfTextLayout.selectionText(selectedWords) }
+
+    LaunchedEffect(state.pageIndex, state.revision) {
+        selectedWords = emptyList()
+        if (textSelectMode) vm.loadTextWords(state.pageIndex)
+    }
+    LaunchedEffect(state.tool) {
+        if (textSelectMode && state.tool != Tool.VIEW) {
+            textSelectMode = false
+            selectedWords = emptyList()
+        }
+    }
 
     val extractPdf = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/pdf"),
@@ -178,7 +203,14 @@ fun ViewerScreen(
         showOrganize || showExcerpts || showContinuous || showReflow || showReadAloud ||
         showOutline || showProperties || showStyle || showMenu ||
         textTarget != null || stampTarget != null || signatureTarget != null
-    BackHandler(enabled = !sheetOpen) { vm.closeDocument() }
+    BackHandler(enabled = !sheetOpen) {
+        if (textSelectMode || selectedWords.isNotEmpty()) {
+            textSelectMode = false
+            selectedWords = emptyList()
+        } else {
+            vm.closeDocument()
+        }
+    }
 
     if (showReflow) {
         val source = vm.currentWorkingFile() ?: vm.currentSourceFile()
@@ -391,6 +423,22 @@ fun ViewerScreen(
                                 },
                             )
                             DropdownMenuItem(
+                                text = { Text(if (textSelectMode) "텍스트 선택 종료" else "텍스트 선택") },
+                                leadingIcon = { Icon(Icons.Outlined.TextFields, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    if (textSelectMode) {
+                                        textSelectMode = false
+                                        selectedWords = emptyList()
+                                    } else {
+                                        vm.setTool(Tool.VIEW)
+                                        textSelectMode = true
+                                        selectedWords = emptyList()
+                                        vm.loadTextWords(state.pageIndex)
+                                    }
+                                },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("소리 내어 읽기") },
                                 onClick = {
                                     showMenu = false
@@ -481,7 +529,43 @@ fun ViewerScreen(
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     )
-                    AnnotationToolbar(state, vm)
+                    if (textSelectMode) {
+                        TextSelectionActionBar(
+                            text = selectedText,
+                            hasSelection = selectedWords.isNotEmpty(),
+                            loading = state.textLoading,
+                            hasWords = pageTextWords.isNotEmpty(),
+                            onCopy = { copySelection(context, selectedText) },
+                            onTranslate = { TextActions.translate(context, selectedText) },
+                            onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
+                            onHighlight = {
+                                vm.addTextMarkup(
+                                    selectedWords,
+                                    AnnotationType.HIGHLIGHT,
+                                    0xFFFFD54F.toInt(),
+                                )
+                                selectedWords = emptyList()
+                            },
+                            onUnderline = {
+                                vm.addTextMarkup(selectedWords, AnnotationType.UNDERLINE, state.color)
+                                selectedWords = emptyList()
+                            },
+                            onStrikeout = {
+                                vm.addTextMarkup(selectedWords, AnnotationType.STRIKEOUT, state.color)
+                                selectedWords = emptyList()
+                            },
+                            onDismiss = {
+                                if (selectedWords.isNotEmpty()) {
+                                    selectedWords = emptyList()
+                                } else {
+                                    textSelectMode = false
+                                    selectedWords = emptyList()
+                                }
+                            },
+                        )
+                    } else {
+                        AnnotationToolbar(state, vm)
+                    }
                     HorizontalDivider()
                     PageBar(state, vm)
                 }
@@ -510,12 +594,16 @@ fun ViewerScreen(
                 documentStyle = state.documentStyle,
                 pageCount = state.pageCount,
                 nightMode = state.nightMode,
+                textWords = pageTextWords,
+                textSelectMode = textSelectMode,
+                selectedWords = selectedWords,
                 onZoomChange = vm::setZoom,
                 onAddStroke = vm::addStroke,
                 onEraseStroke = vm::eraseStroke,
                 onRequestText = { textTarget = it },
                 onRequestStamp = { stampTarget = it },
                 onRequestSignature = { signatureTarget = it },
+                onTextSelection = { selectedWords = it },
             )
 
             val hintRes = when (state.tool) {
@@ -527,13 +615,19 @@ fun ViewerScreen(
                 Tool.ERASER -> R.string.hint_eraser
                 else -> R.string.hint_draw
             }
+            val hintText = when {
+                textSelectMode && state.textLoading -> "텍스트를 읽는 중…"
+                textSelectMode && pageTextWords.isEmpty() -> "이 페이지에는 선택할 수 있는 텍스트가 없습니다."
+                textSelectMode -> "텍스트를 드래그해 선택하세요."
+                else -> stringResource(hintRes)
+            }
             Surface(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
                 shape = RoundedCornerShape(50),
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
             ) {
                 Text(
-                    stringResource(hintRes),
+                    hintText,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -751,6 +845,112 @@ private fun AnnotationToolbar(state: ViewerUiState, vm: PdfViewModel) {
             }
         }
     }
+}
+
+@Composable
+private fun TextSelectionActionBar(
+    text: String,
+    hasSelection: Boolean,
+    loading: Boolean,
+    hasWords: Boolean,
+    onCopy: () -> Unit,
+    onTranslate: () -> Unit,
+    onExcerpt: () -> Unit,
+    onHighlight: () -> Unit,
+    onUnderline: () -> Unit,
+    onStrikeout: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 2.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Outlined.TextFields,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    when {
+                        hasSelection -> text
+                        loading -> "텍스트를 읽는 중…"
+                        !hasWords -> "이 페이지에는 선택할 수 있는 텍스트가 없습니다."
+                        else -> "텍스트를 드래그해 선택하세요."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    if (hasSelection) "${text.length}자 · 선택한 텍스트" else "텍스트 선택 모드",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    Icons.Outlined.Close,
+                    contentDescription = if (hasSelection) "선택 해제" else "텍스트 선택 종료",
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SelectionAction("복사", Icons.Outlined.ContentCopy, hasSelection, onCopy)
+            SelectionAction("Google 번역", Icons.Outlined.Translate, hasSelection, onTranslate)
+            SelectionAction("발췌", Icons.AutoMirrored.Outlined.Notes, hasSelection, onExcerpt)
+            SelectionAction("형광펜", Icons.Outlined.Highlight, hasSelection, onHighlight)
+            SelectionAction("밑줄", Icons.Outlined.FormatUnderlined, hasSelection, onUnderline)
+            SelectionAction("취소선", Icons.Outlined.FormatStrikethrough, hasSelection, onStrikeout)
+            SelectionAction("선택 해제", Icons.Outlined.Close, hasSelection, onDismiss)
+        }
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+@Composable
+private fun SelectionAction(
+    label: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+        }
+    }
+}
+
+private fun copySelection(context: Context, text: String) {
+    val value = text.trim()
+    if (value.isEmpty()) return
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+    if (clipboard == null) {
+        Toast.makeText(context, "클립보드를 사용할 수 없습니다.", Toast.LENGTH_SHORT).show()
+        return
+    }
+    clipboard.setPrimaryClip(ClipData.newPlainText("선택한 텍스트", value))
+    Toast.makeText(context, "선택한 텍스트를 복사했습니다.", Toast.LENGTH_SHORT).show()
 }
 
 @Composable
