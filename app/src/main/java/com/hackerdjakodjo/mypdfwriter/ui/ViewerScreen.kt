@@ -60,6 +60,8 @@ import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.ViewAgenda
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -154,6 +156,8 @@ fun ViewerScreen(
     var showHub by remember { mutableStateOf(false) }
     var showToolMore by remember { mutableStateOf(false) }
     var showToolStyle by remember { mutableStateOf(false) }
+    // Display-only: annotations stay stored and exported; this only hides the canvas layer.
+    var annotationsHidden by remember(state.docId) { mutableStateOf(false) }
     var lastShapeTool by remember { mutableStateOf(Tool.RECT) }
     var selectedPages by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var textTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
@@ -391,6 +395,11 @@ fun ViewerScreen(
                     trailing = if (state.annotations.isEmpty()) null else "${state.annotations.size}개",
                 ) { showAnnotations = true },
                 PdfHubAction(
+                    if (annotationsHidden) "주석 표시" else "주석 숨기기",
+                    if (annotationsHidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+                    trailing = if (annotationsHidden) "숨김" else "표시 중",
+                ) { annotationsHidden = !annotationsHidden },
+                PdfHubAction(
                     "발췌·번역",
                     Icons.AutoMirrored.Outlined.Notes,
                     trailing = if (excerpts.isEmpty()) null else "${excerpts.size}개",
@@ -545,7 +554,7 @@ fun ViewerScreen(
                 pageIndex = state.pageIndex,
                 displayWidthPt = state.displayWidthPt,
                 displayHeightPt = state.displayHeightPt,
-                annotations = state.annotations,
+                annotations = if (annotationsHidden) emptyList() else state.annotations,
                 tool = state.tool,
                 color = state.color,
                 strokeWidth = state.strokeWidth,
@@ -587,17 +596,25 @@ fun ViewerScreen(
                 textSelectMode -> "텍스트를 드래그해 선택하세요."
                 else -> stringResource(hintRes)
             }
-            Surface(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                shape = RoundedCornerShape(50),
+            Column(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(
-                    hintText,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (annotationsHidden) {
+                    HiddenAnnotationsBanner(onShow = { annotationsHidden = false })
+                    Spacer(Modifier.height(6.dp))
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(50),
+                ) {
+                    Text(
+                        hintText,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             if (textSelectMode && selectedText.isNotBlank()) {
@@ -662,7 +679,7 @@ fun ViewerScreen(
         SearchSheet(state, vm) { showSearch = false }
     }
     if (showAnnotations) {
-        AnnotationSheet(state, vm) { showAnnotations = false }
+        AnnotationSheet(state, vm, annotationsHidden = annotationsHidden) { showAnnotations = false }
     }
     if (showExcerpts) {
         ExcerptSheet(
@@ -967,6 +984,46 @@ private fun copySelection(context: Context, text: String) {
     }
     clipboard.setPrimaryClip(ClipData.newPlainText("선택한 텍스트", value))
     Toast.makeText(context, "선택한 텍스트를 복사했습니다.", Toast.LENGTH_SHORT).show()
+}
+
+/**
+ * Persistent reminder that annotation hiding is a canvas display mode. The whole
+ * banner is a one-tap restore target; tapping it never changes stored data.
+ */
+@Composable
+private fun HiddenAnnotationsBanner(onShow: () -> Unit) {
+    Surface(
+        onClick = onShow,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 5.dp, bottom = 5.dp, end = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Outlined.VisibilityOff,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Column {
+                Text("주석 숨김", style = MaterialTheme.typography.labelMedium)
+                Text(
+                    "화면에서만 가림 · 데이터 유지",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "표시",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
 }
 
 @Composable
