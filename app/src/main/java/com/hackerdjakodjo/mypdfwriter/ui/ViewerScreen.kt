@@ -7,10 +7,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -26,58 +23,50 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Comment
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.Notes
+import androidx.compose.material.icons.automirrored.outlined.StickyNote2
+import androidx.compose.material.icons.automirrored.outlined.Toc
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Approval
-import androidx.compose.material.icons.outlined.ChevronLeft
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.CropSquare
-import androidx.compose.material.icons.outlined.DeleteSweep
-import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.DragIndicator
-import androidx.compose.material.icons.outlined.Draw
-import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FitScreen
 import androidx.compose.material.icons.outlined.FormatStrikethrough
 import androidx.compose.material.icons.outlined.FormatUnderlined
 import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Handyman
 import androidx.compose.material.icons.outlined.Highlight
-import androidx.compose.material.icons.outlined.HorizontalRule
-import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.NorthEast
-import androidx.compose.material.icons.outlined.Redo
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PictureInPictureAlt
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.Print
+import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.material.icons.outlined.StickyNote2
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Translate
-import androidx.compose.material.icons.outlined.Undo
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material.icons.outlined.ZoomIn
-import androidx.compose.material.icons.outlined.ZoomOut
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
+import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -100,7 +89,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
@@ -116,36 +104,6 @@ import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
 import com.hackerdjakodjo.mypdfwriter.pdf.TextActions
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
-
-private data class ToolSpec(val tool: Tool, val icon: ImageVector, val labelRes: Int)
-
-private val toolSpecs = listOf(
-    ToolSpec(Tool.VIEW, Icons.Outlined.Visibility, R.string.tool_view),
-    ToolSpec(Tool.PEN, Icons.Outlined.Edit, R.string.tool_pen),
-    ToolSpec(Tool.HIGHLIGHT, Icons.Outlined.Highlight, R.string.tool_highlight),
-    ToolSpec(Tool.TEXT, Icons.Outlined.TextFields, R.string.tool_text),
-    ToolSpec(Tool.RECT, Icons.Outlined.CropSquare, R.string.tool_rect),
-    ToolSpec(Tool.ARROW, Icons.Outlined.NorthEast, R.string.tool_arrow),
-    ToolSpec(Tool.LINE, Icons.Outlined.HorizontalRule, R.string.tool_line),
-    ToolSpec(Tool.ELLIPSE, Icons.Outlined.Circle, R.string.tool_ellipse),
-    ToolSpec(Tool.UNDERLINE, Icons.Outlined.FormatUnderlined, R.string.tool_underline),
-    ToolSpec(Tool.STRIKEOUT, Icons.Outlined.FormatStrikethrough, R.string.tool_strikeout),
-    ToolSpec(Tool.STAMP, Icons.Outlined.Approval, R.string.tool_stamp),
-    ToolSpec(Tool.SIGNATURE, Icons.Outlined.Draw, R.string.tool_signature),
-    ToolSpec(Tool.REDACT, Icons.Outlined.VisibilityOff, R.string.tool_redact),
-    ToolSpec(Tool.ERASER, Icons.Outlined.DeleteSweep, R.string.tool_eraser),
-)
-
-val annotationPalette = listOf(
-    0xFF1B1B1B.toInt(),
-    0xFFD32F2F.toInt(),
-    0xFF1F4E79.toInt(),
-    0xFF2E7D32.toInt(),
-    0xFFC2703D.toInt(),
-    0xFF6A1B9A.toInt(),
-    0xFF00838F.toInt(),
-    0xFFF9A825.toInt(),
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -193,7 +151,10 @@ fun ViewerScreen(
     var showOutline by remember { mutableStateOf(false) }
     var showProperties by remember { mutableStateOf(false) }
     var showStyle by remember { mutableStateOf(false) }
-    var showMenu by remember { mutableStateOf(false) }
+    var showHub by remember { mutableStateOf(false) }
+    var showToolMore by remember { mutableStateOf(false) }
+    var showToolStyle by remember { mutableStateOf(false) }
+    var lastShapeTool by remember { mutableStateOf(Tool.RECT) }
     var selectedPages by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var textTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
     var stampTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
@@ -202,6 +163,25 @@ fun ViewerScreen(
     var selectedWords by remember { mutableStateOf<List<PdfTextWord>>(emptyList()) }
     var searchHighlights by remember { mutableStateOf<List<SearchMatchRect>>(emptyList()) }
     val selectedText = remember(selectedWords) { PdfTextLayout.selectionText(selectedWords) }
+
+    /** Enter/leave the text-selection (lasso) mode used by both the dock and the hub. */
+    val toggleTextSelection: () -> Unit = {
+        if (textSelectMode) {
+            textSelectMode = false
+            selectedWords = emptyList()
+        } else {
+            vm.setTool(Tool.VIEW)
+            textSelectMode = true
+            selectedWords = emptyList()
+            vm.loadTextWords(state.pageIndex)
+        }
+    }
+
+    /** Remember the last shape so the primary "도형" slot stays a one-tap action. */
+    val selectTool: (Tool) -> Unit = { tool ->
+        if (isShapeTool(tool)) lastShapeTool = tool
+        vm.setTool(tool)
+    }
 
     LaunchedEffect(state.pageIndex, state.revision) {
         selectedWords = emptyList()
@@ -240,7 +220,7 @@ fun ViewerScreen(
     val sheetOpen = showPages || showNotes || showBookmarks || showSearch || showAnnotations ||
         showOrganize || showExcerpts || showContinuous || showSpread || showPopup || showAudioNotes ||
         showAudioReplay || showStudyNote || showReflow || showReadAloud || showOutline || showProperties ||
-        showStyle || showMenu ||
+        showStyle || showHub || showToolMore || showToolStyle ||
         textTarget != null || stampTarget != null || signatureTarget != null
 
     BackHandler(enabled = !sheetOpen) {
@@ -355,6 +335,88 @@ fun ViewerScreen(
     val progressPercent = (progress * 100).roundToInt()
     val currentBookmark = bookmarks.firstOrNull { it.pageIndex == state.pageIndex }
 
+    val hubSections = listOf(
+        PdfHubSection(
+            title = "읽기",
+            actions = listOf(
+                PdfHubAction("검색", Icons.Outlined.Search) { showSearch = true },
+                PdfHubAction("목차", Icons.AutoMirrored.Outlined.Toc) {
+                    vm.loadOutline()
+                    showOutline = true
+                },
+                PdfHubAction(
+                    "북마크",
+                    Icons.Outlined.StarBorder,
+                    trailing = if (bookmarks.isEmpty()) null else "${bookmarks.size}개",
+                ) { showBookmarks = true },
+                PdfHubAction(
+                    if (textSelectMode) "텍스트 선택 종료" else "텍스트 선택",
+                    Icons.Outlined.TextFields,
+                    onClick = toggleTextSelection,
+                ),
+                PdfHubAction("텍스트 모드 (Reflow)", Icons.Outlined.AutoStories) { showReflow = true },
+                PdfHubAction("연속 보기", Icons.Outlined.ViewAgenda) { showContinuous = true },
+                PdfHubAction("스프레드 보기", Icons.AutoMirrored.Outlined.MenuBook) { showSpread = true },
+                PdfHubAction("팝업 보기", Icons.Outlined.PictureInPictureAlt) { showPopup = true },
+                PdfHubAction("소리 내어 읽기", Icons.Outlined.RecordVoiceOver) { showReadAloud = true },
+                PdfHubAction(
+                    "야간 모드",
+                    if (state.nightMode) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                    trailing = if (state.nightMode) "켜짐" else "꺼짐",
+                ) { vm.toggleNightMode() },
+                PdfHubAction("텍스트 복사", Icons.Outlined.ContentCopy) { vm.copyPageText() },
+                PdfHubAction(
+                    "화면에 맞추기",
+                    Icons.Outlined.FitScreen,
+                    trailing = "${(state.zoom * 100).roundToInt()}%",
+                ) { vm.setZoom(1f) },
+            ),
+        ),
+        PdfHubSection(
+            title = "문서",
+            actions = listOf(
+                PdfHubAction("페이지 정리", Icons.Outlined.GridView) {
+                    selectedPages = emptySet()
+                    showOrganize = true
+                },
+                PdfHubAction("페이지 편집", Icons.Outlined.EditNote) { showPages = true },
+                PdfHubAction(
+                    "페이지 메모",
+                    Icons.AutoMirrored.Outlined.StickyNote2,
+                    trailing = if (state.notes.isEmpty()) null else "${state.notes.size}개",
+                ) { showNotes = true },
+                PdfHubAction(
+                    "주석 목록",
+                    Icons.AutoMirrored.Outlined.Comment,
+                    trailing = if (state.annotations.isEmpty()) null else "${state.annotations.size}개",
+                ) { showAnnotations = true },
+                PdfHubAction(
+                    "발췌·번역",
+                    Icons.AutoMirrored.Outlined.Notes,
+                    trailing = if (excerpts.isEmpty()) null else "${excerpts.size}개",
+                ) { showExcerpts = true },
+                PdfHubAction("오디오 노트", Icons.Outlined.Mic) { showAudioNotes = true },
+                PdfHubAction("오디오 재생", Icons.Outlined.PlayCircle) { showAudioReplay = true },
+                PdfHubAction("문서 정보", Icons.Outlined.Info) {
+                    vm.loadMetadata()
+                    showProperties = true
+                },
+                PdfHubAction("문서 꾸미기", Icons.Outlined.Palette) { showStyle = true },
+                PdfHubAction("PDF 도구", Icons.Outlined.Handyman) { onOpenTools() },
+            ),
+        ),
+        PdfHubSection(
+            title = "내보내기",
+            actions = listOf(
+                PdfHubAction("PDF 내보내기", Icons.Outlined.FileDownload) {
+                    onExportRequest(vm.exportSuggestedName())
+                },
+                PdfHubAction("인쇄", Icons.Outlined.Print) { vm.printCurrent() },
+                PdfHubAction("공유", Icons.Outlined.Share) { vm.shareCurrent() },
+            ),
+        ),
+    )
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -381,223 +443,31 @@ fun ViewerScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showSearch = true }) {
-                        Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.search))
-                    }
                     IconButton(
                         onClick = {
-                            selectedPages = emptySet()
-                            showOrganize = true
+                            if (currentBookmark != null) {
+                                vm.deleteBookmark(currentBookmark.id)
+                            } else {
+                                vm.addCurrentPageBookmark("${state.pageIndex + 1}쪽")
+                            }
                         },
                     ) {
-                        Icon(Icons.Outlined.GridView, contentDescription = "페이지 정리")
+                        Icon(
+                            if (currentBookmark != null) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                            contentDescription = if (currentBookmark != null) {
+                                "현재 페이지 북마크 해제"
+                            } else {
+                                "현재 페이지 북마크"
+                            },
+                            tint = if (currentBookmark != null) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
                     }
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(Icons.Outlined.MoreVert, contentDescription = "더보기")
-                        }
-                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                            DropdownMenuItem(
-                                text = { Text("페이지 편집") },
-                                onClick = {
-                                    showMenu = false
-                                    showPages = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("페이지 메모") },
-                                onClick = {
-                                    showMenu = false
-                                    showNotes = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        if (bookmarks.isEmpty()) "북마크"
-                                        else "북마크 (${bookmarks.size})",
-                                    )
-                                },
-                                leadingIcon = { Icon(Icons.Outlined.StarBorder, contentDescription = null) },
-                                onClick = {
-                                    showMenu = false
-                                    showBookmarks = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        if (currentBookmark != null) "현재 페이지 북마크 해제"
-                                        else "현재 페이지 북마크",
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        if (currentBookmark != null) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                                        contentDescription = null,
-                                    )
-                                },
-                                onClick = {
-                                    showMenu = false
-                                    if (currentBookmark != null) {
-                                        vm.deleteBookmark(currentBookmark.id)
-                                    } else {
-                                        vm.addCurrentPageBookmark("${state.pageIndex + 1}쪽")
-                                    }
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        if (state.annotations.isEmpty()) "주석 목록"
-                                        else "주석 목록 (${state.annotations.size})",
-                                    )
-                                },
-                                onClick = {
-                                    showMenu = false
-                                    showAnnotations = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        if (excerpts.isEmpty()) "발췌·번역"
-                                        else "발췌·번역 (${excerpts.size})",
-                                    )
-                                },
-                                onClick = {
-                                    showMenu = false
-                                    showExcerpts = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("텍스트 모드") },
-                                onClick = {
-                                    showMenu = false
-                                    showReflow = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (textSelectMode) "텍스트 선택 종료" else "텍스트 선택") },
-                                leadingIcon = { Icon(Icons.Outlined.TextFields, contentDescription = null) },
-                                onClick = {
-                                    showMenu = false
-                                    if (textSelectMode) {
-                                        textSelectMode = false
-                                        selectedWords = emptyList()
-                                    } else {
-                                        vm.setTool(Tool.VIEW)
-                                        textSelectMode = true
-                                        selectedWords = emptyList()
-                                        vm.loadTextWords(state.pageIndex)
-                                    }
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("소리 내어 읽기") },
-                                onClick = {
-                                    showMenu = false
-                                    showReadAloud = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("연속 보기") },
-                                onClick = {
-                                    showMenu = false
-                                    showContinuous = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("스프레드 보기") },
-                                onClick = {
-                                    showMenu = false
-                                    showSpread = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("팝업으로 보기") },
-                                onClick = {
-                                    showMenu = false
-                                    showPopup = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("오디오 노트") },
-                                onClick = {
-                                    showMenu = false
-                                    showAudioNotes = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("오디오 재생") },
-                                onClick = {
-                                    showMenu = false
-                                    showAudioReplay = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("목차") },
-                                onClick = {
-                                    showMenu = false
-                                    vm.loadOutline()
-                                    showOutline = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("문서 정보") },
-                                onClick = {
-                                    showMenu = false
-                                    vm.loadMetadata()
-                                    showProperties = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("문서 꾸미기 (워터마크·페이지 번호)") },
-                                onClick = {
-                                    showMenu = false
-                                    showStyle = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (state.nightMode) "주간 모드" else "야간 모드") },
-                                onClick = {
-                                    showMenu = false
-                                    vm.toggleNightMode()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("현재 페이지 텍스트 복사") },
-                                onClick = {
-                                    showMenu = false
-                                    vm.copyPageText()
-                                },
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("PDF 도구") },
-                                onClick = {
-                                    showMenu = false
-                                    onOpenTools()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("인쇄") },
-                                onClick = {
-                                    showMenu = false
-                                    vm.printCurrent()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("공유") },
-                                onClick = {
-                                    showMenu = false
-                                    vm.shareCurrent()
-                                },
-                            )
-                        }
-                    }
-                    IconButton(onClick = { onExportRequest(vm.exportSuggestedName()) }) {
-                        Icon(Icons.Outlined.FileDownload, contentDescription = stringResource(R.string.export))
+                    IconButton(onClick = { showHub = true }) {
+                        Icon(Icons.Outlined.Apps, contentDescription = "PDF 허브")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -648,10 +518,17 @@ fun ViewerScreen(
                             },
                         )
                     } else {
-                        AnnotationToolbar(state, vm)
+                        ViewerToolDock(
+                            state = state,
+                            shapeTool = lastShapeTool,
+                            onSelectTool = selectTool,
+                            onLasso = toggleTextSelection,
+                            onMore = { showToolMore = true },
+                            onStyle = { showToolStyle = true },
+                            onUndo = vm::undo,
+                            onRedo = vm::redo,
+                        )
                     }
-                    HorizontalDivider()
-                    PageBar(state, vm)
                 }
             }
         },
@@ -729,9 +606,21 @@ fun ViewerScreen(
                     caption = "선택한 텍스트를 여기로 끌어다 놓으세요",
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 74.dp),
                 )
             }
+
+            ViewerPageNavigator(
+                pageIndex = state.pageIndex,
+                pageCount = state.pageCount,
+                onPrevious = vm::previousPage,
+                onNext = vm::nextPage,
+                onOpenPages = { showPages = true },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 14.dp),
+            )
 
             if (state.busy) {
                 BusyOverlay(state.busyLabel)
@@ -878,6 +767,36 @@ fun ViewerScreen(
             },
         )
     }
+    if (showHub) {
+        PdfHubSheet(
+            docName = state.docName,
+            pageIndex = state.pageIndex,
+            pageCount = state.pageCount,
+            sections = hubSections,
+            onDismiss = { showHub = false },
+        )
+    }
+    if (showToolMore) {
+        ViewerToolMoreSheet(
+            currentTool = state.tool,
+            onSelectTool = { tool ->
+                selectTool(tool)
+                showToolMore = false
+            },
+            onDismiss = { showToolMore = false },
+        )
+    }
+    if (showToolStyle) {
+        ViewerStyleSheet(
+            state = state,
+            onSelectTool = selectTool,
+            onColor = vm::setColor,
+            onStrokeWidth = vm::setStrokeWidth,
+            onFontSize = vm::setFontSize,
+            onOpacity = vm::setOpacity,
+            onDismiss = { showToolStyle = false },
+        )
+    }
 
     textTarget?.let { point ->
         TextAnnotationDialog(
@@ -913,91 +832,6 @@ fun ViewerScreen(
                 signatureTarget = null
             },
         )
-    }
-}
-
-@Composable
-private fun AnnotationToolbar(state: ViewerUiState, vm: PdfViewModel) {
-    Column {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 10.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                toolSpecs.forEach { spec ->
-                    ToolChip(
-                        icon = spec.icon,
-                        label = stringResource(spec.labelRes),
-                        selected = state.tool == spec.tool,
-                        onClick = { vm.setTool(spec.tool) },
-                    )
-                }
-            }
-            IconButton(onClick = vm::undo, enabled = state.canUndo) {
-                Icon(Icons.Outlined.Undo, contentDescription = stringResource(R.string.undo))
-            }
-            IconButton(onClick = vm::redo, enabled = state.canRedo) {
-                Icon(Icons.Outlined.Redo, contentDescription = stringResource(R.string.redo))
-            }
-        }
-
-        if (state.tool != Tool.VIEW && state.tool != Tool.ERASER && state.tool != Tool.REDACT) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp)
-                    .padding(bottom = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                annotationPalette.forEach { color ->
-                    ColorDot(
-                        color = color,
-                        selected = state.color == color,
-                        onClick = { vm.setColor(color) },
-                    )
-                }
-
-                when (state.tool) {
-                    Tool.TEXT -> {
-                        Text(stringResource(R.string.thickness), style = MaterialTheme.typography.labelMedium)
-                        Slider(
-                            value = state.fontSize,
-                            onValueChange = vm::setFontSize,
-                            valueRange = 0.012f..0.05f,
-                            modifier = Modifier.width(120.dp),
-                        )
-                        OpacityControl(state.opacity, vm::setOpacity)
-                    }
-
-                    Tool.HIGHLIGHT -> Unit
-
-                    Tool.STAMP, Tool.SIGNATURE -> {
-                        OpacityControl(state.opacity, vm::setOpacity)
-                    }
-
-                    else -> {
-                        Text(stringResource(R.string.thickness), style = MaterialTheme.typography.labelMedium)
-                        Slider(
-                            value = state.strokeWidth,
-                            onValueChange = vm::setStrokeWidth,
-                            valueRange = 0.001f..0.012f,
-                            modifier = Modifier.width(120.dp),
-                        )
-                        OpacityControl(state.opacity, vm::setOpacity)
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -1133,91 +967,6 @@ private fun copySelection(context: Context, text: String) {
     }
     clipboard.setPrimaryClip(ClipData.newPlainText("선택한 텍스트", value))
     Toast.makeText(context, "선택한 텍스트를 복사했습니다.", Toast.LENGTH_SHORT).show()
-}
-
-@Composable
-private fun OpacityControl(value: Float, onValueChange: (Float) -> Unit) {
-    Text(stringResource(R.string.opacity), style = MaterialTheme.typography.labelMedium)
-    Slider(
-        value = value,
-        onValueChange = onValueChange,
-        valueRange = 0.1f..1f,
-        modifier = Modifier.width(100.dp),
-    )
-    Text(
-        stringResource(R.string.opacity_percent, (value * 100).roundToInt()),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-@Composable
-private fun ToolChip(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(50),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
-        }
-    }
-}
-
-@Composable
-internal fun ColorDot(color: Int, selected: Boolean, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(28.dp)
-            .background(Color(color), CircleShape)
-            .border(
-                width = if (selected) 2.5.dp else 1.dp,
-                color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant,
-                shape = CircleShape,
-            )
-            .clickable(onClick = onClick),
-    )
-}
-
-@Composable
-private fun PageBar(state: ViewerUiState, vm: PdfViewModel) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = vm::previousPage, enabled = state.pageIndex > 0) {
-            Icon(Icons.Outlined.ChevronLeft, contentDescription = stringResource(R.string.back))
-        }
-        Text(
-            stringResource(R.string.page_of, state.pageIndex + 1, state.pageCount),
-            style = MaterialTheme.typography.labelLarge,
-        )
-        IconButton(onClick = vm::nextPage, enabled = state.pageIndex < state.pageCount - 1) {
-            Icon(Icons.Outlined.ChevronRight, contentDescription = stringResource(R.string.pages))
-        }
-        Spacer(Modifier.weight(1f))
-        IconButton(onClick = { vm.setZoom(state.zoom - 0.5f) }, enabled = state.zoom > 1f) {
-            Icon(Icons.Outlined.ZoomOut, contentDescription = stringResource(R.string.zoom_out))
-        }
-        Text(
-            "${(state.zoom * 100).roundToInt()}%",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        IconButton(onClick = { vm.setZoom(state.zoom + 0.5f) }, enabled = state.zoom < 6f) {
-            Icon(Icons.Outlined.ZoomIn, contentDescription = stringResource(R.string.zoom_in))
-        }
-        IconButton(onClick = { vm.setZoom(1f) }) {
-            Icon(Icons.Outlined.FitScreen, contentDescription = stringResource(R.string.fit_page))
-        }
-    }
 }
 
 @Composable
