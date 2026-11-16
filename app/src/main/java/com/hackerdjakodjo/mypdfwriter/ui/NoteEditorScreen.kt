@@ -19,18 +19,18 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
@@ -39,29 +39,46 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AutoFixNormal
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Gesture
+import androidx.compose.material.icons.filled.Highlight
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -74,6 +91,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -92,34 +110,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import java.util.UUID
 import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.math.sqrt
-
-private val NOTE_PALETTE = listOf(
-    0xFF1B1C19.toInt(),
-    0xFF1F4E79.toInt(),
-    0xFFB3261E.toInt(),
-    0xFFB4693C.toInt(),
-    0xFF2E6B4F.toInt(),
-    0xFF6A4C93.toInt(),
-    0xFF2C7A7B.toInt(),
-    0xFFF2C94C.toInt(),
-)
-
-private data class NoteToolOption(val tool: Tool, val label: String)
-
-private val NOTE_TOOLS = listOf(
-    NoteToolOption(Tool.PEN, "펜"),
-    NoteToolOption(Tool.HIGHLIGHT, "형광펜"),
-    NoteToolOption(Tool.ERASER, "지우개"),
-    NoteToolOption(Tool.LASSO, "올가미"),
-    NoteToolOption(Tool.LASSO_RECT, "사각 올가미"),
-    NoteToolOption(Tool.TEXT, "텍스트"),
-    NoteToolOption(Tool.RECT, "사각형"),
-    NoteToolOption(Tool.ARROW, "화살표"),
-    NoteToolOption(Tool.LINE, "선"),
-    NoteToolOption(Tool.ELLIPSE, "원"),
-)
 
 private const val NOTE_ERASE_RADIUS = 0.03f
 
@@ -156,6 +147,8 @@ fun NoteEditorScreen(
     }
 
     var showPenBox by remember { mutableStateOf(false) }
+    var showStyle by remember { mutableStateOf(false) }
+    var showPageSheet by remember { mutableStateOf(false) }
     var showAudioNotes by remember { mutableStateOf(false) }
     var showAudioReplay by remember { mutableStateOf(false) }
     var replayNote by remember { mutableStateOf<AudioNote?>(null) }
@@ -182,7 +175,7 @@ fun NoteEditorScreen(
         if (replayNote != null && replayNote?.pageIndex != safeIndex) 1f
         else annotationRevealFraction(annotation, replayNote, replayPositionMs)
     }
-    var showMenu by remember { mutableStateOf(false) }
+    var showOverflow by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     var showTemplates by remember { mutableStateOf(false) }
     var showDeletePage by remember { mutableStateOf(false) }
@@ -452,30 +445,24 @@ fun NoteEditorScreen(
         append(if (zoomLock) " · 줌 잠금" else " · 줌 가능")
     }
 
+    val darkPaper = false
+
     BackHandler(onBack = onBack)
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Column(
+                    Text(
+                        notebook.title,
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .clickable { showRename = true }
-                            .padding(horizontal = 2.dp, vertical = 2.dp),
-                    ) {
-                        Text(
-                            notebook.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            "${safeIndex + 1} / ${pages.size} · ${page.template.label}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                            .clickable(onClickLabel = "제목 편집") { showRename = true }
+                            .padding(horizontal = 2.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -483,8 +470,11 @@ fun NoteEditorScreen(
                     }
                 },
                 actions = {
-                    TextButton(onClick = { showPenBox = true }) {
-                        Text("필통")
+                    IconButton(onClick = { undo() }, enabled = canUndo) {
+                        Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "실행 취소")
+                    }
+                    IconButton(onClick = { redo() }, enabled = canRedo) {
+                        Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "다시 실행")
                     }
                     IconButton(onClick = { toggleFavorite() }) {
                         Icon(
@@ -497,107 +487,8 @@ fun NoteEditorScreen(
                             },
                         )
                     }
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "더보기")
-                        }
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("PDF로 내보내기") },
-                                onClick = {
-                                    showMenu = false
-                                    onExportPdf()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("템플릿 변경") },
-                                onClick = {
-                                    showMenu = false
-                                    showTemplates = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("오디오 노트") },
-                                onClick = {
-                                    showMenu = false
-                                    showAudioNotes = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("오디오 재생") },
-                                onClick = {
-                                    showMenu = false
-                                    showAudioReplay = true
-                                },
-                            )
-                            if (notebook.sourceDocumentUri.isNotBlank() && onOpenSourcePdf != null) {
-                                DropdownMenuItem(
-                                    text = { Text("원본 PDF 열기") },
-                                    onClick = {
-                                        showMenu = false
-                                        val page = StudyNoteBuilder.sourcePage(notebook, safeIndex) ?: 0
-                                        onOpenSourcePdf.invoke(page)
-                                    },
-                                )
-                            }
-                            DropdownMenuItem(
-                                text = { Text("레이어") },
-                                onClick = {
-                                    showMenu = false
-                                    showLayers = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("아웃라인·북마크") },
-                                onClick = {
-                                    showMenu = false
-                                    showOutline = true
-                                },
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("페이지 추가") },
-                                onClick = {
-                                    showMenu = false
-                                    addPage()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("페이지 복제") },
-                                onClick = {
-                                    showMenu = false
-                                    duplicatePage()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("페이지 위로 이동") },
-                                enabled = safeIndex > 0,
-                                onClick = {
-                                    showMenu = false
-                                    movePage(-1)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("페이지 아래로 이동") },
-                                enabled = safeIndex < pages.lastIndex,
-                                onClick = {
-                                    showMenu = false
-                                    movePage(1)
-                                },
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("페이지 삭제") },
-                                enabled = pages.size > 1,
-                                onClick = {
-                                    showMenu = false
-                                    showDeletePage = true
-                                },
-                            )
-                        }
+                    IconButton(onClick = { showOverflow = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "더보기")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -616,27 +507,24 @@ fun NoteEditorScreen(
                         onClear = { selection = emptySet() },
                     )
                 }
-                NoteToolbar(
+                NoteDock(
                     tool = tool,
                     onTool = { tool = it },
                     color = color,
-                    onColor = { color = it },
-                    strokeWidth = strokeWidth,
-                    onStrokeWidth = { strokeWidth = it },
-                    fontSize = fontSize,
-                    onFontSize = { fontSize = it },
-                    opacity = opacity,
-                    onOpacity = { opacity = it },
-                    penStyle = penStyle,
-                    onPenStyle = { penStyle = it },
-                    fingerWriting = fingerWriting,
-                    onFingerWriting = { fingerWriting = it },
-                    zoomLock = zoomLock,
-                    onZoomLock = { zoomLock = it },
+                    onOpenStyle = { showStyle = true },
                     canUndo = canUndo,
                     canRedo = canRedo,
                     onUndo = { undo() },
                     onRedo = { redo() },
+                    pageIndex = safeIndex,
+                    pageCount = pages.size,
+                    onPreviousPage = {
+                        if (notePagePreviousEnabled(safeIndex)) onPageIndexChange(safeIndex - 1)
+                    },
+                    onNextPage = {
+                        if (notePageNextEnabled(safeIndex, pages.size)) onPageIndexChange(safeIndex + 1)
+                    },
+                    onOpenPages = { showPageSheet = true },
                 )
             }
         },
@@ -647,7 +535,6 @@ fun NoteEditorScreen(
                 .padding(padding),
         ) {
             val wide = maxWidth >= 840.dp
-            val darkPaper = false
             if (wide) {
                 Row(Modifier.fillMaxSize()) {
                     NoteCanvasPane(
@@ -684,33 +571,24 @@ fun NoteEditorScreen(
                     )
                 }
             } else {
-                Column(Modifier.fillMaxSize()) {
-                    NoteCanvasPane(
-                        page = visiblePage,
-                        tool = tool,
-                        color = color,
-                        strokeWidth = strokeWidth,
-                        fontSize = fontSize,
-                        opacity = opacity,
-                        penStyle = penStyle,
-                        penOnly = !fingerWriting,
-                        zoomLock = zoomLock,
-                        annotationProgress = annotationProgress,
-                        hint = hint,
-                        onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
-                        onErase = { erase(it) },
-                        onRequestText = { textPoint = it },
-                        onLassoSelect = { polygon, rectangular -> selectWithLasso(polygon, rectangular) },
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                    )
-                    NotePageStrip(
-                        pages = pages,
-                        currentIndex = safeIndex,
-                        darkPaper = darkPaper,
-                        onSelect = onPageIndexChange,
-                        onAdd = { addPage() },
-                    )
-                }
+                NoteCanvasPane(
+                    page = visiblePage,
+                    tool = tool,
+                    color = color,
+                    strokeWidth = strokeWidth,
+                    fontSize = fontSize,
+                    opacity = opacity,
+                    penStyle = penStyle,
+                    penOnly = !fingerWriting,
+                    zoomLock = zoomLock,
+                    annotationProgress = annotationProgress,
+                    hint = hint,
+                    onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
+                    onErase = { erase(it) },
+                    onRequestText = { textPoint = it },
+                    onLassoSelect = { polygon, rectangular -> selectWithLasso(polygon, rectangular) },
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
     }
@@ -858,6 +736,116 @@ fun NoteEditorScreen(
             onDismiss = { showOutline = false },
         )
     }
+
+    if (showStyle) {
+        NoteStyleSheet(
+            tool = tool,
+            color = color,
+            onColor = { color = it },
+            strokeWidth = strokeWidth,
+            onStrokeWidth = { strokeWidth = it },
+            fontSize = fontSize,
+            onFontSize = { fontSize = it },
+            opacity = opacity,
+            onOpacity = { opacity = it },
+            penStyle = penStyle,
+            onPenStyle = { penStyle = it },
+            onOpenPenBox = {
+                showStyle = false
+                showPenBox = true
+            },
+            onDismiss = { showStyle = false },
+        )
+    }
+
+    if (showPageSheet) {
+        NotePageSheet(
+            pages = pages,
+            currentIndex = safeIndex,
+            darkPaper = darkPaper,
+            onSelect = {
+                onPageIndexChange(it)
+                showPageSheet = false
+            },
+            onAdd = {
+                showPageSheet = false
+                addPage()
+            },
+            onDismiss = { showPageSheet = false },
+        )
+    }
+
+    if (showOverflow) {
+        NoteOverflowSheet(
+            notebookTitle = notebook.title,
+            pageIndex = safeIndex,
+            pageCount = pages.size,
+            templateLabel = page.template.label,
+            layerName = activeLayer?.name ?: "레이어",
+            layerCount = page.layers.size,
+            canMoveUp = safeIndex > 0,
+            canMoveDown = safeIndex < pages.lastIndex,
+            canDeletePage = pages.size > 1,
+            fingerWriting = fingerWriting,
+            zoomLock = zoomLock,
+            onFingerWriting = { fingerWriting = it },
+            onZoomLock = { zoomLock = it },
+            onTemplate = {
+                showOverflow = false
+                showTemplates = true
+            },
+            onLayers = {
+                showOverflow = false
+                showLayers = true
+            },
+            onOutline = {
+                showOverflow = false
+                showOutline = true
+            },
+            onAudioNotes = {
+                showOverflow = false
+                showAudioNotes = true
+            },
+            onAudioReplay = {
+                showOverflow = false
+                showAudioReplay = true
+            },
+            onOpenSourcePdf = if (notebook.sourceDocumentUri.isNotBlank() && onOpenSourcePdf != null) {
+                {
+                    showOverflow = false
+                    val sourcePage = StudyNoteBuilder.sourcePage(notebook, safeIndex) ?: 0
+                    onOpenSourcePdf.invoke(sourcePage)
+                }
+            } else {
+                null
+            },
+            onAddPage = {
+                showOverflow = false
+                addPage()
+            },
+            onDuplicatePage = {
+                showOverflow = false
+                duplicatePage()
+            },
+            onMovePageUp = {
+                showOverflow = false
+                movePage(-1)
+            },
+            onMovePageDown = {
+                showOverflow = false
+                movePage(1)
+            },
+            onDeletePage = {
+                showOverflow = false
+                showDeletePage = true
+            },
+            onExportPdf = {
+                showOverflow = false
+                onExportPdf()
+            },
+            onDismiss = { showOverflow = false },
+        )
+    }
 }
 
 @Composable
@@ -917,27 +905,20 @@ private fun NoteCanvasPane(
 }
 
 @Composable
-private fun NoteToolbar(
+private fun NoteDock(
     tool: Tool,
     onTool: (Tool) -> Unit,
     color: Int,
-    onColor: (Int) -> Unit,
-    strokeWidth: Float,
-    onStrokeWidth: (Float) -> Unit,
-    fontSize: Float,
-    onFontSize: (Float) -> Unit,
-    opacity: Float,
-    onOpacity: (Float) -> Unit,
-    penStyle: PenStyle,
-    onPenStyle: (PenStyle) -> Unit,
-    fingerWriting: Boolean,
-    onFingerWriting: (Boolean) -> Unit,
-    zoomLock: Boolean,
-    onZoomLock: (Boolean) -> Unit,
+    onOpenStyle: () -> Unit,
     canUndo: Boolean,
     canRedo: Boolean,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
+    pageIndex: Int,
+    pageCount: Int,
+    onPreviousPage: () -> Unit,
+    onNextPage: () -> Unit,
+    onOpenPages: () -> Unit,
 ) {
     Surface(tonalElevation = 3.dp) {
         Column(
@@ -945,46 +926,82 @@ private fun NoteToolbar(
                 .fillMaxWidth()
                 .navigationBarsPadding(),
         ) {
+            if (noteIsShapeTool(tool)) {
+                NoteToolTray(
+                    label = "도형",
+                    options = NOTE_SHAPE_TOOLS.map { it to noteShapeLabel(it) },
+                    selectedTool = tool,
+                    onTool = onTool,
+                )
+            }
+            if (noteIsLassoTool(tool)) {
+                NoteToolTray(
+                    label = "선택",
+                    options = NOTE_LASSO_TOOLS.map { it to noteLassoLabel(it) },
+                    selectedTool = tool,
+                    onTool = onTool,
+                )
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.Center,
             ) {
-                NOTE_TOOLS.forEach { option ->
-                    NoteToolChip(
-                        label = option.label,
-                        selected = tool == option.tool,
-                        onClick = { onTool(option.tool) },
-                    )
-                }
-            }
-
-            if (tool == Tool.PEN) {
-                HorizontalDivider()
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        .widthIn(max = 480.dp)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        "펜 종류",
-                        modifier = Modifier.padding(end = 2.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    NoteDockTool(
+                        icon = Icons.Filled.Edit,
+                        label = "펜",
+                        selected = tool == Tool.PEN,
+                        onClick = { onTool(Tool.PEN) },
+                        modifier = Modifier.weight(1f),
                     )
-                    PenStyle.entries.forEach { style ->
-                        NoteToolChip(
-                            label = penStyleLabel(style),
-                            selected = penStyle == style,
-                            onClick = { onPenStyle(style) },
-                        )
-                    }
+                    NoteDockTool(
+                        icon = Icons.Filled.Highlight,
+                        label = "형광펜",
+                        selected = tool == Tool.HIGHLIGHT,
+                        onClick = { onTool(Tool.HIGHLIGHT) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    NoteDockTool(
+                        icon = Icons.Filled.AutoFixNormal,
+                        label = "지우개",
+                        selected = tool == Tool.ERASER,
+                        onClick = { onTool(Tool.ERASER) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    NoteDockTool(
+                        icon = Icons.Filled.Gesture,
+                        label = "올가미",
+                        selected = noteIsLassoTool(tool),
+                        onClick = {
+                            onTool(if (noteIsLassoTool(tool)) tool else Tool.LASSO)
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    NoteDockTool(
+                        icon = Icons.Filled.TextFields,
+                        label = "텍스트",
+                        selected = tool == Tool.TEXT,
+                        onClick = { onTool(Tool.TEXT) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    NoteDockTool(
+                        icon = Icons.Filled.Category,
+                        label = "도형",
+                        selected = noteIsShapeTool(tool),
+                        onClick = {
+                            onTool(if (noteIsShapeTool(tool)) tool else Tool.RECT)
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
 
@@ -993,77 +1010,200 @@ private fun NoteToolbar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                NOTE_PALETTE.forEach { swatch ->
-                    NoteColorDot(
-                        color = swatch,
-                        selected = color == swatch,
-                        onClick = { onColor(swatch) },
-                    )
-                }
-                Spacer(Modifier.width(6.dp))
-                IconButton(onClick = onUndo, enabled = canUndo) {
-                    Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "실행 취소")
-                }
-                IconButton(onClick = onRedo, enabled = canRedo) {
-                    Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "다시 실행")
-                }
-                FilterChip(
-                    selected = fingerWriting,
-                    onClick = { onFingerWriting(!fingerWriting) },
-                    label = { Text("손가락 필기") },
+                NoteColorDot(
+                    color = color,
+                    selected = true,
+                    onClick = onOpenStyle,
                 )
-                FilterChip(
-                    selected = zoomLock,
-                    onClick = { onZoomLock(!zoomLock) },
-                    label = { Text("줌 잠금") },
-                )
-            }
-
-            HorizontalDivider()
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (tool == Tool.TEXT) {
-                    NoteSlider(
-                        label = "글자 크기",
-                        valueLabel = "${(fontSize * 1000).roundToInt()}",
-                        value = fontSize,
-                        range = 0.012f..0.08f,
-                        onValueChange = onFontSize,
-                        modifier = Modifier.weight(1f),
-                    )
-                } else {
-                    NoteSlider(
-                        label = "굵기",
-                        valueLabel = "${(strokeWidth * 1000).roundToInt()}",
-                        value = strokeWidth,
-                        range = 0.001f..0.02f,
-                        onValueChange = onStrokeWidth,
-                        modifier = Modifier.weight(1f),
+                NoteDockStyleButton(onClick = onOpenStyle)
+                IconButton(
+                    onClick = onUndo,
+                    enabled = canUndo,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Undo,
+                        contentDescription = "실행 취소",
+                        modifier = Modifier.size(20.dp),
                     )
                 }
-                NoteSlider(
-                    label = "투명도",
-                    valueLabel = "${(opacity * 100).roundToInt()}%",
-                    value = opacity,
-                    range = 0.1f..1f,
-                    onValueChange = onOpacity,
-                    modifier = Modifier.weight(1f),
+                IconButton(
+                    onClick = onRedo,
+                    enabled = canRedo,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Redo,
+                        contentDescription = "다시 실행",
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                NotePagePill(
+                    pageIndex = pageIndex,
+                    pageCount = pageCount,
+                    onPrevious = onPreviousPage,
+                    onNext = onNextPage,
+                    onOpenPages = onOpenPages,
                 )
             }
         }
     }
 }
+
+@Composable
+private fun NoteDockTool(
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            Color.Transparent
+        },
+        contentColor = if (selected) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        modifier = modifier,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(21.dp))
+            Spacer(Modifier.height(2.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NoteDockStyleButton(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.Palette, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("스타일", style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun NotePagePill(
+    pageIndex: Int,
+    pageCount: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onOpenPages: () -> Unit,
+) {
+    Surface(
+        onClick = onOpenPages,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+    ) {
+        Row(
+            modifier = Modifier.height(36.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = onPrevious,
+                enabled = notePagePreviousEnabled(pageIndex),
+                modifier = Modifier.size(30.dp),
+            ) {
+                Icon(
+                    Icons.Filled.ChevronLeft,
+                    contentDescription = "이전 페이지",
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Text(
+                "${pageIndex + 1} / $pageCount",
+                modifier = Modifier.padding(horizontal = 2.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.labelMedium,
+            )
+            IconButton(
+                onClick = onNext,
+                enabled = notePageNextEnabled(pageIndex, pageCount),
+                modifier = Modifier.size(30.dp),
+            ) {
+                Icon(
+                    Icons.Filled.ChevronRight,
+                    contentDescription = "다음 페이지",
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoteToolTray(
+    label: String,
+    options: List<Pair<Tool, String>>,
+    selectedTool: Tool,
+    onTool: (Tool) -> Unit,
+) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            options.forEach { (option, text) ->
+                NoteToolChip(
+                    label = text,
+                    selected = selectedTool == option,
+                    onClick = { onTool(option) },
+                )
+            }
+        }
+    }
+}
+
+private fun noteShapeLabel(tool: Tool): String = when (tool) {
+    Tool.RECT -> "사각형"
+    Tool.ARROW -> "화살표"
+    Tool.LINE -> "선"
+    Tool.ELLIPSE -> "원"
+    else -> "도형"
+}
+
+private fun noteLassoLabel(tool: Tool): String =
+    if (tool == Tool.LASSO_RECT) "사각 올가미" else "자유 올가미"
 
 @Composable
 private fun NoteSelectionBar(
@@ -1140,58 +1280,373 @@ private fun NoteToolChip(label: String, selected: Boolean, onClick: () -> Unit) 
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NoteColorDot(color: Int, selected: Boolean, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(30.dp)
-            .clip(CircleShape)
-            .background(Color(color))
-            .border(
-                width = if (selected) 2.5.dp else 1.dp,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.outlineVariant
-                },
-                shape = CircleShape,
-            )
-            .clickable(onClick = onClick),
+private fun NotePageSheet(
+    pages: List<NotePage>,
+    currentIndex: Int,
+    darkPaper: Boolean,
+    onSelect: (Int) -> Unit,
+    onAdd: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val safeCurrent = if (pages.isEmpty()) 0 else currentIndex.coerceIn(0, pages.lastIndex)
+    val templateLabel = pages.getOrNull(safeCurrent)?.template?.label.orEmpty()
+    val pageLabel = if (pages.isEmpty()) "0 / 0" else "${safeCurrent + 1} / ${pages.size}"
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 20.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("페이지", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        pageLabel + if (templateLabel.isBlank()) "" else " · $templateLabel",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = onDismiss) { Text("닫기") }
+            }
+            Spacer(Modifier.height(8.dp))
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 180.dp, max = 340.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(count = pages.size, key = { pages[it].id }) { index ->
+                    NotePageThumbnail(
+                        page = pages[index],
+                        number = index,
+                        selected = index == safeCurrent,
+                        darkPaper = darkPaper,
+                        onClick = { onSelect(index) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                item(key = "add-page") {
+                    NoteAddPageCard(
+                        onClick = onAdd,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NoteOverflowSheet(
+    notebookTitle: String,
+    pageIndex: Int,
+    pageCount: Int,
+    templateLabel: String,
+    layerName: String,
+    layerCount: Int,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    canDeletePage: Boolean,
+    fingerWriting: Boolean,
+    zoomLock: Boolean,
+    onFingerWriting: (Boolean) -> Unit,
+    onZoomLock: (Boolean) -> Unit,
+    onTemplate: () -> Unit,
+    onLayers: () -> Unit,
+    onOutline: () -> Unit,
+    onAudioNotes: () -> Unit,
+    onAudioReplay: () -> Unit,
+    onOpenSourcePdf: (() -> Unit)?,
+    onAddPage: () -> Unit,
+    onDuplicatePage: () -> Unit,
+    onMovePageUp: () -> Unit,
+    onMovePageDown: () -> Unit,
+    onDeletePage: () -> Unit,
+    onExportPdf: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 24.dp),
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("노트 메뉴", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "$notebookTitle · ${pageIndex + 1} / $pageCount",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    TextButton(onClick = onDismiss) { Text("닫기") }
+                }
+            }
+
+            item { NoteMenuSection("문서") }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.Dashboard,
+                    title = "템플릿",
+                    supporting = "현재: $templateLabel",
+                    onClick = onTemplate,
+                )
+            }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.Layers,
+                    title = "레이어",
+                    supporting = "${layerCount}개 · $layerName",
+                    onClick = onLayers,
+                )
+            }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.Bookmarks,
+                    title = "아웃라인/북마크",
+                    supporting = "페이지 목록과 책갈피",
+                    onClick = onOutline,
+                )
+            }
+            if (onOpenSourcePdf != null) {
+                item {
+                    NoteMenuRow(
+                        icon = Icons.Filled.PictureAsPdf,
+                        title = "원본 PDF 열기",
+                        supporting = "연결된 PDF에서 열기",
+                        onClick = onOpenSourcePdf,
+                    )
+                }
+            }
+
+            item { NoteMenuDivider() }
+            item { NoteMenuSection("오디오") }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.Mic,
+                    title = "오디오 노트",
+                    supporting = "이 페이지에 녹음 추가·재생",
+                    onClick = onAudioNotes,
+                )
+            }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.PlayArrow,
+                    title = "오디오 재생",
+                    supporting = "녹음과 필기를 함께 재생",
+                    onClick = onAudioReplay,
+                )
+            }
+
+            item { NoteMenuDivider() }
+            item { NoteMenuSection("페이지") }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.Add,
+                    title = "페이지 추가",
+                    supporting = "현재 페이지 뒤에 추가",
+                    onClick = onAddPage,
+                )
+            }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.ContentCopy,
+                    title = "페이지 복제",
+                    supporting = "필기까지 함께 복사",
+                    onClick = onDuplicatePage,
+                )
+            }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.ArrowUpward,
+                    title = "페이지 위로 이동",
+                    enabled = canMoveUp,
+                    onClick = onMovePageUp,
+                )
+            }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.ArrowDownward,
+                    title = "페이지 아래로 이동",
+                    enabled = canMoveDown,
+                    onClick = onMovePageDown,
+                )
+            }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.Delete,
+                    title = "페이지 삭제",
+                    enabled = canDeletePage,
+                    destructive = true,
+                    onClick = onDeletePage,
+                )
+            }
+
+            item { NoteMenuDivider() }
+            item { NoteMenuSection("필기 설정") }
+            item {
+                NoteMenuToggleRow(
+                    icon = Icons.Filled.Draw,
+                    title = "손가락 필기",
+                    supporting = if (fingerWriting) {
+                        "손가락으로 그리고 두 손가락으로 이동"
+                    } else {
+                        "스타일러스로 그리고 손가락으로 이동"
+                    },
+                    checked = fingerWriting,
+                    onCheckedChange = onFingerWriting,
+                )
+            }
+            item {
+                NoteMenuToggleRow(
+                    icon = Icons.Filled.Lock,
+                    title = "줌 잠금",
+                    supporting = "필기 중 페이지 확대·이동 잠금",
+                    checked = zoomLock,
+                    onCheckedChange = onZoomLock,
+                )
+            }
+
+            item { NoteMenuDivider() }
+            item { NoteMenuSection("내보내기") }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.FileDownload,
+                    title = "PDF로 내보내기",
+                    supporting = "현재 노트를 PDF 파일로 저장",
+                    onClick = onExportPdf,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoteMenuSection(label: String) {
+    Text(
+        label,
+        modifier = Modifier.padding(start = 10.dp, top = 10.dp, bottom = 2.dp),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
     )
 }
 
 @Composable
-private fun NoteSlider(
-    label: String,
-    valueLabel: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    onValueChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
+private fun NoteMenuDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(vertical = 6.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+    )
+}
+
+@Composable
+private fun NoteMenuRow(
+    icon: ImageVector,
+    title: String,
+    supporting: String? = null,
+    enabled: Boolean = true,
+    destructive: Boolean = false,
+    onClick: () -> Unit,
 ) {
-    Column(modifier) {
+    val titleColor = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+        destructive -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    val iconColor = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+        destructive -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.primary
+    }
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(12.dp),
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                valueLabel,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp), tint = iconColor)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor)
+                if (!supporting.isNullOrBlank()) {
+                    Text(
+                        supporting,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = range,
-            modifier = Modifier.fillMaxWidth(),
-        )
+    }
+}
+
+@Composable
+private fun NoteMenuToggleRow(
+    icon: ImageVector,
+    title: String,
+    supporting: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Surface(
+        onClick = { onCheckedChange(!checked) },
+        shape = RoundedCornerShape(12.dp),
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 10.dp, end = 2.dp, top = 7.dp, bottom = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    supporting,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        }
     }
 }
 
@@ -1249,48 +1704,6 @@ private fun NotePageRail(
 }
 
 @Composable
-private fun NotePageStrip(
-    pages: List<NotePage>,
-    currentIndex: Int,
-    darkPaper: Boolean,
-    onSelect: (Int) -> Unit,
-    onAdd: () -> Unit,
-) {
-    Surface(
-        tonalElevation = 1.dp,
-        color = MaterialTheme.colorScheme.surface,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(124.dp)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            LazyRow(
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                itemsIndexed(pages, key = { _, item -> item.id }) { index, item ->
-                    NotePageThumbnail(
-                        page = item,
-                        number = index,
-                        selected = index == currentIndex,
-                        darkPaper = darkPaper,
-                        onClick = { onSelect(index) },
-                        modifier = Modifier.width(64.dp),
-                    )
-                }
-                item {
-                    NoteAddPageCard(onClick = onAdd)
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun NotePageThumbnail(
     page: NotePage,
     number: Int,
@@ -1333,9 +1746,9 @@ private fun NotePageThumbnail(
 }
 
 @Composable
-private fun NoteAddPageCard(onClick: () -> Unit) {
+private fun NoteAddPageCard(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Column(
-        modifier = Modifier.width(64.dp),
+        modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Surface(
