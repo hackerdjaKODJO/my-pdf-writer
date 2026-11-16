@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.2`** — `versionCode = 11`.
-- **Next version is `0.8.3` — `versionCode = 12`.**
+- Current delivered version: **`0.8.3`** — `versionCode = 12`.
+- **Next version is `0.8.4` — `versionCode = 13`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.3` | 12 | 2026-11-16 | `v0.8.3` | Flexcil review: stroke stabilization, smart shapes, partial eraser, lasso transform/clipboard, PDF annotation hide/filter |
 | `0.8.2` | 11 | 2026-11-16 | `v0.8.2` | Fix multi-stroke note loss, note trace debugger, multi-stroke E2E regression tests |
 | `0.8.1` | 10 | 2026-11-16 | `v0.8.1` | PDF viewer hub/tool dock, home continue/quick actions, note editor style dock |
 | `0.8.0` | 9 | 2026-11-16 | `95a4a87` | Point-level audio stroke replay, search-result highlights, local ZIP backup/restore |
