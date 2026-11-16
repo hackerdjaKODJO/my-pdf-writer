@@ -97,6 +97,41 @@ object StudyNoteBuilder {
         return if (base.isBlank()) "스터디 노트" else "$base 스터디 노트"
     }
 
+    /**
+     * A blank, editable notebook linked to [source]. The PDF study pane uses this
+     * when the reader has no study note for the open document yet. It is not
+     * persisted here; the caller decides whether to save it detached.
+     */
+    fun blankStudyNote(source: StudySource): Notebook = Notebook(
+        title = suggestedTitle(source),
+        coverColor = DEFAULT_COVER_COLOR,
+        pages = listOf(NotePage(template = PaperTemplate.LINED)),
+        sourceDocumentName = source.docName.trim(),
+        sourceDocumentUri = source.docUri?.trim().orEmpty(),
+    ).normalized()
+
+    /**
+     * Finds the notebook already linked to [source] in a library snapshot. A
+     * source URI match wins over a document-name or suggested-title match, and
+     * trashed notebooks are never selected. Pure so the PDF pane's detached
+     * lookup can be tested without an Android view model.
+     */
+    fun findStudyNote(notebooks: List<Notebook>, source: StudySource): Notebook? {
+        val candidates = notebooks.filterNot { it.trashed }
+        val uri = source.docUri?.trim().orEmpty()
+        if (uri.isNotBlank()) {
+            candidates.firstOrNull { it.sourceDocumentUri.equals(uri, ignoreCase = true) }
+                ?.let { return it }
+        }
+        val docName = source.docName.trim()
+        if (docName.isBlank()) return null
+        val suggestedTitle = suggestedTitle(source)
+        return candidates.firstOrNull { notebook ->
+            notebook.sourceDocumentName.equals(docName, ignoreCase = true) ||
+                notebook.title.equals(suggestedTitle, ignoreCase = true)
+        }
+    }
+
     private fun excerptPage(excerpt: Excerpt): NotePage {
         val sourcePage = excerpt.pageIndex.takeIf { it >= 0 }
         val layer = NoteLayer(name = "발췌")

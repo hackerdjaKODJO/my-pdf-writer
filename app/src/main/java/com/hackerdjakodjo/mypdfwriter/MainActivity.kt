@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -18,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.ui.BackupSheet
 import com.hackerdjakodjo.mypdfwriter.ui.BackupViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.NoteEditorScreen
@@ -25,6 +27,7 @@ import com.hackerdjakodjo.mypdfwriter.ui.NoteTraceSheet
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookHomeScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.PdfViewModel
+import com.hackerdjakodjo.mypdfwriter.ui.StudyPaneSheet
 import com.hackerdjakodjo.mypdfwriter.ui.StudySource
 import com.hackerdjakodjo.mypdfwriter.ui.ToolsScreen
 import com.hackerdjakodjo.mypdfwriter.ui.ViewerScreen
@@ -36,6 +39,8 @@ class MainActivity : ComponentActivity() {
     private val notebookViewModel: NotebookViewModel by viewModels()
     private val backupViewModel: BackupViewModel by viewModels()
     private var backupIncludeSources = false
+    /** Set only by the PDF study pane; the activity result then exports this detached note. */
+    private var pendingNoteExport: Notebook? = null
 
     private val openPdf = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.openDocument(it) }
@@ -50,7 +55,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private val exportNote = registerForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        uri?.let { notebookViewModel.exportCurrent(it) }
+        val detached = pendingNoteExport
+        pendingNoteExport = null
+        uri?.let {
+            if (detached != null) {
+                notebookViewModel.exportDetached(detached, it)
+            } else {
+                notebookViewModel.exportCurrent(it)
+            }
+        }
     }
 
     private val saveBackup = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -77,12 +90,38 @@ class MainActivity : ComponentActivity() {
                 val notePage by notebookViewModel.pageIndex.collectAsStateWithLifecycle()
                 val pdfs by viewModel.library.collectAsStateWithLifecycle()
                 val backupState by backupViewModel.state.collectAsStateWithLifecycle()
+                var studyPaneNotebook by remember { mutableStateOf<Notebook?>(null) }
+                var studyPanePageIndex by remember { mutableStateOf(0) }
+                var studyPaneDocId by remember { mutableStateOf<String?>(null) }
                 LaunchedEffect(backupState.restoredAt) {
                     if (backupState.restoredAt != null) {
                         notebookViewModel.refresh()
                         viewModel.reloadLibrary()
                         backupViewModel.consumeRestored()
                     }
+                }
+                // A detached pane belongs to one open PDF. If the document closes or
+                // is replaced elsewhere, save the note and drop the stale pane.
+                LaunchedEffect(viewer?.docId) {
+                    val pane = studyPaneNotebook ?: return@LaunchedEffect
+                    val docId = viewer?.docId
+                    if (docId == null || studyPaneDocId != docId) {
+                        notebookViewModel.saveDetached(pane)
+                        studyPaneNotebook = null
+                        studyPanePageIndex = 0
+                        studyPaneDocId = null
+                    }
+                }
+                val openStudyPane: (Notebook) -> Unit = { notebook ->
+                    studyPaneNotebook = notebook
+                    studyPanePageIndex = 0
+                    studyPaneDocId = viewer?.docId
+                }
+                val closeStudyPane: () -> Unit = {
+                    studyPaneNotebook?.let { notebookViewModel.saveDetached(it) }
+                    studyPaneNotebook = null
+                    studyPanePageIndex = 0
+                    studyPaneDocId = null
                 }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val note = currentNote
@@ -130,25 +169,74 @@ class MainActivity : ComponentActivity() {
                             onOpenBackup = { showBackup = true },
                             onOpenTrace = { showTrace = true },
                         )
-                        else -> ViewerScreen(
-                            vm = viewModel,
-                            onExportRequest = { suggestedName -> exportPdf.launch(suggestedName) },
-                            onOpenTools = { showTools = true },
-                            onCreateStudyNote = { notebook ->
-                                notebookViewModel.importNotebook(notebook)
-                                viewModel.closeDocument()
-                            },
-                            onAppendStudyExcerpt = { text, page ->
-                                notebookViewModel.appendStudyExcerpt(
-                                    StudySource(
-                                        docName = viewer?.docName.orEmpty(),
-                                        docUri = viewModel.currentDocumentUri(),
-                                    ),
-                                    text,
-                                    page,
+                        else -> Box(Modifier.fillMaxSize()) {
+                            ViewerScreen(
+                                vm = viewModel,
+                                onExportRequest = { suggestedName -> exportPdf.launch(suggestedName) },
+                                onOpenTools = { showTools = true },
+                                onCreateStudyNote = { notebook ->
+                                    // Keep the PDF open: the captured note opens in
+                                    // the detached pane over this page.
+                                    openStudyPane(notebookViewModel.saveDetached(notebook))
+                                },
+                                onAppendStudyExcerpt = { text, page ->
+                                    val updated = notebookViewModel.appendStudyExcerpt(
+                                        StudySource(
+                                            docName = viewer?.docName.orEmpty(),
+                                            docUri = viewModel.currentDocumentUri(),
+                                        ),
+                                        text,
+                                        page,
+                                    )
+                                    val pane = studyPaneNotebook
+                                    if (pane != null && pane.id == updated.id) {
+                                        studyPaneNotebook = updated
+                                        studyPanePageIndex = studyPanePageIndex.coerceIn(
+                                            0,
+                                            (updated.pages.size - 1).coerceAtLeast(0),
+                                        )
+                                    }
+                                },
+                                onOpenStudyNote = { source ->
+                                    val notebook = notebookViewModel.studyNoteFor(source)
+                                        ?: notebookViewModel.createBlankStudyNote(source)
+                                    openStudyPane(notebook)
+                                },
+                            )
+                            studyPaneNotebook?.let { pane ->
+                                StudyPaneSheet(
+                                    notebook = pane,
+                                    pageIndex = studyPanePageIndex,
+                                    onDismiss = closeStudyPane,
+                                    onChange = { updated ->
+                                        studyPaneNotebook = notebookViewModel.saveDetached(updated)
+                                    },
+                                    onPageIndexChange = { index ->
+                                        val latest = studyPaneNotebook
+                                        studyPanePageIndex = index.coerceIn(
+                                            0,
+                                            ((latest?.pages?.size ?: 1) - 1).coerceAtLeast(0),
+                                        )
+                                    },
+                                    onExportPdf = {
+                                        val exportNotebook = studyPaneNotebook
+                                        if (exportNotebook != null) {
+                                            pendingNoteExport = exportNotebook
+                                            exportNote.launch(
+                                                notebookViewModel.exportSuggestedName(exportNotebook),
+                                            )
+                                        }
+                                    },
+                                    onOpenSourcePdf = { page ->
+                                        studyPaneNotebook?.let { notebookViewModel.saveDetached(it) }
+                                        studyPaneNotebook = null
+                                        studyPanePageIndex = 0
+                                        studyPaneDocId = null
+                                        viewModel.goToPage(page)
+                                    },
                                 )
-                            },
-                        )
+                            }
+                        }
                     }
                 }
                 if (showBackup) {

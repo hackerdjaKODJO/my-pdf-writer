@@ -108,6 +108,56 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         return updated
     }
 
+    /**
+     * Resolves the study notebook linked to [source] without opening it. The PDF
+     * study pane edits this notebook detached from the full-screen editor.
+     */
+    fun studyNoteFor(source: StudySource): Notebook? {
+        val match = StudyNoteBuilder.findStudyNote(_notebooks.value, source) ?: return null
+        return store.load(match.id) ?: match
+    }
+
+    /**
+     * Creates and saves a blank study notebook linked to [source] without making
+     * it current. Used by the PDF hub when the document has no study note yet.
+     */
+    fun createBlankStudyNote(source: StudySource): Notebook {
+        val notebook = StudyNoteBuilder.blankStudyNote(source)
+        store.save(notebook)
+        refresh()
+        NoteTrace.event(
+            "NOTE_VM",
+            "create_detached",
+            "id" to notebook.id,
+            "pages" to notebook.pages.size,
+            "source" to notebook.sourceDocumentName,
+        )
+        return notebook
+    }
+
+    /**
+     * Saves a notebook edited in a detached surface (the PDF bottom pane).
+     * Unlike [updateCurrent] or [importNotebook] this never sets [_current] and
+     * never changes the full-screen editor's page. The save is immediate so a
+     * close, back press or drag-dismiss cannot lose the last stroke.
+     */
+    fun saveDetached(notebook: Notebook): Notebook {
+        val updated = notebook.normalized().copy(updatedAt = System.currentTimeMillis())
+        val startedAt = System.currentTimeMillis()
+        store.save(updated)
+        NoteTrace.event(
+            "NOTE_VM",
+            "save_detached",
+            "id" to updated.id,
+            "pages" to updated.pages.size,
+            "total" to noteAnnotationTotal(updated),
+            "updatedAt" to updated.updatedAt,
+            "ms" to (System.currentTimeMillis() - startedAt),
+        )
+        refresh()
+        return updated
+    }
+
     fun updateCurrent(notebook: Notebook) {
         val previous = _current.value
         NoteTrace.event(
@@ -231,13 +281,20 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         it.copy(tags = tags.map(String::trim).filter(String::isNotBlank).distinct())
     }
 
-    fun exportSuggestedName(): String {
-        val title = _current.value?.title?.ifBlank { "노트" } ?: "노트"
-        return title.replace(Regex("[\\/:*?\"<>|]"), "_").take(60) + ".pdf"
-    }
+    fun exportSuggestedName(): String = suggestedExportName(_current.value?.title)
+
+    fun exportSuggestedName(notebook: Notebook): String = suggestedExportName(notebook.title)
 
     fun exportCurrent(uri: Uri) {
-        val notebook = _current.value ?: return
+        _current.value?.let { exportNotebook(it, uri) }
+    }
+
+    /** Exports a detached pane notebook through the same launcher as the editor. */
+    fun exportDetached(notebook: Notebook, uri: Uri) {
+        exportNotebook(notebook, uri)
+    }
+
+    private fun exportNotebook(notebook: Notebook, uri: Uri) {
         viewModelScope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
@@ -287,21 +344,8 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         refresh()
     }
 
-    private fun findStudyNotebook(source: StudySource): Notebook? {
-        val candidates = _notebooks.value.filterNot { it.trashed }
-        val uri = source.docUri?.trim().orEmpty()
-        if (uri.isNotBlank()) {
-            candidates.firstOrNull { it.sourceDocumentUri.equals(uri, ignoreCase = true) }
-                ?.let { return it }
-        }
-        val docName = source.docName.trim()
-        if (docName.isBlank()) return null
-        val suggestedTitle = StudyNoteBuilder.suggestedTitle(source)
-        return candidates.firstOrNull { notebook ->
-            notebook.sourceDocumentName.equals(docName, ignoreCase = true) ||
-                notebook.title.equals(suggestedTitle, ignoreCase = true)
-        }
-    }
+    private fun findStudyNotebook(source: StudySource): Notebook? =
+        StudyNoteBuilder.findStudyNote(_notebooks.value, source)
 
     private fun mutate(id: String, block: (Notebook) -> Notebook) {
         val original = _current.value?.takeIf { it.id == id }
@@ -313,6 +357,11 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         if (_current.value?.id == id) _current.value = updated
         refresh()
     }
+}
+
+private fun suggestedExportName(title: String?): String {
+    val safeTitle = title?.ifBlank { "노트" } ?: "노트"
+    return safeTitle.replace(Regex("[\\/:*?\"<>|]"), "_").take(60) + ".pdf"
 }
 
 private fun noteAnnotationCounts(notebook: Notebook): String =
