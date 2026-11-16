@@ -62,6 +62,12 @@ data class Annotation(
     val stamp: String = "",
     val penStyle: PenStyle = PenStyle.BALLPOINT,
     val layerId: String? = null,
+    /**
+     * Wall-clock time when this annotation was committed, used by audio replay
+     * to reveal strokes in recording order. Legacy documents load this as `0`,
+     * which replay treats as always visible.
+     */
+    val createdAt: Long = System.currentTimeMillis(),
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -79,6 +85,7 @@ data class Annotation(
         layerId?.let { put("layer", it) }
         put("op", opacity.toDouble())
         if (stamp.isNotEmpty()) put("st", stamp)
+        put("ct", createdAt)
     }
 
     companion object {
@@ -112,6 +119,8 @@ data class Annotation(
                     PenStyle.valueOf(o.optString("ps"))
                 }.getOrDefault(PenStyle.BALLPOINT),
                 layerId = o.optString("layer").takeIf { it.isNotBlank() },
+                // Older documents have no timestamp; keep them visible in replay.
+                createdAt = o.optLong("ct", 0L),
             )
         }
     }

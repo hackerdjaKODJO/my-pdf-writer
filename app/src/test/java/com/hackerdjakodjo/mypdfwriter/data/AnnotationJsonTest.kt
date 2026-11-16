@@ -25,6 +25,27 @@ class AnnotationJsonTest {
         assertEquals(1f, annotation.opacity, 1e-6f)
         assertEquals("", annotation.stamp)
         assertEquals(270, annotation.textRotation)
+        assertEquals(0L, annotation.createdAt)
+    }
+
+    @Test
+    fun createdAt_roundTripsAsCt() {
+        val original = Annotation(
+            type = AnnotationType.PEN,
+            page = 1,
+            color = 0xFF000000.toInt(),
+            width = 0.004f,
+            points = listOf(NormalizedPoint(0.1f, 0.2f)),
+            createdAt = 1_760_000_123_456L,
+        )
+
+        val json = original.toJson()
+        val restored = Annotation.fromJson(json)
+
+        assertEquals(1_760_000_123_456L, json.optLong("ct"))
+        assertNotNull(restored)
+        assertEquals(1_760_000_123_456L, restored!!.createdAt)
+        assertEquals(original, restored)
     }
 
     @Test
