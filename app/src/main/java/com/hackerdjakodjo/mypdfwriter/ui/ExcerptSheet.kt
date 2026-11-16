@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
+import com.hackerdjakodjo.mypdfwriter.pdf.TranslateTarget
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -53,12 +55,13 @@ fun ExcerptSheet(
     onAdd: (String) -> Unit,
     onDelete: (String) -> Unit,
     onJump: (Int) -> Unit,
-    onTranslate: (String) -> Unit,
+    onTranslate: (String, TranslateTarget) -> Unit,
     onShare: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showTitleDialog by remember { mutableStateOf(false) }
+    var translateTarget by remember { mutableStateOf(TranslateTarget.KOREAN) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
@@ -75,10 +78,21 @@ fun ExcerptSheet(
                 )
             }
             Text(
-                "현재 ${currentPage + 1}쪽에서 텍스트를 발췌하고, 모은 발췌를 설치된 외부 번역 앱으로 넘길 수 있습니다.",
+                "현재 ${currentPage + 1}쪽에서 텍스트를 발췌하고, 발췌를 Google 번역으로 바로 열 수 있습니다.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Spacer(Modifier.size(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("번역 대상", style = MaterialTheme.typography.labelMedium)
+                TranslateTarget.entries.forEach { target ->
+                    FilterChip(
+                        selected = translateTarget == target,
+                        onClick = { translateTarget = target },
+                        label = { Text(target.label) },
+                    )
+                }
+            }
             Spacer(Modifier.size(12.dp))
             Button(onClick = { showTitleDialog = true }, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -106,7 +120,7 @@ fun ExcerptSheet(
                         ExcerptRow(
                             excerpt = excerpt,
                             onJump = { onJump(excerpt.pageIndex) },
-                            onTranslate = { onTranslate(excerpt.text) },
+                            onTranslate = { onTranslate(excerpt.text, translateTarget) },
                             onShare = { onShare(excerpt.text) },
                             onDelete = { onDelete(excerpt.id) },
                         )
@@ -121,8 +135,9 @@ fun ExcerptSheet(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    "번역과 공유는 Android 텍스트 처리/공유 화면을 통해 선택한 외부 앱에 텍스트를 전달합니다. " +
-                        "이 앱은 발췌를 서버에 올리지 않으며 인터넷 권한을 사용하지 않습니다.",
+                    "번역은 Google 번역 앱 또는 브라우저로 텍스트를 넘깁니다. Google 앱이 네트워크를 사용하며 " +
+                        "그 처리는 Google의 정책을 따릅니다. My PDF Writer 자체는 발췌를 서버에 올리지 않고 " +
+                        "인터넷 권한도 사용하지 않습니다.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -202,7 +217,7 @@ private fun ExcerptRow(
                 TextButton(onClick = onTranslate) {
                     Icon(Icons.Outlined.Translate, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("번역")
+                    Text("Google 번역")
                 }
                 TextButton(onClick = onShare) {
                     Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(16.dp))

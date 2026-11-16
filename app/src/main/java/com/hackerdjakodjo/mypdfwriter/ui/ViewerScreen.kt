@@ -452,7 +452,7 @@ fun ViewerScreen(
                 vm.goToPage(page)
                 showExcerpts = false
             },
-            onTranslate = { text -> TextActions.translate(context, text) },
+            onTranslate = { text, target -> TextActions.translate(context, text, target) },
             onShare = { text -> TextActions.shareText(context, text) },
             onDismiss = { showExcerpts = false },
         )
