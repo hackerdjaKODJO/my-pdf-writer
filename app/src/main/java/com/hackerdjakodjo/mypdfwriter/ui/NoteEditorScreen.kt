@@ -1,6 +1,9 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -53,6 +56,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.Highlight
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
@@ -60,12 +64,15 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -75,6 +82,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -89,6 +98,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -107,6 +117,7 @@ import com.hackerdjakodjo.mypdfwriter.audio.annotationRevealFraction
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.AudioNote
+import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateAsset
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplatePaths
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateStore
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
@@ -128,6 +139,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportPageRange
 import com.hackerdjakodjo.mypdfwriter.pdf.noteExportFileName
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 private const val NOTE_TRACE_TAG = "NoteEditor"
@@ -271,8 +283,13 @@ fun NoteEditorScreen(
     var showRename by remember { mutableStateOf(false) }
     var showStudio by remember { mutableStateOf(false) }
     var showQuickTemplates by remember { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
     var showDeletePage by remember { mutableStateOf(false) }
+    var photoImporting by remember { mutableStateOf(false) }
+    var photoError by remember { mutableStateOf<String?>(null) }
     var textPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     // Removing a background keeps its file until the editor closes. Undo can
     // re-reference the same key, so eager deletion would break one-step undo.
     var pendingTemplateCleanup by remember(workingNotebook.id) {
@@ -533,6 +550,137 @@ fun NoteEditorScreen(
             "annotations" to notebookAnnotationCount(next),
         )
     }
+
+    /**
+     * Rotates the selected pages, or the current page when nothing is selected.
+     * Page ids, order, bookmarks, source links and selection survive; [applyChange]
+     * commits the whole result as one undo step.
+     */
+    fun rotatePages(clockwise: Boolean) {
+        val result = NotePageManager.rotatePages(
+            notebook = workingNotebook,
+            selectedPageIds = selectedPageIds,
+            currentIndex = safeIndex,
+            clockwise = clockwise,
+        )
+        if (result.notebook == workingNotebook) return
+        applyChange(result.notebook)
+        pageSelection = result.selectedPageIds
+        if (result.currentIndex != safeIndex) onPageIndexChange(result.currentIndex)
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "page_rotate",
+            "direction" to if (clockwise) "cw" else "ccw",
+            "pages" to if (selectedPageIds.isEmpty()) 1 else selectedPageIds.size,
+            "pageIndex" to safeIndex,
+        )
+    }
+
+    /**
+     * Applies an imported photo as a new page after [afterPageId]. The asset stays
+     * in `files/templates/` and is referenced by its portable key, exactly like a
+     * Template Studio background. Returns false when the page cannot be inserted,
+     * so the caller can delete the just-imported orphan asset.
+     */
+    fun insertPhotoPage(asset: CustomTemplateAsset, afterPageId: String): Boolean {
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
+        val targetIndex = currentPages.indexOfFirst { it.id == afterPageId }
+            .takeIf { it >= 0 }
+            ?: safeIndex.coerceIn(0, currentPages.lastIndex)
+        val result = NotePageManager.insertPhotoPage(
+            notebook = workingNotebook,
+            currentIndex = targetIndex,
+            selectedPageIds = NotePageManager.validSelection(currentPages, pageSelection),
+            assetKey = asset.key,
+            displayName = asset.displayName,
+        )
+        if (result.notebook == workingNotebook) return false
+        applyChange(result.notebook)
+        pageSelection = result.selectedPageIds
+        // Keep the new asset available for one-step undo, then clean it on close
+        // only if no live notebook still references the key.
+        queueTemplateAssetCleanup(setOf(asset.key))
+        if (result.currentIndex != pageIndex) onPageIndexChange(result.currentIndex)
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "photo_page",
+            "pages" to result.notebook.pages.size,
+            "pageIndex" to result.currentIndex,
+            "asset" to asset.key,
+        )
+        return true
+    }
+
+    /**
+     * Applies an imported photo to [targetPageId] while keeping its orientation,
+     * template, tint, annotations and source link. The old background file is kept
+     * until the editor closes so one-step undo can restore it.
+     */
+    fun applyPhotoBackground(asset: CustomTemplateAsset, targetPageId: String): Boolean {
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
+        val targetIndex = currentPages.indexOfFirst { it.id == targetPageId }
+        if (targetIndex < 0) {
+            photoError = "사진을 적용할 페이지를 찾을 수 없습니다."
+            return false
+        }
+        val previous = currentPages[targetIndex]
+        val updated = previous.copy(
+            customBackground = asset.key,
+            customBackgroundName = CustomTemplatePaths.normalizeName(asset.displayName),
+        )
+        if (updated == previous) return false
+        val mutable = currentPages.toMutableList()
+        mutable[targetIndex] = updated
+        val before = workingNotebook
+        applyChange(workingNotebook.copy(pages = mutable))
+        queueRemovedTemplateAssets(before, workingNotebook)
+        queueTemplateAssetCleanup(setOf(asset.key))
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "photo_background",
+            "pageIndex" to targetIndex,
+            "asset" to asset.key,
+            "pages" to workingNotebook.pages.size,
+        )
+        return true
+    }
+
+    fun importPhoto(uri: Uri, forNewPage: Boolean, targetPageId: String) {
+        if (photoImporting) return
+        photoError = null
+        photoImporting = true
+        scope.launch {
+            val imported = runCatching { customTemplateStore.importImage(uri) }
+            photoImporting = false
+            imported.onSuccess { asset ->
+                val applied = if (forNewPage) {
+                    insertPhotoPage(asset, targetPageId)
+                } else {
+                    applyPhotoBackground(asset, targetPageId)
+                }
+                if (!applied) {
+                    customTemplateStore.delete(asset.key)
+                } else {
+                    snackbarHostState.showSnackbar(
+                        if (forNewPage) {
+                            "사진 페이지를 추가했습니다 · 실행 취소로 되돌릴 수 있습니다"
+                        } else {
+                            "현재 페이지 사진 배경을 적용했습니다 · 실행 취소로 되돌릴 수 있습니다"
+                        },
+                    )
+                }
+            }.onFailure { error ->
+                photoError = error.message ?: "사진을 가져오지 못했습니다."
+            }
+        }
+    }
+
+    val photoPagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let { importPhoto(it, forNewPage = true, targetPageId = page.id) } }
+    val photoBackgroundPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let { importPhoto(it, forNewPage = false, targetPageId = page.id) } }
 
     fun rename(title: String) {
         val clean = title.trim().ifBlank { "새 노트" }
@@ -875,6 +1023,7 @@ fun NoteEditorScreen(
     BackHandler(onBack = leaveEditor)
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -1206,6 +1355,50 @@ fun NoteEditorScreen(
         )
     }
 
+    if (showSearch) {
+        NoteSearchSheet(
+            notebook = workingNotebook,
+            onJump = {
+                onPageIndexChange(it)
+                showSearch = false
+            },
+            onDismiss = { showSearch = false },
+        )
+    }
+
+    if (photoImporting) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("사진 가져오는 중") },
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Text("사진을 앱 저장소로 복사하고 있습니다.")
+                }
+            },
+            confirmButton = {},
+        )
+    }
+
+    photoError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { photoError = null },
+            title = { Text("사진을 가져오지 못했습니다") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { photoError = null }) {
+                    Text("확인")
+                }
+            },
+        )
+    }
+
     if (showStyle) {
         NoteStyleSheet(
             tool = tool,
@@ -1274,6 +1467,12 @@ fun NoteEditorScreen(
                 showPageSheet = false
                 addPage()
             },
+            onAddPhoto = {
+                showPageSheet = false
+                photoPagePicker.launch(arrayOf("image/*"))
+            },
+            onRotateClockwise = { rotatePages(clockwise = true) },
+            onRotateCounterClockwise = { rotatePages(clockwise = false) },
             onDuplicate = { duplicateSelectedPages() },
             onDelete = { deleteSelectedPages() },
             onDismiss = { showPageSheet = false },
@@ -1302,6 +1501,7 @@ fun NoteEditorScreen(
             templateLabel = page.template.label,
             layerName = activeLayer?.name ?: "레이어",
             layerCount = page.layers.size,
+            selectedPageCount = selectedPageIds.size,
             canMoveUp = safeIndex > 0,
             canMoveDown = safeIndex < pages.lastIndex,
             canDeletePage = pages.size > 1,
@@ -1337,6 +1537,10 @@ fun NoteEditorScreen(
                 showOverflow = false
                 showOutline = true
             },
+            onSearch = {
+                showOverflow = false
+                showSearch = true
+            },
             onAudioNotes = {
                 showOverflow = false
                 showAudioNotes = true
@@ -1359,6 +1563,22 @@ fun NoteEditorScreen(
             onAddPage = {
                 showOverflow = false
                 addPage()
+            },
+            onPhotoPage = {
+                showOverflow = false
+                photoPagePicker.launch(arrayOf("image/*"))
+            },
+            onPhotoBackground = {
+                showOverflow = false
+                photoBackgroundPicker.launch(arrayOf("image/*"))
+            },
+            onRotateClockwise = {
+                showOverflow = false
+                rotatePages(clockwise = true)
+            },
+            onRotateCounterClockwise = {
+                showOverflow = false
+                rotatePages(clockwise = false)
             },
             onDuplicatePage = {
                 showOverflow = false
@@ -1902,6 +2122,9 @@ private fun NotePageManagerSheet(
     onClearSelection: () -> Unit,
     onSelect: (Int) -> Unit,
     onAdd: () -> Unit,
+    onAddPhoto: () -> Unit,
+    onRotateClockwise: () -> Unit,
+    onRotateCounterClockwise: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
@@ -2007,6 +2230,16 @@ private fun NotePageManagerSheet(
                 }
             }
             HorizontalDivider(Modifier.padding(top = 8.dp))
+            Text(
+                if (selectedPageIds.isEmpty()) {
+                    "추가·회전은 현재 ${safeCurrent + 1}쪽에 적용됩니다."
+                } else {
+                    "회전은 선택한 ${selectedPageIds.size}쪽에 한 번에 적용됩니다."
+                },
+                modifier = Modifier.padding(start = 12.dp, top = 6.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2019,6 +2252,26 @@ private fun NotePageManagerSheet(
                     modifier = Modifier.heightIn(min = 44.dp),
                 ) {
                     Text("페이지 추가")
+                }
+                TextButton(
+                    onClick = onAddPhoto,
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("사진 페이지")
+                }
+                TextButton(
+                    onClick = onRotateClockwise,
+                    enabled = pages.isNotEmpty(),
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("↻ 시계 회전")
+                }
+                TextButton(
+                    onClick = onRotateCounterClockwise,
+                    enabled = pages.isNotEmpty(),
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("↺ 반시계 회전")
                 }
                 TextButton(
                     onClick = onDuplicate,
@@ -2312,6 +2565,7 @@ private fun NoteOverflowSheet(
     templateLabel: String,
     layerName: String,
     layerCount: Int,
+    selectedPageCount: Int,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     canDeletePage: Boolean,
@@ -2335,10 +2589,15 @@ private fun NoteOverflowSheet(
     onQuickTemplate: () -> Unit,
     onLayers: () -> Unit,
     onOutline: () -> Unit,
+    onSearch: () -> Unit,
     onAudioNotes: () -> Unit,
     onAudioReplay: () -> Unit,
     onOpenSourcePdf: (() -> Unit)?,
     onAddPage: () -> Unit,
+    onPhotoPage: () -> Unit,
+    onPhotoBackground: () -> Unit,
+    onRotateClockwise: () -> Unit,
+    onRotateCounterClockwise: () -> Unit,
     onDuplicatePage: () -> Unit,
     onMovePageUp: () -> Unit,
     onMovePageDown: () -> Unit,
@@ -2406,6 +2665,14 @@ private fun NoteOverflowSheet(
                     onClick = onOutline,
                 )
             }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.Search,
+                    title = "노트 검색",
+                    supporting = "메모·텍스트·도장·서명에서 찾기",
+                    onClick = onSearch,
+                )
+            }
             if (onOpenSourcePdf != null) {
                 item {
                     NoteMenuRow(
@@ -2448,6 +2715,22 @@ private fun NoteOverflowSheet(
             }
             item {
                 NoteMenuRow(
+                    icon = Icons.Filled.Image,
+                    title = "사진 페이지 추가",
+                    supporting = "이미지를 가져와 현재 페이지 뒤에 새 사진 페이지로",
+                    onClick = onPhotoPage,
+                )
+            }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.Image,
+                    title = "현재 페이지 사진 배경",
+                    supporting = "가져온 이미지를 이 페이지의 종이 배경으로",
+                    onClick = onPhotoBackground,
+                )
+            }
+            item {
+                NoteMenuRow(
                     icon = Icons.Filled.ContentCopy,
                     title = "페이지 복제",
                     supporting = "필기까지 함께 복사",
@@ -2468,6 +2751,30 @@ private fun NoteOverflowSheet(
                     title = "페이지 아래로 이동",
                     enabled = canMoveDown,
                     onClick = onMovePageDown,
+                )
+            }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.Refresh,
+                    title = "시계 방향 회전",
+                    supporting = if (selectedPageCount > 0) {
+                        "선택 ${selectedPageCount}쪽 · 내용과 용지를 함께 90° 회전"
+                    } else {
+                        "현재 페이지 · 내용과 용지를 함께 90° 회전"
+                    },
+                    onClick = onRotateClockwise,
+                )
+            }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.Refresh,
+                    title = "반시계 방향 회전",
+                    supporting = if (selectedPageCount > 0) {
+                        "선택 ${selectedPageCount}쪽 · 실행 취소로 되돌리기"
+                    } else {
+                        "현재 페이지 · 실행 취소로 되돌리기"
+                    },
+                    onClick = onRotateCounterClockwise,
                 )
             }
             item {

@@ -99,6 +99,15 @@ selected paper show through. Paper template, tint and orientation remain stored
 underneath, so removing the background restores them immediately. The quick
 template dialog warns when the current page has a custom background.
 
+### Page rotation and custom backgrounds
+
+`NotePaper.rotatePage` preserves the portable background key instead of copying
+or raster-rotating the file. The page's A4 orientation swaps, so the cover crop is
+re-evaluated for the new sheet: a portrait photo on a landscape page crops more
+from the top/bottom, and rotating back restores the original crop. Apply/remove
+and undo keep using the same `files/templates/` asset; no second background
+format is introduced. See [`note-page-tools.md`](note-page-tools.md).
+
 ### Rendering and backup
 
 `PaperBackground.drawCustomBackground` is the single renderer used by
