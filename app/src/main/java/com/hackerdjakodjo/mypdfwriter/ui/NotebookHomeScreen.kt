@@ -77,6 +77,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -145,6 +146,7 @@ fun NotebookHomeScreen(
     onCreateNotebook: (NotebookDraft) -> Unit,
     onOpenPdf: (RecentDoc) -> Unit,
     onImportPdf: () -> Unit,
+    onCreatePdf: () -> Unit,
     onOpenTools: () -> Unit,
     onToggleFavorite: (String) -> Unit,
     onTrash: (String) -> Unit,
@@ -384,6 +386,7 @@ fun NotebookHomeScreen(
                             horizontalPadding = horizontalPadding,
                             onOpenPdf = onOpenPdf,
                             onImportPdf = onImportPdf,
+                            onCreatePdf = onCreatePdf,
                             onOpenTools = onOpenTools,
                         )
 
@@ -1168,6 +1171,7 @@ private fun PdfSection(
     horizontalPadding: Dp,
     onOpenPdf: (RecentDoc) -> Unit,
     onImportPdf: () -> Unit,
+    onCreatePdf: () -> Unit,
     onOpenTools: () -> Unit,
 ) {
     if (gridMode) {
@@ -1184,7 +1188,7 @@ private fun PdfSection(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                ImportPdfBanner(onImportPdf = onImportPdf)
+                ImportPdfBanner(onImportPdf = onImportPdf, onCreatePdf = onCreatePdf)
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 ToolsEntry(onClick = onOpenTools)
@@ -1214,7 +1218,7 @@ private fun PdfSection(
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item { ImportPdfBanner(onImportPdf = onImportPdf) }
+            item { ImportPdfBanner(onImportPdf = onImportPdf, onCreatePdf = onCreatePdf) }
             item { ToolsEntry(onClick = onOpenTools) }
             item { PdfHeader(count = pdfs.size, filtered = query.isNotBlank()) }
             if (pdfs.isEmpty()) {
@@ -1230,7 +1234,7 @@ private fun PdfSection(
 }
 
 @Composable
-private fun ImportPdfBanner(onImportPdf: () -> Unit) {
+private fun ImportPdfBanner(onImportPdf: () -> Unit, onCreatePdf: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -1263,10 +1267,17 @@ private fun ImportPdfBanner(onImportPdf: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(14.dp))
-            Button(onClick = onImportPdf, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("PDF 가져오기")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onImportPdf, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("PDF 가져오기")
+                }
+                OutlinedButton(onClick = onCreatePdf, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("빈 PDF")
+                }
             }
         }
     }

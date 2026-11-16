@@ -1,6 +1,8 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import android.app.Application
+import android.net.Uri
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
@@ -8,8 +10,11 @@ import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NotebookDraft
 import com.hackerdjakodjo.mypdfwriter.data.NotebookStore
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
+import com.hackerdjakodjo.mypdfwriter.pdf.NoteExporter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +23,7 @@ import kotlinx.coroutines.launch
 class NotebookViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = NotebookStore(application)
+    private val resolver = application.contentResolver
     private val _notebooks = MutableStateFlow(store.loadAll())
     val notebooks: StateFlow<List<Notebook>> = _notebooks.asStateFlow()
 
@@ -135,6 +141,29 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
 
     fun setTags(id: String, tags: List<String>) = mutate(id) {
         it.copy(tags = tags.map(String::trim).filter(String::isNotBlank).distinct())
+    }
+
+    fun exportSuggestedName(): String {
+        val title = _current.value?.title?.ifBlank { "노트" } ?: "노트"
+        return title.replace(Regex("[\\/:*?\"<>|]"), "_").take(60) + ".pdf"
+    }
+
+    fun exportCurrent(uri: Uri) {
+        val notebook = _current.value ?: return
+        viewModelScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    resolver.openOutputStream(uri, "wt")?.use { stream ->
+                        NoteExporter.export(notebook, stream)
+                    } ?: error("출력 파일을 열 수 없습니다.")
+                }
+            }
+            Toast.makeText(
+                getApplication(),
+                if (result.isSuccess) "PDF로 내보냈습니다." else "내보내지 못했습니다: ${result.exceptionOrNull()?.message}",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
     }
 
     fun refresh() {
