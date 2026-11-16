@@ -160,7 +160,7 @@ fun AudioReplaySheet(
                     Column(Modifier.weight(1f)) {
                         Text("필기 다시보기", style = MaterialTheme.typography.titleLarge)
                         Text(
-                            "오디오 타임라인 · 한 획 단위",
+                            "오디오 타임라인 · 점 단위 필기",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -176,7 +176,7 @@ fun AudioReplaySheet(
             item {
                 Text(
                     "현재 ${safePage + 1}쪽 녹음을 먼저 보여 줍니다. 재생 중에는 그 시점까지 " +
-                        "기록된 필기가 차례로 나타납니다.",
+                        "기록된 필기가 점 단위로 차례로 나타납니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -197,10 +197,10 @@ fun AudioReplaySheet(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "녹음 중에 만든 주석은 재생 위치에 맞춰 점진적으로 나타납니다. " +
-                                "표시 단위는 완성된 필기 한 획이며, 획 안의 점 단위 재생은 아직 " +
-                                "지원하지 않습니다. 녹음과 주석은 이 기기에만 저장되고 서버로 " +
-                                "업로드되지 않습니다.",
+                            "녹음 중에 만든 필기는 재생 위치에 맞춰 획이 시작된 시점부터 점 단위로 " +
+                                "나타납니다. 획 길이가 기록되지 않은 예전 필기는 해당 시점에 " +
+                                "도달하면 한 번에 표시됩니다. 녹음과 주석은 이 기기에만 저장되고 " +
+                                "서버로 업로드되지 않습니다.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

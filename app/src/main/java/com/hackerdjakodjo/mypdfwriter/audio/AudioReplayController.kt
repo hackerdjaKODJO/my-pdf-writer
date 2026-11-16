@@ -53,6 +53,29 @@ fun annotationVisibleDuringReplay(
 }
 
 /**
+ * How much of [annotation] should be drawn while replaying [note] at
+ * [positionMs], expressed as a fraction from 0 to 1.
+ *
+ * A null [note] and annotations without a recorded timestamp (`createdAt <= 0`)
+ * are fully visible. An annotation that has not started yet is hidden, and a
+ * stroke whose [Annotation.durationMs] is known reveals point by point across
+ * that window. Duration-less annotations snap to fully visible when their
+ * timestamp is reached.
+ */
+fun annotationRevealFraction(
+    annotation: Annotation,
+    note: AudioNote?,
+    positionMs: Long,
+): Float {
+    val cutoff = audioReplayCutoffMs(note, positionMs) ?: return 1f
+    if (annotation.createdAt <= 0L) return 1f
+    val elapsed = cutoff - annotation.createdAt
+    if (elapsed < 0L) return 0f
+    if (annotation.durationMs <= 0L) return 1f
+    return (elapsed.toFloat() / annotation.durationMs.toFloat()).coerceIn(0f, 1f)
+}
+
+/**
  * Thin wrapper around [AudioNoteController] for replay.
  *
  * It resolves the active note id from the player callback, falls back to the

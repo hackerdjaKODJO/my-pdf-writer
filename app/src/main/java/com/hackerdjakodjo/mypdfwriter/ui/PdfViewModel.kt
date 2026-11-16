@@ -467,7 +467,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------------------------------------------------------------- annotations
 
-    fun addStroke(points: List<NormalizedPoint>) {
+    fun addStroke(points: List<NormalizedPoint>, durationMs: Long = 0L) {
         val state = _viewer.value ?: return
         if (points.isEmpty() || state.tool == Tool.VIEW || state.tool == Tool.ERASER || state.tool == Tool.TEXT) return
         val type = when (state.tool) {
@@ -487,6 +487,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             points
         }
+        val safeDuration = durationMs.coerceAtLeast(0L)
         val annotation = Annotation(
             type = type,
             page = state.pageIndex,
@@ -506,6 +507,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 AnnotationType.HIGHLIGHT, AnnotationType.REDACT -> 1f
                 else -> state.opacity
             },
+            createdAt = System.currentTimeMillis() - safeDuration,
+            durationMs = safeDuration,
         )
         mutateAnnotations { it + annotation }
     }

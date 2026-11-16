@@ -13,6 +13,7 @@ import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
@@ -25,16 +26,35 @@ import kotlin.math.sin
  *
  * The same code is used for the on-screen overlay and for export, so the exported PDF
  * is pixel-faithful to what the student sees (including Korean text, stamps, signatures
- * and redaction blackouts).
+ * and redaction blackouts). [progress] lets replay reveal each annotation gradually;
+ * callers that want the normal result keep the default of `1f`.
  */
 object AnnotationPainter {
 
-    fun draw(canvas: Canvas, annotations: List<Annotation>, width: Float, height: Float) {
-        annotations.forEach { drawOne(canvas, it, width, height) }
+    fun draw(
+        canvas: Canvas,
+        annotations: List<Annotation>,
+        width: Float,
+        height: Float,
+        progress: (Annotation) -> Float = { 1f },
+    ) {
+        annotations.forEach { drawOne(canvas, it, width, height, progress(it)) }
     }
 
-    fun drawOne(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
+    fun drawOne(
+        canvas: Canvas,
+        annotation: Annotation,
+        width: Float,
+        height: Float,
+        fraction: Float = 1f,
+    ) {
         if (annotation.points.isEmpty()) return
+        val reveal = fraction.coerceIn(0f, 1f)
+        if (reveal <= 0f) return
+        if (reveal < 1f) {
+            drawPartial(canvas, annotation, width, height, reveal)
+            return
+        }
         when (annotation.type) {
             AnnotationType.PEN -> drawPen(canvas, annotation, width, height)
             AnnotationType.HIGHLIGHT -> drawStroke(canvas, annotation, width, height, baseAlpha = 96)
@@ -49,6 +69,96 @@ object AnnotationPainter {
             AnnotationType.REDACT -> drawRedact(canvas, annotation, width, height)
         }
     }
+
+    /**
+     * Replay rendering for `0 < fraction < 1`. Strokes expose the first
+     * `ceil(points * fraction)` samples, two-point shapes grow their endpoint,
+     * and text-like annotations fade in. Fraction `1f` still uses the exact
+     * original rendering path above.
+     */
+    private fun drawPartial(
+        canvas: Canvas,
+        annotation: Annotation,
+        width: Float,
+        height: Float,
+        fraction: Float,
+    ) {
+        when (annotation.type) {
+            AnnotationType.PEN, AnnotationType.HIGHLIGHT -> {
+                val points = revealedPoints(annotation.points, fraction)
+                val partial = annotation.copy(points = points)
+                if (annotation.type == AnnotationType.PEN) {
+                    drawPen(canvas, partial, width, height)
+                } else {
+                    drawStroke(canvas, partial, width, height, baseAlpha = 96)
+                }
+            }
+
+            AnnotationType.RECT,
+            AnnotationType.ELLIPSE,
+            AnnotationType.ARROW,
+            AnnotationType.LINE,
+            AnnotationType.REDACT -> {
+                val points = revealedEndpoints(annotation.points, fraction) ?: return
+                val partial = annotation.copy(points = points)
+                when (annotation.type) {
+                    AnnotationType.RECT -> drawRect(canvas, partial, width, height)
+                    AnnotationType.ELLIPSE -> drawEllipse(canvas, partial, width, height)
+                    AnnotationType.ARROW -> drawArrow(canvas, partial, width, height)
+                    AnnotationType.LINE -> drawStraightLine(canvas, partial, width, height)
+                    AnnotationType.REDACT -> drawRedact(canvas, partial, width, height)
+                    else -> Unit
+                }
+            }
+
+            AnnotationType.UNDERLINE, AnnotationType.STRIKEOUT -> {
+                val points = if (annotation.points.size == 2) {
+                    revealedEndpoints(annotation.points, fraction) ?: return
+                } else {
+                    revealedPoints(annotation.points, fraction)
+                }
+                drawMarkupLine(canvas, annotation.copy(points = points), width, height)
+            }
+
+            AnnotationType.TEXT -> drawText(canvas, annotation.faded(fraction), width, height)
+            AnnotationType.STAMP -> drawStamp(canvas, annotation.faded(fraction), width, height)
+
+            AnnotationType.SIGNATURE -> {
+                if (annotation.points.size > 1) {
+                    val partial = annotation.copy(points = revealedPoints(annotation.points, fraction))
+                    drawSignature(canvas, partial, width, height)
+                } else {
+                    drawSignature(canvas, annotation.faded(fraction), width, height)
+                }
+            }
+        }
+    }
+
+    private fun revealedPoints(points: List<NormalizedPoint>, fraction: Float): List<NormalizedPoint> {
+        val count = ceil(points.size * fraction).toInt().coerceIn(1, points.size)
+        return if (count >= points.size) points else points.subList(0, count).toList()
+    }
+
+    /** Interpolates the end of a two-point shape from its start point. */
+    private fun revealedEndpoints(
+        points: List<NormalizedPoint>,
+        fraction: Float,
+    ): List<NormalizedPoint>? {
+        if (points.size < 2) return null
+        val start = points.first()
+        val end = points.last()
+        val t = fraction.coerceIn(0f, 1f)
+        return listOf(
+            start,
+            NormalizedPoint(
+                start.x + (end.x - start.x) * t,
+                start.y + (end.y - start.y) * t,
+            ),
+        )
+    }
+
+    private fun Annotation.faded(fraction: Float): Annotation =
+        copy(opacity = (opacity * fraction.coerceIn(0f, 1f)).coerceIn(0f, 1f))
 
     fun drawEraserPreview(canvas: Canvas, point: NormalizedPoint, radiusPx: Float) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
