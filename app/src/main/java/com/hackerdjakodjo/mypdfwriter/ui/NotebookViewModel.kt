@@ -103,6 +103,11 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
 
     fun setFavorite(id: String, favorite: Boolean) = mutate(id) { it.copy(favorite = favorite) }
 
+    fun toggleFavorite(id: String) {
+        val notebook = store.load(id) ?: _notebooks.value.firstOrNull { it.id == id } ?: return
+        setFavorite(id, !notebook.favorite)
+    }
+
     fun trash(id: String) = mutate(id) { it.copy(trashed = true) }
 
     fun restore(id: String) = mutate(id) { it.copy(trashed = false) }
