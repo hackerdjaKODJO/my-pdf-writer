@@ -1,6 +1,8 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import com.hackerdjakodjo.mypdfwriter.data.CustomTemplatePaths
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
+import com.hackerdjakodjo.mypdfwriter.data.NotePaper
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
@@ -124,6 +126,97 @@ object NotePageManager {
             notebook = notebook.copy(pages = output, bookmarks = bookmarks),
             currentIndex = oldToNew[safeCurrent],
             selectedPageIds = selected,
+        )
+    }
+
+    /**
+     * Rotates selected pages, or the current page when the selection is empty.
+     *
+     * Every target keeps its page id, annotation ids and source link. Page order,
+     * bookmarks and selection are unchanged, and the current index still points at
+     * the same logical page. The caller commits the returned notebook once, so the
+     * whole rotation is one undo step.
+     */
+    fun rotatePages(
+        notebook: Notebook,
+        selectedPageIds: Set<String>,
+        currentIndex: Int,
+        clockwise: Boolean,
+    ): NotePageManagerResult {
+        val pages = notebook.pages
+        if (pages.isEmpty()) {
+            return NotePageManagerResult(notebook, 0, emptySet())
+        }
+        val selected = validSelection(pages, selectedPageIds)
+        val safeCurrent = currentIndex.coerceIn(0, pages.lastIndex)
+        val targets = if (selected.isEmpty()) {
+            setOf(pages[safeCurrent].id)
+        } else {
+            selected
+        }
+        val rotated = pages.map { page ->
+            if (page.id in targets) NotePaper.rotatePage(page, clockwise) else page
+        }
+        return NotePageManagerResult(
+            notebook = notebook.copy(pages = rotated),
+            currentIndex = safeCurrent,
+            selectedPageIds = selected,
+        )
+    }
+
+    /**
+     * Inserts a fresh photo page after [currentIndex]. The imported asset key is
+     * the same portable `files/templates/` key used by Template Studio; the page
+     * inherits the current page's A4 orientation, template and tint, starts empty
+     * (one default layer, no annotations/source link), and becomes current.
+     *
+     * Bookmarks that follow the insertion move with their original page. The
+     * existing selection is preserved because no referenced page id changes.
+     * An invalid asset key is rejected instead of storing an unreadable page.
+     */
+    fun insertPhotoPage(
+        notebook: Notebook,
+        currentIndex: Int,
+        selectedPageIds: Set<String>,
+        assetKey: String,
+        displayName: String,
+    ): NotePageManagerResult {
+        val pages = notebook.pages
+        if (pages.isEmpty()) {
+            return NotePageManagerResult(notebook, 0, emptySet())
+        }
+        val safeKey = CustomTemplatePaths.sanitizeKey(assetKey)
+            ?: return NotePageManagerResult(
+                notebook = notebook,
+                currentIndex = currentIndex.coerceIn(0, pages.lastIndex),
+                selectedPageIds = validSelection(pages, selectedPageIds),
+            )
+        val safeCurrent = currentIndex.coerceIn(0, pages.lastIndex)
+        val source = pages[safeCurrent]
+        val insertAt = safeCurrent + 1
+        val photoPage = NotePage(
+            template = source.template,
+            orientation = source.orientation,
+            tint = source.tint,
+            customBackground = safeKey,
+            customBackgroundName = CustomTemplatePaths.normalizeName(displayName),
+        )
+        val output = ArrayList<NotePage>(pages.size + 1)
+        pages.forEachIndexed { index, page ->
+            output.add(page)
+            if (index == safeCurrent) output.add(photoPage)
+        }
+        val bookmarks = notebook.bookmarks.map { bookmark ->
+            if (bookmark.pageIndex >= insertAt) {
+                bookmark.copy(pageIndex = bookmark.pageIndex + 1)
+            } else {
+                bookmark
+            }
+        }
+        return NotePageManagerResult(
+            notebook = notebook.copy(pages = output, bookmarks = bookmarks),
+            currentIndex = insertAt,
+            selectedPageIds = validSelection(output, selectedPageIds),
         )
     }
 

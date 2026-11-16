@@ -83,6 +83,68 @@ object NotePaper {
     }
 
     /**
+     * Rotates the whole physical page content by 90 degrees and swaps A4
+     * portrait/landscape. This is deliberately different from [reorient], which
+     * only re-cuts the sheet and keeps handwriting upright.
+     *
+     * - Points rotate about the page centre: clockwise `(x, y) -> (1-y, x)`,
+     *   counter-clockwise `(x, y) -> (y, 1-x)`. A4's swapped sides make the same
+     *   normalized formula valid in both directions.
+     * - Per-point pressure, ids, timestamps, layer ids, opacity, stamps and text
+     *   fields survive unchanged. Stroke width and font size are converted so a
+     *   pen line and a text glyph keep their physical size on the new sheet.
+     * - Text rotation follows the sheet, so a label stays attached to the same
+     *   piece of writing instead of becoming upright while its line turns.
+     * - The custom-background key and label are preserved. The image itself is
+     *   not rotated or duplicated; [com.hackerdjakodjo.mypdfwriter.ui.PaperBackground]
+     *   re-applies its cover crop under the new orientation. A portrait photo on a
+     *   landscape page therefore crops the top/bottom more tightly, and rotating
+     *   back restores the original crop.
+     *
+     * The page id and notebook-level bookmarks are not touched. Rotating clockwise
+     * then counter-clockwise is the identity for normal annotation values.
+     */
+    fun rotatePage(page: NotePage, clockwise: Boolean = true): NotePage {
+        val target = if (page.orientation == PageOrientation.PORTRAIT) {
+            PageOrientation.LANDSCAPE
+        } else {
+            PageOrientation.PORTRAIT
+        }
+        val oldWidth = widthPt(page.orientation)
+        val oldHeight = heightPt(page.orientation)
+        val newWidth = widthPt(target)
+        val newHeight = heightPt(target)
+        val widthFactor = oldWidth / newWidth
+        val heightFactor = oldHeight / newHeight
+        val degrees = if (clockwise) 90 else 270
+
+        val rotated = page.annotations.map { annotation ->
+            val points = annotation.points.map { point ->
+                if (clockwise) {
+                    NormalizedPoint(
+                        x = 1f - point.y,
+                        y = point.x,
+                        pressure = point.pressure,
+                    )
+                } else {
+                    NormalizedPoint(
+                        x = point.y,
+                        y = 1f - point.x,
+                        pressure = point.pressure,
+                    )
+                }
+            }
+            annotation.copy(
+                points = points,
+                width = (annotation.width * widthFactor).coerceAtLeast(MIN_NORMALIZED),
+                fontSize = (annotation.fontSize * heightFactor).coerceAtLeast(MIN_NORMALIZED),
+                textRotation = PageSpec.normalizeRotation(annotation.textRotation + degrees),
+            )
+        }
+        return page.copy(orientation = target, annotations = rotated)
+    }
+
+    /**
      * True when re-cutting [page] onto [target] would put ink outside the sheet.
      * Used by the template studio to warn before a destructive orientation change.
      */
