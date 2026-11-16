@@ -11,6 +11,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NotebookDraft
 import com.hackerdjakodjo.mypdfwriter.data.NotebookStore
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
+import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -108,13 +109,57 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun updateCurrent(notebook: Notebook) {
+        val previous = _current.value
+        NoteTrace.event(
+            "NOTE_VM",
+            "update_in",
+            "id" to notebook.id,
+            "pages" to notebook.pages.size,
+            "ann" to noteAnnotationCounts(notebook),
+            "total" to noteAnnotationTotal(notebook),
+            "updatedAt" to notebook.updatedAt,
+        )
+
         val updated = notebook.normalized().copy(updatedAt = System.currentTimeMillis())
+        if (previous != null && previous.id == updated.id) {
+            logAnnotationDecreases(previous, updated)
+        }
         _current.value = updated
         _pageIndex.value = _pageIndex.value.coerceIn(0, (updated.pages.size - 1).coerceAtLeast(0))
+        _current.value?.let { live ->
+            NoteTrace.event(
+                "NOTE_VM",
+                "update_live",
+                "id" to live.id,
+                "pages" to live.pages.size,
+                "ann" to noteAnnotationCounts(live),
+                "total" to noteAnnotationTotal(live),
+                "updatedAt" to live.updatedAt,
+            )
+        }
+
         saveJob?.cancel()
+        NoteTrace.event(
+            "NOTE_VM",
+            "save_scheduled",
+            "id" to updated.id,
+            "pages" to updated.pages.size,
+            "total" to noteAnnotationTotal(updated),
+            "updatedAt" to updated.updatedAt,
+        )
         saveJob = viewModelScope.launch {
             delay(350)
+            val startedAt = System.currentTimeMillis()
             store.save(updated)
+            NoteTrace.event(
+                "NOTE_VM",
+                "save_done",
+                "id" to updated.id,
+                "pages" to updated.pages.size,
+                "total" to noteAnnotationTotal(updated),
+                "updatedAt" to updated.updatedAt,
+                "ms" to (System.currentTimeMillis() - startedAt),
+            )
             refresh()
         }
     }
@@ -215,10 +260,31 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
 
     fun saveNow() {
         saveJob?.cancel()
-        _current.value?.let {
-            store.save(it)
-            refresh()
+        val notebook = _current.value
+        if (notebook == null) {
+            NoteTrace.event("NOTE_VM", "save_now_skip", "reason" to "no_current")
+            return
         }
+        NoteTrace.event(
+            "NOTE_VM",
+            "save_now_start",
+            "id" to notebook.id,
+            "pages" to notebook.pages.size,
+            "total" to noteAnnotationTotal(notebook),
+            "updatedAt" to notebook.updatedAt,
+        )
+        val startedAt = System.currentTimeMillis()
+        store.save(notebook)
+        NoteTrace.event(
+            "NOTE_VM",
+            "save_now_done",
+            "id" to notebook.id,
+            "pages" to notebook.pages.size,
+            "total" to noteAnnotationTotal(notebook),
+            "updatedAt" to notebook.updatedAt,
+            "ms" to (System.currentTimeMillis() - startedAt),
+        )
+        refresh()
     }
 
     private fun findStudyNotebook(source: StudySource): Notebook? {
@@ -246,5 +312,37 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         store.save(updated)
         if (_current.value?.id == id) _current.value = updated
         refresh()
+    }
+}
+
+private fun noteAnnotationCounts(notebook: Notebook): String =
+    notebook.pages.joinToString(",") { it.annotations.size.toString() }
+
+private fun noteAnnotationTotal(notebook: Notebook): Int =
+    notebook.pages.sumOf { it.annotations.size }
+
+/**
+ * Debug-only diagnostic: an incoming update may legitimately remove annotations
+ * through the eraser or undo, so this only records the counts and never blocks
+ * the update. Matching by page id keeps page inserts/deletes from looking like
+ * annotation loss.
+ */
+private fun logAnnotationDecreases(previous: Notebook, target: Notebook) {
+    val previousCounts = previous.pages.associate { it.id to it.annotations.size }
+    target.pages.forEachIndexed { index, page ->
+        val before = previousCounts[page.id] ?: return@forEachIndexed
+        val after = page.annotations.size
+        if (after < before) {
+            NoteTrace.event(
+                "NOTE_WARN",
+                "annotation_decrease",
+                "id" to target.id,
+                "page" to page.id,
+                "index" to index,
+                "from" to before,
+                "to" to after,
+                "delta" to (after - before),
+            )
+        }
     }
 }

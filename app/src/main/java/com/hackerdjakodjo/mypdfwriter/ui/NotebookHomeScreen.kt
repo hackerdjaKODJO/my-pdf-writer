@@ -42,6 +42,7 @@ import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.NoteAdd
 import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
@@ -100,6 +101,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.hackerdjakodjo.mypdfwriter.BuildConfig
 import com.hackerdjakodjo.mypdfwriter.data.CoverStyle
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NotebookDraft
@@ -155,6 +157,7 @@ fun NotebookHomeScreen(
     onMoveFolder: (String, String) -> Unit,
     onSetTags: (String, List<String>) -> Unit,
     onOpenBackup: () -> Unit = {},
+    onOpenTrace: (() -> Unit)? = null,
 ) {
     var section by remember { mutableStateOf(LibrarySection.NOTES) }
     var scope by remember { mutableStateOf(NoteScope.ALL) }
@@ -305,6 +308,19 @@ fun NotebookHomeScreen(
                                                 scope = NoteScope.TRASH
                                             },
                                         )
+                                        if (BuildConfig.DEBUG && onOpenTrace != null) {
+                                            HorizontalDivider()
+                                            DropdownMenuItem(
+                                                text = { Text("노트 추적") },
+                                                leadingIcon = {
+                                                    Icon(Icons.Outlined.BugReport, contentDescription = null)
+                                                },
+                                                onClick = {
+                                                    showOverflow = false
+                                                    onOpenTrace?.invoke()
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                             },
