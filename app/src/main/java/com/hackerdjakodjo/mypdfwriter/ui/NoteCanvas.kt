@@ -1,6 +1,8 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.graphics.Path
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -28,6 +30,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
+import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import kotlin.math.min
@@ -60,11 +63,13 @@ fun NoteCanvas(
     strokeWidth: Float,
     fontSize: Float,
     opacity: Float,
+    penStyle: PenStyle = PenStyle.BALLPOINT,
     penOnly: Boolean,
     zoomLock: Boolean,
     onAddStroke: (List<NormalizedPoint>) -> Unit,
     onErase: (List<NormalizedPoint>) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
+    onLassoSelect: (polygon: List<NormalizedPoint>, rectangular: Boolean) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     // Notebooks are a paper metaphor: keep the sheet cream even in a dark app theme so
@@ -77,10 +82,12 @@ fun NoteCanvas(
     var shapeEnd by remember { mutableStateOf<NormalizedPoint?>(null) }
     var eraserPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
     val eraserTrail = remember { mutableStateListOf<NormalizedPoint>() }
+    val lassoPoints = remember { mutableStateListOf<NormalizedPoint>() }
 
     LaunchedEffect(page.id) {
         livePoints.clear()
         eraserTrail.clear()
+        lassoPoints.clear()
         shapeStart = null
         shapeEnd = null
         eraserPoint = null
@@ -130,6 +137,7 @@ fun NoteCanvas(
             fun clearPreview() {
                 livePoints.clear()
                 eraserTrail.clear()
+                lassoPoints.clear()
                 shapeStart = null
                 shapeEnd = null
                 eraserPoint = null
@@ -168,10 +176,16 @@ fun NoteCanvas(
                         Tool.ELLIPSE,
                         Tool.UNDERLINE,
                         Tool.STRIKEOUT,
-                        Tool.REDACT -> {
+                        Tool.REDACT,
+                        Tool.LASSO_RECT -> {
                             val point = normalize(down.position)
                             shapeStart = point
                             shapeEnd = point
+                        }
+
+                        Tool.LASSO -> {
+                            lassoPoints.clear()
+                            lassoPoints.add(normalize(down.position))
                         }
 
                         else -> {
@@ -223,7 +237,10 @@ fun NoteCanvas(
                                     Tool.ELLIPSE,
                                     Tool.UNDERLINE,
                                     Tool.STRIKEOUT,
-                                    Tool.REDACT -> shapeEnd = normalize(primary.position)
+                                    Tool.REDACT,
+                                    Tool.LASSO_RECT -> shapeEnd = normalize(primary.position)
+
+                                    Tool.LASSO -> lassoPoints.add(normalize(primary.position))
 
                                     else -> livePoints.add(normalize(primary.position))
                                 }
@@ -257,6 +274,24 @@ fun NoteCanvas(
                                         val dy = end.y - start.y
                                         if (dx * dx + dy * dy > 0.000025f) {
                                             onAddStroke(listOf(start, end))
+                                        }
+                                    }
+                                }
+
+                                Tool.LASSO -> {
+                                    if (lassoPoints.size >= 3) {
+                                        onLassoSelect(lassoPoints.toList(), false)
+                                    }
+                                }
+
+                                Tool.LASSO_RECT -> {
+                                    val start = shapeStart
+                                    val end = shapeEnd ?: start
+                                    if (start != null && end != null) {
+                                        val dx = end.x - start.x
+                                        val dy = end.y - start.y
+                                        if (dx * dx + dy * dy > 0.000025f) {
+                                            onLassoSelect(listOf(start, end), true)
                                         }
                                     }
                                 }
@@ -369,6 +404,11 @@ fun NoteCanvas(
                             width = noteStrokeWidth(previewType, strokeWidth),
                             points = previewPoints,
                             opacity = if (previewType == AnnotationType.HIGHLIGHT) 1f else opacity,
+                            penStyle = if (previewType == AnnotationType.PEN) {
+                                penStyle
+                            } else {
+                                PenStyle.BALLPOINT
+                            },
                         ),
                         width = notePageWidth,
                         height = notePageHeight,
@@ -398,6 +438,13 @@ fun NoteCanvas(
                     )
                 }
 
+                if (tool == Tool.LASSO && lassoPoints.size >= 2) {
+                    drawLassoPreview(native, lassoPoints.toList(), rectangular = false)
+                }
+                if (tool == Tool.LASSO_RECT && start != null && end != null) {
+                    drawLassoPreview(native, listOf(start, end), rectangular = true)
+                }
+
                 val eraser = eraserPoint
                 if (eraser != null) {
                     AnnotationPainter.drawEraserPreview(
@@ -415,6 +462,47 @@ fun NoteCanvas(
             }
         }
     }
+}
+
+/** Subtle dashed selection preview while the user drags a lasso. */
+private fun drawLassoPreview(
+    canvas: android.graphics.Canvas,
+    points: List<NormalizedPoint>,
+    rectangular: Boolean,
+) {
+    if (points.size < 2) return
+    val path = Path()
+    if (rectangular) {
+        val a = points.first()
+        val b = points.last()
+        path.addRect(
+            minOf(a.x, b.x) * notePageWidth,
+            minOf(a.y, b.y) * notePageHeight,
+            maxOf(a.x, b.x) * notePageWidth,
+            maxOf(a.y, b.y) * notePageHeight,
+            Path.Direction.CW,
+        )
+    } else {
+        path.moveTo(points.first().x * notePageWidth, points.first().y * notePageHeight)
+        for (i in 1 until points.size) {
+            path.lineTo(points[i].x * notePageWidth, points[i].y * notePageHeight)
+        }
+        path.close()
+    }
+    if (rectangular || points.size >= 3) {
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(24, 31, 78, 121)
+            style = Paint.Style.FILL
+        }
+        canvas.drawPath(path, fill)
+    }
+    val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(190, 31, 78, 121)
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        pathEffect = DashPathEffect(floatArrayOf(10f, 7f), 0f)
+    }
+    canvas.drawPath(path, stroke)
 }
 
 internal fun noteStrokeWidth(type: AnnotationType, strokeWidth: Float): Float =
