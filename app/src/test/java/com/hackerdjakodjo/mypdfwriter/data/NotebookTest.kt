@@ -2,6 +2,8 @@ package com.hackerdjakodjo.mypdfwriter.data
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -136,5 +138,66 @@ class NotebookTest {
 
         assertEquals(PageOrientation.PORTRAIT, page.orientation)
         assertEquals(PaperTint.WARM, page.tint)
+    }
+
+    @Test
+    fun legacyPagesHaveNoCustomBackgroundAndWriteNoAssetFields() {
+        val notebook = Notebook.fromJson(
+            JSONObject("""{"id":"legacy","pages":[{"id":"p","template":"GRID"}]}"""),
+        )
+        val page = notebook.pages.single()
+
+        assertNull(page.customBackground)
+        assertEquals("", page.customBackgroundName)
+        val json = page.toJson()
+        assertFalse(json.has("customBackground"))
+        assertFalse(json.has("customBackgroundName"))
+    }
+
+    @Test
+    fun customBackgroundRoundTripsAsPortableRelativeKey() {
+        val notebook = Notebook(
+            title = "커스텀 종이",
+            pages = listOf(
+                NotePage(
+                    template = PaperTemplate.GRID,
+                    tint = PaperTint.WHITE,
+                    customBackground = "tpl-8e5a.png",
+                    customBackgroundName = "  강의   배경 ",
+                ),
+                NotePage(template = PaperTemplate.LINED),
+            ),
+        )
+
+        val restored = Notebook.fromJson(JSONObject(notebook.toJson().toString()))
+
+        assertEquals("tpl-8e5a.png", restored.pages[0].customBackground)
+        assertEquals("강의 배경", restored.pages[0].customBackgroundName)
+        assertEquals(PaperTemplate.GRID, restored.pages[0].template)
+        assertEquals(PaperTint.WHITE, restored.pages[0].tint)
+        assertEquals(null, restored.pages[1].customBackground)
+        assertEquals("", restored.pages[1].customBackgroundName)
+        assertFalse(notebook.toJson().toString().contains("/data/data/"))
+    }
+
+    @Test
+    fun unsafeCustomBackgroundValuesAreDroppedOnLoad() {
+        val notebook = Notebook.fromJson(
+            JSONObject(
+                """{"id":"x","pages":[
+                    {"id":"a","customBackground":"../escape.png","customBackgroundName":"bad"},
+                    {"id":"b","customBackground":"/sdcard/photo.png","customBackgroundName":"bad"},
+                    {"id":"c","customBackground":"files/templates/a.png","customBackgroundName":"bad"},
+                    {"id":"d","customBackground":"tpl-ok.png","customBackgroundName":""}
+                ]}""",
+            ),
+        )
+
+        notebook.pages.take(3).forEach { page ->
+            assertNull(page.customBackground)
+            assertEquals("", page.customBackgroundName)
+        }
+        assertEquals("tpl-ok.png", notebook.pages[3].customBackground)
+        assertEquals(CustomTemplatePaths.DEFAULT_NAME, notebook.pages[3].customBackgroundName)
     }
 }

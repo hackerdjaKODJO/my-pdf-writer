@@ -83,11 +83,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -105,10 +107,13 @@ import com.hackerdjakodjo.mypdfwriter.audio.annotationRevealFraction
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.AudioNote
+import com.hackerdjakodjo.mypdfwriter.data.CustomTemplatePaths
+import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateStore
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.NotePaper
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
+import com.hackerdjakodjo.mypdfwriter.data.NotebookStore
 import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.data.PaperTint
@@ -202,7 +207,11 @@ fun NoteEditorScreen(
 
     val context = LocalContext.current
     val penBoxStore = remember(context) { PenBoxStore(context) }
+    val customTemplateStore = remember(context) { CustomTemplateStore(context) }
     var penPresets by remember(penBoxStore) { mutableStateOf(penBoxStore.load()) }
+    val pageBackground = remember(page.id, page.customBackground) {
+        page.customBackground?.let(customTemplateStore::load)
+    }
     var selection by remember(workingNotebook.id, page.id) {
         mutableStateOf<Set<String>>(emptySet())
     }
@@ -260,6 +269,11 @@ fun NoteEditorScreen(
     var showQuickTemplates by remember { mutableStateOf(false) }
     var showDeletePage by remember { mutableStateOf(false) }
     var textPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
+    // Removing a background keeps its file until the editor closes. Undo can
+    // re-reference the same key, so eager deletion would break one-step undo.
+    var pendingTemplateCleanup by remember(workingNotebook.id) {
+        mutableStateOf<Set<String>>(emptySet())
+    }
 
     val undoStack = remember(workingNotebook.id) { ArrayDeque<Notebook>() }
     val redoStack = remember(workingNotebook.id) { ArrayDeque<Notebook>() }
@@ -295,6 +309,50 @@ fun NoteEditorScreen(
         val mutable = currentPages.toMutableList()
         mutable[index] = updated
         applyChange(workingNotebook.copy(pages = mutable))
+    }
+
+    /**
+     * Removes an asset only when no live notebook still points at it. The in-memory
+     * working notebook is authoritative for this editor; on-disk copies of other
+     * notebooks are checked so a duplicated/shared template is not deleted.
+     */
+    fun deleteTemplateAssetIfUnused(key: String) {
+        val safe = CustomTemplatePaths.sanitizeKey(key) ?: return
+        val used = LinkedHashSet<String>()
+        used.addAll(CustomTemplatePaths.keysInPages(workingNotebook.pages))
+        runCatching { NotebookStore(context).loadAll() }
+            .getOrDefault(emptyList())
+            .forEach { other ->
+                if (other.id != workingNotebook.id) {
+                    used.addAll(CustomTemplatePaths.keysInPages(other.pages))
+                }
+            }
+        customTemplateStore.deleteIfUnused(safe, used)
+    }
+
+    fun queueTemplateAssetCleanup(keys: Set<String>) {
+        val safeKeys = keys.mapNotNullTo(LinkedHashSet()) { CustomTemplatePaths.sanitizeKey(it) }
+        if (safeKeys.isNotEmpty()) {
+            pendingTemplateCleanup = pendingTemplateCleanup + safeKeys
+        }
+    }
+
+    fun queueRemovedTemplateAssets(before: Notebook, after: Notebook) {
+        queueTemplateAssetCleanup(
+            CustomTemplatePaths.keysInPages(before.pages) -
+                CustomTemplatePaths.keysInPages(after.pages),
+        )
+    }
+
+    /**
+     * Runs only when this editor is left. The session undo stack is discarded then,
+     * so a removed asset can be deleted if no notebook still references it.
+     */
+    fun flushPendingTemplateCleanup() {
+        val keys = pendingTemplateCleanup
+        if (keys.isEmpty()) return
+        pendingTemplateCleanup = emptySet()
+        keys.forEach { deleteTemplateAssetIfUnused(it) }
     }
 
     fun undo() {
@@ -347,6 +405,8 @@ fun NoteEditorScreen(
                 template = source.template,
                 orientation = source.orientation,
                 tint = source.tint,
+                customBackground = source.customBackground,
+                customBackgroundName = source.customBackgroundName,
             ),
         )
         applyChange(workingNotebook.copy(pages = mutable))
@@ -376,7 +436,9 @@ fun NoteEditorScreen(
         val index = safeIndex.coerceIn(0, currentPages.lastIndex)
         val mutable = currentPages.toMutableList()
         mutable.removeAt(index)
+        val before = workingNotebook
         applyChange(workingNotebook.copy(pages = mutable))
+        queueRemovedTemplateAssets(before, workingNotebook)
         onPageIndexChange((index - 1).coerceAtLeast(0))
     }
 
@@ -413,6 +475,7 @@ fun NoteEditorScreen(
 
     fun deleteSelectedPages() {
         if (selectedPageIds.isEmpty()) return
+        val before = workingNotebook
         val result = NotePageManager.deletePages(
             notebook = workingNotebook,
             selectedPageIds = selectedPageIds,
@@ -420,6 +483,7 @@ fun NoteEditorScreen(
         )
         if (result.notebook == workingNotebook) return
         applyChange(result.notebook)
+        queueRemovedTemplateAssets(before, workingNotebook)
         pageSelection = result.selectedPageIds
         if (result.currentIndex != safeIndex) onPageIndexChange(result.currentIndex)
         NoteTrace.event(
@@ -448,7 +512,10 @@ fun NoteEditorScreen(
         val before = workingNotebook
         val next = NoteTemplateStudio.apply(before, safeIndex, choice)
         if (next == before) return
+        val keysBefore = CustomTemplatePaths.keysInPages(before.pages)
+        val keysAfter = CustomTemplatePaths.keysInPages(next.pages)
         applyChange(next)
+        queueTemplateAssetCleanup((keysBefore - keysAfter) + (keysAfter - keysBefore))
         NoteTrace.event(
             NOTE_TRACE_TAG,
             "template_studio",
@@ -457,6 +524,7 @@ fun NoteEditorScreen(
             "orientation" to choice.orientation.name,
             "applyAll" to choice.applyToAllPages,
             "coverStyle" to choice.coverStyle.name,
+            "customBackground" to (choice.customBackground != null),
             "pages" to next.pages.size,
             "annotations" to notebookAnnotationCount(next),
         )
@@ -788,7 +856,18 @@ fun NoteEditorScreen(
 
     val darkPaper = false
 
-    BackHandler(onBack = onBack)
+    val leaveEditor: () -> Unit = {
+        flushPendingTemplateCleanup()
+        onBack()
+    }
+    // Covers leaving through the source-PDF/study-pane parent, which does not call
+    // the top-bar back button. The undo stack dies with this editor.
+    val cleanupOnDispose by rememberUpdatedState { flushPendingTemplateCleanup() }
+    DisposableEffect(Unit) {
+        onDispose { cleanupOnDispose() }
+    }
+
+    BackHandler(onBack = leaveEditor)
 
     Scaffold(
         topBar = {
@@ -806,7 +885,7 @@ fun NoteEditorScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = leaveEditor) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "뒤로")
                     }
                 },
@@ -904,6 +983,7 @@ fun NoteEditorScreen(
                         pressureEnabled = pressureInk,
                         selectionBounds = selectionBounds,
                         annotationProgress = annotationProgress,
+                        backgroundBitmap = pageBackground,
                         hint = hint,
                         onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
                         onErase = { erase(it) },
@@ -921,6 +1001,7 @@ fun NoteEditorScreen(
                         pages = pages,
                         currentIndex = safeIndex,
                         darkPaper = darkPaper,
+                        templateStore = customTemplateStore,
                         onSelect = onPageIndexChange,
                         onAdd = { addPage() },
                         modifier = Modifier.width(154.dp).fillMaxHeight(),
@@ -940,6 +1021,7 @@ fun NoteEditorScreen(
                     pressureEnabled = pressureInk,
                     selectionBounds = selectionBounds,
                     annotationProgress = annotationProgress,
+                    backgroundBitmap = pageBackground,
                     hint = hint,
                     onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
                     onErase = { erase(it) },
@@ -971,6 +1053,7 @@ fun NoteEditorScreen(
                 showStudio = false
                 applyStudio(choice)
             },
+            templateStore = customTemplateStore,
         )
     }
 
@@ -979,6 +1062,7 @@ fun NoteEditorScreen(
             current = page.template,
             tint = page.tint,
             orientation = page.orientation,
+            hasCustomBackground = page.customBackground != null,
             onDismiss = { showQuickTemplates = false },
             onApply = { template, allPages ->
                 showQuickTemplates = false
@@ -1163,6 +1247,7 @@ fun NoteEditorScreen(
             pages = pages,
             currentIndex = safeIndex,
             darkPaper = darkPaper,
+            templateStore = customTemplateStore,
             selectedPageIds = selectedPageIds,
             onToggleSelection = { pageId ->
                 pageSelection = NotePageManager.toggleSelection(pages, selectedPageIds, pageId)
@@ -1309,6 +1394,7 @@ private fun NoteCanvasPane(
     pressureEnabled: Boolean,
     selectionBounds: NoteSelectionBounds?,
     annotationProgress: (Annotation) -> Float,
+    backgroundBitmap: android.graphics.Bitmap?,
     hint: String,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
     onErase: (List<NormalizedPoint>) -> Unit,
@@ -1332,6 +1418,7 @@ private fun NoteCanvasPane(
             pressureEnabled = pressureEnabled,
             selectionBounds = selectionBounds,
             annotationProgress = annotationProgress,
+            backgroundBitmap = backgroundBitmap,
             onAddStroke = onAddStroke,
             onErase = onErase,
             onRequestText = onRequestText,
@@ -1784,6 +1871,7 @@ private fun NotePageManagerSheet(
     pages: List<NotePage>,
     currentIndex: Int,
     darkPaper: Boolean,
+    templateStore: CustomTemplateStore,
     selectedPageIds: Set<String>,
     onToggleSelection: (String) -> Unit,
     onClearSelection: () -> Unit,
@@ -1878,6 +1966,7 @@ private fun NotePageManagerSheet(
                         checked = entry.id in selectedPageIds,
                         showCheckbox = selectMode,
                         darkPaper = darkPaper,
+                        templateStore = templateStore,
                         onOpen = { onSelect(entry.index) },
                         onCheckedChange = { onToggleSelection(entry.id) },
                         modifier = Modifier.fillMaxWidth(),
@@ -1940,10 +2029,14 @@ private fun NoteManagerPageCard(
     checked: Boolean,
     showCheckbox: Boolean,
     darkPaper: Boolean,
+    templateStore: CustomTemplateStore,
     onOpen: () -> Unit,
     onCheckedChange: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val background = remember(page.customBackground) {
+        page.customBackground?.let { templateStore.loadThumbnail(it) }
+    }
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.fillMaxWidth()) {
             Surface(
@@ -1965,6 +2058,7 @@ private fun NoteManagerPageCard(
                 NotePagePreview(
                     page = page,
                     darkPaper = darkPaper,
+                    backgroundBitmap = background,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -2010,7 +2104,11 @@ private fun NoteManagerPageCard(
             )
         }
         Text(
-            "${page.template.label} · ${page.orientation.label} · ${page.tint.label}",
+            if (page.customBackground != null) {
+                "커스텀 배경 · ${page.orientation.label}"
+            } else {
+                "${page.template.label} · ${page.orientation.label} · ${page.tint.label}"
+            },
             modifier = Modifier.fillMaxWidth(),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2564,6 +2662,7 @@ private fun NotePageRail(
     pages: List<NotePage>,
     currentIndex: Int,
     darkPaper: Boolean,
+    templateStore: CustomTemplateStore,
     onSelect: (Int) -> Unit,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
@@ -2603,6 +2702,7 @@ private fun NotePageRail(
                         number = index,
                         selected = index == currentIndex,
                         darkPaper = darkPaper,
+                        templateStore = templateStore,
                         onClick = { onSelect(index) },
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -2618,9 +2718,13 @@ private fun NotePageThumbnail(
     number: Int,
     selected: Boolean,
     darkPaper: Boolean,
+    templateStore: CustomTemplateStore,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val background = remember(page.customBackground) {
+        page.customBackground?.let { templateStore.loadThumbnail(it) }
+    }
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -2641,7 +2745,12 @@ private fun NotePageThumbnail(
                 .fillMaxWidth()
                 .aspectRatio(NotePaper.aspect(page.orientation)),
         ) {
-            NotePagePreview(page = page, darkPaper = darkPaper, modifier = Modifier.fillMaxSize())
+            NotePagePreview(
+                page = page,
+                darkPaper = darkPaper,
+                backgroundBitmap = background,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
         Text(
             "${number + 1}",
@@ -2693,7 +2802,12 @@ private fun NoteAddPageCard(
 }
 
 @Composable
-private fun NotePagePreview(page: NotePage, darkPaper: Boolean, modifier: Modifier = Modifier) {
+private fun NotePagePreview(
+    page: NotePage,
+    darkPaper: Boolean,
+    backgroundBitmap: android.graphics.Bitmap? = null,
+    modifier: Modifier = Modifier,
+) {
     Canvas(modifier.clipToBounds()) {
         drawIntoCanvas { canvas ->
             PaperBackground.draw(
@@ -2704,6 +2818,14 @@ private fun NotePagePreview(page: NotePage, darkPaper: Boolean, modifier: Modifi
                 dark = darkPaper,
                 tint = page.tint,
             )
+            backgroundBitmap?.let { bitmap ->
+                PaperBackground.drawCustomBackground(
+                    canvas = canvas.nativeCanvas,
+                    bitmap = bitmap,
+                    width = size.width,
+                    height = size.height,
+                )
+            }
             AnnotationPainter.draw(
                 canvas = canvas.nativeCanvas,
                 annotations = page.annotations,
@@ -2719,6 +2841,7 @@ private fun NoteTemplateDialog(
     current: PaperTemplate,
     tint: PaperTint,
     orientation: PageOrientation,
+    hasCustomBackground: Boolean,
     onDismiss: () -> Unit,
     onApply: (PaperTemplate, Boolean) -> Unit,
 ) {
@@ -2735,6 +2858,14 @@ private fun NoteTemplateDialog(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (hasCustomBackground) {
+                    Text(
+                        "이 페이지는 커스텀 배경이 종이를 덮고 있습니다. 배경은 템플릿 스튜디오에서 바꾸거나 제거할 수 있습니다.",
+                        modifier = Modifier.padding(top = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(3),

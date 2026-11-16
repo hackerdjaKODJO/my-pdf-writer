@@ -1,6 +1,7 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import com.hackerdjakodjo.mypdfwriter.data.CoverStyle
+import com.hackerdjakodjo.mypdfwriter.data.CustomTemplatePaths
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.NotePaper
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
@@ -11,6 +12,9 @@ import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 /**
  * One pending Template Studio edit. Applying it is a single [Notebook] change,
  * so the editor can commit the whole studio result as one undo step.
+ *
+ * [customBackground] is a portable asset file name below `files/templates/`; null
+ * removes the custom background and reveals the paper template/tint underneath.
  */
 data class NoteTemplateStudioChoice(
     val template: PaperTemplate,
@@ -19,6 +23,8 @@ data class NoteTemplateStudioChoice(
     val applyToAllPages: Boolean,
     val coverColor: Int,
     val coverStyle: CoverStyle,
+    val customBackground: String? = null,
+    val customBackgroundName: String = "",
 )
 
 /**
@@ -92,9 +98,17 @@ object NoteTemplateStudio {
         }
     }
 
-    fun styledPage(page: NotePage, choice: NoteTemplateStudioChoice): NotePage =
-        NotePaper.reorient(page, choice.orientation).copy(
+    fun styledPage(page: NotePage, choice: NoteTemplateStudioChoice): NotePage {
+        val safeBackground = CustomTemplatePaths.sanitizeKey(choice.customBackground)
+        return NotePaper.reorient(page, choice.orientation).copy(
             template = choice.template,
             tint = choice.tint,
+            customBackground = safeBackground,
+            customBackgroundName = if (safeBackground == null) {
+                ""
+            } else {
+                CustomTemplatePaths.normalizeName(choice.customBackgroundName)
+            },
         )
+    }
 }

@@ -1,5 +1,7 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -28,15 +30,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CropLandscape
 import androidx.compose.material.icons.filled.CropPortrait
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,9 +63,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.CoverStyle
+import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateStore
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.NotePaper
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
@@ -64,6 +75,7 @@ import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
+import kotlinx.coroutines.launch
 
 /**
  * Original Template Studio for one notebook.
@@ -80,11 +92,17 @@ fun NoteTemplateStudioSheet(
     currentIndex: Int,
     onDismiss: () -> Unit,
     onApply: (NoteTemplateStudioChoice) -> Unit,
+    templateStore: CustomTemplateStore? = null,
 ) {
     val pages = notebook.pages.ifEmpty { listOf(NotePage()) }
     val safeIndex = currentIndex.coerceIn(0, pages.lastIndex)
     val currentPage = pages[safeIndex]
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context = LocalContext.current
+    val store = remember(context, templateStore) {
+        templateStore ?: CustomTemplateStore(context)
+    }
+    val scope = rememberCoroutineScope()
 
     var template by remember(notebook.id, currentPage.id) { mutableStateOf(currentPage.template) }
     var tint by remember(notebook.id, currentPage.id) { mutableStateOf(currentPage.tint) }
@@ -94,6 +112,66 @@ fun NoteTemplateStudioSheet(
     var applyToAll by remember(notebook.id) { mutableStateOf(false) }
     var coverColor by remember(notebook.id) { mutableStateOf(notebook.coverColor) }
     var coverStyle by remember(notebook.id) { mutableStateOf(notebook.coverStyle) }
+    var customBackground by remember(notebook.id, currentPage.id) {
+        mutableStateOf(currentPage.customBackground)
+    }
+    var customBackgroundName by remember(notebook.id, currentPage.id) {
+        mutableStateOf(currentPage.customBackgroundName)
+    }
+    var importing by remember(notebook.id) { mutableStateOf(false) }
+    var importError by remember(notebook.id) { mutableStateOf<String?>(null) }
+    // Assets created in this sheet but not applied yet. They are deleted on cancel
+    // or replacement so a dismissed import does not leave an orphan file behind.
+    var sessionAssets by remember(notebook.id) { mutableStateOf<Set<String>>(emptySet()) }
+
+    fun deleteSessionAsset(key: String?) {
+        val safe = key ?: return
+        if (safe in sessionAssets) {
+            store.delete(safe)
+            sessionAssets = sessionAssets - safe
+        }
+    }
+
+    fun discardSessionAssets(keep: String? = null) {
+        sessionAssets.filter { it != keep }.forEach(store::delete)
+        sessionAssets = sessionAssets.filterTo(LinkedHashSet()) { it == keep }
+    }
+
+    fun acceptImportedAsset(key: String, name: String) {
+        deleteSessionAsset(customBackground)
+        customBackground = key
+        customBackgroundName = name
+        sessionAssets = sessionAssets + key
+        importError = null
+    }
+
+    fun importFrom(uri: android.net.Uri, pdf: Boolean) {
+        importError = null
+        importing = true
+        scope.launch {
+            val result = runCatching {
+                if (pdf) store.importPdfFirstPage(uri) else store.importImage(uri)
+            }
+            importing = false
+            result.onSuccess { asset ->
+                acceptImportedAsset(asset.key, asset.displayName)
+            }.onFailure { error ->
+                importError = error.message ?: "배경을 가져오지 못했습니다."
+            }
+        }
+    }
+
+    val pickImage = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let { importFrom(it, pdf = false) } }
+    val pickPdf = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let { importFrom(it, pdf = true) } }
+
+    val closeSheet: () -> Unit = {
+        discardSessionAssets()
+        onDismiss()
+    }
 
     val choice = NoteTemplateStudioChoice(
         template = template,
@@ -102,15 +180,32 @@ fun NoteTemplateStudioSheet(
         applyToAllPages = applyToAll,
         coverColor = coverColor,
         coverStyle = coverStyle,
+        customBackground = customBackground,
+        customBackgroundName = customBackgroundName,
     )
-    val previewPage = remember(currentPage, template, tint, orientation) {
+    val previewPage = remember(
+        currentPage,
+        template,
+        tint,
+        orientation,
+        customBackground,
+        customBackgroundName,
+    ) {
         NoteTemplateStudio.styledPage(currentPage, choice)
+    }
+    val previewBackground = remember(customBackground) {
+        customBackground?.let { store.loadThumbnail(it, 1024) }
     }
     val previewAspect = NotePaper.aspect(orientation)
     val cropRiskCount = NoteTemplateStudio.cropRiskCount(notebook, safeIndex, choice)
     val reorientsInk = NoteTemplateStudio.reorientsExistingInk(notebook, safeIndex, choice)
+    val backgroundLabel = if (customBackground != null) {
+        customBackgroundName.ifBlank { "커스텀 배경" }
+    } else {
+        template.label
+    }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    ModalBottomSheet(onDismissRequest = closeSheet, sheetState = sheetState) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 24.dp),
@@ -124,7 +219,7 @@ fun NoteTemplateStudioSheet(
                     Column(Modifier.weight(1f)) {
                         Text("템플릿 스튜디오", style = MaterialTheme.typography.titleLarge)
                         Text(
-                            "${safeIndex + 1} / ${pages.size}쪽 · ${template.label} · " +
+                            "${safeIndex + 1} / ${pages.size}쪽 · $backgroundLabel · " +
                                 "${tint.label} · ${orientation.label}",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -133,7 +228,7 @@ fun NoteTemplateStudioSheet(
                         )
                     }
                     TextButton(
-                        onClick = onDismiss,
+                        onClick = closeSheet,
                         modifier = Modifier.heightIn(min = 44.dp),
                     ) {
                         Text("닫기")
@@ -169,9 +264,153 @@ fun NoteTemplateStudioSheet(
                         ) {
                             StudioPagePreview(
                                 page = previewPage,
+                                backgroundBitmap = previewBackground,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
+                    }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StudioSectionLabel("커스텀 배경")
+                    Text(
+                        "내 사진(JPEG/PNG/WebP)이나 PDF 첫 페이지를 앱 안에 복사해 종이 " +
+                            "배경으로 사용합니다. 원본 파일을 옮기거나 이름을 바꿔도 노트는 그대로 열립니다.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (customBackground != null) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    Icons.Filled.Image,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        customBackgroundName.ifBlank { "커스텀 배경" },
+                                        style = MaterialTheme.typography.labelLarge,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        "현재 배경 · 페이지를 가득 채우는 cover",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                TextButton(
+                                    onClick = {
+                                        deleteSessionAsset(customBackground)
+                                        customBackground = null
+                                        customBackgroundName = ""
+                                        importError = null
+                                    },
+                                    modifier = Modifier.heightIn(min = 44.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Delete,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("제거")
+                                }
+                            }
+                        }
+                        OutlinedTextField(
+                            value = customBackgroundName,
+                            onValueChange = { customBackgroundName = it.take(80) },
+                            label = { Text("배경 이름") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            "이미지는 비율을 유지한 채 중앙에서 잘려 페이지를 덮습니다. 투명 PNG는 " +
+                                "아래 종이 색이 비치고, 선택한 종이 템플릿·색은 배경 아래에 유지됩니다.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                "가져온 배경 없음 · 현재 종이 템플릿과 색이 그대로 보입니다.",
+                                modifier = Modifier.padding(10.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = { pickImage.launch(arrayOf("image/*")) },
+                            enabled = !importing,
+                            modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.Image,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("이미지")
+                        }
+                        OutlinedButton(
+                            onClick = { pickPdf.launch(arrayOf("application/pdf")) },
+                            enabled = !importing,
+                            modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.PictureAsPdf,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("PDF 첫 페이지")
+                        }
+                    }
+                    if (importing) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Text(
+                                "배경을 가져오는 중…",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    importError?.let { message ->
+                        StudioNotice(
+                            container = MaterialTheme.colorScheme.errorContainer,
+                            content = MaterialTheme.colorScheme.onErrorContainer,
+                            icon = Icons.Filled.Warning,
+                            title = "가져오지 못했습니다",
+                            body = message,
+                        )
                     }
                 }
             }
@@ -372,14 +611,18 @@ fun NoteTemplateStudioSheet(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TextButton(
-                        onClick = onDismiss,
+                        onClick = closeSheet,
                         modifier = Modifier.heightIn(min = 44.dp),
                     ) {
                         Text("취소")
                     }
                     Spacer(Modifier.width(8.dp))
                     Button(
-                        onClick = { onApply(choice) },
+                        onClick = {
+                            discardSessionAssets(keep = customBackground)
+                            onApply(choice)
+                        },
+                        enabled = !importing,
                         modifier = Modifier.heightIn(min = 44.dp),
                     ) {
                         Text("적용")
@@ -452,7 +695,11 @@ private fun StudioTemplateCard(
 }
 
 @Composable
-private fun StudioPagePreview(page: NotePage, modifier: Modifier = Modifier) {
+private fun StudioPagePreview(
+    page: NotePage,
+    backgroundBitmap: android.graphics.Bitmap? = null,
+    modifier: Modifier = Modifier,
+) {
     Canvas(modifier.clipToBounds()) {
         drawIntoCanvas { canvas ->
             PaperBackground.draw(
@@ -463,6 +710,14 @@ private fun StudioPagePreview(page: NotePage, modifier: Modifier = Modifier) {
                 dark = false,
                 tint = page.tint,
             )
+            backgroundBitmap?.let { bitmap ->
+                PaperBackground.drawCustomBackground(
+                    canvas = canvas.nativeCanvas,
+                    bitmap = bitmap,
+                    width = size.width,
+                    height = size.height,
+                )
+            }
             AnnotationPainter.draw(
                 canvas = canvas.nativeCanvas,
                 annotations = page.annotations,

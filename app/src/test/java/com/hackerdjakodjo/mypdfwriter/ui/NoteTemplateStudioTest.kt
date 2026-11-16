@@ -11,6 +11,7 @@ import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class NoteTemplateStudioTest {
@@ -109,5 +110,54 @@ class NoteTemplateStudioTest {
             false,
             NoteTemplateStudio.reorientsExistingInk(notebook, 1, pending),
         )
+    }
+
+    @Test
+    fun customBackgroundChoicePersistsCurrentOnlyAndNormalisesItsName() {
+        val pending = choice(applyAll = false).copy(
+            customBackground = "tpl-5a1c.png",
+            customBackgroundName = "  강의   배경 ",
+        )
+
+        val result = NoteTemplateStudio.apply(notebook, currentIndex = 0, choice = pending)
+
+        assertEquals("tpl-5a1c.png", result.pages[0].customBackground)
+        assertEquals("강의 배경", result.pages[0].customBackgroundName)
+        assertEquals(PaperTemplate.GRID, result.pages[0].template)
+        assertNull(result.pages[1].customBackground)
+        assertEquals("", result.pages[1].customBackgroundName)
+    }
+
+    @Test
+    fun applyAllGivesEveryPageTheSameCustomAssetAndRemovalClearsIt() {
+        val pending = choice(applyAll = true).copy(
+            customBackground = "tpl-5a1c.png",
+            customBackgroundName = "스캔",
+        )
+        val withAsset = NoteTemplateStudio.apply(notebook, 0, pending)
+
+        withAsset.pages.forEach { page ->
+            assertEquals("tpl-5a1c.png", page.customBackground)
+            assertEquals("스캔", page.customBackgroundName)
+        }
+
+        val removed = NoteTemplateStudio.apply(withAsset, 0, choice(applyAll = true))
+        removed.pages.forEach { page ->
+            assertNull(page.customBackground)
+            assertEquals("", page.customBackgroundName)
+        }
+    }
+
+    @Test
+    fun unsafePendingAssetKeyIsDroppedInsteadOfWrittenToThePage() {
+        val pending = choice(applyAll = false).copy(
+            customBackground = "../escape.png",
+            customBackgroundName = "bad",
+        )
+
+        val result = NoteTemplateStudio.apply(notebook, 0, pending)
+
+        assertNull(result.pages[0].customBackground)
+        assertEquals("", result.pages[0].customBackgroundName)
     }
 }

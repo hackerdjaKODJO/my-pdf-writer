@@ -1,5 +1,6 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import android.graphics.Bitmap
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
@@ -76,6 +77,7 @@ fun NoteCanvas(
     pressureEnabled: Boolean = true,
     selectionBounds: NoteSelectionBounds? = null,
     annotationProgress: (Annotation) -> Float = { 1f },
+    backgroundBitmap: Bitmap? = null,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
     onErase: (List<NormalizedPoint>) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
@@ -424,6 +426,14 @@ fun NoteCanvas(
                     dark = false,
                     tint = page.tint,
                 )
+                backgroundBitmap?.let { bitmap ->
+                    PaperBackground.drawCustomBackground(
+                        canvas = native,
+                        bitmap = bitmap,
+                        width = pageWidth,
+                        height = pageHeight,
+                    )
+                }
 
                 native.save()
                 native.clipRect(0f, 0f, pageWidth, pageHeight)

@@ -124,6 +124,13 @@ data class NotePage(
     val template: PaperTemplate = PaperTemplate.LINED,
     val orientation: PageOrientation = PageOrientation.PORTRAIT,
     val tint: PaperTint = PaperTint.WARM,
+    /**
+     * Portable file name below the app-private `files/templates/` directory, or
+     * null/blank for a normal paper page. Never an absolute path or content URI.
+     */
+    val customBackground: String? = null,
+    /** User-visible label for [customBackground]; ignored when the key is absent. */
+    val customBackgroundName: String = "",
     val annotations: List<Annotation> = emptyList(),
     val memo: String = "",
     val layers: List<NoteLayer> = listOf(NoteLayer()),
@@ -133,8 +140,15 @@ data class NotePage(
     fun normalized(): NotePage {
         val safeLayers = layers.ifEmpty { listOf(NoteLayer()) }
         val defaultLayer = safeLayers.first().id
+        val safeBackground = CustomTemplatePaths.sanitizeKey(customBackground)
         return copy(
             sourcePageIndex = sourcePageIndex?.takeIf { it >= 0 },
+            customBackground = safeBackground,
+            customBackgroundName = if (safeBackground == null) {
+                ""
+            } else {
+                CustomTemplatePaths.normalizeName(customBackgroundName)
+            },
             layers = safeLayers,
             annotations = annotations.map {
                 if (it.layerId == null) it.copy(layerId = defaultLayer) else it
@@ -147,6 +161,10 @@ data class NotePage(
         put("template", template.name)
         put("orientation", orientation.name)
         put("tint", tint.name)
+        customBackground?.let {
+            put("customBackground", it)
+            put("customBackgroundName", customBackgroundName)
+        }
         put("memo", memo)
         put("annotations", JSONArray().apply { annotations.forEach { put(it.toJson()) } })
         sourcePageIndex?.let { put("sourcePage", it) }
@@ -176,6 +194,10 @@ data class NotePage(
                 tint = runCatching {
                     PaperTint.valueOf(o.optString("tint"))
                 }.getOrDefault(PaperTint.WARM),
+                customBackground = CustomTemplatePaths.sanitizeKey(
+                    o.optString("customBackground"),
+                ),
+                customBackgroundName = o.optString("customBackgroundName"),
                 annotations = annotations,
                 memo = o.optString("memo"),
                 sourcePageIndex = o.optInt("sourcePage", -1).takeIf { it >= 0 },
