@@ -68,6 +68,7 @@ fun NoteCanvas(
     penStyle: PenStyle = PenStyle.BALLPOINT,
     penOnly: Boolean,
     zoomLock: Boolean,
+    selectionBounds: NoteSelectionBounds? = null,
     annotationProgress: (Annotation) -> Float = { 1f },
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
     onErase: (List<NormalizedPoint>) -> Unit,
@@ -410,6 +411,8 @@ fun NoteCanvas(
                     progress = annotationProgress,
                 )
 
+                selectionBounds?.let { drawSelectionBounds(native, it) }
+
                 val previewPoints = livePoints.toList()
                 if (previewPoints.isNotEmpty()) {
                     val previewType = if (tool == Tool.HIGHLIGHT) {
@@ -484,6 +487,25 @@ fun NoteCanvas(
             }
         }
     }
+}
+
+/** Dashed bounding frame for the current lasso selection. */
+private fun drawSelectionBounds(
+    canvas: android.graphics.Canvas,
+    bounds: NoteSelectionBounds,
+) {
+    val left = bounds.left * notePageWidth
+    val top = bounds.top * notePageHeight
+    val right = bounds.right * notePageWidth
+    val bottom = bounds.bottom * notePageHeight
+    if (right - left < 0.5f || bottom - top < 0.5f) return
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(220, 31, 78, 121)
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        pathEffect = DashPathEffect(floatArrayOf(12f, 8f), 0f)
+    }
+    canvas.drawRect(left, top, right, bottom, paint)
 }
 
 /** Subtle dashed selection preview while the user drags a lasso. */
