@@ -33,6 +33,8 @@ import androidx.compose.material.icons.outlined.RotateLeft
 import androidx.compose.material.icons.outlined.RotateRight
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -468,50 +470,147 @@ private fun SearchHitRow(hit: SearchHit, query: String, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnnotationSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
+fun AnnotationSheet(
+    state: ViewerUiState,
+    vm: PdfViewModel,
+    annotationsHidden: Boolean = false,
+    onDismiss: () -> Unit,
+) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val annotations = remember(state.annotations) {
-        state.annotations.sortedWith(compareBy<Annotation>({ it.page }, { it.type.ordinal }))
+    var filter by remember { mutableStateOf(AnnotationFilter.ALL) }
+    val allAnnotations = remember(state.annotations, state.pageCount) {
+        PdfAnnotationFilter.filter(state.annotations, AnnotationFilter.ALL, state.pageCount)
     }
+    val annotations = remember(allAnnotations, filter, state.pageCount) {
+        PdfAnnotationFilter.filter(allAnnotations, filter, state.pageCount)
+    }
+    val pageGroups = remember(annotations) { annotations.groupBy { it.page } }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.annotations_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 Text(
-                    stringResource(R.string.annotations_count, annotations.size),
+                    if (filter == AnnotationFilter.ALL) {
+                        stringResource(R.string.annotations_count, allAnnotations.size)
+                    } else {
+                        "${annotations.size} / ${allAnnotations.size}개"
+                    },
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
+            Spacer(Modifier.size(2.dp))
+            AnnotationVisibilityStatus(hidden = annotationsHidden)
             Spacer(Modifier.size(10.dp))
-            if (annotations.isEmpty()) {
-                Text(
-                    stringResource(R.string.annotations_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 24.dp),
-                )
-            } else {
-                LazyColumn(
-                    Modifier.fillMaxWidth().heightIn(max = 460.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(bottom = 8.dp),
-                ) {
-                    items(annotations, key = { it.id }) { annotation ->
-                        AnnotationRow(
-                            annotation = annotation,
-                            onOpen = {
-                                vm.goToPage(annotation.page)
-                                onDismiss()
-                            },
-                            onDelete = { vm.deleteAnnotation(annotation.id) },
-                        )
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                AnnotationFilter.entries.forEach { option ->
+                    FilterChip(
+                        selected = filter == option,
+                        onClick = { filter = option },
+                        label = { Text(option.label) },
+                    )
+                }
+            }
+            Spacer(Modifier.size(8.dp))
+            when {
+                allAnnotations.isEmpty() -> {
+                    Text(
+                        stringResource(R.string.annotations_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 24.dp),
+                    )
+                }
+
+                annotations.isEmpty() -> {
+                    Text(
+                        "선택한 유형의 주석이 없습니다.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 24.dp),
+                    )
+                }
+
+                else -> {
+                    LazyColumn(
+                        Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        contentPadding = PaddingValues(bottom = 8.dp),
+                    ) {
+                        pageGroups.forEach { (page, pageAnnotations) ->
+                            item(key = "page_header_$page") {
+                                AnnotationPageHeader(page = page, count = pageAnnotations.size)
+                            }
+                            items(pageAnnotations, key = { it.id }) { annotation ->
+                                AnnotationRow(
+                                    annotation = annotation,
+                                    onOpen = {
+                                        vm.goToPage(annotation.page)
+                                        onDismiss()
+                                    },
+                                    onDelete = { vm.deleteAnnotation(annotation.id) },
+                                )
+                            }
+                        }
                     }
                 }
             }
             Spacer(Modifier.size(16.dp))
         }
+    }
+}
+
+@Composable
+private fun AnnotationVisibilityStatus(hidden: Boolean) {
+    val tint = if (hidden) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            if (hidden) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+            contentDescription = null,
+            modifier = Modifier.size(14.dp),
+            tint = tint,
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            if (hidden) "숨김 · 화면에서만 가림, 데이터 유지" else "표시 중",
+            style = MaterialTheme.typography.labelSmall,
+            color = tint,
+        )
+    }
+}
+
+@Composable
+private fun AnnotationPageHeader(page: Int, count: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ) {
+            Text(
+                stringResource(R.string.page_number, page + 1),
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        Text(
+            "${count}개",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(8.dp))
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+        )
     }
 }
 
