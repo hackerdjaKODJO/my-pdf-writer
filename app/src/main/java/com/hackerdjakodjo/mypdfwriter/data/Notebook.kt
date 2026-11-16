@@ -20,17 +20,107 @@ enum class PaperTemplate(val label: String, val category: String) {
 
 enum class CoverStyle { SOLID, GRID, DOTS, STRIPES }
 
+data class NoteLayer(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String = "레이어 1",
+    val visible: Boolean = true,
+    val locked: Boolean = false,
+    val opacity: Float = 1f,
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("name", name)
+        put("visible", visible)
+        put("locked", locked)
+        put("opacity", opacity.toDouble())
+    }
+
+    companion object {
+        fun fromJson(o: JSONObject): NoteLayer = NoteLayer(
+            id = o.optString("id").ifBlank { UUID.randomUUID().toString() },
+            name = o.optString("name").ifBlank { "레이어" },
+            visible = o.optBoolean("visible", true),
+            locked = o.optBoolean("locked", false),
+            opacity = o.optDouble("opacity", 1.0).toFloat().coerceIn(0.05f, 1f),
+        )
+    }
+}
+
+data class PageBookmark(
+    val id: String = UUID.randomUUID().toString(),
+    val pageIndex: Int = 0,
+    val title: String = "",
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("page", pageIndex)
+        put("title", title)
+    }
+
+    companion object {
+        fun fromJson(o: JSONObject): PageBookmark = PageBookmark(
+            id = o.optString("id").ifBlank { UUID.randomUUID().toString() },
+            pageIndex = o.optInt("page"),
+            title = o.optString("title"),
+        )
+    }
+}
+
+data class PenPreset(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String = "펜",
+    val color: Int = 0xFF1B1C19.toInt(),
+    val width: Float = 0.004f,
+    val opacity: Float = 1f,
+    val penStyle: PenStyle = PenStyle.BALLPOINT,
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("name", name)
+        put("color", color)
+        put("width", width.toDouble())
+        put("opacity", opacity.toDouble())
+        put("style", penStyle.name)
+    }
+
+    companion object {
+        fun fromJson(o: JSONObject): PenPreset = PenPreset(
+            id = o.optString("id").ifBlank { UUID.randomUUID().toString() },
+            name = o.optString("name").ifBlank { "펜" },
+            color = o.optInt("color", 0xFF1B1C19.toInt()),
+            width = o.optDouble("width", 0.004).toFloat(),
+            opacity = o.optDouble("opacity", 1.0).toFloat(),
+            penStyle = runCatching {
+                PenStyle.valueOf(o.optString("style"))
+            }.getOrDefault(PenStyle.BALLPOINT),
+        )
+    }
+}
+
 data class NotePage(
     val id: String = UUID.randomUUID().toString(),
     val template: PaperTemplate = PaperTemplate.LINED,
     val annotations: List<Annotation> = emptyList(),
     val memo: String = "",
+    val layers: List<NoteLayer> = listOf(NoteLayer()),
 ) {
+    fun normalized(): NotePage {
+        val safeLayers = layers.ifEmpty { listOf(NoteLayer()) }
+        val defaultLayer = safeLayers.first().id
+        return copy(
+            layers = safeLayers,
+            annotations = annotations.map {
+                if (it.layerId == null) it.copy(layerId = defaultLayer) else it
+            },
+        )
+    }
+
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
         put("template", template.name)
         put("memo", memo)
         put("annotations", JSONArray().apply { annotations.forEach { put(it.toJson()) } })
+        put("layers", JSONArray().apply { layers.forEach { put(it.toJson()) } })
     }
 
     companion object {
@@ -40,6 +130,11 @@ data class NotePage(
             for (i in 0 until annotationsJson.length()) {
                 annotationsJson.optJSONObject(i)?.let { Annotation.fromJson(it)?.let(annotations::add) }
             }
+            val layersJson = o.optJSONArray("layers") ?: JSONArray()
+            val layers = ArrayList<NoteLayer>(layersJson.length())
+            for (i in 0 until layersJson.length()) {
+                layersJson.optJSONObject(i)?.let { layers.add(NoteLayer.fromJson(it)) }
+            }
             return NotePage(
                 id = o.optString("id").ifBlank { UUID.randomUUID().toString() },
                 template = runCatching {
@@ -47,7 +142,8 @@ data class NotePage(
                 }.getOrDefault(PaperTemplate.LINED),
                 annotations = annotations,
                 memo = o.optString("memo"),
-            )
+                layers = layers.ifEmpty { listOf(NoteLayer()) },
+            ).normalized()
         }
     }
 }
@@ -65,6 +161,7 @@ data class Notebook(
     val folder: String = "",
     val tags: List<String> = emptyList(),
     val pages: List<NotePage> = listOf(NotePage()),
+    val bookmarks: List<PageBookmark> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val favorite: Boolean = false,
@@ -76,7 +173,8 @@ data class Notebook(
         val safePages = pages.ifEmpty { listOf(NotePage()) }
         return copy(
             title = title.ifBlank { "새 노트" },
-            pages = safePages,
+            pages = safePages.map { it.normalized() },
+            bookmarks = bookmarks.filter { it.pageIndex in safePages.indices },
             tags = tags.map { it.trim() }.filter { it.isNotBlank() }.distinct(),
         )
     }
@@ -90,6 +188,7 @@ data class Notebook(
         put("folder", folder)
         put("tags", JSONArray().apply { tags.forEach { put(it) } })
         put("pages", JSONArray().apply { pages.forEach { put(it.toJson()) } })
+        put("bookmarks", JSONArray().apply { bookmarks.forEach { put(it.toJson()) } })
         put("createdAt", createdAt)
         put("updatedAt", updatedAt)
         put("favorite", favorite)
@@ -108,6 +207,11 @@ data class Notebook(
             for (i in 0 until tagsJson.length()) {
                 tagsJson.optString(i).takeIf { it.isNotBlank() }?.let(tags::add)
             }
+            val bookmarksJson = o.optJSONArray("bookmarks") ?: JSONArray()
+            val bookmarks = ArrayList<PageBookmark>(bookmarksJson.length())
+            for (i in 0 until bookmarksJson.length()) {
+                bookmarksJson.optJSONObject(i)?.let { bookmarks.add(PageBookmark.fromJson(it)) }
+            }
             return Notebook(
                 id = o.optString("id").ifBlank { UUID.randomUUID().toString() },
                 title = o.optString("title").ifBlank { "새 노트" },
@@ -118,6 +222,7 @@ data class Notebook(
                 folder = o.optString("folder"),
                 tags = tags,
                 pages = pages.ifEmpty { listOf(NotePage()) },
+                bookmarks = bookmarks,
                 createdAt = o.optLong("createdAt", System.currentTimeMillis()),
                 updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
                 favorite = o.optBoolean("favorite"),

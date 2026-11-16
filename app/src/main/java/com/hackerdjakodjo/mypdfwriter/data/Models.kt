@@ -22,6 +22,13 @@ enum class AnnotationType {
     REDACT,
 }
 
+enum class PenStyle {
+    BALLPOINT,
+    FOUNTAIN,
+    BRUSH,
+    PENCIL,
+}
+
 enum class Tool {
     VIEW,
     PEN,
@@ -37,6 +44,8 @@ enum class Tool {
     SIGNATURE,
     REDACT,
     ERASER,
+    LASSO,
+    LASSO_RECT,
 }
 
 data class Annotation(
@@ -51,6 +60,8 @@ data class Annotation(
     val textRotation: Int = 0,
     val opacity: Float = 1f,
     val stamp: String = "",
+    val penStyle: PenStyle = PenStyle.BALLPOINT,
+    val layerId: String? = null,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -64,6 +75,8 @@ data class Annotation(
         if (text.isNotEmpty()) put("tx", text)
         put("fs", fontSize.toDouble())
         put("tr", textRotation)
+        put("ps", penStyle.name)
+        layerId?.let { put("layer", it) }
         put("op", opacity.toDouble())
         if (stamp.isNotEmpty()) put("st", stamp)
     }
@@ -95,6 +108,10 @@ data class Annotation(
                 textRotation = PageSpec.normalizeRotation(o.optInt("tr")),
                 opacity = o.optDouble("op", 1.0).toFloat().coerceIn(0f, 1f),
                 stamp = o.optString("st"),
+                penStyle = runCatching {
+                    PenStyle.valueOf(o.optString("ps"))
+                }.getOrDefault(PenStyle.BALLPOINT),
+                layerId = o.optString("layer").takeIf { it.isNotBlank() },
             )
         }
     }
