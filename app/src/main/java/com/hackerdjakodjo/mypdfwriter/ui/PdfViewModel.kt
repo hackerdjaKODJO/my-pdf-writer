@@ -35,7 +35,11 @@ import com.hackerdjakodjo.mypdfwriter.pdf.PdfMetadata
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfOutlineEntry
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfRepository
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfShare
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLine
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTools
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -78,6 +82,7 @@ data class ViewerUiState(
     val documentStyle: DocumentStyle = DocumentStyle(),
     val nightMode: Boolean = false,
     val revision: Int = 0,
+    val textLoading: Boolean = false,
 )
 
 class PdfViewModel(application: Application) : AndroidViewModel(application) {
@@ -117,6 +122,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private val _bookmarks = MutableStateFlow<List<PdfBookmark>>(emptyList())
     val bookmarks: StateFlow<List<PdfBookmark>> = _bookmarks.asStateFlow()
 
+    private val _textWords = MutableStateFlow<List<PdfTextWord>>(emptyList())
+    /** Selectable words for the currently displayed page. */
+    val textWords: StateFlow<List<PdfTextWord>> = _textWords.asStateFlow()
+
     private var sourceFile: File? = null
     private var workingFile: File? = null
     private var sourceSizes: List<PageSize> = emptyList()
@@ -124,6 +133,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private var renderJob: Job? = null
     private var searchJob: Job? = null
     private var readingSaveJob: Job? = null
+    private var textLayoutJob: Job? = null
+    private var textLayoutLines: List<PdfTextLine> = emptyList()
+    private var textLayoutKey: String? = null
+    private var textLayoutLoadingKey: String? = null
     private var currentPageTextsKey: String? = null
 
     private data class DocSnapshot(
@@ -164,6 +177,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 sourceFile = source
                 workingFile = working
                 sourceSizes = sizes
+                resetTextLayout()
                 _excerpts.value = excerptStore.load(docId)
                 _bookmarks.value = reading.bookmarks
                 pageTexts = null
@@ -233,6 +247,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         _metadata.value = null
         _excerpts.value = emptyList()
         _bookmarks.value = emptyList()
+        resetTextLayout()
         pageTexts = null
         sourceSizes = emptyList()
         sourceFile = null
@@ -944,6 +959,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     pageTexts = null
                     currentPageTextsKey = null
+                    resetTextLayout()
                     _pageBitmap.value = null
                     persistNow()
                     renderPage(safeIndex)
@@ -1028,6 +1044,212 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val texts = pageTexts ?: runCatching { repo.extractPagesText(file) }.getOrNull() ?: return ""
         pageTexts = texts
         return texts.getOrNull(state.pageIndex).orEmpty().trim()
+    }
+
+    // ---------------------------------------------------------------- text selection
+
+    /**
+     * Loads word geometry for the working PDF on first use, then serves any page from
+     * the per-document cache. PDFBox extraction stays off the main thread.
+     */
+    fun loadTextWords(pageIndex: Int = _viewer.value?.pageIndex ?: 0) {
+        val state = _viewer.value ?: return
+        val file = workingFile ?: return
+        val key = textLayoutKeyFor(state, file)
+
+        if (key == textLayoutKey) {
+            publishTextWords(pageIndex)
+            return
+        }
+        if (key == textLayoutLoadingKey && textLayoutJob?.isActive == true) {
+            _textWords.value = emptyList()
+            return
+        }
+
+        textLayoutJob?.cancel()
+        textLayoutLoadingKey = key
+        _textWords.value = emptyList()
+        textLayoutJob = viewModelScope.launch {
+            _viewer.update { it?.copy(textLoading = true) }
+            val lines = try {
+                withContext(Dispatchers.IO) { PdfTextLayout.lines(file) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                null
+            }
+            if (_viewer.value?.docId != state.docId) return@launch
+
+            textLayoutLoadingKey = null
+            if (lines == null) {
+                textLayoutKey = null
+                textLayoutLines = emptyList()
+                _textWords.value = emptyList()
+                _viewer.update {
+                    it?.copy(textLoading = false, message = "텍스트 레이아웃을 읽지 못했습니다.")
+                }
+            } else {
+                textLayoutKey = key
+                textLayoutLines = lines
+                publishTextWords(_viewer.value?.pageIndex ?: pageIndex)
+                _viewer.update {
+                    it?.copy(
+                        textLoading = false,
+                        message = if (lines.isEmpty()) {
+                            "이 PDF에는 선택할 수 있는 텍스트가 없습니다."
+                        } else {
+                            it.message
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    private fun publishTextWords(pageIndex: Int) {
+        _textWords.value = textLayoutLines
+            .filter { it.pageIndex == pageIndex }
+            .flatMap { it.words }
+    }
+
+    private fun textLayoutKeyFor(state: ViewerUiState, file: File): String =
+        "${state.docId}:${file.absolutePath}:${file.lastModified()}:${state.pages.size}:${state.revision}"
+
+    private fun resetTextLayout() {
+        textLayoutJob?.cancel()
+        textLayoutJob = null
+        textLayoutLines = emptyList()
+        textLayoutKey = null
+        textLayoutLoadingKey = null
+        _textWords.value = emptyList()
+        _viewer.update { it?.copy(textLoading = false) }
+    }
+
+    /** Adds one markup annotation per selected visual line. */
+    fun addTextMarkup(words: List<PdfTextWord>, type: AnnotationType, color: Int) {
+        val state = _viewer.value ?: return
+        if (words.isEmpty()) return
+        if (type != AnnotationType.HIGHLIGHT &&
+            type != AnnotationType.UNDERLINE &&
+            type != AnnotationType.STRIKEOUT
+        ) {
+            return
+        }
+
+        val pageWidth = state.displayWidthPt.takeIf { it > 1f } ?: 595f
+        val pageHeight = state.displayHeightPt.takeIf { it > 1f } ?: 842f
+        val heightToWidth = pageHeight / pageWidth
+        val groups = PdfTextLayout.groupByLine(
+            words.filter { it.text.isNotBlank() && it.pageIndex in 0 until state.pageCount },
+            textLayoutLines,
+        )
+
+        val added = groups.mapNotNull { group ->
+            val first = group.firstOrNull() ?: return@mapNotNull null
+            val rect = group.drop(1).fold(first.rect) { acc, word -> acc.union(word.rect) }
+            if (rect.width <= 0f || rect.height <= 0f) return@mapNotNull null
+
+            val vertical = first.rotation % 180 != 0 ||
+                (group.size > 1 && rect.height > rect.width * 1.5f)
+            val normalizedThickness = if (vertical) {
+                rect.width
+            } else {
+                rect.height * heightToWidth
+            }
+            val centerX = (rect.left + rect.right) / 2f
+            val centerY = (rect.top + rect.bottom) / 2f
+            val points = when (type) {
+                AnnotationType.HIGHLIGHT -> if (vertical) {
+                    listOf(
+                        NormalizedPoint(centerX, rect.top.coerceIn(0f, 1f)),
+                        NormalizedPoint(centerX, rect.bottom.coerceIn(0f, 1f)),
+                    )
+                } else {
+                    listOf(
+                        NormalizedPoint(rect.left.coerceIn(0f, 1f), centerY),
+                        NormalizedPoint(rect.right.coerceIn(0f, 1f), centerY),
+                    )
+                }
+
+                AnnotationType.UNDERLINE -> if (vertical) {
+                    // With /Rotate 90 the glyph "up" direction is to the right, so the
+                    // underline sits on the left edge; /Rotate 270 is the mirror case.
+                    val x = if (first.rotation % 360 == 90) {
+                        (rect.left + rect.width * 0.1f).coerceIn(0f, 1f)
+                    } else {
+                        (rect.right - rect.width * 0.1f).coerceIn(0f, 1f)
+                    }
+                    listOf(
+                        NormalizedPoint(x, rect.top.coerceIn(0f, 1f)),
+                        NormalizedPoint(x, rect.bottom.coerceIn(0f, 1f)),
+                    )
+                } else {
+                    val y = if (first.rotation % 360 == 180) {
+                        (rect.top + rect.height * 0.1f).coerceIn(0f, 1f)
+                    } else {
+                        (rect.bottom - rect.height * 0.1f).coerceIn(0f, 1f)
+                    }
+                    listOf(
+                        NormalizedPoint(rect.left.coerceIn(0f, 1f), y),
+                        NormalizedPoint(rect.right.coerceIn(0f, 1f), y),
+                    )
+                }
+
+                else -> if (vertical) {
+                    listOf(
+                        NormalizedPoint(centerX, rect.top.coerceIn(0f, 1f)),
+                        NormalizedPoint(centerX, rect.bottom.coerceIn(0f, 1f)),
+                    )
+                } else {
+                    listOf(
+                        NormalizedPoint(rect.left.coerceIn(0f, 1f), centerY),
+                        NormalizedPoint(rect.right.coerceIn(0f, 1f), centerY),
+                    )
+                }
+            }
+            Annotation(
+                type = type,
+                page = first.pageIndex,
+                color = color,
+                width = when (type) {
+                    AnnotationType.HIGHLIGHT -> normalizedThickness.coerceIn(0.012f, 0.06f)
+                    else -> maxOf(0.0025f, normalizedThickness * 0.12f).coerceAtMost(0.008f)
+                },
+                points = points,
+                fontSize = if (vertical) {
+                    rect.width.coerceIn(0.008f, 0.08f)
+                } else {
+                    rect.height.coerceIn(0.008f, 0.08f)
+                },
+                opacity = 1f,
+            )
+        }
+        if (added.isEmpty()) return
+
+        mutateAnnotations { it + added }
+        _viewer.update {
+            it?.copy(
+                message = when (type) {
+                    AnnotationType.HIGHLIGHT -> "선택한 텍스트에 형광펜을 표시했습니다."
+                    AnnotationType.UNDERLINE -> "선택한 텍스트에 밑줄을 표시했습니다."
+                    else -> "선택한 텍스트에 취소선을 표시했습니다."
+                },
+            )
+        }
+    }
+
+    fun addExcerptFromSelection(pageIndex: Int, text: String) {
+        val state = _viewer.value ?: return
+        val value = text.trim()
+        if (value.isEmpty() || pageIndex !in 0 until state.pageCount) {
+            _viewer.update { it?.copy(message = "발췌할 텍스트가 없습니다.") }
+            return
+        }
+        val excerpt = Excerpt(pageIndex = pageIndex, text = value)
+        val updated = (listOf(excerpt) + _excerpts.value).sortedByDescending { it.createdAt }
+        _excerpts.value = updated
+        viewModelScope.launch(Dispatchers.IO) { excerptStore.save(state.docId, updated) }
+        _viewer.update { it?.copy(message = "선택한 텍스트를 발췌로 저장했습니다.") }
     }
 
     // ---------------------------------------------------------------- reading
