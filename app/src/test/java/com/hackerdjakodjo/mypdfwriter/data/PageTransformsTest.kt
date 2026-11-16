@@ -92,6 +92,25 @@ class PageTransformsTest {
     }
 
     @Test
+    fun rotate90_preservesPerPointPressure() {
+        val original = Annotation(
+            type = AnnotationType.PEN,
+            page = 0,
+            color = 0,
+            width = 0.004f,
+            points = listOf(
+                NormalizedPoint(0.2f, 0.3f, 0.25f),
+                NormalizedPoint(0.6f, 0.7f, 0.85f),
+            ),
+            penStyle = PenStyle.FOUNTAIN,
+        )
+
+        val result = PageTransforms.rotate(original, delta = 90, aspect = 0.5f)
+
+        assertEquals(listOf(0.25f, 0.85f), result.points.map { it.pressure })
+    }
+
+    @Test
     fun rotateNegativeDelta_normalizesToClockwiseRotation() {
         val result = PageTransforms.rotate(annotation(), delta = -90, aspect = 0.5f)
 

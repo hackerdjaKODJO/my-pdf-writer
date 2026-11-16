@@ -2,8 +2,10 @@ package com.hackerdjakodjo.mypdfwriter.data
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AnnotationJsonTest {
@@ -27,6 +29,71 @@ class AnnotationJsonTest {
         assertEquals(270, annotation.textRotation)
         assertEquals(0L, annotation.createdAt)
         assertEquals(0L, annotation.durationMs)
+        assertTrue(annotation.points.all { it.pressure == 1f })
+    }
+
+    @Test
+    fun pressure_roundTripsThroughOptionalParallelArray() {
+        val original = Annotation(
+            type = AnnotationType.PEN,
+            page = 1,
+            color = 0xFF000000.toInt(),
+            width = 0.004f,
+            points = listOf(
+                NormalizedPoint(0.1f, 0.2f, 0.35f),
+                NormalizedPoint(0.2f, 0.3f, 1f),
+                NormalizedPoint(0.3f, 0.4f, 0.72f),
+            ),
+            penStyle = PenStyle.FOUNTAIN,
+        )
+
+        val json = original.toJson()
+        val pressures = json.getJSONArray("prs")
+        val restored = Annotation.fromJson(json)
+
+        assertEquals(3, pressures.length())
+        assertEquals(0.35, pressures.getDouble(0), 1e-6)
+        assertEquals(1.0, pressures.getDouble(1), 1e-6)
+        assertEquals(0.72, pressures.getDouble(2), 1e-6)
+        assertNotNull(restored)
+        assertEquals(original, restored)
+        assertEquals(
+            listOf(0.35f, 1f, 0.72f),
+            restored!!.points.map { it.pressure },
+        )
+    }
+
+    @Test
+    fun pressureArray_isOmittedWhenEveryPointIsNeutral() {
+        val annotation = Annotation(
+            type = AnnotationType.PEN,
+            page = 0,
+            color = 0,
+            width = 0.004f,
+            points = listOf(NormalizedPoint(0.1f, 0.2f), NormalizedPoint(0.3f, 0.4f)),
+        )
+
+        val json = annotation.toJson()
+
+        assertFalse(json.has("prs"))
+        assertEquals(4, json.getJSONArray("pts").length())
+        assertEquals(annotation, Annotation.fromJson(json))
+    }
+
+    @Test
+    fun pressureJson_isClampedOnRead() {
+        val json = JSONObject(
+            """{"id":"p","t":"PEN","p":0,"c":0,"w":0.004,
+               "pts":[0.1,0.2,0.3,0.4,0.5,0.6],"prs":[-2.0,2.0]}""",
+        )
+
+        val annotation = Annotation.fromJson(json)
+
+        assertNotNull(annotation)
+        assertEquals(
+            listOf(0f, 1f, 1f),
+            annotation!!.points.map { it.pressure },
+        )
     }
 
     @Test

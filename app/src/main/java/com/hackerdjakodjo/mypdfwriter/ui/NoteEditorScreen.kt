@@ -175,6 +175,7 @@ fun NoteEditorScreen(
     var strokeStabilization by remember { mutableStateOf(true) }
     var shapeRecognition by remember { mutableStateOf(false) }
     var partialEraser by remember { mutableStateOf(true) }
+    var pressureInk by remember { mutableStateOf(true) }
 
     val context = LocalContext.current
     val penBoxStore = remember(context) { PenBoxStore(context) }
@@ -423,6 +424,20 @@ fun NoteEditorScreen(
             committedPoints = stabilized
         }
 
+        if (type == AnnotationType.PEN || type == AnnotationType.HIGHLIGHT) {
+            val pressured = committedPoints.count { it.pressure < 1f }
+            NoteTrace.event(
+                NOTE_TRACE_TAG,
+                "pressure",
+                "enabled" to pressureInk,
+                "style" to penStyle.name,
+                "points" to committedPoints.size,
+                "pressured" to pressured,
+                "min" to (committedPoints.minOfOrNull { it.pressure } ?: 1f),
+                "max" to (committedPoints.maxOfOrNull { it.pressure } ?: 1f),
+            )
+        }
+
         val annotation = Annotation(
             type = type,
             page = 0,
@@ -483,9 +498,9 @@ fun NoteEditorScreen(
                         id = UUID.randomUUID().toString(),
                         page = 0,
                         points = original.points.map { point ->
-                            NormalizedPoint(
-                                (point.x + 0.012f).coerceIn(0f, 1f),
-                                (point.y + 0.012f).coerceIn(0f, 1f),
+                            point.copy(
+                                x = (point.x + 0.012f).coerceIn(0f, 1f),
+                                y = (point.y + 0.012f).coerceIn(0f, 1f),
                             )
                         },
                     )
@@ -794,6 +809,7 @@ fun NoteEditorScreen(
                         penStyle = penStyle,
                         penOnly = !fingerWriting,
                         zoomLock = zoomLock,
+                        pressureEnabled = pressureInk,
                         selectionBounds = selectionBounds,
                         annotationProgress = annotationProgress,
                         hint = hint,
@@ -829,6 +845,7 @@ fun NoteEditorScreen(
                     penStyle = penStyle,
                     penOnly = !fingerWriting,
                     zoomLock = zoomLock,
+                    pressureEnabled = pressureInk,
                     selectionBounds = selectionBounds,
                     annotationProgress = annotationProgress,
                     hint = hint,
@@ -1068,11 +1085,13 @@ fun NoteEditorScreen(
             strokeStabilization = strokeStabilization,
             shapeRecognition = shapeRecognition,
             partialEraser = partialEraser,
+            pressureInk = pressureInk,
             onFingerWriting = { fingerWriting = it },
             onZoomLock = { zoomLock = it },
             onStrokeStabilization = { strokeStabilization = it },
             onShapeRecognition = { shapeRecognition = it },
             onPartialEraser = { partialEraser = it },
+            onPressureInk = { pressureInk = it },
             onTemplate = {
                 showOverflow = false
                 showTemplates = true
@@ -1156,6 +1175,7 @@ private fun NoteCanvasPane(
     penStyle: PenStyle,
     penOnly: Boolean,
     zoomLock: Boolean,
+    pressureEnabled: Boolean,
     selectionBounds: NoteSelectionBounds?,
     annotationProgress: (Annotation) -> Float,
     hint: String,
@@ -1178,6 +1198,7 @@ private fun NoteCanvasPane(
             penStyle = penStyle,
             penOnly = penOnly,
             zoomLock = zoomLock,
+            pressureEnabled = pressureEnabled,
             selectionBounds = selectionBounds,
             annotationProgress = annotationProgress,
             onAddStroke = onAddStroke,
@@ -1709,11 +1730,13 @@ private fun NoteOverflowSheet(
     strokeStabilization: Boolean,
     shapeRecognition: Boolean,
     partialEraser: Boolean,
+    pressureInk: Boolean,
     onFingerWriting: (Boolean) -> Unit,
     onZoomLock: (Boolean) -> Unit,
     onStrokeStabilization: (Boolean) -> Unit,
     onShapeRecognition: (Boolean) -> Unit,
     onPartialEraser: (Boolean) -> Unit,
+    onPressureInk: (Boolean) -> Unit,
     onTemplate: () -> Unit,
     onLayers: () -> Unit,
     onOutline: () -> Unit,
@@ -1885,6 +1908,19 @@ private fun NoteOverflowSheet(
                     supporting = "획의 미세한 떨림을 부드럽게 정리 (강도 25%)",
                     checked = strokeStabilization,
                     onCheckedChange = onStrokeStabilization,
+                )
+            }
+            item {
+                NoteMenuToggleRow(
+                    icon = Icons.Filled.Gesture,
+                    title = "필압 잉크",
+                    supporting = if (pressureInk) {
+                        "스타일러스 필압으로 붓·만년필 굵기 변화"
+                    } else {
+                        "모든 점을 압력 1로 기록"
+                    },
+                    checked = pressureInk,
+                    onCheckedChange = onPressureInk,
                 )
             }
             item {

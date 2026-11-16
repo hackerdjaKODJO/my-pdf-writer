@@ -1,7 +1,6 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
-import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import java.util.UUID
 
 /** Offset applied to a pasted selection, in normalized page units. */
@@ -43,9 +42,9 @@ data class NoteClipboard(
                 id = idFactory(),
                 page = 0,
                 points = original.points.map { point ->
-                    NormalizedPoint(
-                        (point.x + dx).coerceIn(0f, 1f),
-                        (point.y + dy).coerceIn(0f, 1f),
+                    point.copy(
+                        x = (point.x + dx).coerceIn(0f, 1f),
+                        y = (point.y + dy).coerceIn(0f, 1f),
                     )
                 },
                 layerId = targetLayerId,

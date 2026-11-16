@@ -66,6 +66,42 @@ class NoteInkTest {
         assertTrue(after > 0f)
     }
 
+    @Test
+    fun `stabilize interpolates pressure and keeps endpoints exact`() {
+        val points = listOf(
+            NormalizedPoint(0.10f, 0.50f, 0.25f),
+            NormalizedPoint(0.15f, 0.53f, 0.40f),
+            NormalizedPoint(0.20f, 0.47f, 0.55f),
+            NormalizedPoint(0.25f, 0.52f, 0.70f),
+            NormalizedPoint(0.30f, 0.50f, 0.85f),
+        )
+
+        val stabilized = NoteInk.stabilize(points, 0.25f)
+
+        assertEquals(points.size, stabilized.size)
+        assertEquals(points.first().pressure, stabilized.first().pressure, 0f)
+        assertEquals(points.last().pressure, stabilized.last().pressure, 0f)
+        stabilized.forEach { point ->
+            assertTrue(point.pressure in 0f..1f)
+            assertTrue(point.pressure < 1f)
+        }
+        // Interior pressures are blended, not reset to the neutral value.
+        assertNotEquals(1f, stabilized[2].pressure)
+    }
+
+    @Test
+    fun `stabilize keeps a constant stylus pressure constant`() {
+        val points = listOf(
+            NormalizedPoint(0.10f, 0.50f, 0.6f),
+            NormalizedPoint(0.20f, 0.60f, 0.6f),
+            NormalizedPoint(0.30f, 0.50f, 0.6f),
+        )
+
+        val stabilized = NoteInk.stabilize(points, 1f)
+
+        stabilized.forEach { assertEquals(0.6f, it.pressure, 1e-6f) }
+    }
+
     // ---------------------------------------------------------- shape recognition
 
     @Test
@@ -181,6 +217,30 @@ class NoteInkTest {
             assertEquals(original.layerId, segment.layerId)
             assertEquals(original.createdAt, segment.createdAt)
             assertEquals(original.durationMs, segment.durationMs)
+        }
+    }
+
+    @Test
+    fun `partial erase preserves interpolated pressure on surviving runs`() {
+        val points = (0..10).map { index ->
+            NormalizedPoint(0.10f + index * 0.08f, 0.50f, 0.4f)
+        }
+        val original = annotation(
+            id = "pressure-original",
+            type = AnnotationType.PEN,
+            points = points,
+            penStyle = PenStyle.BRUSH,
+        )
+
+        val result = NoteInk.erasePartial(
+            annotations = listOf(original),
+            trail = listOf(point(0.50f, 0.50f)),
+            radius = 0.05f,
+        )
+
+        assertEquals(2, result.segments)
+        result.annotations.forEach { segment ->
+            segment.points.forEach { assertEquals(0.4f, it.pressure, 1e-6f) }
         }
     }
 

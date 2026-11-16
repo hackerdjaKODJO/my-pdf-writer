@@ -93,9 +93,9 @@ data class NoteSelectionTransform(
                     sinA = sinA,
                     aspect = aspect,
                 )
-                NormalizedPoint(
-                    clampUnit(centerX + rotated.x),
-                    clampUnit(centerY + rotated.y),
+                point.copy(
+                    x = clampUnit(centerX + rotated.x),
+                    y = clampUnit(centerY + rotated.y),
                 )
             }
             annotation.copy(
@@ -136,9 +136,9 @@ data class NoteSelectionTransform(
         return provisional.map { annotation ->
             annotation.copy(
                 points = annotation.points.map { point ->
-                    NormalizedPoint(
-                        clampUnit(point.x + dx),
-                        clampUnit(point.y + dy),
+                    point.copy(
+                        x = clampUnit(point.x + dx),
+                        y = clampUnit(point.y + dy),
                     )
                 },
             )

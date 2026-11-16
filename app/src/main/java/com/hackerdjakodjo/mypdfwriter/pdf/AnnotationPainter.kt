@@ -10,6 +10,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import com.hackerdjakodjo.mypdfwriter.data.inkPressureWidthFactor
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -150,9 +151,9 @@ object AnnotationPainter {
         val t = fraction.coerceIn(0f, 1f)
         return listOf(
             start,
-            NormalizedPoint(
-                start.x + (end.x - start.x) * t,
-                start.y + (end.y - start.y) * t,
+            end.copy(
+                x = start.x + (end.x - start.x) * t,
+                y = start.y + (end.y - start.y) * t,
             ),
         )
     }
@@ -195,6 +196,26 @@ object AnnotationPainter {
             PenStyle.FOUNTAIN -> drawFountain(canvas, annotation, width, height)
             PenStyle.BRUSH -> drawBrush(canvas, annotation, width, height)
             PenStyle.PENCIL -> drawPencil(canvas, annotation, width, height)
+        }
+    }
+
+    /**
+     * Per-point width multipliers from stylus pressure, smoothed with the same
+     * 1:2:1 neighbourhood used by the fountain nib. Pressure 1 everywhere is an
+     * exact identity, so legacy and finger strokes keep their old appearance.
+     */
+    private fun pressureWidths(points: List<NormalizedPoint>): FloatArray {
+        val count = points.size
+        if (count == 0) return FloatArray(0)
+        val factors = FloatArray(count) { index ->
+            inkPressureWidthFactor(points[index].pressure)
+        }
+        if (count < 3) return factors
+        return FloatArray(count) { index ->
+            val previous = factors[(index - 1).coerceAtLeast(0)]
+            val current = factors[index]
+            val next = factors[(index + 1).coerceAtMost(count - 1)]
+            (previous + current * 2f + next) * 0.25f
         }
     }
 
@@ -246,8 +267,16 @@ object AnnotationPainter {
     private fun drawFountain(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
         val points = annotation.points
         val base = (annotation.width * width).coerceAtLeast(1.1f)
+        val pressure = pressureWidths(points)
         if (points.size == 1) {
-            drawPenDot(canvas, annotation, points.first(), width, height, base * 0.52f)
+            drawPenDot(
+                canvas,
+                annotation,
+                points.first(),
+                width,
+                height,
+                base * 0.52f * pressure.first(),
+            )
             return
         }
         val nibAngle = (PI / 4.0).toFloat()
@@ -270,7 +299,7 @@ object AnnotationPainter {
             (a + b + b + c) / 4f
         }
         val path = ribbonPath(points, width, height) { index ->
-            base * smoothed[index] * 0.5f
+            base * smoothed[index] * pressure[index] * 0.5f
         }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = annotation.color
@@ -278,8 +307,18 @@ object AnnotationPainter {
             style = Paint.Style.FILL
         }
         canvas.drawPath(path, paint)
-        canvas.drawCircle(points.first().x * width, points.first().y * height, base * smoothed.first() * 0.5f, paint)
-        canvas.drawCircle(points.last().x * width, points.last().y * height, base * smoothed.last() * 0.5f, paint)
+        canvas.drawCircle(
+            points.first().x * width,
+            points.first().y * height,
+            base * smoothed.first() * pressure.first() * 0.5f,
+            paint,
+        )
+        canvas.drawCircle(
+            points.last().x * width,
+            points.last().y * height,
+            base * smoothed.last() * pressure.last() * 0.5f,
+            paint,
+        )
     }
 
     /**
@@ -289,8 +328,16 @@ object AnnotationPainter {
     private fun drawBrush(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
         val points = annotation.points
         val base = (annotation.width * width).coerceAtLeast(1.1f)
+        val pressure = pressureWidths(points)
         if (points.size == 1) {
-            drawPenDot(canvas, annotation, points.first(), width, height, base * 0.58f)
+            drawPenDot(
+                canvas,
+                annotation,
+                points.first(),
+                width,
+                height,
+                base * 0.58f * pressure.first(),
+            )
             return
         }
         val lastIndex = points.lastIndex
@@ -304,7 +351,7 @@ object AnnotationPainter {
             style = Paint.Style.FILL
         }
         val halo = ribbonPath(points, width, height) { index ->
-            base * envelope[index] * 0.80f
+            base * envelope[index] * pressure[index] * 0.80f
         }
         canvas.drawPath(halo, haloPaint)
 
@@ -314,11 +361,21 @@ object AnnotationPainter {
             style = Paint.Style.FILL
         }
         val core = ribbonPath(points, width, height) { index ->
-            base * envelope[index] * 0.5f
+            base * envelope[index] * pressure[index] * 0.5f
         }
         canvas.drawPath(core, corePaint)
-        canvas.drawCircle(points.first().x * width, points.first().y * height, base * envelope.first() * 0.5f, corePaint)
-        canvas.drawCircle(points.last().x * width, points.last().y * height, base * envelope.last() * 0.5f, corePaint)
+        canvas.drawCircle(
+            points.first().x * width,
+            points.first().y * height,
+            base * envelope.first() * pressure.first() * 0.5f,
+            corePaint,
+        )
+        canvas.drawCircle(
+            points.last().x * width,
+            points.last().y * height,
+            base * envelope.last() * pressure.last() * 0.5f,
+            corePaint,
+        )
     }
 
     /**
@@ -351,9 +408,9 @@ object AnnotationPainter {
             } else {
                 points.mapIndexed { index, point ->
                     val wobble = sin(index * 1.7 + pass * 4.3).toFloat()
-                    NormalizedPoint(
-                        (point.x + wobble * grain).coerceIn(0f, 1f),
-                        (point.y + wobble * grain * 0.65f).coerceIn(0f, 1f),
+                    point.copy(
+                        x = (point.x + wobble * grain).coerceIn(0f, 1f),
+                        y = (point.y + wobble * grain * 0.65f).coerceIn(0f, 1f),
                     )
                 }
             }
