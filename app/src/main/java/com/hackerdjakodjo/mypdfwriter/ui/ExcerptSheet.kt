@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.AlertDialog
@@ -61,6 +62,8 @@ fun ExcerptSheet(
     onDismiss: () -> Unit,
     /** Optional integration hook; the viewer supplies it to open [StudyNoteSheet]. */
     onStudyNote: (() -> Unit)? = null,
+    /** Optional drag-and-drop hook; rows become draggable when it is supplied. */
+    onDropExcerpt: ((Excerpt) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showTitleDialog by remember { mutableStateOf(false) }
@@ -108,6 +111,19 @@ fun ExcerptSheet(
                     Text("PDF → 스터디 노트")
                 }
             }
+            val dropHandler = onDropExcerpt
+            if (dropHandler != null) {
+                Spacer(Modifier.size(8.dp))
+                StudyNoteDropTarget(
+                    onDrop = { text, pageIndex ->
+                        val dropped = excerpts.firstOrNull {
+                            it.pageIndex == pageIndex && it.text.trim() == text
+                        } ?: Excerpt(pageIndex = pageIndex, text = text)
+                        dropHandler(dropped)
+                    },
+                    caption = "발췌 카드를 길게 눌러 여기로 끌어다 놓으세요",
+                )
+            }
             Spacer(Modifier.size(12.dp))
             HorizontalDivider()
             Spacer(Modifier.size(10.dp))
@@ -128,6 +144,7 @@ fun ExcerptSheet(
                     items(excerpts, key = { it.id }) { excerpt ->
                         ExcerptRow(
                             excerpt = excerpt,
+                            draggable = onDropExcerpt != null,
                             onJump = { onJump(excerpt.pageIndex) },
                             onTranslate = { onTranslate(excerpt.text, translateTarget) },
                             onShare = { onShare(excerpt.text) },
@@ -171,6 +188,7 @@ fun ExcerptSheet(
 @Composable
 private fun ExcerptRow(
     excerpt: Excerpt,
+    draggable: Boolean,
     onJump: () -> Unit,
     onTranslate: () -> Unit,
     onShare: () -> Unit,
@@ -187,7 +205,15 @@ private fun ExcerptRow(
         onClick = onJump,
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (draggable) {
+                    Modifier.studyNoteDragSource(excerpt.text, excerpt.pageIndex)
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         Column(Modifier.padding(start = 12.dp, top = 10.dp, end = 4.dp, bottom = 4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -207,6 +233,15 @@ private fun ExcerptRow(
                     )
                 } else {
                     Spacer(Modifier.weight(1f))
+                }
+                if (draggable) {
+                    Icon(
+                        Icons.Outlined.DragIndicator,
+                        contentDescription = "스터디 노트로 끌기",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(4.dp))
                 }
                 Text(
                     date,

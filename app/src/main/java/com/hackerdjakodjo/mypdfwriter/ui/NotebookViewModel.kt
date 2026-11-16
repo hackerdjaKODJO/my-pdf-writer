@@ -5,6 +5,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NotebookDraft
@@ -75,6 +76,35 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         refresh()
         open(imported.id)
         return imported
+    }
+
+    /**
+     * Captures one drag-and-drop selection into the study notebook linked to
+     * [source]. An existing notebook is matched by its source URI first and by its
+     * source document name or study-note title second. The notebook is saved and
+     * refreshed but deliberately not opened, so the PDF reader stays in place.
+     */
+    fun appendStudyExcerpt(source: StudySource, text: String, pageIndex: Int): Notebook {
+        val trimmed = text.trim()
+        val excerpt = Excerpt(
+            pageIndex = pageIndex.coerceAtLeast(0),
+            text = trimmed,
+        )
+        val existing = findStudyNotebook(source)
+        val updated = if (existing != null) {
+            StudyNoteBuilder.appendExcerpt(existing, source, excerpt)
+        } else {
+            StudyNoteBuilder.fromExcerpts(
+                title = StudyNoteBuilder.suggestedTitle(source),
+                source = source,
+                excerpts = listOf(excerpt),
+            )
+        }
+        if (trimmed.isBlank()) return updated
+        store.save(updated)
+        if (_current.value?.id == updated.id) _current.value = updated
+        refresh()
+        return updated
     }
 
     fun updateCurrent(notebook: Notebook) {
@@ -188,6 +218,22 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         _current.value?.let {
             store.save(it)
             refresh()
+        }
+    }
+
+    private fun findStudyNotebook(source: StudySource): Notebook? {
+        val candidates = _notebooks.value.filterNot { it.trashed }
+        val uri = source.docUri?.trim().orEmpty()
+        if (uri.isNotBlank()) {
+            candidates.firstOrNull { it.sourceDocumentUri.equals(uri, ignoreCase = true) }
+                ?.let { return it }
+        }
+        val docName = source.docName.trim()
+        if (docName.isBlank()) return null
+        val suggestedTitle = StudyNoteBuilder.suggestedTitle(source)
+        return candidates.firstOrNull { notebook ->
+            notebook.sourceDocumentName.equals(docName, ignoreCase = true) ||
+                notebook.title.equals(suggestedTitle, ignoreCase = true)
         }
     }
 

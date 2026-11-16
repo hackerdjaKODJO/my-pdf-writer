@@ -42,6 +42,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.CropSquare
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FileDownload
@@ -88,6 +89,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -108,6 +110,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import com.hackerdjakodjo.mypdfwriter.pdf.TextActions
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private data class ToolSpec(val tool: Tool, val icon: ImageVector, val labelRes: Int)
@@ -147,6 +150,8 @@ fun ViewerScreen(
     onExportRequest: (String) -> Unit,
     onOpenTools: () -> Unit,
     onCreateStudyNote: (Notebook) -> Unit = {},
+    /** Optional integration hook used by drag-and-drop capture; must not open the notebook. */
+    onAppendStudyExcerpt: (text: String, pageIndex: Int) -> Unit = { _, _ -> },
 ) {
     val stateFlow = vm.viewer.collectAsStateWithLifecycle()
     val bitmap by vm.pageBitmap.collectAsStateWithLifecycle()
@@ -159,6 +164,11 @@ fun ViewerScreen(
     val state = stateFlow.value ?: return
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val appendStudyExcerpt: (String, Int) -> Unit = { text, page ->
+        onAppendStudyExcerpt(text, page)
+        scope.launch { snackbarHostState.showSnackbar(STUDY_NOTE_ADDED_MESSAGE) }
+    }
     var showPages by remember { mutableStateOf(false) }
     var showNotes by remember { mutableStateOf(false) }
     var showBookmarks by remember { mutableStateOf(false) }
@@ -574,6 +584,7 @@ fun ViewerScreen(
                     if (textSelectMode) {
                         TextSelectionActionBar(
                             text = selectedText,
+                            pageIndex = state.pageIndex,
                             hasSelection = selectedWords.isNotEmpty(),
                             loading = state.textLoading,
                             hasWords = pageTextWords.isNotEmpty(),
@@ -676,6 +687,16 @@ fun ViewerScreen(
                 )
             }
 
+            if (textSelectMode && selectedText.isNotBlank()) {
+                StudyNoteDropTarget(
+                    onDrop = appendStudyExcerpt,
+                    caption = "선택한 텍스트를 여기로 끌어다 놓으세요",
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
+
             if (state.busy) {
                 BusyOverlay(state.busyLabel)
             }
@@ -733,6 +754,10 @@ fun ViewerScreen(
             onStudyNote = {
                 showExcerpts = false
                 showStudyNote = true
+            },
+            onDropExcerpt = { excerpt ->
+                onAppendStudyExcerpt(excerpt.text, excerpt.pageIndex)
+                Toast.makeText(context, STUDY_NOTE_ADDED_MESSAGE, Toast.LENGTH_SHORT).show()
             },
             onDismiss = { showExcerpts = false },
         )
@@ -925,6 +950,7 @@ private fun AnnotationToolbar(state: ViewerUiState, vm: PdfViewModel) {
 @Composable
 private fun TextSelectionActionBar(
     text: String,
+    pageIndex: Int,
     hasSelection: Boolean,
     loading: Boolean,
     hasWords: Boolean,
@@ -949,7 +975,17 @@ private fun TextSelectionActionBar(
                 tint = MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f)) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .then(
+                        if (hasSelection) {
+                            Modifier.studyNoteDragSource(text, pageIndex)
+                        } else {
+                            Modifier
+                        },
+                    ),
+            ) {
                 Text(
                     when {
                         hasSelection -> text
@@ -961,11 +997,28 @@ private fun TextSelectionActionBar(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    if (hasSelection) "${text.length}자 · 선택한 텍스트" else "텍스트 선택 모드",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (hasSelection) "${text.length}자 · 선택한 텍스트" else "텍스트 선택 모드",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (hasSelection) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            Icons.Outlined.DragIndicator,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        Text(
+                            "길게 눌러 끌기",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
             }
             IconButton(onClick = onDismiss) {
                 Icon(
