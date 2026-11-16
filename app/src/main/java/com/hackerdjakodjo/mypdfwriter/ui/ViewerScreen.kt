@@ -116,6 +116,12 @@ fun ViewerScreen(
     onCreateStudyNote: (Notebook) -> Unit = {},
     /** Optional integration hook used by drag-and-drop capture; must not open the notebook. */
     onAppendStudyExcerpt: (text: String, pageIndex: Int) -> Unit = { _, _ -> },
+    /**
+     * Optional hub entry point for the live study-note pane. When present, the
+     * PDF hub offers "스터디 노트"; the host resolves or creates the notebook
+     * without closing the PDF.
+     */
+    onOpenStudyNote: ((StudySource) -> Unit)? = null,
 ) {
     val stateFlow = vm.viewer.collectAsStateWithLifecycle()
     val bitmap by vm.pageBitmap.collectAsStateWithLifecycle()
@@ -339,6 +345,12 @@ fun ViewerScreen(
     val progressPercent = (progress * 100).roundToInt()
     val currentBookmark = bookmarks.firstOrNull { it.pageIndex == state.pageIndex }
 
+    val studyNoteAction = onOpenStudyNote?.let { openStudyNote ->
+        PdfHubAction("스터디 노트", Icons.Outlined.EditNote) {
+            showHub = false
+            openStudyNote(StudySource(state.docName, vm.currentDocumentUri()))
+        }
+    }
     val hubSections = listOf(
         PdfHubSection(
             title = "읽기",
@@ -378,7 +390,8 @@ fun ViewerScreen(
         ),
         PdfHubSection(
             title = "문서",
-            actions = listOf(
+            actions = listOfNotNull(
+                studyNoteAction,
                 PdfHubAction("페이지 정리", Icons.Outlined.GridView) {
                     selectedPages = emptySet()
                     showOrganize = true

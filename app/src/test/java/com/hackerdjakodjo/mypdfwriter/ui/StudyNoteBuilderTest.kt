@@ -4,6 +4,7 @@ import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
+import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -106,6 +107,73 @@ class StudyNoteBuilderTest {
         assertEquals(1, notebook.pageCount)
         assertNull(notebook.pages.single().sourcePageIndex)
         assertEquals("", notebook.sourceDocumentName)
+    }
+
+    @Test
+    fun blankStudyNoteStartsWithOneEditablePageLinkedToTheSource() {
+        val notebook = StudyNoteBuilder.blankStudyNote(
+            StudySource("lecture.pdf", " content://docs/lecture "),
+        )
+
+        assertEquals("lecture 스터디 노트", notebook.title)
+        assertEquals("lecture.pdf", notebook.sourceDocumentName)
+        assertEquals("content://docs/lecture", notebook.sourceDocumentUri)
+        assertEquals(1, notebook.pageCount)
+        assertEquals(PaperTemplate.LINED, notebook.pages.single().template)
+        assertTrue(notebook.pages.single().annotations.isEmpty())
+        assertNull(notebook.pages.single().sourcePageIndex)
+    }
+
+    @Test
+    fun blankStudyNoteWithoutADocumentNameStillGetsAUsableTitle() {
+        val notebook = StudyNoteBuilder.blankStudyNote(StudySource("  "))
+
+        assertEquals("스터디 노트", notebook.title)
+        assertEquals("", notebook.sourceDocumentName)
+        assertEquals(1, notebook.pageCount)
+    }
+
+    @Test
+    fun studyNoteLookupPrefersSourceUriAndIgnoresTrashedNotebooks() {
+        val source = StudySource("lecture.pdf", "content://docs/lecture")
+        val byTitle = Notebook(
+            id = "title",
+            title = "lecture 스터디 노트",
+        )
+        val byName = Notebook(
+            id = "name",
+            sourceDocumentName = "lecture.pdf",
+        )
+        val byUri = Notebook(
+            id = "uri",
+            sourceDocumentUri = "content://docs/lecture",
+        )
+        val trashed = byUri.copy(id = "trashed", trashed = true)
+
+        assertEquals(
+            "uri",
+            StudyNoteBuilder.findStudyNote(listOf(byTitle, byName, byUri, trashed), source)?.id,
+        )
+        assertEquals(
+            "name",
+            StudyNoteBuilder.findStudyNote(listOf(byName, byTitle), source)?.id,
+        )
+        assertEquals(
+            "title",
+            StudyNoteBuilder.findStudyNote(listOf(byTitle), source)?.id,
+        )
+        assertNull(StudyNoteBuilder.findStudyNote(listOf(trashed), source))
+        assertNull(StudyNoteBuilder.findStudyNote(emptyList(), source))
+    }
+
+    @Test
+    fun studyNoteLookupWithoutDocumentNameUsesTheUriOnly() {
+        val source = StudySource("   ", "content://docs/lecture")
+        val byUri = Notebook(id = "uri", sourceDocumentUri = "content://docs/lecture")
+        val byTitle = Notebook(id = "title", title = "스터디 노트")
+
+        assertEquals("uri", StudyNoteBuilder.findStudyNote(listOf(byTitle, byUri), source)?.id)
+        assertNull(StudyNoteBuilder.findStudyNote(listOf(byTitle), source))
     }
 
     @Test
