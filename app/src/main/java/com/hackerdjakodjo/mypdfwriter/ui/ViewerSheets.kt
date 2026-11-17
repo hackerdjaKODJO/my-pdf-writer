@@ -16,12 +16,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Approval
 import androidx.compose.material.icons.outlined.ArrowDownward
@@ -393,18 +396,33 @@ fun SearchSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
                 }
 
                 else -> {
+                    val currentIndex =
+                        SearchNavigation.clamp(state.currentSearchHit, state.searchHits.size).coerceAtLeast(0)
                     Text(
                         stringResource(R.string.search_results, state.searchHits.size),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Spacer(Modifier.size(6.dp))
+                    SearchResultNav(
+                        current = currentIndex,
+                        total = state.searchHits.size,
+                        onPrevious = {
+                            vm.previousSearchHit()
+                            onDismiss()
+                        },
+                        onNext = {
+                            vm.nextSearchHit()
+                            onDismiss()
+                        },
+                    )
                     LazyColumn(
                         Modifier.fillMaxWidth().heightIn(max = 380.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        items(state.searchHits, key = { it.page }) { hit ->
-                            SearchHitRow(hit, state.searchQuery.trim()) {
-                                vm.goToPage(hit.page)
+                        itemsIndexed(state.searchHits, key = { _, hit -> hit.page }) { index, hit ->
+                            SearchHitRow(hit, state.searchQuery.trim(), active = index == currentIndex) {
+                                vm.goToSearchHit(index)
                                 onDismiss()
                             }
                         }
@@ -416,12 +434,91 @@ fun SearchSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
     }
 }
 
+/** Explicit, keyboard-independent result stepping with a `current / total` counter. */
 @Composable
-private fun SearchHitRow(hit: SearchHit, query: String, onClick: () -> Unit) {
+private fun SearchResultNav(
+    current: Int,
+    total: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+) {
+    val navBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+    val navContent = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Surface(
+            onClick = onPrevious,
+            shape = RoundedCornerShape(12.dp),
+            color = navBackground,
+            contentColor = navContent,
+        ) {
+            Row(
+                Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    stringResource(R.string.search_previous_result),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+        Spacer(Modifier.width(14.dp))
+        Text(
+            stringResource(R.string.search_result_counter, current + 1, total),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.width(14.dp))
+        Surface(
+            onClick = onNext,
+            shape = RoundedCornerShape(12.dp),
+            color = navBackground,
+            contentColor = navContent,
+        ) {
+            Row(
+                Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.search_next_result),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Spacer(Modifier.width(6.dp))
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+    Spacer(Modifier.size(8.dp))
+}
+
+@Composable
+private fun SearchHitRow(
+    hit: SearchHit,
+    query: String,
+    active: Boolean,
+    onClick: () -> Unit,
+) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        color = if (active) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        },
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(12.dp)) {

@@ -102,6 +102,9 @@
     <string name="search_hint">문서에서 검색</string>
     <string name="search_empty">일치하는 내용이 없습니다.</string>
     <string name="search_results">%1$d개 결과</string>
+    <string name="search_previous_result">이전 결과</string>
+    <string name="search_next_result">다음 결과</string>
+    <string name="search_result_counter">%1$d / %2$d</string>
     <string name="searching">문서를 읽는 중…</string>
     <string name="search_prompt">검색어를 입력하면 페이지별 결과를 보여줍니다.</string>
     <string name="search_failed">텍스트를 추출할 수 없습니다. 스캔한 PDF는 검색이 제한될 수 있습니다.</string>

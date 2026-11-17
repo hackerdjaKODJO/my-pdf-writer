@@ -76,6 +76,8 @@ data class ViewerUiState(
     val message: String? = null,
     val searchQuery: String = "",
     val searchHits: List<SearchHit> = emptyList(),
+    /** Index into [searchHits]; -1 when there are no results. */
+    val currentSearchHit: Int = -1,
     val searching: Boolean = false,
     val searchFailed: Boolean = false,
     val noteDraft: String = "",
@@ -1318,11 +1320,18 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     fun search(query: String) {
         val state = _viewer.value ?: return
+        val trimmed = query.trim()
         _viewer.update { it?.copy(searchQuery = query) }
         searchJob?.cancel()
-        val trimmed = query.trim()
         if (trimmed.isEmpty()) {
-            _viewer.update { it?.copy(searchHits = emptyList(), searching = false, searchFailed = false) }
+            _viewer.update {
+                it?.copy(
+                    searchHits = emptyList(),
+                    currentSearchHit = -1,
+                    searching = false,
+                    searchFailed = false,
+                )
+            }
             return
         }
         searchJob = viewModelScope.launch {
@@ -1339,40 +1348,50 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 pageTexts = extracted
                 currentPageTextsKey = key
             }
-            val hits = buildHits(pageTexts.orEmpty(), trimmed)
-            _viewer.update { it?.copy(searchHits = hits, searching = false) }
+            val hits = SearchNavigation.hitsForPages(pageTexts.orEmpty(), trimmed)
+            _viewer.update { current ->
+                current?.copy(
+                    searchHits = hits,
+                    searching = false,
+                    // A new query restarts at the first result; a repeat search keeps
+                    // the reader's place, clamped to the new list.
+                    currentSearchHit = SearchNavigation.indexAfterQueryChange(
+                        currentIndex = state.currentSearchHit,
+                        previousQuery = state.searchQuery,
+                        newQuery = trimmed,
+                        count = hits.size,
+                    ),
+                )
+            }
         }
     }
 
-    private fun buildHits(texts: List<String>, query: String): List<SearchHit> {
-        val needle = query.lowercase()
-        val hits = ArrayList<SearchHit>()
-        for ((index, text) in texts.withIndex()) {
-            if (hits.size >= 300) break
-            if (text.isBlank()) continue
-            val flat = text.replace(Regex("\\s+"), " ").trim()
-            val lower = flat.lowercase()
-            var count = 0
-            var from = 0
-            while (true) {
-                val found = lower.indexOf(needle, from)
-                if (found < 0) break
-                count++
-                from = found + needle.length.coerceAtLeast(1)
-            }
-            if (count == 0) continue
-            val first = lower.indexOf(needle)
-            val start = (first - 40).coerceAtLeast(0)
-            val end = (first + needle.length + 70).coerceAtMost(flat.length)
-            val snippet = buildString {
-                if (start > 0) append('…')
-                append(flat.substring(start, end))
-                if (end < flat.length) append('…')
-            }
-            hits.add(SearchHit(index, count, snippet))
-        }
-        return hits
+    /** Selects a result row and jumps to its page; the highlight follows the page change. */
+    fun goToSearchHit(index: Int) {
+        val state = _viewer.value ?: return
+        val safe = SearchNavigation.clamp(index, state.searchHits.size)
+        if (safe < 0) return
+        _viewer.update { it?.copy(currentSearchHit = safe) }
+        goToPage(state.searchHits[safe].page)
     }
+
+    /** Wraps through result pages in either direction without leaving search mode. */
+    fun moveSearchHit(delta: Int) {
+        val state = _viewer.value ?: return
+        val count = state.searchHits.size
+        if (count == 0) return
+        val target = when {
+            delta > 0 -> SearchNavigation.next(state.currentSearchHit, count)
+            delta < 0 -> SearchNavigation.previous(state.currentSearchHit, count)
+            else -> SearchNavigation.clamp(state.currentSearchHit, count)
+        }
+        _viewer.update { it?.copy(currentSearchHit = target) }
+        goToPage(state.searchHits[target].page)
+    }
+
+    fun nextSearchHit() = moveSearchHit(1)
+
+    fun previousSearchHit() = moveSearchHit(-1)
 
     // ---------------------------------------------------------------- export
 
