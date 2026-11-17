@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>My PDF Writer 0.8.8 사용법</title>
+  <style>
+    :root {
+      --bg: #f6f3ec;
+      --paper: #fffdf8;
+      --ink: #23211d;
+      --muted: #6d675d;
+      --line: #d8d0c1;
+      --accent: #b23a2b;
+      --accent-soft: #f3ddd7;
+      --blue: #1f4e79;
+      --blue-soft: #e2edf5;
+      --green: #2e6b4f;
+      --green-soft: #e4f0e9;
+      --shadow: 0 12px 32px rgba(53, 43, 30, .12);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1c1a17;
+        --paper: #27231e;
+        --ink: #f0e9dd;
+        --muted: #bbb1a2;
+        --line: #4a4339;
+        --accent: #e47b68;
+        --accent-soft: #4a2c27;
+        --blue: #9cc4e4;
+        --blue-soft: #263a4b;
+        --green: #9dd3b5;
+        --green-soft: #223a2f;
+        --shadow: 0 12px 32px rgba(0, 0, 0, .35);
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR",
+        "Apple SD Gothic Neo", sans-serif;
+      line-height: 1.65;
+    }
+    a { color: var(--accent); }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 18px 80px; }
+    header.hero {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: clamp(24px, 5vw, 52px);
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    header.hero::after {
+      content: "";
+      position: absolute;
+      width: 280px;
+      height: 280px;
+      right: -80px;
+      top: -100px;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      opacity: .8;
+      pointer-events: none;
+    }
+    .eyebrow {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    h1 { margin: 14px 0 10px; font-size: clamp(32px, 5vw, 56px); line-height: 1.12; }
+    .lead { max-width: 760px; color: var(--muted); font-size: 18px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; font-size: 12px; color: var(--muted); }
+    nav.toc {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin: 24px 0 0;
+    }
+    nav.toc a {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 14px;
+      text-decoration: none;
+      color: var(--ink);
+      font-weight: 600;
+      font-size: 14px;
+    }
+    nav.toc a::before { content: "→ "; color: var(--accent); }
+    main { display: grid; gap: 22px; margin-top: 24px; }
+    section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: clamp(20px, 4vw, 38px);
+      box-shadow: var(--shadow);
+      scroll-margin-top: 16px;
+    }
+    h2 { margin: 0 0 8px; font-size: clamp(24px, 3.2vw, 34px); }
+    h3 { margin: 26px 0 8px; font-size: 19px; }
+    .sub { color: var(--muted); margin: 0 0 18px; }
+    .steps { counter-reset: step; display: grid; gap: 10px; padding: 0; list-style: none; }
+    .steps > li {
+      counter-increment: step;
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 12px;
+      align-items: start;
+      background: color-mix(in srgb, var(--bg) 55%, var(--paper));
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+    .steps > li::before {
+      content: counter(step);
+      width: 28px; height: 28px;
+      display: grid; place-items: center;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 800;
+      font-size: 13px;
+    }
+    .note, .warn, .tip {
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin: 14px 0;
+      border: 1px solid transparent;
+    }
+    .note { background: var(--blue-soft); border-color: color-mix(in srgb, var(--blue) 25%, transparent); }
+    .warn { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+    .tip { background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 25%, transparent); }
+    .note strong { color: var(--blue); }
+    .warn strong { color: var(--accent); }
+    .tip strong { color: var(--green); }
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    @media (max-width: 700px) { .split { grid-template-columns: 1fr; } }
+    .phone {
+      border: 6px solid #302d29;
+      border-radius: 28px;
+      padding: 10px;
+      background: #111;
+      box-shadow: var(--shadow);
+      max-width: 330px;
+      margin: 0 auto;
+    }
+    .screen {
+      border-radius: 18px;
+      background: var(--bg);
+      overflow: hidden;
+      min-height: 470px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .topbar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .topbar .spacer { flex: 1; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      border-radius: 999px; padding: 3px 7px;
+      background: var(--accent-soft); color: var(--accent);
+      font-size: 10px; font-weight: 700; white-space: nowrap;
+    }
+    .pdf-strip {
+      min-height: 105px;
+      background: #e5e1d7;
+      margin: 6px;
+      border-radius: 12px;
+      position: relative;
+      border: 1px solid var(--line);
+      display: grid;
+      place-items: center;
+      color: #4d4a43;
+      font-size: 11px;
+    }
+    .pdf-strip .floatbar {
+      position: absolute; left: 50%; bottom: 7px; transform: translateX(-50%);
+      background: var(--paper); border: 1px solid var(--line);
+      border-radius: 999px; padding: 4px 8px; font-size: 9px;
+      white-space: nowrap; box-shadow: 0 3px 10px rgba(0,0,0,.12);
+    }
+    .divider {
+      height: 18px;
+      display: grid; place-items: center;
+      color: var(--muted); font-size: 12px;
+      cursor: ns-resize;
+    }
+    .divider span {
+      background: var(--paper); border: 1px solid var(--line);
+      border-radius: 999px; padding: 0 15px; line-height: 15px;
+      box-shadow: 0 2px 6px rgba(0,0,0,.1);
+    }
+    .note-pane {
+      flex: 1;
+      margin: 0 6px 6px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fffdf8;
+      position: relative;
+      overflow: hidden;
+      min-height: 230px;
+    }
+    .note-header {
+      position: absolute; left: 6px; right: 6px; top: 5px;
+      border-radius: 10px; background: rgba(255,253,248,.94);
+      border: 1px solid var(--line); padding: 5px 7px;
+      display: flex; align-items: center; gap: 5px;
+      font-size: 9px; color: var(--muted);
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    }
+    .note-header b { color: var(--ink); font-size: 10px; }
+    .ruled {
+      height: 100%;
+      background-image: repeating-linear-gradient(180deg, transparent 0 26px, #ded8cb 26px 27px);
+      opacity: .55;
+    }
+    .note-dock {
+      position: absolute; left: 8px; right: 8px; bottom: 7px;
+      background: rgba(255,253,248,.96);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 5px 7px;
+      box-shadow: 0 4px 14px rgba(0,0,0,.14);
+      display: grid; gap: 3px;
+      font-size: 9px; color: var(--muted);
+    }
+    .note-dock .row { display: flex; justify-content: space-between; align-items: center; gap: 3px; }
+    .tool { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; background: var(--bg); }
+    .tool.active { background: var(--accent-soft); color: var(--accent); font-weight: 800; }
+    .tag { font-size: 9px; padding: 2px 5px; border-radius: 999px; border: 1px solid var(--line); }
+    .key { border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 6px; padding: 0 6px; font-size: .88em; background: var(--bg); }
+    code { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; }
+    pre { overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th, td { border-bottom: 1px solid var(--line); padding: 9px 8px; text-align: left; vertical-align: top; font-size: 14px; }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    details { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin: 10px 0; background: var(--bg); }
+    summary { cursor: pointer; font-weight: 700; }
+    footer { color: var(--muted); text-align: center; font-size: 12px; padding: 26px 0 0; }
+    @media print {
+      body { background: #fff; }
+      section, header.hero { box-shadow: none; break-inside: avoid; }
+      nav.toc { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <span class="eyebrow">OFFLINE STUDY WORKSPACE</span>
+  <h1>My PDF Writer<br>사용법</h1>
+  <p class="lead">
+    PDF를 읽고, 텍스트를 선택해 표시하고, PDF 위에 스터디 노트를 펼쳐
+    필기하는 방법을 순서대로 정리했습니다.
+    광고·계정·인터넷 없이 기기 안에서만 동작합니다.
+  </p>
+  <div class="meta">
+    <span class="pill">버전 0.8.8</span>
+    <span class="pill">Android 8.0+</span>
+    <span class="pill">arm64 APK</span>
+    <span class="pill">오프라인</span>
+  </div>
+  <nav class="toc" aria-label="목차">
+    <a href="#install">설치와 시작</a>
+    <a href="#home">홈 화면</a>
+    <a href="#pdf">PDF 열기</a>
+    <a href="#selection">텍스트 선택·하이라이트</a>
+    <a href="#study">PDF 위 노트 패널</a>
+    <a href="#divider">PDF/노트 높이 조절</a>
+    <a href="#write">필기 도구</a>
+    <a href="#pages">페이지·템플릿·검색</a>
+    <a href="#backup">백업·내보내기</a>
+    <a href="#trouble">문제 해결</a>
+  </nav>
+</header>
+
+<main>
+
+<section id="install">
+  <h2>1. 설치와 시작</h2>
+  <p class="sub">APK 파일은 소스 저장소가 아니라 다운로드 폴더에 있습니다.</p>
+  <ol class="steps">
+    <li>
+      <div>
+        <b>My Files에서 APK 열기</b><br>
+        <code>/sdcard/Download/MyPDFWriter-0.8.8-arm64.apk</code>를 탭합니다.
+        파일이 보이지 않으면 My Files의 <b>Downloads</b>에서 확인하세요.
+      </div>
+    </li>
+    <li>
+      <div>
+        <b>알 수 없는 앱 설치 허용</b><br>
+        처음 설치할 때만 “이 출처의 앱 설치 허용”을 켭니다. 앱 자체는 인터넷을
+        사용하지 않습니다.
+      </div>
+    </li>
+    <li>
+      <div>
+        <b>My PDF Writer 실행</b><br>
+        설치는 <code>com.hackerdjakodjo.mypdfwriter.debug</code>로 됩니다.
+        기존 디버그 버전이 있으면 업데이트로 설치됩니다.
+      </div>
+    </li>
+  </ol>
+  <div class="note">
+    <strong>설치가 안 될 때:</strong> 이 APK는 arm64 전용입니다. 2018년 이후의
+    대부분의 안드로이드 폰은 arm64이지만, 아주 오래된 32비트 기기나 일부
+    에뮬레이터에서는 설치되지 않을 수 있습니다. 그 경우에만 universal APK가
+    필요합니다.
+  </div>
+  <div class="warn">
+    <strong>실행 검증 안내:</strong> 이 문서를 만든 환경에는 adb 기기나 에뮬레이터가
+    없어서 실제 설치·제스처·필압을 자동 검증하지 못했습니다. JVM 테스트 352개와
+    계측 테스트 APK 컴파일까지 확인된 상태입니다. 설치 후 아래 “문제 해결”의
+    체크리스트를 확인해 주세요.
+  </div>
+</section>
+
+<section id="home">
+  <h2>2. 홈 화면 — 여기서 시작</h2>
+  <div class="split">
+    <div>
+      <p class="sub">앱을 열면 내 노트와 최근 작업이 먼저 보입니다.</p>
+      <ul>
+        <li><b>이어서 읽기 / 이어서 쓰기</b>: 마지막 PDF와 노트를 바로 엽니다.</li>
+        <li><b>PDF 열기</b>: PDF 파일을 가져옵니다.</li>
+        <li><b>새 노트</b>: 빈 노트북을 만듭니다.</li>
+        <li><b>PDF 도구</b>: 합치기·분할·OCR·보안 같은 작업대를 엽니다.</li>
+        <li><b>백업/복원</b>: 노트·필기·설정을 ZIP으로 보관합니다.</li>
+      </ul>
+      <p>아래 탭에서 <b>노트 / PDF / 태그</b>를 바꾸고, 상단 검색과 폴더·태그 필터로
+      문서를 찾습니다.</p>
+      <div class="tip"><strong>팁:</strong> 첫 화면의 빠른 실행 버튼이 가장 빠른 길입니다.
+      메뉴를 찾지 말고 <b>PDF 열기</b> 또는 <b>새 노트</b>를 누르세요.</div>
+    </div>
+    <div class="phone" aria-label="홈 화면 개념도">
+      <div class="screen">
+        <div class="topbar">내 노트 <span class="spacer"></span> 검색 · ⋮</div>
+        <div style="padding:10px 10px 0">
+          <div style="background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:9px;font-size:11px;margin-bottom:8px">
+            <b>이어서 읽기</b><br><span style="color:var(--muted)">강의자료.pdf · 12쪽</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;text-align:center">
+            <div style="border:1px solid var(--line);border-radius:10px;padding:9px"><b>PDF 열기</b></div>
+            <div style="border:1px solid var(--line);border-radius:10px;padding:9px"><b>새 노트</b></div>
+            <div style="border:1px solid var(--line);border-radius:10px;padding:9px"><b>PDF 도구</b></div>
+            <div style="border:1px solid var(--line);border-radius:10px;padding:9px"><b>백업/복원</b></div>
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--muted)">노트 · PDF · 태그</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="pdf">
+  <h2>3. PDF 열기</h2>
+  <ol class="steps">
+    <li><div><b>PDF 열기</b>를 누르고 파일 선택기에서 PDF를 고릅니다.</div></li>
+    <li><div>페이지가 열리면 상단에 문서명과 페이지, 하단에 도구가 보입니다.</div></li>
+    <li><div>화면을 두 손가락으로 벌려 확대하고, 한 손가락으로 이동합니다.</div></li>
+    <li><div>PDF 상단의 <b>PDF 허브</b>를 누르면 자주 쓰는 7개 도구가 나옵니다.
+      <b>모든 도구 보기</b>를 누르면 전체 기능이 펼쳐집니다.</div></li>
+  </ol>
+  <div class="note"><strong>PDF 허브의 주요 7개:</strong>
+    검색 · 텍스트 선택 · 스터디 노트 · 페이지 관리 · 주석 목록 · 주석 숨기기 · PDF 내보내기.
+  </div>
+</section>
+
+<section id="selection">
+  <h2>4. 텍스트 선택 → 하이라이트</h2>
+  <p class="sub">PDF가 텍스트 PDF라면 별도 모드 메뉴를 찾을 필요 없이 하단의
+  <b>텍스트 선택</b>을 누르세요.</p>
+  <ol class="steps">
+    <li><div>하단 도구에서 <b>텍스트 선택</b>을 누릅니다. 단어 박스가 표시됩니다.</div></li>
+    <li><div><b>한 단어만 선택:</b> 단어를 짧게 탭합니다. 손가락이 조금 빗나가도
+      근처 단어를 찾습니다.</div></li>
+    <li><div><b>여러 단어 선택:</b> 첫 단어에서 끝 단어까지 드래그합니다.</div></li>
+    <li><div>선택하면 플로팅 선택 바가 나타납니다. <b>형광펜·밑줄·취소선</b>을
+      누르면 PDF에 표시가 저장됩니다.</div></li>
+    <li><div>복사·Google 번역·발췌도 같은 바에서 실행합니다.</div></li>
+  </ol>
+  <div class="warn"><strong>이미지 PDF(스캔)는 선택할 수 없습니다.</strong>
+    “이 페이지에는 선택할 수 있는 텍스트가 없습니다”가 보이면 선택 모드를 종료하고,
+    PDF 도구의 OCR을 먼저 사용하세요.</div>
+  <div class="tip"><strong>표시가 안 보일 때:</strong> PDF 허브의
+    <b>주석 숨기기</b>가 켜져 있는지 확인하세요. 숨김은 화면에서만 감추며
+    저장된 주석을 삭제하지 않습니다.</div>
+</section>
+
+<section id="study">
+  <h2>5. PDF 위 스터디 노트</h2>
+  <p class="sub">PDF를 닫지 않고 노트를 펼칩니다. Flexcil처럼 PDF와 노트를 위아래로
+  같이 보는 화면입니다.</p>
+  <ol class="steps">
+    <li><div>PDF 상단의 <b>노트</b>를 누릅니다. 연결된 스터디 노트가 없으면
+      새 노트를 만듭니다.</div></li>
+    <li><div>아래쪽에 노트가 열리고, 위에는 PDF 페이지가 남습니다. 기본 높이는
+      85%입니다.</div></li>
+    <li><div>노트 헤더의 <b>PDF 발췌 놓기</b>를 누르면 발췌를 추가할 수 있습니다.
+      PDF에서 선택한 텍스트는 선택 바의 <b>패널에 추가</b>로도 넣을 수 있습니다.</div></li>
+    <li><div>헤더의 링크 아이콘을 누르면 노트 페이지별 원본 PDF 페이지 목록이
+      나옵니다. 항목을 누르면 노트와 PDF가 함께 이동합니다.</div></li>
+    <li><div>노트를 닫아도 자동 저장되고 PDF는 같은 페이지에 남습니다.</div></li>
+  </ol>
+  <div class="note"><strong>화면 구성:</strong> PDF의 큰 상단/하단 바는 패널을 열면
+    사라지고, 뒤로·페이지·텍스트 선택·북마크·도구·허브만 PDF 위에 작게 떠 있습니다.
+    노트 도구도 캔버스 위에 떠 있어서 종이 영역이 넓습니다.</div>
+</section>
+
+<section id="divider">
+  <h2>6. PDF와 노트 높이 조절</h2>
+  <div class="split">
+    <div>
+      <p>두 영역 사이의 <b>가운데 손잡이</b>를 위아래로 드래그하세요.</p>
+      <ul>
+        <li><b>위로 드래그</b> → 노트가 커집니다.</li>
+        <li><b>아래로 드래그</b> → PDF가 커집니다.</li>
+        <li>노트는 최소 35%, 최대 85%까지 가능합니다.</li>
+        <li>노트 헤더의 크기 팝업에서 50/70/85%를 고를 수도 있습니다.</li>
+      </ul>
+      <div class="tip"><strong>필기할 때는 85%</strong>로 두고, PDF를 더 읽고 싶을 때만
+        아래로 내리세요.</div>
+    </div>
+    <div class="phone" aria-label="PDF와 노트 분할 개념도">
+      <div class="screen">
+        <div class="pdf-strip">
+          PDF 페이지
+          <div class="floatbar">‹ 3 / 12 › &nbsp; 선택 &nbsp; ★ &nbsp; 도구 &nbsp; 허브</div>
+        </div>
+        <div class="divider"><span>≡ 높이 조절 ≡</span></div>
+        <div class="note-pane">
+          <div class="ruled"></div>
+          <div class="note-header"><b>스터디 노트</b><span style="flex:1"></span>85% &nbsp; ⌁ &nbsp; ×</div>
+          <div class="note-dock">
+            <div class="row">
+              <span class="tool active">✎</span><span class="tool">▮</span><span class="tool">⌫</span><span class="tool">◌</span><span class="tool">T</span><span class="tool">□</span>
+            </div>
+            <div class="row"><span>색</span><span>↶</span><span>↷</span><span>★</span><span>⋯</span><span class="tag">3 / 12</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="write">
+  <h2>7. 노트 필기 도구</h2>
+  <table>
+    <thead><tr><th>도구</th><th>사용법</th></tr></thead>
+    <tbody>
+      <tr><td>펜</td><td>색·굵기·펜 종류(볼펜/만년필/붓/연필)를 스타일에서 고릅니다.</td></tr>
+      <tr><td>형광펜</td><td>넓은 반투명 획으로 표시합니다.</td></tr>
+      <tr><td>지우개</td><td>기본은 닿은 부분만 지우는 부분 지우개입니다. 설정에서 끄면 획 전체를 지웁니다.</td></tr>
+      <tr><td>올가미</td><td>필기를 선택한 뒤 편집 시트에서 이동·확대·회전·복사/붙여넣기.</td></tr>
+      <tr><td>텍스트</td><td>글상자를 놓고 키보드로 입력합니다.</td></tr>
+      <tr><td>도형</td><td>사각형·화살표·선·원. 펜 도형 인식을 켜면 손으로 그린 도형이 자동 정리됩니다.</td></tr>
+      <tr><td>사진</td><td>페이지 관리에서 사진 페이지 또는 현재 페이지 배경으로 가져옵니다.</td></tr>
+      <tr><td>템플릿</td><td>더보기의 템플릿 스튜디오에서 11종 종이·색·표지·가로/세로를 선택합니다.</td></tr>
+      <tr><td>필압</td><td>스타일러스 필압에 따라 만년필·붓 굵기가 변합니다. 필기 설정에서 반응 곡선을 조절합니다.</td></tr>
+    </tbody>
+  </table>
+  <div class="note"><strong>제스처:</strong> 두 손가락으로 짧게 탭하면 실행 취소,
+    세 손가락으로 짧게 탭하면 다시 실행입니다. 필기 중에는 발동하지 않습니다.</div>
+  <div class="warn"><strong>필압은 실기기 검증이 필요합니다.</strong> 앱에는 부드럽게/
+    선형/강하게 곡선이 들어 있지만, 실제 태블릿의 필압 범위는 기기마다 다릅니다.
+    기기에서 직접 곡선을 골라 보세요.</div>
+</section>
+
+<section id="pages">
+  <h2>8. 페이지·템플릿·검색</h2>
+  <h3>페이지 관리</h3>
+  <p>노트 하단의 페이지 pill을 누르면 페이지 관리가 열립니다. <b>전체/필기 있음</b>
+    필터, 다중 선택 복제·삭제·회전, 사진 페이지 추가가 가능합니다.</p>
+  <h3>노트 검색</h3>
+  <p>노트 더보기의 <b>노트 검색</b>은 메모·텍스트·스탬프·서명을 찾습니다.
+    결과를 누르면 해당 페이지로 이동합니다. 손글씨 획 자체는 아직 검색하지 않습니다.</p>
+  <h3>PDF 텍스트 검색</h3>
+  <p>PDF 허브의 검색은 페이지별 결과와 하이라이트를 보여줍니다. 검색 결과를
+    누르면 해당 페이지로 이동합니다.</p>
+</section>
+
+<section id="backup">
+  <h2>9. 백업·내보내기</h2>
+  <h3>백업/복원</h3>
+  <ol class="steps">
+    <li><div>홈의 <b>백업/복원</b>을 누릅니다.</div></li>
+    <li><div>백업을 선택하고 저장 위치를 고릅니다. PDF 원본 포함 여부를 선택할 수
+      있습니다.</div></li>
+    <li><div>복원은 같은 화면에서 ZIP을 선택합니다. 기존 데이터는 안전하게
+      교체됩니다.</div></li>
+  </ol>
+  <p>커스텀 템플릿 이미지·PDF 첫 페이지 배경도 백업에 포함됩니다.</p>
+  <h3>PDF 내보내기</h3>
+  <p>PDF 허브의 <b>PDF 내보내기</b>는 화면에 보이는 주석을 평탄화한 PDF를
+    저장합니다. 노트의 <b>PDF로 내보내기</b>는 전체/현재/선택 페이지와 숨긴 레이어
+    포함 여부를 고를 수 있습니다.</p>
+  <div class="warn"><strong>백업 ZIP은 암호화되지 않습니다.</strong> 개인 정보가
+    들어 있을 수 있으니 신뢰하는 저장소에 보관하세요.</div>
+</section>
+
+<section id="trouble">
+  <h2>10. 문제 해결</h2>
+  <details open>
+    <summary>텍스트가 선택되지 않아요</summary>
+    <p><b>텍스트 선택</b>을 누른 뒤 단어를 탭하거나 드래그하세요. 이미지로만 된
+      스캔 PDF는 텍스트 레이어가 없어 선택할 수 없습니다. PDF 도구의 OCR로
+      검색 가능한 PDF를 만든 뒤 다시 열어 보세요.</p>
+  </details>
+  <details>
+    <summary>하이라이트가 안 보여요</summary>
+    <p>PDF 허브에서 <b>주석 숨기기</b>가 꺼져 있는지 확인하세요. 숨김 상태는
+      화면 표시만 바꾸며 데이터는 유지됩니다.</p>
+  </details>
+  <details>
+    <summary>노트가 너무 작아요</summary>
+    <p>PDF와 노트 사이의 가운데 손잡이를 위로 드래그하거나, 노트 헤더의 85%
+      크기 프리셋을 누르세요. 노트는 최대 85%까지 커집니다.</p>
+  </details>
+  <details>
+    <summary>필기가 사라졌어요</summary>
+    <p>0.8.2에서 다중 획 유실 버그를 수정했습니다. 이미 저장되지 않은 필기는
+      복구할 수 없으며, 백업이 있으면 백업/복원으로 되살릴 수 있습니다. 현재
+      버전에서 여러 획을 쓴 뒤 노트를 닫았다 다시 열어 확인하세요.</p>
+  </details>
+  <details>
+    <summary>앱이 설치되지 않아요</summary>
+    <p>arm64 전용 APK입니다. 최신 arm64 폰에서는 정상 설치되어야 합니다.
+      “앱이 설치되지 않음”이 나오면 32비트 기기일 수 있으므로 universal APK가
+      필요합니다. 저장 공간과 “알 수 없는 앱 설치” 허용도 확인하세요.</p>
+  </details>
+  <details>
+    <summary>PC에서 테스트하려면</summary>
+    <p>저장소를 클론하고 JDK 17·Android SDK 36으로 엽니다.</p>
+    <pre><code>git clone https://github.com/hackerdjaKODJO/my-pdf-writer.git
+cd my-pdf-writer
+./gradlew :app:testDebugUnitTest
+./gradlew :app:assembleDebug -Parm64Only=true
+./gradlew :app:connectedDebugAndroidTest   # 기기 연결 시</code></pre>
+    <p>계측 테스트 APK만 컴파일하려면
+      <code>./gradlew :app:assembleDebugAndroidTest</code>를 실행합니다.</p>
+  </details>
+</section>
+
+<section>
+  <h2>빠른 5분 튜토리얼</h2>
+  <ol class="steps">
+    <li><div>홈에서 <b>PDF 열기</b>로 강의자료를 엽니다.</div></li>
+    <li><div>하단의 <b>텍스트 선택</b>을 누르고 중요한 문장을 드래그합니다.</div></li>
+    <li><div>플로팅 바에서 <b>형광펜</b>을 누릅니다.</div></li>
+    <li><div>PDF 상단의 <b>노트</b>를 누르고 아래 노트 영역을 확인합니다.</div></li>
+    <li><div>가운데 손잡이를 위로 올려 노트를 넓히고 펜으로 필기합니다.</div></li>
+    <li><div>노트 헤더의 링크로 원본 페이지를 오가고, 홈의 <b>백업/복원</b>으로
+      작업을 보관합니다.</div></li>
+  </ol>
+</section>
+
+<footer>
+  My PDF Writer 0.8.8 · 로컬 전용 · 소스와 테스트는 GitHub 저장소 참고<br>
+  이 문서는 오프라인에서 열 수 있는 단일 HTML 파일입니다.
+</footer>
+
+</main>
+</div>
+</body>
+</html>

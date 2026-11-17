@@ -66,3 +66,19 @@ The sheet shows `NoteTrace` entries (stroke commit counts, editor apply/undo,
 ViewModel update/save timings, and annotation-count decreases). Use `복사` to
 copy the text into a bug report, or `비우기` to clear it. The trace is in-memory
 only and is never written to disk or sent over the network.
+
+## 0.8.8 E2E matrix
+
+The full case matrix, per-suite status and on-device manual checklist are in
+[`e2e-test-cases.md`](e2e-test-cases.md). Current instrumented classes include:
+
+- `HomeStartE2ETest`
+- `NoteCanvasStrokeE2ETest`
+- `NoteEditorStrokeE2ETest`
+- `StudyPaneE2ETest`
+- `PdfCanvasSelectionE2ETest`
+- `PdfSplitChromeE2ETest`
+
+On this Termux host no adb device/emulator is available, so these compile but
+have not been executed. The user-facing guide is
+[`usage-guide.html`](usage-guide.html).

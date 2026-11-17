@@ -91,6 +91,8 @@ Start with:
 - `docs/ink-pressure-and-gestures.md`
 - `docs/note-page-tools.md`
 - `docs/testing.md`
+- `docs/usage-guide.html` — offline user guide
+- `docs/e2e-test-cases.md` — case matrix, execution status and device checklist
 
 ## Known limitations / next work (0.8.6+)
 

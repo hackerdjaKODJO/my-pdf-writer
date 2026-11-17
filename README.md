@@ -10,6 +10,8 @@
 - **지원 OS**: Android 8.0 (API 26) 이상
 - **타깃 SDK**: 36 (Android 16)
 - **PC 인계 문서**: [`HANDOFF.md`](HANDOFF.md)
+- **사용법 HTML**: [`docs/usage-guide.html`](docs/usage-guide.html)
+- **E2E 테스트 케이스**: [`docs/e2e-test-cases.md`](docs/e2e-test-cases.md)
 
 ---
 
