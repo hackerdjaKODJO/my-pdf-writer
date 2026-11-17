@@ -1,5 +1,6 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import com.hackerdjakodjo.mypdfwriter.data.Checklists
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplatePaths
 import com.hackerdjakodjo.mypdfwriter.data.MaskingCards
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
@@ -273,5 +274,7 @@ object NotePageManager {
         // Cards travel with the page like annotations, but a duplicate must be an
         // independent study record (fresh ids, same prompt/answer/rect/state).
         maskingCards = MaskingCards.freshIds(page.maskingCards),
+        // A duplicated page owns independent checklist records and item ids.
+        checklists = Checklists.freshIds(page.checklists),
     )
 }

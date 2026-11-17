@@ -139,6 +139,11 @@ data class NotePage(
      * without the key loads as an empty list, so old notebooks are unchanged.
      */
     val maskingCards: List<MaskingCard> = emptyList(),
+    /**
+     * Optional offline interactive checklists placed on this page. Legacy JSON
+     * without the key loads as an empty list, so old notebooks are unchanged.
+     */
+    val checklists: List<ChecklistCard> = emptyList(),
     /** Zero-based page in the linked source PDF, or null for a plain notebook page. */
     val sourcePageIndex: Int? = null,
 ) {
@@ -156,6 +161,7 @@ data class NotePage(
             },
             layers = safeLayers,
             maskingCards = maskingCards.map { it.normalized() },
+            checklists = checklists.map { it.normalized() },
             annotations = annotations.map {
                 if (it.layerId == null) it.copy(layerId = defaultLayer) else it
             },
@@ -178,6 +184,9 @@ data class NotePage(
         if (maskingCards.isNotEmpty()) {
             put("maskingCards", JSONArray().apply { maskingCards.forEach { put(it.toJson()) } })
         }
+        if (checklists.isNotEmpty()) {
+            put("checklists", JSONArray().apply { checklists.forEach { put(it.toJson()) } })
+        }
     }
 
     companion object {
@@ -197,6 +206,11 @@ data class NotePage(
             for (i in 0 until maskingJson.length()) {
                 maskingJson.optJSONObject(i)?.let { maskingCards.add(MaskingCard.fromJson(it)) }
             }
+            val checklistsJson = o.optJSONArray("checklists") ?: JSONArray()
+            val checklists = ArrayList<ChecklistCard>(checklistsJson.length())
+            for (i in 0 until checklistsJson.length()) {
+                checklistsJson.optJSONObject(i)?.let { checklists.add(ChecklistCard.fromJson(it)) }
+            }
             return NotePage(
                 id = o.optString("id").ifBlank { UUID.randomUUID().toString() },
                 template = runCatching {
@@ -215,6 +229,7 @@ data class NotePage(
                 annotations = annotations,
                 memo = o.optString("memo"),
                 maskingCards = maskingCards,
+                checklists = checklists,
                 sourcePageIndex = o.optInt("sourcePage", -1).takeIf { it >= 0 },
                 layers = layers.ifEmpty { listOf(NoteLayer()) },
             ).normalized()
