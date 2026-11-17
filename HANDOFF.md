@@ -1,4 +1,4 @@
-# PC handoff — My PDF Writer 0.8.5
+# PC handoff — My PDF Writer 0.8.6
 
 This document lets another machine continue the work from the same source state.
 The Android app source, tests and design notes are in Git; APKs and signing keys
@@ -8,20 +8,20 @@ are not.
 
 | Field | Value |
 | --- | --- |
-| Version | `0.8.5` / `versionCode 14` |
-| Tag | `v0.8.5` |
-| Release commit | `9732fb3` |
+| Version | `0.8.6` / `versionCode 15` |
+| Tag | `v0.8.6` |
+| Release commit | `v0.8.6` tag |
 | Branch | `feature/starnote` |
 | `main` | same commit as `feature/starnote` |
 | Package | `com.hackerdjakodjo.mypdfwriter` (release) / `.debug` |
 | Remote | `https://github.com/hackerdjaKODJO/my-pdf-writer` |
-| JVM tests | **327 passing** |
+| JVM tests | **338 passing** |
 | On-device tests | Instrumentation APK compiles; not run (no adb device here) |
 | Permissions | no `INTERNET`; `RECORD_AUDIO` is runtime-only for audio notes |
 
 The local phone review APK is
-`/sdcard/Download/MyPDFWriter-0.8.5-arm64.apk`
-(SHA-256 `92fc492881f58981534e9cdd2aa9b8bf48a4c167d12244bd715feb22cc730862`).
+`/sdcard/Download/MyPDFWriter-0.8.6-arm64.apk`
+(SHA-256 `5a6d185da5ba8b4def800f946208e23a1480562d16c23e0530ce66d1261fd169`).
 It is a debug-signed arm64-only APK and is not committed to Git.
 
 ## Continue on a PC
@@ -74,6 +74,9 @@ on the PC/CI with the upload key.
   study pane with drop capture and To/From source links, pressure curves and
   two/three-finger undo/redo, note page rotation, photo pages/backgrounds, note
   search.
+- 0.8.6 simplified PDF hub (7 primary tools + full expansion), forgiving tap/drag
+  text selection with a dedicated dock action, direct PDF top-bar `노트` entry,
+  and a focused 85% study pane with a compact 6-tool note dock and larger canvas.
 
 Start with:
 
@@ -91,23 +94,26 @@ Start with:
    implemented, but hardware pressure range, dead zone and linearity have not
    been tuned against a real tablet. Add a calibration flow and test with a
    pressure-sensitive stylus.
-2. **Direct canvas-to-pane drag** — the guaranteed capture paths are the
+2. **0.8.6 text selection and compact pane** — compile/pure tests pass, but tap/
+   drag selection and compact handwriting ergonomics still need a phone smoke
+   test; the instrumentation selection test is not executed without adb.
+3. **Direct canvas-to-pane drag** — the guaranteed capture paths are the
    selection-bar `패널에 추가` action and dragging the selected-text summary to
    the pane header. Direct drag from canvas text and source-rectangle backlinks
    remain.
-3. **Custom PDF templates** — first page only; add page selection for PDF
+4. **Custom PDF templates** — first page only; add page selection for PDF
    imports.
-4. **Photo insertion** — implemented as a photo page or current-page background;
+5. **Photo insertion** — implemented as a photo page or current-page background;
    inline movable/resizable photo annotations are not implemented.
-5. **Note search** — searches memos, text, stamps and signatures; handwriting
+6. **Note search** — searches memos, text, stamps and signatures; handwriting
    strokes/OCR/audio are not indexed.
-6. **Page rotation** — ±90° only; arbitrary-angle page rotation is not supported.
-7. **Resizable study pane** — height is session-only; direct drag-and-drop and
+7. **Page rotation** — ±90° only; arbitrary-angle page rotation is not supported.
+8. **Resizable study pane** — height is session-only; direct drag-and-drop and
    window/process restoration can be improved.
-8. **On-device verification** — no adb device was attached. Install the arm64
+9. **On-device verification** — no adb device was attached. Install the arm64
    APK and smoke-test SAF template import, photo import, stylus pressure,
    multi-finger undo/redo, pane resize/capture, page rotation and export.
-9. **Release signing** — configure `keystore.properties` on the PC/CI; never
+10. **Release signing** — configure `keystore.properties` on the PC/CI; never
    commit it.
 
 ## Version policy reminder

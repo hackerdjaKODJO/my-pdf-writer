@@ -29,7 +29,7 @@ enabled or working in this build. There are no runtime claims for either app. Al
 label quotations below are short functional evidence; no Flexcil copy,
 screenshots, templates, fonts, icons or branding are reproduced.
 
-### 1.1 Implementation status — 0.8.3, 0.8.4 and 0.8.5 delivered
+### 1.1 Implementation status — 0.8.3 through 0.8.6 delivered
 
 The 0.8.3 delivery implements the primary handwriting gaps with original code. The 0.8.4 delivery adds the study pane, pressure ink, template studio and page/export organization described below; see the 0.8.4 status after the 0.8.3 table.
 
@@ -66,6 +66,14 @@ note page rotation, photo pages/current-page photo backgrounds, and local note
 search across memos, text, stamps and signatures. Hardware-specific pressure
 calibration and direct canvas-to-pane drag (the guaranteed path is the selection
 bar's `패널에 추가`) remain on-device work. Custom PDF import is first-page only.
+
+**0.8.6 delivered (UX simplification):** the PDF hub now opens with seven primary
+tools and an explicit “모든 도구 보기” expansion; a dedicated text-selection dock
+action plus forgiving tap/drag word hit-testing restores highlight/underline/
+strikeout discovery; the PDF top bar has a direct `노트` action; and the study
+pane defaults to 85% with a compact 6-tool note dock, no nested note app bar and a
+larger writing canvas. On-device selection/pane touch ergonomics still need a
+phone smoke test.
 
 ## 2. Feature matrix
 
