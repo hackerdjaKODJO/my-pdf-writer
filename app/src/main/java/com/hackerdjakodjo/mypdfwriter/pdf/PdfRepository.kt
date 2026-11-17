@@ -20,6 +20,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.OutputStream
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -110,8 +111,15 @@ class PdfRepository(private val context: Context) {
     }
 
     suspend fun renderPage(file: File, pageIndex: Int, scale: Float): RenderedPage? = withContext(Dispatchers.IO) {
+        // A non-finite or non-positive scale would produce an invalid bitmap and
+        // a poisoned cache entry, so normalize it before it reaches either.
+        val safeScale = if (scale.isFinite() && scale > 0f) scale else 1f
         renderMutex.withLock {
-            val key = "${version.get()}:${file.lastModified()}:$pageIndex:$scale"
+            // The scale is part of the identity: the same page at two zoom-driven
+            // scales must never share a cached bitmap. Format it so equal floats
+            // always produce an equal key.
+            val scaleKey = String.format(Locale.US, "%.4f", safeScale)
+            val key = "${version.get()}:${file.lastModified()}:$pageIndex:$scaleKey"
             pageCache.get(key)?.let { return@withLock it }
             var descriptor: ParcelFileDescriptor? = null
             var renderer: PdfRenderer? = null
@@ -122,7 +130,7 @@ class PdfRepository(private val context: Context) {
                 renderer.openPage(pageIndex).use { page ->
                     val widthPt = page.width.toFloat()
                     val heightPt = page.height.toFloat()
-                    val targetWidth = (widthPt * scale).roundToInt().coerceIn(320, 2400)
+                    val targetWidth = (widthPt * safeScale).roundToInt().coerceIn(320, 2400)
                     val targetHeight = max(1, (targetWidth * heightPt / widthPt).roundToInt())
                     val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
                     bitmap.eraseColor(Color.WHITE)

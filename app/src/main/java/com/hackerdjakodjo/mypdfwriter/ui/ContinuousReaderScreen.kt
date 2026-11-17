@@ -1,8 +1,8 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import android.graphics.Bitmap
-import android.util.Log
 import com.hackerdjakodjo.mypdfwriter.BuildConfig
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfContinuousTrace
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -61,6 +61,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -122,6 +123,13 @@ fun ContinuousReaderScreen(
     // Pure tracker that owns all pinch-distance math. This screen only feeds it
     // pointer ids/positions and applies the resulting document-wide zoom.
     val pinchTracker = remember { ReaderPinchTracker() }
+
+    // Debug-only observability. `pinchActive` proves the two-finger detector
+    // actually latched; `lastRender` is written from the render coroutine with
+    // the *real* bitmap size, so the HUD can tell a computed scale from a page
+    // that was really re-rendered at that scale.
+    var pinchActive by remember { mutableStateOf(false) }
+    var lastRender by remember { mutableStateOf<ReaderRenderInfo?>(null) }
 
     val currentPage by remember(listState, pageCount) {
         derivedStateOf {
@@ -196,17 +204,25 @@ fun ContinuousReaderScreen(
                             // the same id twice.
                             val seenIds = HashSet<Int>()
                             awaitEachGesture {
-                                val firstDown = awaitFirstDown(requireUnconsumed = false)
+                                // Observe in the Initial pass: page-level tap/drag
+                                // detectors and the LazyColumn's scroller run in the
+                                // Main pass and may consume a down before a parent
+                                // Main-pass handler ever sees it. Watching Initial is
+                                // what lets the tracker latch the second finger.
+                                val firstDown = awaitFirstDown(
+                                    requireUnconsumed = false,
+                                    pass = PointerEventPass.Initial,
+                                )
                                 if (seenIds.add(firstDown.id.value.toInt())) {
                                     pinchTracker.onDown(firstDown.id.value.toInt(), firstDown.position)
                                 }
                                 var startZoom = READER_ZOOM_MIN
                                 var baselineCaptured = false
                                 var firstFrame = true
-                                var lastLoggedRenderZoom = readerRenderZoom(latestZoom.value)
+                                var lastTracedRenderZoom = readerRenderZoom(latestZoom.value)
                                 try {
                                     while (true) {
-                                        val event = awaitPointerEvent()
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
                                         val changes = event.changes
 
                                         // onDown only for brand-new pointers. On the
@@ -242,14 +258,25 @@ fun ContinuousReaderScreen(
                                         }
                                         // A lifted finger resets the tracker; the next
                                         // two-finger contact needs a fresh zoom baseline.
-                                        if (!pinchTracker.active) baselineCaptured = false
+                                        if (!pinchTracker.active) {
+                                            baselineCaptured = false
+                                            pinchActive = false
+                                        }
 
                                         if (pinchTracker.active) {
+                                            pinchActive = true
                                             // Freeze the document-wide zoom exactly
                                             // once, when the pinch first activates.
                                             if (!baselineCaptured) {
                                                 startZoom = latestZoom.value
                                                 baselineCaptured = true
+                                                // One event at gesture start so a
+                                                // trace always contains the baseline.
+                                                PdfContinuousTrace.pinch(
+                                                    startZoom,
+                                                    readerRenderZoom(startZoom),
+                                                    pinchTracker.startDistance,
+                                                )
                                             }
                                             val nextZoom = zoomFromPinch(
                                                 startZoom,
@@ -258,18 +285,24 @@ fun ContinuousReaderScreen(
                                             )
                                             setZoom(nextZoom)
                                             val nextRenderZoom = readerRenderZoom(nextZoom)
-                                            if (BuildConfig.DEBUG && nextRenderZoom != lastLoggedRenderZoom) {
-                                                lastLoggedRenderZoom = nextRenderZoom
-                                                Log.d(
-                                                    "PdfContinuousPinch",
-                                                    "zoom=${readerZoomLabel(nextZoom)} " +
-                                                        "renderZoom=${readerZoomLabel(nextRenderZoom)} " +
-                                                        "dist=${pinchTracker.currentDistance}",
+                                            // Trace every render-zoom transition (not
+                                            // every pointer frame) so the log stays
+                                            // bounded but still shows whether the
+                                            // value that keys re-rendering moved.
+                                            if (nextRenderZoom != lastTracedRenderZoom) {
+                                                lastTracedRenderZoom = nextRenderZoom
+                                                PdfContinuousTrace.pinch(
+                                                    nextZoom,
+                                                    nextRenderZoom,
+                                                    pinchTracker.currentDistance,
                                                 )
                                             }
                                             // Two-finger events only. A single finger
                                             // must stay unconsumed or vertical scroll
                                             // in the LazyColumn stops working.
+                                            // Consuming in Initial also stops each
+                                            // page's horizontal-pan detector from
+                                            // fighting the pinch.
                                             changes.forEach { change ->
                                                 if (change.pressed && change.id.value.toInt() in seenIds) {
                                                     change.consume()
@@ -282,6 +315,7 @@ fun ContinuousReaderScreen(
                                 } finally {
                                     pinchTracker.clear()
                                     seenIds.clear()
+                                    pinchActive = false
                                 }
                             }
                         },
@@ -309,6 +343,7 @@ fun ContinuousReaderScreen(
                                 onOpenPage = onOpenPage,
                                 onToggleZoom = toggleZoom,
                                 onPanChange = { panX = it },
+                                onRendered = { lastRender = it },
                             )
                         }
                     }
@@ -324,6 +359,7 @@ fun ContinuousReaderScreen(
 
                 if (BuildConfig.DEBUG) {
                     val renderZoom = readerRenderZoom(zoom)
+                    val rendered = lastRender
                     Surface(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -331,13 +367,26 @@ fun ContinuousReaderScreen(
                         shape = RoundedCornerShape(8.dp),
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
                     ) {
-                        Text(
-                            "DEBUG zoom=${readerZoomLabel(zoom)} " +
-                                "render=${readerZoomLabel(renderZoom)} " +
-                                "scale=${"%.2f".format(readerRenderScale(renderZoom))}",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
+                        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            Text(
+                                "DEBUG zoom=${readerZoomLabel(zoom)} " +
+                                    "render=${readerZoomLabel(renderZoom)} " +
+                                    "scale=${"%.2f".format(readerRenderScale(renderZoom))} " +
+                                    "pinch=$pinchActive",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            Text(
+                                if (rendered == null) {
+                                    "bitmap: —"
+                                } else {
+                                    "bitmap p${rendered.page + 1} " +
+                                        "rz=${readerZoomLabel(rendered.renderZoom)} " +
+                                        "scale=${"%.2f".format(rendered.scale)} " +
+                                        "${rendered.width}x${rendered.height}"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
                     }
                 }
             }
@@ -354,30 +403,43 @@ private fun ReaderPageCard(
     onOpenPage: (Int) -> Unit,
     onToggleZoom: () -> Unit,
     onPanChange: (Float) -> Unit,
+    onRendered: (ReaderRenderInfo) -> Unit,
 ) {
     var attempt by remember(index) { mutableIntStateOf(0) }
     val renderZoom = readerRenderZoom(zoom)
     val renderScale = readerRenderScale(renderZoom)
+    // The loader is a fresh lambda on every parent recomposition. Keep it in an
+    // updated state so the render coroutine always calls the current one, and
+    // key the render on both the zoom bucket and the derived scale so a change
+    // to either can never leave an old bitmap on screen.
+    val currentLoadPage by rememberUpdatedState(loadPage)
+    val currentOnRendered by rememberUpdatedState(onRendered)
     val page by produceState<ReaderPageState>(
         initialValue = ReaderPageState.Loading,
         index,
         attempt,
         renderZoom,
+        renderScale,
     ) {
         value = ReaderPageState.Loading
         val bitmap = try {
-            loadPage(index, renderZoom)
+            currentLoadPage(index, renderZoom)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             null
         }
-        if (BuildConfig.DEBUG && bitmap != null) {
-            Log.d(
-                "PdfContinuousRender",
-                "page=$index zoom=${readerZoomLabel(zoom)} " +
-                    "renderZoom=${readerZoomLabel(renderZoom)} scale=${renderScale}x " +
-                    "bitmap=${bitmap.width}x${bitmap.height}",
+        if (bitmap != null) {
+            PdfContinuousTrace.render(
+                page = index,
+                zoom = zoom,
+                renderZoom = renderZoom,
+                scale = renderScale,
+                bitmapWidth = bitmap.width,
+                bitmapHeight = bitmap.height,
+            )
+            currentOnRendered(
+                ReaderRenderInfo(index, renderZoom, renderScale, bitmap.width, bitmap.height),
             )
         }
         value = if (bitmap != null) ReaderPageState.Ready(bitmap) else ReaderPageState.Failed
@@ -580,5 +642,14 @@ private sealed interface ReaderPageState {
     data class Ready(val bitmap: Bitmap) : ReaderPageState
     data object Failed : ReaderPageState
 }
+
+/** Last successful page render, surfaced in the debug HUD. */
+private data class ReaderRenderInfo(
+    val page: Int,
+    val renderZoom: Float,
+    val scale: Float,
+    val width: Int,
+    val height: Int,
+)
 
 private const val DEFAULT_PAGE_ASPECT = 0.707f

@@ -7,8 +7,10 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.util.Collections
 
 /**
  * Device-only checks for two-finger pinch in the continuous reader.
@@ -89,5 +91,56 @@ class ReaderPinchE2ETest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("전체 3쪽 · 연속 보기").assertExists()
+    }
+
+    @Test
+    fun pinchActuallyRerendersPageBitmapsAtHigherZoom() {
+        // Regression for "percentage changes, page image does not": the render
+        // key passed to loadPage must grow after a two-finger spread, not just
+        // the zoom label.
+        val renderZooms = Collections.synchronizedList(mutableListOf<Float>())
+        composeRule.setContent {
+            ContinuousReaderScreen(
+                title = "pinch-rerender-test",
+                pageCount = 1,
+                initialPage = 0,
+                loadPage = { _, zoom ->
+                    renderZooms.add(zoom)
+                    // Bitmap width grows with the render scale, mirroring the
+                    // real PdfRepository behaviour.
+                    val width = (100 * readerRenderScale(readerRenderZoom(zoom))).toInt()
+                    Bitmap.createBitmap(width, 140, Bitmap.Config.ARGB_8888)
+                },
+                onBack = {},
+                onOpenPage = {},
+            )
+        }
+        composeRule.waitForIdle()
+        val before = renderZooms.toList()
+        assertTrue("initial render must happen: $renderZooms", before.isNotEmpty())
+
+        composeRule.onRoot().performTouchInput {
+            val cx = width / 2f
+            val cy = height * 0.6f
+            down(0, Offset(cx - 40f, cy))
+            down(1, Offset(cx + 40f, cy))
+            moveTo(0, Offset(cx - 200f, cy), delayMillis = 16)
+            moveTo(1, Offset(cx + 200f, cy), delayMillis = 16)
+            up(0)
+            up(1)
+        }
+        composeRule.waitForIdle()
+
+        // The top-bar percentage changed.
+        composeRule.onNodeWithText("250%", substring = true).assertExists()
+        // And, unlike the reported bug, the page was re-rendered at a bigger
+        // render zoom (not just re-laid out at a bigger screen size).
+        val maxAfter = renderZooms.toList().maxOrNull() ?: 1f
+        val maxBefore = before.maxOrNull() ?: 1f
+        assertTrue(
+            "loadPage must be called with a larger render zoom after pinch; " +
+                "before=$before after=${renderZooms.toList()}",
+            maxAfter > maxBefore + 0.1f,
+        )
     }
 }
