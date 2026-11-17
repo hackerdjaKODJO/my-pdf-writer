@@ -87,6 +87,86 @@ object PdfTextLayout {
     }
 
     /**
+     * Returns the selectable words touched by one tap/drag gesture.
+     *
+     * A tap (including normal finger jitter) selects the single nearest word so
+     * users do not have to hit a glyph exactly. A real drag selects every word
+     * intersecting the dragged rectangle. Words from other pages and blank
+     * extraction fragments are ignored.
+     */
+    fun wordsForGesture(
+        words: List<PdfTextWord>,
+        pageIndex: Int,
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        tapSpan: Float = DEFAULT_TAP_SPAN,
+    ): List<PdfTextWord> {
+        val pageWords = words.filter { it.pageIndex == pageIndex && it.text.isNotBlank() }
+        if (pageWords.isEmpty()) return emptyList()
+
+        val left = min(startX, endX)
+        val top = min(startY, endY)
+        val right = max(startX, endX)
+        val bottom = max(startY, endY)
+        if (right - left <= tapSpan && bottom - top <= tapSpan) {
+            return listOfNotNull(
+                wordAt(
+                    words = pageWords,
+                    x = (startX + endX) / 2f,
+                    y = (startY + endY) / 2f,
+                ),
+            )
+        }
+        val drag = NormalizedRect(left, top, right, bottom)
+        return pageWords.filter { it.rect.intersects(drag) }
+    }
+
+    /**
+     * Finds the word under [x]/[y]. Exact hits choose the smallest word (tables
+     * and overlapping extraction runs can produce nested boxes). Misses fall
+     * back to the nearest word within roughly one line-height of the touch, which
+     * makes one-tap selection forgiving on phone screens.
+     */
+    fun wordAt(
+        words: List<PdfTextWord>,
+        x: Float,
+        y: Float,
+    ): PdfTextWord? {
+        if (words.isEmpty()) return null
+        val containing = words.filter { it.text.isNotBlank() && it.rect.contains(x, y) }
+        if (containing.isNotEmpty()) {
+            return containing.minByOrNull { it.rect.width * it.rect.height }
+        }
+        return words.asSequence()
+            .filter { it.text.isNotBlank() }
+            .map { word -> word to distanceToRect(word.rect, x, y) }
+            .filter { (word, distance) ->
+                distance <= max(0.003f, word.rect.height * TAP_TOLERANCE_LINE_FRACTION)
+            }
+            .minWithOrNull(
+                compareBy(
+                    { (_, distance) -> distance },
+                    { (word, _) -> word.rect.width * word.rect.height },
+                ),
+            )
+            ?.first
+    }
+
+    private fun distanceToRect(rect: NormalizedRect, x: Float, y: Float): Float {
+        val dx = max(max(rect.left - x, 0f), x - rect.right)
+        val dy = max(max(rect.top - y, 0f), y - rect.bottom)
+        return hypot(dx, dy)
+    }
+
+    /** A movement this small is treated as a tap, not a rectangle drag. */
+    private const val DEFAULT_TAP_SPAN = 0.012f
+
+    /** Vertical tap forgiveness, relative to the target word's height. */
+    private const val TAP_TOLERANCE_LINE_FRACTION = 0.8f
+
+    /**
      * Groups selected words by their original line when [lines] is available, and by
      * vertical overlap otherwise. The returned lists preserve reading order.
      */
