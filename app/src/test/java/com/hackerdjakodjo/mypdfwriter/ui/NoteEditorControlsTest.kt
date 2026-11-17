@@ -84,6 +84,50 @@ class NoteEditorControlsTest {
         assertTrue(labels.all { it.isNotBlank() })
         assertEquals("펜", noteCompactToolLabel(Tool.PEN))
         assertEquals("형광펜", noteCompactToolLabel(Tool.HIGHLIGHT))
+        assertEquals(NOTE_TEXT_TOOL_LABEL, noteCompactToolLabel(Tool.TEXT))
+        assertEquals(NOTE_TEXT_TOOL_LABEL, noteToolLabel(Tool.TEXT))
+        assertEquals(
+            "the compact and full docks must share one label source",
+            NOTE_COMPACT_DOCK_TOOLS.map(::noteToolLabel),
+            labels,
+        )
+    }
+
+    @Test
+    fun `compact dock has one style slot and keeps favourite out`() {
+        assertEquals(
+            listOf(
+                NoteDockActionSlot.STYLE,
+                NoteDockActionSlot.UNDO,
+                NoteDockActionSlot.REDO,
+                NoteDockActionSlot.MENU,
+            ),
+            NOTE_COMPACT_ACTION_SLOTS,
+        )
+        assertEquals(1, NOTE_COMPACT_ACTION_SLOTS.count { it == NoteDockActionSlot.STYLE })
+        assertFalse(NoteDockActionSlot.entries.any { it.name == "FAVORITE" })
+        assertEquals(NoteDockActionSlot.entries.toSet(), NOTE_COMPACT_ACTION_SLOTS.toSet())
+
+        assertEquals(
+            listOf(
+                NoteDockActionSlot.STYLE,
+                NoteDockActionSlot.UNDO,
+                NoteDockActionSlot.REDO,
+            ),
+            NOTE_FULL_DOCK_ACTION_SLOTS,
+        )
+        assertEquals(1, NOTE_FULL_DOCK_ACTION_SLOTS.count { it == NoteDockActionSlot.STYLE })
+    }
+
+    @Test
+    fun `note vocabulary keeps study card names stable`() {
+        assertEquals("글상자", NOTE_TEXT_TOOL_LABEL)
+        assertEquals("페이지", NOTE_PAGE_MANAGER_LABEL)
+        assertEquals("내 펜", NOTE_PEN_PRESETS_LABEL)
+        assertEquals("가림 카드", NOTE_MASKING_CARD_LABEL)
+        assertEquals("체크리스트", NOTE_CHECKLIST_LABEL)
+        assertTrue(noteStyleTitle(Tool.TEXT).contains(NOTE_TEXT_TOOL_LABEL))
+        assertTrue(noteToolHint(Tool.TEXT).contains(NOTE_TEXT_TOOL_LABEL))
     }
 
     @Test
@@ -119,7 +163,7 @@ class NoteEditorControlsTest {
         )
         assertTrue(hint.isNotBlank())
         assertFalse(hint.contains('\n'))
-        assertTrue(hint.contains("텍스트"))
+        assertTrue(hint.contains(NOTE_TEXT_TOOL_LABEL))
         assertTrue(hint.contains("레이어 1"))
         assertTrue(hint.contains("잠김"))
         assertTrue(hint.contains("줌 잠금"))

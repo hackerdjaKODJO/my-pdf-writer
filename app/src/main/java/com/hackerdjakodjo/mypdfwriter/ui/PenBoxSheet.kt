@@ -92,7 +92,7 @@ fun PenBoxSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("필통", style = MaterialTheme.typography.titleLarge)
+                    Text(NOTE_PEN_PRESETS_LABEL, style = MaterialTheme.typography.titleLarge)
                     Text(
                         "저장한 펜을 눌러 바로 사용하세요",
                         style = MaterialTheme.typography.labelMedium,
@@ -134,14 +134,14 @@ fun PenBoxSheet(
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("현재 펜을 필통에 저장")
+                Text("현재 펜을 내 펜에 저장")
             }
         }
     }
 
     if (saveDialog) {
         PenNameDialog(
-            title = "필통에 저장",
+            title = "내 펜에 저장",
             initial = "내 펜 ${presets.size + 1}",
             confirmLabel = "저장",
             onDismiss = { saveDialog = false },

@@ -22,6 +22,32 @@ internal val NOTE_COMPACT_DOCK_TOOLS = listOf(
     Tool.RECT,
 )
 
+/**
+ * Action slots beside the page pill. The colour dot and the style button are one
+ * slot now, the compact dock drops the duplicate favourite (the note menu owns
+ * it), and undo/redo stay available in both docks.
+ */
+internal enum class NoteDockActionSlot {
+    STYLE,
+    UNDO,
+    REDO,
+    MENU,
+}
+
+internal val NOTE_COMPACT_ACTION_SLOTS = listOf(
+    NoteDockActionSlot.STYLE,
+    NoteDockActionSlot.UNDO,
+    NoteDockActionSlot.REDO,
+    NoteDockActionSlot.MENU,
+)
+
+/** The full-screen dock has no menu action: the top bar owns the single ⋮. */
+internal val NOTE_FULL_DOCK_ACTION_SLOTS = listOf(
+    NoteDockActionSlot.STYLE,
+    NoteDockActionSlot.UNDO,
+    NoteDockActionSlot.REDO,
+)
+
 internal const val NOTE_COMPACT_TOOL_ROW_HEIGHT_DP = 34
 internal const val NOTE_COMPACT_ACTION_ROW_HEIGHT_DP = 32
 internal const val NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP = 38
@@ -69,16 +95,19 @@ internal fun noteFullDockHeightDp(showContextTray: Boolean): Int =
         NOTE_FULL_DOCK_ACTION_ROW_HEIGHT_DP +
         if (showContextTray) NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP else 0
 
-/** Short labels that fit six tools on a 320 dp-wide phone dock. */
-internal fun noteCompactToolLabel(tool: Tool): String = when (tool) {
+/** One shared label helper so full and compact docks never drift. */
+internal fun noteToolLabel(tool: Tool): String = when (tool) {
     Tool.PEN -> "펜"
     Tool.HIGHLIGHT -> "형광펜"
     Tool.ERASER -> "지우개"
     Tool.LASSO, Tool.LASSO_RECT -> "올가미"
-    Tool.TEXT -> "텍스트"
+    Tool.TEXT -> NOTE_TEXT_TOOL_LABEL
     Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> "도형"
     else -> "도구"
 }
+
+/** Short labels that fit six tools on a 320 dp-wide phone dock. */
+internal fun noteCompactToolLabel(tool: Tool): String = noteToolLabel(tool)
 
 /**
  * Pen and highlighter are the default writing tools; their hint is noise in a

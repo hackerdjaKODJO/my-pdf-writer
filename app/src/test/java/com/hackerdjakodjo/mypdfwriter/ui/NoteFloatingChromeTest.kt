@@ -48,6 +48,8 @@ class NoteFloatingChromeTest {
         // A 320 dp phone leaves an 8 dp margin on each side.
         assertEquals(304, noteFloatingDockWidthDp(320))
         assertTrue(noteFloatingDockWidthDp(320) < 320)
+        // A 360 dp phone still uses the compact pill cap.
+        assertEquals(NOTE_COMPACT_DOCK_MAX_WIDTH_DP, noteFloatingDockWidthDp(360))
         // Wider panes stop growing so the pill never becomes a full bar.
         assertEquals(NOTE_COMPACT_DOCK_MAX_WIDTH_DP, noteFloatingDockWidthDp(412))
         assertEquals(NOTE_COMPACT_DOCK_MAX_WIDTH_DP, noteFloatingDockWidthDp(1200))
@@ -66,8 +68,8 @@ class NoteFloatingChromeTest {
     }
 
     @Test
-    fun `study pane floating header replaces the full stacked header`() {
-        val header = studyPaneFloatingHeaderHeightDp(captureOpen = false)
+    fun `study pane floating header keeps one compact row`() {
+        val header = studyPaneFloatingHeaderHeightDp()
         val expected = STUDY_PANE_HEADER_ROW_HEIGHT_DP +
             STUDY_PANE_HEADER_VERTICAL_PADDING_DP * 2
 
@@ -78,27 +80,17 @@ class NoteFloatingChromeTest {
             "floating header should be at most half the old stack",
             header * 2 <= STUDY_PANE_LEGACY_STACKED_HEADER_HEIGHT_DP,
         )
-
-        val withCapture = studyPaneFloatingHeaderHeightDp(captureOpen = true)
-        assertEquals(
-            header + STUDY_PANE_CAPTURE_PANEL_GAP_DP + STUDY_PANE_CAPTURE_PANEL_HEIGHT_DP,
-            withCapture,
-        )
-        assertTrue("full-header should be shorter than 100 dp, was $withCapture", withCapture < 100)
     }
 
     @Test
     fun `compact hint inset clears the floating header`() {
-        val header = studyPaneFloatingHeaderHeightDp(captureOpen = false)
-        val inset = studyPaneFloatingHeaderInsetDp(captureOpen = false)
+        val header = studyPaneFloatingHeaderHeightDp()
+        val inset = studyPaneFloatingHeaderInsetDp()
 
         assertEquals(STUDY_PANE_HEADER_TOP_MARGIN_DP + header, inset)
         assertTrue(inset >= header)
         assertTrue("hint inset should stay small, was $inset", inset < 60)
-        assertEquals(
-            inset + STUDY_PANE_CAPTURE_PANEL_GAP_DP + STUDY_PANE_CAPTURE_PANEL_HEIGHT_DP,
-            studyPaneFloatingHeaderInsetDp(captureOpen = true),
-        )
+        assertEquals(48, inset)
     }
 
     @Test
@@ -106,6 +98,5 @@ class NoteFloatingChromeTest {
         assertTrue(STUDY_PANE_HEADER_SIDE_MARGIN_DP >= 4)
         assertTrue(STUDY_PANE_HEADER_TOP_MARGIN_DP >= 2)
         assertTrue(STUDY_PANE_HEADER_ROW_HEIGHT_DP <= 40)
-        assertTrue(STUDY_PANE_CAPTURE_PANEL_HEIGHT_DP <= 48)
     }
 }

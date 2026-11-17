@@ -77,7 +77,7 @@ fun NoteSearchSheet(
                 Column(Modifier.weight(1f)) {
                     Text("노트 검색", style = MaterialTheme.typography.titleLarge)
                     Text(
-                        "메모·텍스트·도장·서명에서 찾습니다 · 기기 안에서만",
+                        "메모·글상자·도장·서명에서 찾습니다 · 기기 안에서만",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -122,12 +122,12 @@ fun NoteSearchSheet(
                 trimmed.isEmpty() -> SearchEmptyState(
                     title = "검색어를 입력하세요",
                     body = "필기 획·PDF·OCR은 검색하지 않고, 이 노트에 저장된 메모와 " +
-                        "텍스트/도장/서명만 찾습니다.",
+                        "글상자/도장/서명만 찾습니다.",
                 )
 
                 results.isEmpty() -> SearchEmptyState(
                     title = "검색 결과가 없습니다",
-                    body = "\"$trimmed\"와 일치하는 메모나 텍스트가 없습니다.",
+                    body = "\"$trimmed\"와 일치하는 메모나 글상자가 없습니다.",
                 )
 
                 else -> {
