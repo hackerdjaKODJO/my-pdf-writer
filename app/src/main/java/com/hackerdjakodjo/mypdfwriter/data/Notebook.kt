@@ -134,6 +134,11 @@ data class NotePage(
     val annotations: List<Annotation> = emptyList(),
     val memo: String = "",
     val layers: List<NoteLayer> = listOf(NoteLayer()),
+    /**
+     * Optional offline masking-tape study cards placed on this page. Legacy JSON
+     * without the key loads as an empty list, so old notebooks are unchanged.
+     */
+    val maskingCards: List<MaskingCard> = emptyList(),
     /** Zero-based page in the linked source PDF, or null for a plain notebook page. */
     val sourcePageIndex: Int? = null,
 ) {
@@ -150,6 +155,7 @@ data class NotePage(
                 CustomTemplatePaths.normalizeName(customBackgroundName)
             },
             layers = safeLayers,
+            maskingCards = maskingCards.map { it.normalized() },
             annotations = annotations.map {
                 if (it.layerId == null) it.copy(layerId = defaultLayer) else it
             },
@@ -169,6 +175,9 @@ data class NotePage(
         put("annotations", JSONArray().apply { annotations.forEach { put(it.toJson()) } })
         sourcePageIndex?.let { put("sourcePage", it) }
         put("layers", JSONArray().apply { layers.forEach { put(it.toJson()) } })
+        if (maskingCards.isNotEmpty()) {
+            put("maskingCards", JSONArray().apply { maskingCards.forEach { put(it.toJson()) } })
+        }
     }
 
     companion object {
@@ -182,6 +191,11 @@ data class NotePage(
             val layers = ArrayList<NoteLayer>(layersJson.length())
             for (i in 0 until layersJson.length()) {
                 layersJson.optJSONObject(i)?.let { layers.add(NoteLayer.fromJson(it)) }
+            }
+            val maskingJson = o.optJSONArray("maskingCards") ?: JSONArray()
+            val maskingCards = ArrayList<MaskingCard>(maskingJson.length())
+            for (i in 0 until maskingJson.length()) {
+                maskingJson.optJSONObject(i)?.let { maskingCards.add(MaskingCard.fromJson(it)) }
             }
             return NotePage(
                 id = o.optString("id").ifBlank { UUID.randomUUID().toString() },
@@ -200,6 +214,7 @@ data class NotePage(
                 customBackgroundName = o.optString("customBackgroundName"),
                 annotations = annotations,
                 memo = o.optString("memo"),
+                maskingCards = maskingCards,
                 sourcePageIndex = o.optInt("sourcePage", -1).takeIf { it >= 0 },
                 layers = layers.ifEmpty { listOf(NoteLayer()) },
             ).normalized()

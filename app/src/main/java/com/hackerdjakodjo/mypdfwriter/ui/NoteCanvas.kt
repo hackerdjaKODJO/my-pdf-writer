@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -22,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
@@ -32,6 +34,7 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.testTag
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.data.MaskingCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
@@ -90,6 +93,11 @@ fun NoteCanvas(
     gestureUndoEnabled: Boolean = NOTE_GESTURE_UNDO_DEFAULT,
     selectionBounds: NoteSelectionBounds? = null,
     annotationProgress: (Annotation) -> Float = { 1f },
+    // Study-only overlay. Defaults keep every existing caller byte-for-byte intact.
+    maskingCards: List<MaskingCard> = emptyList(),
+    showMaskingCards: Boolean = false,
+    onRevealMaskingCard: (String) -> Unit = {},
+    onMarkMaskingCard: (String, Boolean) -> Unit = { _, _ -> },
     backgroundBitmap: Bitmap? = null,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
     onErase: (List<NormalizedPoint>) -> Unit,
@@ -619,6 +627,25 @@ fun NoteCanvas(
 
                 native.restore()
                 native.restore()
+            }
+        }
+
+        // Study-only tape overlays share this exact transform, so they stay pinned
+        // to their page rectangle through pan/zoom. Disabled adds no touch targets.
+        if (showMaskingCards && maskingCards.isNotEmpty()) {
+            // Clipped to the canvas so a panned-off tape never paints over chrome.
+            Box(Modifier.fillMaxSize().clipToBounds()) {
+                MaskingTapeLayer(
+                    cards = maskingCards,
+                    fit = total,
+                    pan = pan,
+                    viewWidth = viewW,
+                    viewHeight = viewH,
+                    pageWidth = pageWidth,
+                    pageHeight = pageHeight,
+                    onReveal = onRevealMaskingCard,
+                    onMark = onMarkMaskingCard,
+                )
             }
         }
     }
