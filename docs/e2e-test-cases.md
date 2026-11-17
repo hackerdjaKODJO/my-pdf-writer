@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.23
+# E2E test cases — My PDF Writer 0.8.24
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator; the build machine has no adb device attached, so only JVM tests are
@@ -9,7 +9,7 @@ executed here. Instrumentation APKs are compiled with
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 468 | **Passing** on this phone |
+| JVM unit tests | 469 | **Passing** on this phone |
 | Instrumentation/E2E | 7 classes (see below) | **Compiled**; on-device run pending |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally) |
@@ -45,7 +45,7 @@ executed here. Instrumentation APKs are compiled with
 | READ-07 | Horizontal pan moves the enlarged page, returns to the left edge, and does not open it | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | READ-08 | Previous bitmap stays visible while next zoom render is pending | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | HOME-09 | Persistent create FAB is present on Home | Instrumentation `HomeStartE2ETest` | Compiled |
-| HOME-10 | Tag search filters the tag overview | JVM `HomeLibraryPolicyTest` | Passing |
+| HOME-10 | Tag search filters the tag overview; empty-PDF search keeps import copy | JVM `HomeLibraryPolicyTest` | Passing |
 | HOME-11 | Home tab survives leaving Home and returning | Instrumentation `HomeStartE2ETest` | Compiled |
 | UI-11 | Viewer dock names the active extra tool/shape | JVM `ViewerToolDockTest` | Passing |
 | READ-03 | Render zoom quantization and bitmap scale | JVM `ReaderZoomTest` | Passing |

@@ -168,13 +168,19 @@ fun NotebookHomeScreen(
     var section by rememberSaveable(
         stateSaver = Saver(
             save = { it.name },
-            restore = { LibrarySection.valueOf(it) },
+            restore = { name ->
+                runCatching { LibrarySection.valueOf(name) }.getOrNull()
+                    ?: LibrarySection.NOTES
+            },
         ),
     ) { mutableStateOf(LibrarySection.NOTES) }
     var scope by rememberSaveable(
         stateSaver = Saver(
             save = { it.name },
-            restore = { NoteScope.valueOf(it) },
+            restore = { name ->
+                runCatching { NoteScope.valueOf(name) }.getOrNull()
+                    ?: NoteScope.ALL
+            },
         ),
     ) { mutableStateOf(NoteScope.ALL) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -429,7 +435,6 @@ fun NotebookHomeScreen(
                             horizontalPadding = horizontalPadding,
                             actions = actions,
                             onClearFilters = {
-                                scope = NoteScope.ALL
                                 selectedFolder = null
                                 selectedTag = null
                                 query = ""
@@ -886,7 +891,13 @@ private fun TagFilterChip(
                 Icon(Icons.Outlined.LocalOffer, contentDescription = null, modifier = Modifier.size(16.dp))
             },
             trailingIcon = if (selectedTag != null) {
-                { Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                {
+                    Icon(
+                        Icons.Outlined.Close,
+                        contentDescription = "태그 필터 지우기",
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
             } else {
                 null
             },
@@ -1329,7 +1340,11 @@ private fun PdfSection(
             }
             if (pdfs.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    EmptyPdfState(query = query, onImportPdf = onImportPdf)
+                    EmptyPdfState(
+                        query = query,
+                        hasAnyPdf = hasAnyPdf,
+                        onImportPdf = onImportPdf,
+                    )
                 }
             } else {
                 gridItems(pdfs, key = { it.uri }) { doc ->
@@ -1362,7 +1377,13 @@ private fun PdfSection(
                 )
             }
             if (pdfs.isEmpty()) {
-                item { EmptyPdfState(query = query, onImportPdf = onImportPdf) }
+                item {
+                    EmptyPdfState(
+                        query = query,
+                        hasAnyPdf = hasAnyPdf,
+                        onImportPdf = onImportPdf,
+                    )
+                }
             } else {
                 items(pdfs, key = { it.uri }) { doc ->
                     PdfListRow(doc = doc, onClick = { onOpenPdf(doc) })
@@ -1544,8 +1565,12 @@ private fun PdfListRow(doc: RecentDoc, onClick: () -> Unit) {
 }
 
 @Composable
-private fun EmptyPdfState(query: String, onImportPdf: () -> Unit) {
-    val filtered = query.isNotBlank()
+private fun EmptyPdfState(
+    query: String,
+    hasAnyPdf: Boolean,
+    onImportPdf: () -> Unit,
+) {
+    val filtered = pdfEmptyStateIsFiltered(hasAnyPdf, query)
     EmptyState(
         icon = if (filtered) Icons.Outlined.Search else Icons.Outlined.PictureAsPdf,
         title = if (filtered) "검색 결과가 없어요" else "아직 PDF가 없어요",

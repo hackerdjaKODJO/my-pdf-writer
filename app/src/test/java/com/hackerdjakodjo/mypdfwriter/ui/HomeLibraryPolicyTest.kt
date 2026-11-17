@@ -28,6 +28,13 @@ class HomeLibraryPolicyTest {
     }
 
     @Test
+    fun pdfEmptyStateOnlySaysFilteredWhenTheLibraryHasPdfs() {
+        assertEquals(false, pdfEmptyStateIsFiltered(hasAnyPdf = false, query = "강의"))
+        assertEquals(false, pdfEmptyStateIsFiltered(hasAnyPdf = true, query = "  "))
+        assertEquals(true, pdfEmptyStateIsFiltered(hasAnyPdf = true, query = "강의"))
+    }
+
+    @Test
     fun queryIsTrimmed() {
         assertEquals(
             listOf("수학" to 3),

@@ -115,6 +115,14 @@ internal fun dockShapeLabel(tool: Tool): String = when (tool) {
     else -> "도형"
 }
 
+/** Keeps the dock icon aligned with the active shape label. */
+internal fun dockShapeIcon(tool: Tool): ImageVector = when (tool) {
+    Tool.ARROW -> Icons.Outlined.NorthEast
+    Tool.LINE -> Icons.Outlined.HorizontalRule
+    Tool.ELLIPSE -> Icons.Outlined.Circle
+    else -> Icons.Outlined.CropSquare
+}
+
 private data class DockEntry(
     val label: String,
     val icon: ImageVector,
@@ -155,7 +163,7 @@ fun ViewerToolDock(
         DockEntry("글상자", Icons.Outlined.TextFields, state.tool == Tool.TEXT) {
             onSelectTool(Tool.TEXT)
         },
-        DockEntry(dockShapeLabel(shapeTool), Icons.Outlined.CropSquare, isShapeTool(state.tool)) {
+        DockEntry(dockShapeLabel(shapeTool), dockShapeIcon(shapeTool), isShapeTool(state.tool)) {
             onSelectTool(shapeTool)
         },
         // Direct text selection entry: this used to be labelled "올가미",

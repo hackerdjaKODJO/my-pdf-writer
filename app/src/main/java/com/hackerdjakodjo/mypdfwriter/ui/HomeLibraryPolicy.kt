@@ -14,3 +14,7 @@ internal fun filterTagCounts(
     if (needle.isEmpty()) return tagCounts
     return tagCounts.filter { (tag, _) -> tag.contains(needle, ignoreCase = true) }
 }
+
+/** True only when a PDF search is hiding documents that actually exist. */
+internal fun pdfEmptyStateIsFiltered(hasAnyPdf: Boolean, query: String): Boolean =
+    hasAnyPdf && query.isNotBlank()

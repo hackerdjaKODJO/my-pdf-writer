@@ -80,3 +80,16 @@ delivered here.
   - PDF split-chrome `PDF 메뉴` target;
   - existing pinch/zoom and study-pane coverage.
 - No on-device execution was possible in this environment (no adb device).
+
+## 0.8.24 QA follow-up
+
+A post-implementation read-only review found no P0/P1 blockers. The following
+P2 items were fixed in 0.8.24:
+
+- An empty PDF library with a search query now says there are no PDFs and keeps
+  the import action, instead of claiming the search found nothing.
+- **필터 초기화** clears folder/tag/search while preserving the current
+  즐겨찾기/휴지통 scope.
+- The selected tag chip's clear icon is labeled for accessibility.
+- Saved enum state restore is defensive against a future enum rename.
+- The shape slot icon now matches the active shape label.
