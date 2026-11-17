@@ -39,6 +39,19 @@ fun toggleReaderZoom(current: Float): Float =
     }
 
 /**
+ * Applies a native `detectTransformGestures` zoom delta only while two fingers
+ * are down. A single-finger delta is ignored so vertical scrolling (and the
+ * separate horizontal pan) stay independent of zoom. The result is clamped to
+ * the supported reader range.
+ */
+fun gatedPinchZoom(current: Float, zoomChange: Float, twoFinger: Boolean): Float {
+    if (!twoFinger || !zoomChange.isFinite() || zoomChange <= 0f) {
+        return clampReaderZoom(current)
+    }
+    return clampReaderZoom(current * zoomChange)
+}
+
+/**
  * Converts a two-finger pinch into a zoom factor. The whole continuous reader
  * uses the returned value, so every page stays at the same zoom level.
  */
