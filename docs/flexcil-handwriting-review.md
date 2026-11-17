@@ -29,7 +29,7 @@ enabled or working in this build. There are no runtime claims for either app. Al
 label quotations below are short functional evidence; no Flexcil copy,
 screenshots, templates, fonts, icons or branding are reproduced.
 
-### 1.1 Implementation status — 0.8.3 through 0.8.6 delivered
+### 1.1 Implementation status — 0.8.3 through 0.8.7 delivered
 
 The 0.8.3 delivery implements the primary handwriting gaps with original code. The 0.8.4 delivery adds the study pane, pressure ink, template studio and page/export organization described below; see the 0.8.4 status after the 0.8.3 table.
 
@@ -74,6 +74,14 @@ strikeout discovery; the PDF top bar has a direct `노트` action; and the study
 pane defaults to 85% with a compact 6-tool note dock, no nested note app bar and a
 larger writing canvas. On-device selection/pane touch ergonomics still need a
 phone smoke test.
+
+**0.8.7 delivered (floating split chrome):** the full PDF app bar and bottom dock
+are removed while the study pane is open; compact translucent back/page/selection/
+bookmark/tools/hub controls float over the PDF strip, and the selection actions
+float in a compact bar. The note pane uses a 44dp floating header and a translucent
+floating 6-tool dock, leaving the canvas edge-to-edge behind them. The 85% pane
+therefore receives the height previously spent on fixed chrome. Real-device
+overlap/ergonomics still need a phone smoke test.
 
 ## 2. Feature matrix
 
@@ -200,8 +208,9 @@ paid content or bypass premium/DRM; do not copy reference screenshots into
 | **0.8.3** | Stabilization, shape recognition, partial eraser, PDF annotation filter/page grouping/hide mode, lasso transform and session clipboard. | Delivered: `assembleDebug`, 214 JVM tests, `assembleDebugAndroidTest`, `assembleRelease`; no new permission; versionCode 12. On-device stroke/selection E2E still pending an adb device. |
 | **0.8.4** | Study-note bottom pane, pressure ink, Template Studio (orientation/tint/cover), note page manager and export presets. | Delivered: debug/tests/instrumentation compile/R8; pane detached save and export; pressure/legacy tests; template/orientation tests; page manager/export tests. Resizable split/drag capture/custom media/hardware tuning remain. |
 | **0.8.5** | Custom image/PDF-first-page templates, resizable study pane/drop capture/To/From links, pressure curves and gesture undo/redo, page rotation/photo pages/note search. | Delivered: 327 JVM tests, debug/release/androidTest compile; custom assets included in backup; no new permissions; versionCode 14. Hardware pressure calibration and direct canvas drag remain. |
-| **0.8.6** | Hardware pressure calibration and direct canvas-to-pane drag; custom PDF page selection. | Real-device pressure range/dead-zone tuning; drag gesture verification; first/selected PDF page import; no permission changes. |
-| **0.8.7** | Orientation + custom template/media import; notebook page manager and export presets. | Legacy notebooks load as portrait; orientation export correct; SAF import; backup restore; range/include tests. |
+| **0.8.6** | PDF UX simplification: 7-primary hub, forgiving tap/drag text selection, direct top-bar note entry, compact 85% study pane. | Delivered: 338 JVM tests; debug/release/androidTest compile; selection helper/E2E tests; on-device touch check pending. |
+| **0.8.7** | Split PDF/note space reclamation: no fixed PDF app bar/dock while the pane is open; floating PDF controls/selection bar, floating note header and floating 6-tool dock. | Delivered: 352 JVM tests; floating chrome tests/E2E compile; debug/release build. Real-device overlap/ergonomics pending. |
+| **0.8.8+** | Hardware pressure calibration, direct canvas-to-pane drag, custom PDF page selection, search next/previous. | Real-device pressure tuning and gesture verification; no permission changes. |
 | Later / opt-in | Gesture undo/redo and eraser gesture; second-document split/floating popup; note-content search. Avoid cloud, ads and AI. | Only after conflict, discoverability and privacy review; no change to the no-INTERNET baseline. |
 
 The merge order remains: shared-file owners first, then new-file agents; check

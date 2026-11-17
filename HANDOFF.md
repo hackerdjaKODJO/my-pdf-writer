@@ -1,4 +1,4 @@
-# PC handoff — My PDF Writer 0.8.6
+# PC handoff — My PDF Writer 0.8.7
 
 This document lets another machine continue the work from the same source state.
 The Android app source, tests and design notes are in Git; APKs and signing keys
@@ -8,20 +8,20 @@ are not.
 
 | Field | Value |
 | --- | --- |
-| Version | `0.8.6` / `versionCode 15` |
-| Tag | `v0.8.6` |
-| Release commit | `v0.8.6` tag |
+| Version | `0.8.7` / `versionCode 16` |
+| Tag | `v0.8.7` |
+| Release commit | `v0.8.7` tag |
 | Branch | `feature/starnote` |
 | `main` | same commit as `feature/starnote` |
 | Package | `com.hackerdjakodjo.mypdfwriter` (release) / `.debug` |
 | Remote | `https://github.com/hackerdjaKODJO/my-pdf-writer` |
-| JVM tests | **338 passing** |
+| JVM tests | **352 passing** |
 | On-device tests | Instrumentation APK compiles; not run (no adb device here) |
 | Permissions | no `INTERNET`; `RECORD_AUDIO` is runtime-only for audio notes |
 
 The local phone review APK is
-`/sdcard/Download/MyPDFWriter-0.8.6-arm64.apk`
-(SHA-256 `5a6d185da5ba8b4def800f946208e23a1480562d16c23e0530ce66d1261fd169`).
+`/sdcard/Download/MyPDFWriter-0.8.7-arm64.apk`
+(SHA-256 `a7eb788ef41d4e38dbb2e315c37d40895951780e2ffdce483b19ef861fb0032b`).
 It is a debug-signed arm64-only APK and is not committed to Git.
 
 ## Continue on a PC
@@ -77,6 +77,10 @@ on the PC/CI with the upload key.
 - 0.8.6 simplified PDF hub (7 primary tools + full expansion), forgiving tap/drag
   text selection with a dedicated dock action, direct PDF top-bar `노트` entry,
   and a focused 85% study pane with a compact 6-tool note dock and larger canvas.
+- 0.8.7 reclaims split-screen height: the PDF top/bottom bars disappear while
+  the study pane is open; back/page/text-selection/bookmark/tools/hub float over
+  the PDF strip. The note pane uses a floating header and a translucent floating
+  six-tool dock, so the canvas fills the pane.
 
 Start with:
 
@@ -94,9 +98,9 @@ Start with:
    implemented, but hardware pressure range, dead zone and linearity have not
    been tuned against a real tablet. Add a calibration flow and test with a
    pressure-sensitive stylus.
-2. **0.8.6 text selection and compact pane** — compile/pure tests pass, but tap/
-   drag selection and compact handwriting ergonomics still need a phone smoke
-   test; the instrumentation selection test is not executed without adb.
+2. **0.8.7 split chrome** — compile/pure tests pass, but floating toolbar
+   overlap, tap/drag selection and compact handwriting ergonomics still need a
+   phone smoke test; instrumentation tests are not executed without adb.
 3. **Direct canvas-to-pane drag** — the guaranteed capture paths are the
    selection-bar `패널에 추가` action and dragging the selected-text summary to
    the pane header. Direct drag from canvas text and source-rectangle backlinks

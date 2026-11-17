@@ -6,7 +6,7 @@
 광고·계정·인터넷 권한 없이 **기기 안에서만** 동작합니다.
 
 - **패키지**: `com.hackerdjakodjo.mypdfwriter`
-- **버전**: `0.8.6` (개발 빌드)
+- **버전**: `0.8.7` (개발 빌드)
 - **지원 OS**: Android 8.0 (API 26) 이상
 - **타깃 SDK**: 36 (Android 16)
 - **PC 인계 문서**: [`HANDOFF.md`](HANDOFF.md)
@@ -64,7 +64,7 @@ My PDF Writer는 다음 한 가지에 집중합니다.
 | 내보내기 | 화면과 동일한 렌더러로 주석·워터마크·페이지 번호를 평탄화해 PDF 저장, 노트 전체/현재/선택 페이지 프리셋 |
 | 공유·인쇄 | Android 공유 시트와 인쇄 프레임워크 |
 | 파일 | SAF로 열기/저장, 최근 문서 목록, 다른 앱에서 PDF 열기(`ACTION_VIEW`) |
-| UI | 한국어, 라이트/다크, 엣지투엣지, **간단 PDF 허브·주요 7개 도구**, **PDF 상단 노트 진입**, 텍스트 선택 전용 도구 독, **PDF+노트 집중 85% 패널** |
+| UI | 한국어, 라이트/다크, 엣지투엣지, 간단 PDF 허브, PDF 상단 노트 진입, 텍스트 선택 전용 도구, **PDF+노트 85% 패널·플로팅 PDF 크롬·플로팅 필기 독/헤더** |
 
 ### 설계 포인트
 
@@ -239,7 +239,7 @@ Android 16(Pixel 7 AVD)에서 다음 흐름을 직접 확인했습니다.
   - 내보낸 PDF를 앱에서 다시 열어 편집 가능한 주석이 없음을 확인
 - **R8 릴리스 APK**에서 PDF 열기, 펜, 검색(2건), 페이지 회전, 내보내기 재검증
   - `release-r8-test.pdf` (14,545 bytes), `pdfinfo`: 3 pages, A4, Page rot 90
-- **단위 테스트 338개 통과** (페이지 회전/정규화, 주석 JSON, 노트북/레이어/북마크, 펜박스/올가미,
+- **단위 테스트 352개 통과** (페이지 회전/정규화, 주석 JSON, 노트북/레이어/북마크, 펜박스/올가미,
   발췌 JSON, OCR 범위, 페이지 정리 등)
 - 릴리스 APK 권한 확인: `INTERNET`/저장소/카메라/알림/광고 ID 없음
 - 네이티브 라이브러리 16 KB 페이지 정렬 확인 (`zipalign -c -P 16`)
@@ -247,6 +247,7 @@ Android 16(Pixel 7 AVD)에서 다음 흐름을 직접 확인했습니다.
 - Flexcil 필기 리뷰·기능 매트릭스: [`docs/flexcil-handwriting-review.md`](docs/flexcil-handwriting-review.md)
 - 템플릿 스튜디오 정책: [`docs/template-studio.md`](docs/template-studio.md)
 - PDF UX·텍스트 선택: [`docs/pdf-ux-selection-and-hub.md`](docs/pdf-ux-selection-and-hub.md)
+- 플로팅 PDF/노트 크롬: [`docs/ux-overhaul.md`](docs/ux-overhaul.md)
 - 필압·제스처: [`docs/ink-pressure-and-gestures.md`](docs/ink-pressure-and-gestures.md)
 - 페이지 회전·사진·노트 검색: [`docs/note-page-tools.md`](docs/note-page-tools.md)
 - E2E 실행 명령: [`docs/testing.md`](docs/testing.md)
@@ -339,8 +340,9 @@ app/src/test/java/com/hackerdjakodjo/mypdfwriter/data/
 - **v0.8.3**: Flexcil 필기 리뷰 기반 필기 보정·도형 자동 인식·부분 지우개·올가미 편집/클립보드, PDF 주석 숨김/필터
 - **v0.8.4**: PDF 위 하단 스터디 노트 패널, 필압 잉크, 템플릿 스튜디오(가로/세로·종이색·표지), 페이지 관리·내보내기 프리셋
 - **v0.8.5**: 커스텀 이미지/PDF 템플릿 가져오기, 리사이즈 스터디 패널·드롭 캡처·To/From 링크, 필압 곡선·제스처 undo/redo, 페이지 회전·사진 페이지·노트 검색
-- **v0.8.6 (현재)**: PDF 메뉴 간소화(주요 7개+전체 보기), 텍스트 선택 탭/드래그 복구·전용 도구, PDF 상단 노트 진입, PDF+노트 85% 집중 패널과 컴팩트 필기 툴바
-- **v0.8.7+**: 실기기 필압 캘리브레이션, 직접 캔버스 드래그, 검색 결과 다음/이전, 접근성, 백업 암호화, EPUB/Word/PPT는 MyReader와 역할이 겹쳐 보류
+- **v0.8.6**: PDF 메뉴 간소화(주요 7개+전체 보기), 텍스트 선택 탭/드래그 복구·전용 도구, PDF 상단 노트 진입, PDF+노트 85% 집중 패널
+- **v0.8.7 (현재)**: PDF+노트 분할에서 상단/하단 고정 바 제거, PDF 플로팅 컨트롤·선택 바, 노트 플로팅 헤더·필기 독으로 필기 공간 확대
+- **v0.8.8+**: 실기기 필압 캘리브레이션, 직접 캔버스 드래그, 검색 결과 다음/이전, 접근성, 백업 암호화, EPUB/Word/PPT는 MyReader와 역할이 겹쳐 보류
 - **v1.0**: 사용자 승인 후 Play Store 정식 출시, 영어/일본어 UI, 온보딩
 
 자세한 출시 체크리스트는 [`docs/play-store-roadmap.md`](docs/play-store-roadmap.md)를 참고하세요.
