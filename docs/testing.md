@@ -79,7 +79,7 @@ status and on-device manual checklist are in
 - `StudyPaneE2ETest`
 - `PdfCanvasSelectionE2ETest`
 - `PdfSplitChromeE2ETest`
-- `SearchNavigationTest`, `MaskingCardTest`, `ChecklistCardTest`, `PlaybackSpeedTest`, `TextActionsDictionaryTest`, `HelpCenterContentTest`, `OnboardingStoreTest`, `OnboardingContentTest`, `PdfContextHintsTest`, `ReaderZoomTest`, `ContinuousPinchGateTest`, `ContinuousPinchCompositionTest`, `PdfContinuousTraceTest`, `PdfTextEditTest` (JVM) cover 0.8.9–0.8.20 logic
+- `SearchNavigationTest`, `MaskingCardTest`, `ChecklistCardTest`, `PlaybackSpeedTest`, `TextActionsDictionaryTest`, `HelpCenterContentTest`, `OnboardingStoreTest`, `OnboardingContentTest`, `PdfContextHintsTest`, `ReaderZoomTest`, `ContinuousPinchGateTest`, `ContinuousPinchCompositionTest`, `PdfContinuousTraceTest`, `PdfTextEditTest` (JVM) cover 0.8.9–0.8.21 logic
 
 On this Termux host no adb device/emulator is available, so these compile but
 have not been executed. The user-facing guide is

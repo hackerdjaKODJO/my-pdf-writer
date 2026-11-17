@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.20`** — `versionCode = 29`.
-- **Next version is `0.8.21` — `versionCode = 30`.**
+- Current delivered version: **`0.8.21`** — `versionCode = 30`.
+- **Next version is `0.8.22` — `versionCode = 31`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.21` | 30 | 2026-11-17 | `v0.8.21` | Layout-phase horizontal pan offset (no per-frame recomposition); diagonal drag pans X while LazyColumn scrolls Y; tap suppression |
 | `0.8.20` | 29 | 2026-11-17 | `v0.8.20` | Continuous page actually grows past viewport (`requiredWidth`); raw Initial-pass pinch tracking avoids awaitEachGesture down-consumption |
 | `0.8.19` | 28 | 2026-11-17 | `v0.8.19` | Initial-pass calculateZoom pinch with pointer-count gate; native transform replaced |
 | `0.8.18` | 27 | 2026-11-17 | `v0.8.18` | Initial-pass pinch tracking, stale-lambda/render/cache key fixes, PDF_CONTINUOUS trace |

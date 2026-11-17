@@ -8,7 +8,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,11 +65,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Vertical, read-only PDF page list.
@@ -113,11 +112,13 @@ fun ContinuousReaderScreen(
     // Zoom and horizontal pan are screen-wide: every page uses the same values,
     // so a pinch on one page enlarges the whole continuous document.
     var zoom by rememberSaveable { mutableFloatStateOf(READER_ZOOM_MIN) }
-    var panX by remember { mutableFloatStateOf(0f) }
+    // A state object, not a composable Float: page offsets read it inside
+    // Modifier.offset { }, so dragging does not recompose every visible page.
+    val panX = remember { mutableFloatStateOf(0f) }
     val latestZoom = rememberUpdatedState(zoom)
     val setZoom: (Float) -> Unit = { value ->
         zoom = clampReaderZoom(value)
-        if (zoom <= READER_ZOOM_MIN) panX = 0f
+        if (zoom <= READER_ZOOM_MIN) panX.floatValue = 0f
     }
     val toggleZoom: () -> Unit = { setZoom(toggleReaderZoom(latestZoom.value)) }
 
@@ -127,6 +128,12 @@ fun ContinuousReaderScreen(
     // and the per-page horizontal-pan detectors for the duration of a pinch so
     // they cannot consume the first pointer away from the transform detector.
     var pinchActive by remember { mutableStateOf(false) }
+
+    // Set for the duration of a one-finger pan. The page tap detector reads it
+    // at tap time so a horizontal pan cannot also open the page. Reset on the
+    // next distinct pointer-down; this avoids consuming the up event and keeps
+    // the LazyColumn's native vertical fling intact on diagonal drags.
+    val suppressPageTap = remember { mutableStateOf(false) }
 
     // Debug-only observability: `lastRender` is written from the render
     // coroutine with the *real* bitmap size, so the HUD can tell a computed
@@ -192,38 +199,44 @@ fun ContinuousReaderScreen(
             if (pageCount <= 0) {
                 EmptyReader(onBack = onBack)
             } else {
-                // The native transform detector lives on a Box that wraps ONLY
-                // the page list, not the whole screen or the page indicator.
-                // A small companion observer counts pointers in the Initial pass
-                // so zoom applies only while two fingers are down; single-finger
-                // drags still belong to the LazyColumn's scroller.
+                // One raw Initial-pass observer owns the document-wide
+                // pinch zoom and one-finger horizontal pan. It deliberately
+                // never consumes single-finger events: the LazyColumn keeps
+                // its native vertical scroll/fling, and a diagonal drag can
+                // pan horizontally while the list scrolls vertically.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(Unit) {
-                            // Observe raw pointer events in the Initial pass so we
-                            // never depend on awaitEachGesture's internal down wait,
-                            // which a child scroll/tap detector can consume first.
-                            // Single-finger events stay untouched and scroll the
-                            // LazyColumn normally; only two-finger events are consumed
-                            // for document-wide pinch zoom.
+                            val touchSlop = viewConfiguration.touchSlop
+                            val horizontalPaddingPx = 28.dp.toPx()
                             awaitPointerEventScope {
                                 val gate = ContinuousPinchGate()
                                 val seen = HashSet<Long>()
                                 var lastTracedRenderZoom = readerRenderZoom(latestZoom.value)
                                 var pinchWasActive = false
+                                var multiTouchGesture = false
+                                var panPointerId = -1L
+                                var panTotalX = 0f
+                                var panStarted = false
                                 while (true) {
                                     val event = awaitPointerEvent(PointerEventPass.Initial)
                                     event.changes.forEach { change ->
                                         val id = change.id.value
                                         if (change.pressed) {
-                                            if (seen.add(id)) gate.onDown(id)
+                                            if (seen.add(id)) {
+                                                gate.onDown(id)
+                                                if (seen.size == 1) {
+                                                    suppressPageTap.value = false
+                                                }
+                                            }
                                         } else if (seen.remove(id)) {
                                             gate.onUp(id)
                                         }
                                     }
 
                                     if (gate.twoFinger) {
+                                        multiTouchGesture = true
                                         pinchActive = true
                                         if (!pinchWasActive) {
                                             pinchWasActive = true
@@ -265,12 +278,63 @@ fun ContinuousReaderScreen(
                                     } else {
                                         pinchWasActive = false
                                         pinchActive = false
+
+                                        // One-finger horizontal pan is observed but
+                                        // not consumed. Vertical movement continues to
+                                        // the LazyColumn, so diagonal drags work.
+                                        if (!multiTouchGesture && latestZoom.value >
+                                            READER_ZOOM_MIN
+                                        ) {
+                                            val change = event.changes.firstOrNull {
+                                                it.pressed
+                                            }
+                                            if (change != null) {
+                                                val id = change.id.value
+                                                if (panPointerId != id) {
+                                                    panPointerId = id
+                                                    panTotalX = 0f
+                                                    panStarted = false
+                                                }
+                                                val deltaX = change.position.x -
+                                                    change.previousPosition.x
+                                                if (deltaX != 0f) {
+                                                    panTotalX += deltaX
+                                                    if (!panStarted &&
+                                                        abs(panTotalX) > touchSlop
+                                                    ) {
+                                                        panStarted = true
+                                                        suppressPageTap.value = true
+                                                    }
+                                                    if (panStarted) {
+                                                        val viewportWidth =
+                                                            listState.layoutInfo
+                                                                .viewportSize.width
+                                                                .toFloat()
+                                                        val basePageWidth =
+                                                            (viewportWidth -
+                                                                horizontalPaddingPx)
+                                                                .coerceAtLeast(1f)
+                                                        val maxPan = basePageWidth *
+                                                            (latestZoom.value -
+                                                                READER_ZOOM_MIN)
+                                                        panX.floatValue =
+                                                            (panX.floatValue - deltaX)
+                                                                .coerceIn(0f, maxPan)
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
 
                                     if (event.changes.none { it.pressed }) {
                                         gate.clear()
                                         seen.clear()
                                         pinchActive = false
+                                        pinchWasActive = false
+                                        multiTouchGesture = false
+                                        panPointerId = -1L
+                                        panTotalX = 0f
+                                        panStarted = false
                                     }
                                 }
                             }
@@ -297,12 +361,11 @@ fun ContinuousReaderScreen(
                             ReaderPageCard(
                                 index = index,
                                 zoom = zoom,
-                                panX = panX,
+                                panX = { panX.floatValue },
                                 loadPage = loadPage,
                                 onOpenPage = onOpenPage,
                                 onToggleZoom = toggleZoom,
-                                onPanChange = { panX = it },
-                                panEnabled = true,
+                                suppressTap = { suppressPageTap.value },
                                 onRendered = { lastRender = it },
                             )
                         }
@@ -358,12 +421,11 @@ fun ContinuousReaderScreen(
 private fun ReaderPageCard(
     index: Int,
     zoom: Float,
-    panX: Float,
+    panX: () -> Float,
     loadPage: suspend (Int, Float) -> Bitmap?,
     onOpenPage: (Int) -> Unit,
     onToggleZoom: () -> Unit,
-    onPanChange: (Float) -> Unit,
-    panEnabled: Boolean,
+    suppressTap: () -> Boolean,
     onRendered: (ReaderRenderInfo) -> Unit,
 ) {
     var attempt by remember(index) { mutableIntStateOf(0) }
@@ -414,11 +476,10 @@ private fun ReaderPageCard(
         else -> DEFAULT_PAGE_ASPECT
     }.coerceIn(0.15f, 10f)
 
-    val zoomed = zoom > READER_ZOOM_MIN
     // A failed page keeps its retry control usable instead of also opening the
     // single-page viewer when the retry chip is tapped.
     val canOpenPage = page !is ReaderPageState.Failed
-    val latestPan by rememberUpdatedState(panX)
+    val currentSuppressTap by rememberUpdatedState(suppressTap)
 
     BoxWithConstraints(
         modifier = Modifier
@@ -429,30 +490,14 @@ private fun ReaderPageCard(
         val maxPan = with(LocalDensity.current) {
             (pageWidth - maxWidth).toPx().coerceAtLeast(0f)
         }
-        val currentPan = panX.coerceIn(0f, maxPan)
-        val panOffset = with(LocalDensity.current) { currentPan.toDp() }
-
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(
-                    // A two-finger pinch must not be mistaken for a one-finger
-                    // horizontal pan: while the gate is open there is no pan
-                    // detector to consume the first pointer in the Main pass.
-                    if (zoomed && panEnabled) {
-                        Modifier.pointerInput(index, maxPan, onPanChange) {
-                            detectHorizontalDragGestures { change, dragAmount ->
-                                change.consume()
-                                onPanChange((latestPan - dragAmount).coerceIn(0f, maxPan))
-                            }
-                        }
-                    } else {
-                        Modifier
-                    },
-                )
                 .pointerInput(index, canOpenPage, onOpenPage, onToggleZoom) {
                     detectTapGestures(
-                        onTap = { if (canOpenPage) onOpenPage(index) },
+                        onTap = {
+                            if (canOpenPage && !currentSuppressTap()) onOpenPage(index)
+                        },
                         onDoubleTap = { onToggleZoom() },
                     )
                 },
@@ -466,7 +511,15 @@ private fun ReaderPageCard(
                 // the shared pan offset reveals the rest.
                 modifier = Modifier
                     .requiredWidth(pageWidth)
-                    .offset(x = -panOffset)
+                    // Read pan state during layout, not composition: every
+                    // pan frame moves all visible pages without recomposing
+                    // their bitmaps or semantics.
+                    .offset {
+                        IntOffset(
+                            -panX().coerceIn(0f, maxPan).roundToInt(),
+                            0,
+                        )
+                    }
                     .aspectRatio(aspectRatio),
                 shape = RoundedCornerShape(2.dp),
                 color = Color.White,

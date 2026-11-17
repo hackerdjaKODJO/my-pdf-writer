@@ -3,6 +3,7 @@ package com.hackerdjakodjo.mypdfwriter.ui
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -10,10 +11,12 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Device-only checks for two-finger pinch in the continuous reader.
@@ -118,6 +121,43 @@ class ReaderPinchE2ETest {
             "page width must grow after zoom; before=$beforeWidth after=$afterWidth",
             afterWidth > beforeWidth * 1.5f,
         )
+    }
+
+    @Test
+    fun horizontalPanMovesThePageWithoutOpeningIt() {
+        val opened = AtomicInteger(-1)
+        composeRule.setContent {
+            ContinuousReaderScreen(
+                title = "pan-test",
+                pageCount = 3,
+                initialPage = 0,
+                loadPage = { _, _ -> Bitmap.createBitmap(80, 112, Bitmap.Config.ARGB_8888) },
+                onBack = {},
+                onOpenPage = { opened.set(it) },
+            )
+        }
+        composeRule.waitForIdle()
+
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        // Double tap to 200% so there is horizontal overflow to pan.
+        composeRule.onRoot().performTouchInput { click(center); click(center) }
+        composeRule.waitForIdle()
+        val zoomed = page.getUnclippedBoundsInRoot()
+
+        composeRule.onRoot().performTouchInput {
+            down(0, center)
+            moveTo(0, center + Offset(-260f, 0f), delayMillis = 16)
+            up(0)
+        }
+        composeRule.waitForIdle()
+
+        val panned = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "horizontal drag must move the zoomed page left; " +
+                "before=${zoomed.left} after=${panned.left}",
+            panned.left < zoomed.left - 1.dp,
+        )
+        assertEquals("horizontal pan must not open the page", -1, opened.get())
     }
 
     @Test
