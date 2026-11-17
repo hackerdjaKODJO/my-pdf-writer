@@ -33,6 +33,17 @@ object TextActions {
         val value = text.trim()
         if (value.isEmpty()) return
 
+        // Google Translate's web/app deep link can ignore the URL `text=`
+        // parameter. Always put the exact selection on the clipboard so the user
+        // can paste it even when the deep link opens without preloaded text.
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Google 번역", value))
+        Toast.makeText(
+            context,
+            "번역할 문구를 복사했습니다. Google 번역에 붙여넣으세요.",
+            Toast.LENGTH_SHORT,
+        ).show()
+
         val includeText = value.length <= MAX_URL_TEXT
         val url = buildString {
             append("https://translate.google.com/?sl=auto&tl=")
@@ -43,32 +54,39 @@ object TextActions {
             }
             append("&op=translate")
         }
-        if (!includeText) {
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("Google 번역", value))
-            Toast.makeText(
-                context,
-                "텍스트가 길어 클립보드에 복사했습니다. Google 번역에 붙여넣으세요.",
-                Toast.LENGTH_LONG,
-            ).show()
-        }
 
+        // ACTION_PROCESS_TEXT is what the system text-selection menu uses; when
+        // available it opens Translate with this text already filled in.
+        val processIntent = Intent(Intent.ACTION_PROCESS_TEXT).apply {
+            type = MIME_TEXT
+            putExtra(Intent.EXTRA_PROCESS_TEXT, value)
+            putExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, true)
+            setPackage(TRANSLATE_PACKAGE)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
         val uri = Uri.parse(url)
         val appIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+            putExtra(Intent.EXTRA_TEXT, value)
             setPackage(TRANSLATE_PACKAGE)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         val browserIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+            putExtra(Intent.EXTRA_TEXT, value)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         val opened = runCatching {
-            context.startActivity(appIntent)
+            context.startActivity(processIntent)
             true
         }.getOrElse {
             runCatching {
-                context.startActivity(browserIntent)
+                context.startActivity(appIntent)
                 true
-            }.getOrDefault(false)
+            }.getOrElse {
+                runCatching {
+                    context.startActivity(browserIntent)
+                    true
+                }.getOrDefault(false)
+            }
         }
         if (!opened) {
             shareText(context, value)

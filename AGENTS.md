@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.10`** — `versionCode = 19`.
-- **Next version is `0.8.11` — `versionCode = 20`.**
+- Current delivered version: **`0.8.11`** — `versionCode = 20`.
+- **Next version is `0.8.12` — `versionCode = 21`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.11` | 20 | 2026-11-17 | `v0.8.11` | Always copy selected text to clipboard before Google Translate; ACTION_PROCESS_TEXT handoff |
 | `0.8.10` | 19 | 2026-11-17 | `v0.8.10` | In-app help center, long-press PDF word selection, verified by repeated build/test cycles |
 | `0.8.9` | 18 | 2026-11-17 | `v0.8.9` | Commercial-quality review; offline masking study cards and PDF search next/previous navigation |
 | `0.8.8` | 17 | 2026-11-17 | `v0.8.8` | Draggable PDF/note boundary divider for direct split-height adjustment |
