@@ -191,6 +191,43 @@ class PdfTextLayoutTest {
     }
 
     @Test
+    fun wordAtPrefersTheSmallestWordOnAnExactHit() {
+        val outer = word("table cell", 0.1f, 0.1f, 0.5f, 0.13f)
+        val inner = word("cell", 0.2f, 0.105f, 0.3f, 0.125f)
+
+        assertEquals(
+            inner,
+            PdfTextLayout.wordAt(listOf(inner, outer), x = 0.25f, y = 0.115f),
+        )
+    }
+
+    @Test
+    fun wordAtResolvesALongPressNearTheWordWithinLineTolerance() {
+        val hello = word("Hello", 0.1f, 0.1f, 0.2f, 0.12f)
+        val world = word("world", 0.21f, 0.1f, 0.3f, 0.12f)
+
+        // A finger press a few pixels below the glyph box still resolves the word.
+        assertEquals(
+            hello,
+            PdfTextLayout.wordAt(listOf(hello, world), x = 0.15f, y = 0.132f),
+        )
+        assertEquals(
+            world,
+            PdfTextLayout.wordAt(listOf(hello, world), x = 0.26f, y = 0.132f),
+        )
+    }
+
+    @Test
+    fun wordAtReturnsNullForDistantBlankOrMissingGeometry() {
+        val hello = word("Hello", 0.1f, 0.1f, 0.2f, 0.12f)
+        val blank = word(" ", 0.4f, 0.4f, 0.5f, 0.42f)
+
+        assertNull(PdfTextLayout.wordAt(listOf(hello), x = 0.5f, y = 0.5f))
+        assertNull(PdfTextLayout.wordAt(listOf(blank), x = 0.45f, y = 0.41f))
+        assertNull(PdfTextLayout.wordAt(emptyList(), x = 0.15f, y = 0.11f))
+    }
+
+    @Test
     fun groupByLineUsesCachedLineOrder() {        val hello = word("Hello", 0.1f, 0.1f, 0.2f, 0.12f)
         val world = word("world", 0.21f, 0.101f, 0.3f, 0.121f)
         val second = word("Second", 0.1f, 0.2f, 0.2f, 0.22f)
