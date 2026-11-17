@@ -2,6 +2,7 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -28,37 +29,127 @@ class HomeStartE2ETest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    @Composable
+    private fun home(
+        notebooks: List<Notebook> = emptyList(),
+        pdfs: List<RecentDoc> = emptyList(),
+    ) {
+        NotebookHomeScreen(
+            notebooks = notebooks,
+            pdfs = pdfs,
+            onOpenNotebook = {},
+            onCreateNotebook = {},
+            onOpenPdf = {},
+            onImportPdf = {},
+            onCreatePdf = {},
+            onOpenTools = {},
+            onToggleFavorite = {},
+            onTrash = {},
+            onRestore = {},
+            onDeleteForever = {},
+            onRename = { _, _ -> },
+            onMoveFolder = { _, _ -> },
+            onSetTags = { _, _ -> },
+            onOpenBackup = {},
+        )
+    }
+
     @Test
     fun homeShowsQuickActionsAndNotesSection() {
         composeRule.setContent {
+            MyPdfWriterTheme { home() }
+        }
+        composeRule.waitForIdle()
+
+        listOf("내 노트", "PDF 가져오기", "새 노트", "PDF 도구", "백업/복원").forEach { label ->
+            val matches = composeRule.onAllNodesWithText(label).fetchSemanticsNodes()
+            assertTrue("home must expose '$label'", matches.isNotEmpty())
+        }
+        composeRule.onNodeWithContentDescription("새로 만들기").assertExists()
+        composeRule.onNodeWithContentDescription("검색").assertExists()
+        composeRule.onNodeWithContentDescription("설정").assertExists()
+    }
+
+    @Test
+    fun settingsSheetKeepsEveryGlobalUtilityReachable() {
+        composeRule.setContent {
+            MyPdfWriterTheme { home() }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("설정").performClick()
+        composeRule.waitForIdle()
+
+        listOf("백업/복원", "휴지통", "태그", "PDF 도구", "사용법/도움말", "정보").forEach { label ->
+            val matches = composeRule.onAllNodesWithText(label).fetchSemanticsNodes()
+            assertTrue("settings must expose '$label'", matches.isNotEmpty())
+        }
+
+        composeRule.onNodeWithText("정보").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(
+            "모든 파일과 노트는 기기에만 저장되며 네트워크를 사용하지 않습니다.",
+        ).assertExists()
+    }
+
+    @Test
+    fun filterSheetAppliesAndClearsOneCompactActiveRow() {
+        composeRule.setContent {
+            MyPdfWriterTheme { home() }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("필터").performClick()
+        composeRule.waitForIdle()
+        listOf("보기", "폴더", "태그", "초기화", "적용").forEach { label ->
+            val matches = composeRule.onAllNodesWithText(label).fetchSemanticsNodes()
+            assertTrue("filter sheet must expose '$label'", matches.isNotEmpty())
+        }
+
+        composeRule.onNodeWithText("즐겨찾기").performClick()
+        composeRule.onNodeWithText("적용").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("즐겨찾기한 노트가 없어요").assertExists()
+        assertTrue(
+            composeRule.onAllNodesWithText("즐겨찾기").fetchSemanticsNodes().isNotEmpty(),
+        )
+        assertTrue(
+            composeRule.onAllNodesWithText("모두 지우기").fetchSemanticsNodes().isNotEmpty(),
+        )
+
+        composeRule.onNodeWithText("모두 지우기").performClick()
+        composeRule.waitForIdle()
+        assertTrue(
+            composeRule.onAllNodesWithText("모두 지우기").fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    @Test
+    fun pdfCardMenuRemovesFromRecentsWithoutDeletingTheSource() {
+        composeRule.setContent {
             MyPdfWriterTheme {
-                NotebookHomeScreen(
-                    notebooks = emptyList<Notebook>(),
-                    pdfs = emptyList<RecentDoc>(),
-                    onOpenNotebook = {},
-                    onCreateNotebook = {},
-                    onOpenPdf = {},
-                    onImportPdf = {},
-                    onCreatePdf = {},
-                    onOpenTools = {},
-                    onToggleFavorite = {},
-                    onTrash = {},
-                    onRestore = {},
-                    onDeleteForever = {},
-                    onRename = { _, _ -> },
-                    onMoveFolder = { _, _ -> },
-                    onSetTags = { _, _ -> },
-                    onOpenBackup = {},
+                home(
+                    pdfs = listOf(
+                        RecentDoc(
+                            uri = "content://docs/lecture.pdf",
+                            name = "lecture.pdf",
+                            pageCount = 12,
+                            lastOpenedAt = 1L,
+                        ),
+                    ),
                 )
             }
         }
         composeRule.waitForIdle()
 
-        listOf("내 노트", "PDF 열기", "새 노트", "PDF 도구", "백업/복원").forEach { label ->
-            val matches = composeRule.onAllNodesWithText(label).fetchSemanticsNodes()
-            assertTrue("home must expose '$label'", matches.isNotEmpty())
-        }
-        composeRule.onNodeWithContentDescription("새로 만들기").assertExists()
+        composeRule.onNodeWithText("PDF").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("PDF 메뉴").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("최근 목록에서 제거").assertExists()
+        composeRule.onNodeWithText("원본 PDF 파일은 삭제되지 않습니다.").assertExists()
     }
 
     @Test
@@ -68,26 +159,7 @@ class HomeStartE2ETest {
             MyPdfWriterTheme {
                 val holder = rememberSaveableStateHolder()
                 if (showHome) {
-                    holder.SaveableStateProvider("home") {
-                        NotebookHomeScreen(
-                            notebooks = emptyList<Notebook>(),
-                            pdfs = emptyList<RecentDoc>(),
-                            onOpenNotebook = {},
-                            onCreateNotebook = {},
-                            onOpenPdf = {},
-                            onImportPdf = {},
-                            onCreatePdf = {},
-                            onOpenTools = {},
-                            onToggleFavorite = {},
-                            onTrash = {},
-                            onRestore = {},
-                            onDeleteForever = {},
-                            onRename = { _, _ -> },
-                            onMoveFolder = { _, _ -> },
-                            onSetTags = { _, _ -> },
-                            onOpenBackup = {},
-                        )
-                    }
+                    holder.SaveableStateProvider("home") { home() }
                 } else {
                     Text("detail")
                 }

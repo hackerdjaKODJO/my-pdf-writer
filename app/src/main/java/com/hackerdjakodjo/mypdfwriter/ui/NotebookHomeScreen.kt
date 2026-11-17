@@ -9,6 +9,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,13 +39,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.NoteAdd
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
@@ -53,6 +52,7 @@ import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.GridView
@@ -62,11 +62,14 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.ViewList
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -107,7 +110,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.hackerdjakodjo.mypdfwriter.BuildConfig
 import com.hackerdjakodjo.mypdfwriter.data.CoverStyle
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NotebookDraft
@@ -121,12 +123,6 @@ private enum class LibrarySection(val label: String) {
     NOTES("노트"),
     PDF("PDF"),
     TAGS("태그"),
-}
-
-private enum class NoteScope(val label: String) {
-    ALL("전체"),
-    FAVORITES("즐겨찾기"),
-    TRASH("휴지통"),
 }
 
 private val CoverPalette: List<Int> = listOf(
@@ -165,6 +161,7 @@ fun NotebookHomeScreen(
     onOpenBackup: () -> Unit = {},
     onOpenTrace: (() -> Unit)? = null,
     onOpenHelp: () -> Unit = {},
+    onRemovePdfRecent: (String) -> Unit = {},
 ) {
     var section by rememberSaveable(
         stateSaver = Saver(
@@ -199,7 +196,9 @@ fun NotebookHomeScreen(
     var selectedFolder by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedTag by rememberSaveable { mutableStateOf<String?>(null) }
     var showCreate by remember { mutableStateOf(false) }
-    var showOverflow by remember { mutableStateOf(false) }
+    var showFilters by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    var showInfo by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<Notebook?>(null) }
     var moveTarget by remember { mutableStateOf<Notebook?>(null) }
     var tagsTarget by remember { mutableStateOf<Notebook?>(null) }
@@ -261,10 +260,13 @@ fun NotebookHomeScreen(
     val continuation = remember(notebooks, pdfs) {
         selectHomeContinuation(notebooks, pdfs)
     }
-    val showStart = scope == NoteScope.ALL &&
-        query.isBlank() &&
-        selectedFolder == null &&
-        selectedTag == null
+    val filterState = HomeFilterState(
+        scope = scope,
+        folder = selectedFolder,
+        tag = selectedTag,
+        query = query,
+    )
+    val showStart = filterState.showsHomeStart()
 
     val actions = NotebookActions(
         open = onOpenNotebook,
@@ -328,56 +330,11 @@ fun NotebookHomeScreen(
                                         contentDescription = if (searchOpen) "검색 닫기" else "검색",
                                     )
                                 }
-                                Box {
-                                    IconButton(onClick = { showOverflow = true }) {
-                                        Icon(Icons.Outlined.MoreVert, contentDescription = "더보기")
-                                    }
-                                    DropdownMenu(
-                                        expanded = showOverflow,
-                                        onDismissRequest = { showOverflow = false },
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("즐겨찾기") },
-                                            leadingIcon = { Icon(Icons.Outlined.StarBorder, contentDescription = null) },
-                                            onClick = {
-                                                showOverflow = false
-                                                section = LibrarySection.NOTES
-                                                scope = NoteScope.FAVORITES
-                                            },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("휴지통") },
-                                            leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
-                                            onClick = {
-                                                showOverflow = false
-                                                section = LibrarySection.NOTES
-                                                scope = NoteScope.TRASH
-                                            },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("사용법/도움말") },
-                                            leadingIcon = {
-                                                Icon(Icons.AutoMirrored.Outlined.HelpOutline, contentDescription = null)
-                                            },
-                                            onClick = {
-                                                showOverflow = false
-                                                onOpenHelp()
-                                            },
-                                        )
-                                        if (BuildConfig.DEBUG && onOpenTrace != null) {
-                                            HorizontalDivider()
-                                            DropdownMenuItem(
-                                                text = { Text("노트 추적") },
-                                                leadingIcon = {
-                                                    Icon(Icons.Outlined.BugReport, contentDescription = null)
-                                                },
-                                                onClick = {
-                                                    showOverflow = false
-                                                    onOpenTrace?.invoke()
-                                                },
-                                            )
-                                        }
-                                    }
+                                IconButton(onClick = { showSettings = true }) {
+                                    Icon(
+                                        Icons.Outlined.Settings,
+                                        contentDescription = "설정",
+                                    )
                                 }
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
@@ -425,19 +382,26 @@ fun NotebookHomeScreen(
                         LibrarySection.NOTES -> NotesSection(
                             notebooks = notebooks,
                             visible = visibleNotebooks,
-                            scope = scope,
-                            onScopeChange = { scope = it },
-                            folders = folders,
-                            selectedFolder = selectedFolder,
-                            onFolderChange = { selectedFolder = it },
-                            tagCounts = tagCounts,
-                            selectedTag = selectedTag,
-                            onTagChange = { selectedTag = it },
-                            query = query,
+                            filterState = filterState,
                             sort = sort,
                             onSortChange = { sort = it },
                             gridMode = gridMode,
                             onToggleGrid = { gridMode = !gridMode },
+                            onOpenFilters = { showFilters = true },
+                            onRemoveFilter = { kind ->
+                                val updated = filterState.without(kind)
+                                scope = updated.scope
+                                selectedFolder = updated.folder
+                                selectedTag = updated.tag
+                                query = updated.query
+                            },
+                            onClearAllFilters = {
+                                val updated = filterState.cleared()
+                                scope = updated.scope
+                                selectedFolder = updated.folder
+                                selectedTag = updated.tag
+                                query = updated.query
+                            },
                             showStart = showStart,
                             continuation = continuation,
                             onOpenPdf = onOpenPdf,
@@ -447,9 +411,15 @@ fun NotebookHomeScreen(
                             horizontalPadding = horizontalPadding,
                             actions = actions,
                             onClearFilters = {
-                                selectedFolder = null
-                                selectedTag = null
-                                query = ""
+                                val updated = filterState.copy(
+                                    folder = null,
+                                    tag = null,
+                                    query = "",
+                                )
+                                scope = updated.scope
+                                selectedFolder = updated.folder
+                                selectedTag = updated.tag
+                                query = updated.query
                             },
                             onCreate = { showCreate = true },
                         )
@@ -458,6 +428,7 @@ fun NotebookHomeScreen(
                             pdfs = visiblePdfs,
                             hasAnyPdf = pdfs.isNotEmpty(),
                             query = query,
+                            onClearQuery = { query = "" },
                             sort = sort,
                             onSortChange = { sort = it },
                             gridMode = gridMode,
@@ -467,6 +438,7 @@ fun NotebookHomeScreen(
                             onImportPdf = onImportPdf,
                             onCreatePdf = onCreatePdf,
                             onOpenTools = onOpenTools,
+                            onRemovePdfRecent = onRemovePdfRecent,
                         )
 
                         LibrarySection.TAGS -> TagsSection(
@@ -538,6 +510,70 @@ fun NotebookHomeScreen(
                 deleteTarget = null
             },
         )
+    }
+
+    if (showFilters) {
+        HomeFilterSheet(
+            initialScope = scope,
+            initialFolder = selectedFolder,
+            initialTag = selectedTag,
+            folders = folders,
+            tagCounts = tagCounts,
+            onDismiss = { showFilters = false },
+            onApply = { newScope, newFolder, newTag ->
+                scope = newScope
+                selectedFolder = newFolder
+                selectedTag = newTag
+                showFilters = false
+            },
+        )
+    }
+
+    if (showSettings) {
+        HomeSettingsSheet(
+            onDismiss = { showSettings = false },
+            onOpenBackup = {
+                showSettings = false
+                onOpenBackup()
+            },
+            onOpenTrash = {
+                showSettings = false
+                searchOpen = false
+                query = ""
+                selectedFolder = null
+                selectedTag = null
+                scope = NoteScope.TRASH
+                section = LibrarySection.NOTES
+            },
+            onOpenTags = {
+                showSettings = false
+                searchOpen = false
+                query = ""
+                section = LibrarySection.TAGS
+            },
+            onOpenTools = {
+                showSettings = false
+                onOpenTools()
+            },
+            onOpenHelp = {
+                showSettings = false
+                onOpenHelp()
+            },
+            onOpenInfo = {
+                showSettings = false
+                showInfo = true
+            },
+            onOpenTrace = onOpenTrace?.let { trace ->
+                {
+                    showSettings = false
+                    trace()
+                }
+            },
+        )
+    }
+
+    if (showInfo) {
+        HomeInfoDialog(onDismiss = { showInfo = false })
     }
 }
 
@@ -650,19 +686,14 @@ private fun sectionIcon(section: LibrarySection): ImageVector = when (section) {
 private fun NotesSection(
     notebooks: List<Notebook>,
     visible: List<Notebook>,
-    scope: NoteScope,
-    onScopeChange: (NoteScope) -> Unit,
-    folders: List<String>,
-    selectedFolder: String?,
-    onFolderChange: (String?) -> Unit,
-    tagCounts: List<Pair<String, Int>>,
-    selectedTag: String?,
-    onTagChange: (String?) -> Unit,
-    query: String,
+    filterState: HomeFilterState,
     sort: LibrarySort,
     onSortChange: (LibrarySort) -> Unit,
     gridMode: Boolean,
     onToggleGrid: () -> Unit,
+    onOpenFilters: () -> Unit,
+    onRemoveFilter: (HomeFilterKind) -> Unit,
+    onClearAllFilters: () -> Unit,
     showStart: Boolean,
     continuation: HomeContinuation,
     onOpenPdf: (RecentDoc) -> Unit,
@@ -676,18 +707,14 @@ private fun NotesSection(
 ) {
     Column(Modifier.fillMaxSize()) {
         NotesFilters(
-            scope = scope,
-            onScopeChange = onScopeChange,
-            folders = folders,
-            selectedFolder = selectedFolder,
-            onFolderChange = onFolderChange,
-            tagCounts = tagCounts,
-            selectedTag = selectedTag,
-            onTagChange = onTagChange,
+            filterState = filterState,
             sort = sort,
             onSortChange = onSortChange,
             gridMode = gridMode,
             onToggleGrid = onToggleGrid,
+            onOpenFilters = onOpenFilters,
+            onRemoveFilter = onRemoveFilter,
+            onClearAllFilters = onClearAllFilters,
             horizontalPadding = horizontalPadding,
         )
 
@@ -718,10 +745,7 @@ private fun NotesSection(
                 item {
                     EmptyNotesState(
                         notebooks = notebooks,
-                        scope = scope,
-                        query = query,
-                        selectedFolder = selectedFolder,
-                        selectedTag = selectedTag,
+                        filterState = filterState,
                         showCreateAction = !showStart,
                         onClearFilters = onClearFilters,
                         onCreate = onCreate,
@@ -795,18 +819,14 @@ private fun NotesSection(
 
 @Composable
 private fun NotesFilters(
-    scope: NoteScope,
-    onScopeChange: (NoteScope) -> Unit,
-    folders: List<String>,
-    selectedFolder: String?,
-    onFolderChange: (String?) -> Unit,
-    tagCounts: List<Pair<String, Int>>,
-    selectedTag: String?,
-    onTagChange: (String?) -> Unit,
+    filterState: HomeFilterState,
     sort: LibrarySort,
     onSortChange: (LibrarySort) -> Unit,
     gridMode: Boolean,
     onToggleGrid: () -> Unit,
+    onOpenFilters: () -> Unit,
+    onRemoveFilter: (HomeFilterKind) -> Unit,
+    onClearAllFilters: () -> Unit,
     horizontalPadding: Dp,
 ) {
     Column(Modifier.fillMaxWidth()) {
@@ -815,86 +835,45 @@ private fun NotesFilters(
                 .fillMaxWidth()
                 .padding(start = horizontalPadding, end = horizontalPadding, top = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                NoteScope.entries.forEach { item ->
-                    FilterChip(
-                        selected = scope == item,
-                        onClick = { onScopeChange(item) },
-                        label = { Text(item.label) },
-                        leadingIcon = {
-                            Icon(
-                                when (item) {
-                                    NoteScope.ALL -> Icons.Outlined.Description
-                                    NoteScope.FAVORITES -> Icons.Outlined.Star
-                                    NoteScope.TRASH -> Icons.Outlined.Delete
-                                },
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        },
-                    )
-                }
-            }
+            FilterButton(activeCount = filterState.activeCount, onClick = onOpenFilters)
             SortMenuButton(sort = sort, onSortChange = onSortChange)
-            IconButton(onClick = onToggleGrid) {
-                Icon(
-                    if (gridMode) Icons.AutoMirrored.Outlined.ViewList else Icons.Outlined.GridView,
-                    contentDescription = if (gridMode) "목록으로 보기" else "그리드로 보기",
-                )
-            }
+            ViewModeButton(gridMode = gridMode, onToggleGrid = onToggleGrid)
         }
-        Spacer(Modifier.height(2.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = horizontalPadding),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FilterChip(
-                selected = selectedFolder == null,
-                onClick = { onFolderChange(null) },
-                label = { Text("모든 폴더") },
-                leadingIcon = {
-                    Icon(Icons.Outlined.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
-                },
-            )
-            FilterChip(
-                selected = selectedFolder == "",
-                onClick = { onFolderChange("") },
-                label = { Text("미분류") },
-                leadingIcon = {
-                    Icon(Icons.Outlined.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
-                },
-            )
-            folders.forEach { folder ->
-                FilterChip(
-                    selected = selectedFolder == folder,
-                    onClick = { onFolderChange(folder) },
-                    label = { Text(folder) },
-                    leadingIcon = {
-                        Icon(Icons.Outlined.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
-                    },
-                )
-            }
-            TagFilterChip(
-                tagCounts = tagCounts,
-                selectedTag = selectedTag,
-                onTagChange = onTagChange,
+        if (filterState.hasActiveFilters) {
+            ActiveFilterRow(
+                chips = homeFilterChips(filterState),
+                onRemove = onRemoveFilter,
+                onClearAll = onClearAllFilters,
+                horizontalPadding = horizontalPadding,
             )
         }
         Spacer(Modifier.height(4.dp))
     }
 }
 
-/** Compact sort control shared by the Notes and PDF filter areas. */
+@Composable
+private fun FilterButton(activeCount: Int, onClick: () -> Unit) {
+    BadgedBox(
+        badge = {
+            if (activeCount > 0) {
+                Badge { Text(activeCount.toString()) }
+            }
+        },
+    ) {
+        OutlinedButton(
+            onClick = onClick,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+        ) {
+            Icon(Icons.Outlined.FilterList, contentDescription = null, modifier = Modifier.size(17.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("필터", maxLines = 1)
+        }
+    }
+}
+
+/** Compact sort control shared by the Notes and PDF sections. */
 @Composable
 private fun SortMenuButton(
     sort: LibrarySort,
@@ -902,8 +881,17 @@ private fun SortMenuButton(
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }) {
-            Icon(Icons.AutoMirrored.Outlined.Sort, contentDescription = "정렬: ${sort.label}")
+        OutlinedButton(
+            onClick = { open = true },
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+        ) {
+            Icon(
+                Icons.AutoMirrored.Outlined.Sort,
+                contentDescription = "정렬: ${sort.label}",
+                modifier = Modifier.size(17.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text("정렬", maxLines = 1)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             LibrarySort.entries.forEach { option ->
@@ -925,59 +913,64 @@ private fun SortMenuButton(
 }
 
 @Composable
-private fun TagFilterChip(
-    tagCounts: List<Pair<String, Int>>,
-    selectedTag: String?,
-    onTagChange: (String?) -> Unit,
-) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        FilterChip(
-            selected = selectedTag != null,
-            onClick = {
-                if (selectedTag != null) onTagChange(null) else open = true
-            },
-            label = { Text(selectedTag ?: "태그") },
-            leadingIcon = {
-                Icon(Icons.Outlined.LocalOffer, contentDescription = null, modifier = Modifier.size(16.dp))
-            },
-            trailingIcon = if (selectedTag != null) {
-                {
-                    Icon(
-                        Icons.Outlined.Close,
-                        contentDescription = "태그 필터 지우기",
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-            } else {
-                null
-            },
+private fun ViewModeButton(gridMode: Boolean, onToggleGrid: () -> Unit) {
+    OutlinedButton(
+        onClick = onToggleGrid,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+    ) {
+        Icon(
+            if (gridMode) Icons.AutoMirrored.Outlined.ViewList else Icons.Outlined.GridView,
+            contentDescription = if (gridMode) "목록으로 보기" else "그리드로 보기",
+            modifier = Modifier.size(17.dp),
         )
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(
-                text = { Text("모든 태그") },
-                onClick = {
-                    open = false
-                    onTagChange(null)
-                },
-            )
-            if (tagCounts.isEmpty()) {
-                DropdownMenuItem(
-                    text = { Text("태그 없음") },
-                    enabled = false,
-                    onClick = { open = false },
+        Spacer(Modifier.width(4.dp))
+        Text("보기", maxLines = 1)
+    }
+}
+
+@Composable
+private fun ActiveFilterRow(
+    chips: List<HomeFilterChip>,
+    onRemove: (HomeFilterKind) -> Unit,
+    onClearAll: () -> Unit,
+    horizontalPadding: Dp,
+) {
+    if (chips.isEmpty()) return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = horizontalPadding, end = horizontalPadding, top = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            chips.forEach { chip ->
+                AssistChip(
+                    onClick = { onRemove(chip.kind) },
+                    label = {
+                        Text(
+                            chip.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    trailingIcon = {
+                        Icon(
+                            Icons.Outlined.Close,
+                            contentDescription = "필터 제거",
+                            modifier = Modifier.size(14.dp),
+                        )
+                    },
                 )
-            } else {
-                tagCounts.forEach { (tag, count) ->
-                    DropdownMenuItem(
-                        text = { Text("$tag · $count") },
-                        onClick = {
-                            open = false
-                            onTagChange(tag)
-                        },
-                    )
-                }
             }
+        }
+        TextButton(onClick = onClearAll) {
+            Text("모두 지우기", maxLines = 1, style = MaterialTheme.typography.labelMedium)
         }
     }
 }
@@ -1291,15 +1284,15 @@ private fun NotebookMenuButton(notebook: Notebook, actions: NotebookActions) {
 @Composable
 private fun EmptyNotesState(
     notebooks: List<Notebook>,
-    scope: NoteScope,
-    query: String,
-    selectedFolder: String?,
-    selectedTag: String?,
+    filterState: HomeFilterState,
     showCreateAction: Boolean,
     onClearFilters: () -> Unit,
     onCreate: () -> Unit,
 ) {
-    val filtered = query.isNotBlank() || selectedFolder != null || selectedTag != null
+    val scope = filterState.scope
+    val filtered = filterState.query.isNotBlank() ||
+        filterState.folder != null ||
+        filterState.tag != null
     val icon = when {
         filtered -> Icons.Outlined.Search
         scope == NoteScope.TRASH -> Icons.Outlined.Delete
@@ -1354,6 +1347,7 @@ private fun PdfSection(
     pdfs: List<RecentDoc>,
     hasAnyPdf: Boolean,
     query: String,
+    onClearQuery: () -> Unit,
     sort: LibrarySort,
     onSortChange: (LibrarySort) -> Unit,
     gridMode: Boolean,
@@ -1363,7 +1357,14 @@ private fun PdfSection(
     onImportPdf: () -> Unit,
     onCreatePdf: () -> Unit,
     onOpenTools: () -> Unit,
+    onRemovePdfRecent: (String) -> Unit,
 ) {
+    var menuTarget by remember { mutableStateOf<RecentDoc?>(null) }
+    val queryChips = if (query.isBlank()) {
+        emptyList()
+    } else {
+        homeFilterChips(HomeFilterState(query = query))
+    }
     if (gridMode) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 190.dp),
@@ -1393,6 +1394,16 @@ private fun PdfSection(
                     onToggleGrid = onToggleGrid,
                 )
             }
+            if (queryChips.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    ActiveFilterRow(
+                        chips = queryChips,
+                        onRemove = { onClearQuery() },
+                        onClearAll = onClearQuery,
+                        horizontalPadding = 0.dp,
+                    )
+                }
+            }
             if (pdfs.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     EmptyPdfState(
@@ -1403,7 +1414,11 @@ private fun PdfSection(
                 }
             } else {
                 gridItems(pdfs, key = { it.uri }) { doc ->
-                    PdfGridCard(doc = doc, onClick = { onOpenPdf(doc) })
+                    PdfGridCard(
+                        doc = doc,
+                        onClick = { onOpenPdf(doc) },
+                        onMenu = { menuTarget = doc },
+                    )
                 }
             }
             item(span = { GridItemSpan(maxLineSpan) }) { HomeFooter() }
@@ -1433,6 +1448,16 @@ private fun PdfSection(
                     onToggleGrid = onToggleGrid,
                 )
             }
+            if (queryChips.isNotEmpty()) {
+                item {
+                    ActiveFilterRow(
+                        chips = queryChips,
+                        onRemove = { onClearQuery() },
+                        onClearAll = onClearQuery,
+                        horizontalPadding = 0.dp,
+                    )
+                }
+            }
             if (pdfs.isEmpty()) {
                 item {
                     EmptyPdfState(
@@ -1443,11 +1468,26 @@ private fun PdfSection(
                 }
             } else {
                 items(pdfs, key = { it.uri }) { doc ->
-                    PdfListRow(doc = doc, onClick = { onOpenPdf(doc) })
+                    PdfListRow(
+                        doc = doc,
+                        onClick = { onOpenPdf(doc) },
+                        onMenu = { menuTarget = doc },
+                    )
                 }
             }
             item { HomeFooter() }
         }
+    }
+
+    menuTarget?.let { doc ->
+        PdfRecentCardSheet(
+            doc = doc,
+            onDismiss = { menuTarget = null },
+            onRemove = { uri ->
+                onRemovePdfRecent(uri)
+                menuTarget = null
+            },
+        )
     }
 }
 
@@ -1515,47 +1555,57 @@ private fun PdfHeader(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("최근 PDF", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        Text(
-            if (filtered) "검색 ${count}개" else "${count}개",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Column(Modifier.weight(1f)) {
+            Text("최근 PDF", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (filtered) "검색 ${count}개" else "${count}개",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         SortMenuButton(sort = sort, onSortChange = onSortChange)
         IconButton(onClick = onOpenTools) {
             Icon(Icons.Outlined.Dashboard, contentDescription = "PDF 도구")
         }
-        IconButton(onClick = onToggleGrid) {
-            Icon(
-                if (gridMode) Icons.AutoMirrored.Outlined.ViewList else Icons.Outlined.GridView,
-                contentDescription = if (gridMode) "목록으로 보기" else "그리드로 보기",
-            )
-        }
+        ViewModeButton(gridMode = gridMode, onToggleGrid = onToggleGrid)
     }
 }
 
 @Composable
-private fun PdfGridCard(doc: RecentDoc, onClick: () -> Unit) {
+private fun PdfGridCard(doc: RecentDoc, onClick: () -> Unit, onMenu: () -> Unit) {
+    val shape = RoundedCornerShape(18.dp)
     Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
+        shape = shape,
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .combinedClickable(onClick = onClick, onLongClick = onMenu),
     ) {
         Column(Modifier.padding(14.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Outlined.PictureAsPdf,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.PictureAsPdf,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onMenu, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Outlined.MoreVert,
+                        contentDescription = "PDF 메뉴",
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
             }
             Spacer(Modifier.height(10.dp))
             Text(
@@ -1575,16 +1625,19 @@ private fun PdfGridCard(doc: RecentDoc, onClick: () -> Unit) {
 }
 
 @Composable
-private fun PdfListRow(doc: RecentDoc, onClick: () -> Unit) {
+private fun PdfListRow(doc: RecentDoc, onClick: () -> Unit, onMenu: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
     Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
+        shape = shape,
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .combinedClickable(onClick = onClick, onLongClick = onMenu),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -1615,11 +1668,13 @@ private fun PdfListRow(doc: RecentDoc, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Icon(
-                Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            IconButton(onClick = onMenu, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Outlined.MoreVert,
+                    contentDescription = "PDF 메뉴",
+                    modifier = Modifier.size(19.dp),
+                )
+            }
         }
     }
 }
@@ -1637,7 +1692,7 @@ private fun EmptyPdfState(
         body = if (filtered) {
             "다른 이름으로 검색해 보세요."
         } else {
-            "기기에서 PDF를 가져오면 최근 문서와 주석 작업을 이곳에서 이어갈 수 있습니다."
+            "기기에서 PDF를 가져오면 최근 PDF와 주석 작업을 이곳에서 이어갈 수 있습니다."
         },
         actionLabel = if (filtered) null else "PDF 가져오기",
         onAction = onImportPdf,

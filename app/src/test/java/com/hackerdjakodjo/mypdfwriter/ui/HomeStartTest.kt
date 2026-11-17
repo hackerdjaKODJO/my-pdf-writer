@@ -77,4 +77,18 @@ class HomeStartTest {
         assertEquals("reading.pdf", continuation.lastPdf?.name)
         assertTrue(continuation.hasContent)
     }
+
+    @Test
+    fun homeStartIsVisibleOnlyWithoutFilters() {
+        assertTrue(HomeFilterState().showsHomeStart())
+        assertTrue(HomeFilterState(query = "   ").showsHomeStart())
+    }
+
+    @Test
+    fun anyActiveFilterHidesHomeStart() {
+        assertFalse(HomeFilterState(scope = NoteScope.FAVORITES).showsHomeStart())
+        assertFalse(HomeFilterState(folder = "").showsHomeStart())
+        assertFalse(HomeFilterState(tag = "영어").showsHomeStart())
+        assertFalse(HomeFilterState(query = "기말").showsHomeStart())
+    }
 }

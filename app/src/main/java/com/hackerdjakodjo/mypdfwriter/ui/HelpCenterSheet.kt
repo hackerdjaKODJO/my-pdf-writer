@@ -91,7 +91,7 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
         title = "5분 빠른 시작",
         subtitle = "처음 5분이면 읽기·표시·필기·백업까지 한 번에",
         steps = listOf(
-            "홈에서 PDF 열기로 강의자료를 엽니다.",
+            "홈에서 PDF 가져오기로 강의자료를 엽니다.",
             "하단의 텍스트 선택을 누르고 중요한 문장을 드래그합니다.",
             "플로팅 바에서 형광펜을 눌러 표시를 PDF에 저장합니다.",
             "PDF 상단의 노트를 눌러 아래에 노트 영역을 엽니다.",
@@ -106,7 +106,7 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
         title = "PDF 열기/읽기",
         subtitle = "파일을 열고 페이지를 탐색하는 가장 빠른 길",
         steps = listOf(
-            "홈의 PDF 열기 또는 PDF 탭에서 파일 선택기로 PDF를 고릅니다.",
+            "홈의 PDF 가져오기 또는 PDF 탭에서 파일 선택기로 PDF를 고릅니다.",
             "다른 앱에서 PDF를 공유하면 공유 시트에서 My PDF Writer를 선택해 바로 가져올 수 있습니다.",
             "홈의 정렬 버튼으로 이름·최근 열기·페이지 수순을 바꿀 수 있습니다.",
             "두 손가락으로 벌려 확대하고, 한 손가락으로 페이지를 이동합니다.",

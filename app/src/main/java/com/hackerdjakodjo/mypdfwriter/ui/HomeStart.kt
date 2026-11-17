@@ -89,7 +89,7 @@ internal fun HomeStartContent(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             QuickAction(
-                label = "PDF 열기",
+                label = "PDF 가져오기",
                 icon = Icons.Outlined.PictureAsPdf,
                 onClick = onImportPdf,
                 modifier = Modifier.weight(1f),

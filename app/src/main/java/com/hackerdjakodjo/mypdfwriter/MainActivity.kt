@@ -216,6 +216,9 @@ class MainActivity : ComponentActivity() {
                                 onOpenBackup = { showBackup = true },
                                 onOpenTrace = { showTrace = true },
                                 onOpenHelp = { showHelp = true },
+                                onRemovePdfRecent = { uri ->
+                                    viewModel.removeRecent(uri, deleteAnnotations = false)
+                                },
                             )
                         }
                         else -> Box(Modifier.fillMaxSize()) {
