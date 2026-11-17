@@ -64,27 +64,54 @@ for **스터디 노트** remains.
   **간단히 보기** collapses it again.
 - Primary rows are tinted in the expanded list. No actions were removed.
 
-## Dense dock with the study pane
+## Floating split chrome
 
-When `studyPane != null`, `ViewerToolDock(compact = true)` shows one tool row and
-drops the separate undo/redo/style row. Undo, redo and **스타일** are available in
-the **더보기** sheet's quick-action row, so no control is lost. The dock keeps
-보기, 펜, 형광펜, 지우개, 글상자, 도형, 텍스트 선택 and 더보기. Text selection,
-page navigation, the PDF back button and the pane's own close action stay
-visible.
+When `studyPane != null`, the viewer no longer emits its TopAppBar or its bottom
+tool dock. The PDF canvas starts at the top safe edge and the study pane takes
+85% of the full remaining height (same clamp and 50/70/85% presets, so the pane
+keeps the same fraction while gaining the height the bars used to consume).
+
+All PDF controls become compact floating overlays over the PDF strip:
+
+- a 36 dp translucent back button at the top-left;
+- a rounded floating row at the bottom of the strip with the page pill
+  `‹ n / N ›` (previous/next and a page-sheet tap), the text-selection toggle
+  (idle/loading/active/empty state), the current-page bookmark star, the PDF tool
+  picker and the PDF hub.
+
+The large PDF hint pill and the PDF-side study drop target are hidden in split
+mode; the study-pane header keeps its own capture target. Text selection swaps
+the floating row for a compact selection bar
+(highlight/underline/strikeout/copy/more/close) that overlays the strip instead
+of adding a permanent row. "More" keeps Google Translate, excerpt, clipboard,
+add-to-pane and clear reachable. The selected-text status chip remains a drag
+source into the pane, and the floating PDF tool picker still exposes every
+annotation tool plus undo/redo and the style sheet, so removing the dock does
+not remove any annotation capability.
+
+The full-screen viewer (`studyPane == null`) keeps its original app bar, dock,
+hint pill, drop target, selection bar and page navigator unchanged.
 
 ## Tests
 
 - JVM: `PdfTextLayoutTest` covers tap tolerance, page filtering, blank words and
   drag intersection; `PdfHubSheetTest` covers primary-only simple mode, the
   seven-action cap, and full reachability in expanded mode.
+  `PdfSplitChromeTest` covers the split/focus chrome policy (app bar, dock, hint
+  and drop-target visibility), the selection toggle states and the 36 dp target
+  range.
 - Instrumentation: `PdfCanvasSelectionE2ETest` composes `PdfCanvas` and verifies
-  tap and drag gestures call `onTextSelection` (compiled with
-  `assembleDebugAndroidTest`; requires a device to execute).
+  tap and drag gestures call `onTextSelection`; `PdfSplitChromeE2ETest` checks
+  the floating toolbar and selection bar dispatch every control. Both are
+  compiled with `assembleDebugAndroidTest`; device execution is not available in
+  this environment.
 
 ## Limitations
 
 - Scanned/image-only PDFs still have no selectable text; the UI now says so and
   offers an explicit exit instead of leaving a silent mode.
 - The hub's expansion state is per-open (simple by default); it is not persisted.
+- At the default 85% pane the PDF strip is about 15% of the screen, so the page
+  is a context preview behind the floating controls. The 50/70% presets give it
+  more room; the pane fraction itself is unchanged.
 - No on-device UI/gesture test was run in this environment.

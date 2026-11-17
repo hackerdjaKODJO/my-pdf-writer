@@ -5,7 +5,9 @@ import kotlin.math.roundToInt
 
 /**
  * Pure size policy for the PDF study pane. Fractions are measured against the
- * PDF content area (between the viewer app bar and the PDF tool/selection bar).
+ * PDF content area: between the viewer app bar and the PDF tool/selection bar in
+ * full-screen mode, or against the full safe area when the split chrome removes
+ * those bars.
  *
  * The pane opens at 85%, which is also the maximum: it leaves a 15% PDF strip
  * visible so the source page stays readable while the note takes most of a
