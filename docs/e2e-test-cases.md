@@ -41,6 +41,8 @@ executed here. Instrumentation APKs are compiled with
 | READ-01 | Continuous zoom clamp/pinch/toggle and label; pinch pointer tracking | JVM `ReaderZoomTest`, `ReaderPinchTrackerTest` | Passing |
 | READ-02 | Two-finger pinch changes document-wide zoom label | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | READ-03 | Render zoom quantization and bitmap scale | JVM `ReaderZoomTest` | Passing |
+| READ-04 | Pinch actually re-renders page bitmaps at higher zoom | Instrumentation `ReaderPinchE2ETest` | Compiled |
+| TRACE-01 | PDF continuous trace events/fields | JVM `PdfContinuousTraceTest` | Passing |
 | EDIT-01 | Selected-text replacement geometry/JSON/filter | JVM `PdfTextEditTest`, `AnnotationJsonTest` | Passing |
 | HELP-01 | Help topics are complete, offline and ordered | JVM `HelpCenterContentTest` | Passing |
 | PDF-06 | Long press in VIEW mode enters selection and reports a point; long press in selection mode is inert | JVM `PdfTextLayoutTest` + instrumentation `PdfCanvasSelectionE2ETest` | Compiled |
