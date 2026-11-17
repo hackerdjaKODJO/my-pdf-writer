@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.13`** — `versionCode = 22`.
-- **Next version is `0.8.14` — `versionCode = 23`.**
+- Current delivered version: **`0.8.14`** — `versionCode = 23`.
+- **Next version is `0.8.15` — `versionCode = 24`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.14` | 23 | 2026-11-17 | `v0.8.14` | Compact/zoomable continuous reader and visual selected-text replacement |
 | `0.8.13` | 22 | 2026-11-17 | `v0.8.13` | UX review, first-run onboarding, contextual PDF hints and search empty state |
 | `0.8.12` | 21 | 2026-11-17 | `v0.8.12` | Flexcil APK resource evidence: interactive checklists, audio playback speed, external dictionary handoff |
 | `0.8.11` | 20 | 2026-11-17 | `v0.8.11` | Always copy selected text to clipboard before Google Translate; ACTION_PROCESS_TEXT handoff |

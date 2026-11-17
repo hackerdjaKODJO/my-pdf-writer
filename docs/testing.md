@@ -69,7 +69,7 @@ only and is never written to disk or sent over the network.
 
 ## 0.8.8 E2E matrix
 
-Current JVM suite: 418 tests, 0 failures. The full case matrix, per-suite
+Current JVM suite: 431 tests, 0 failures. The full case matrix, per-suite
 status and on-device manual checklist are in
 [`e2e-test-cases.md`](e2e-test-cases.md). Current instrumented classes include:
 
@@ -79,7 +79,7 @@ status and on-device manual checklist are in
 - `StudyPaneE2ETest`
 - `PdfCanvasSelectionE2ETest`
 - `PdfSplitChromeE2ETest`
-- `SearchNavigationTest`, `MaskingCardTest`, `ChecklistCardTest`, `PlaybackSpeedTest`, `TextActionsDictionaryTest`, `HelpCenterContentTest`, `OnboardingStoreTest`, `OnboardingContentTest`, `PdfContextHintsTest` (JVM) cover 0.8.9–0.8.13 logic
+- `SearchNavigationTest`, `MaskingCardTest`, `ChecklistCardTest`, `PlaybackSpeedTest`, `TextActionsDictionaryTest`, `HelpCenterContentTest`, `OnboardingStoreTest`, `OnboardingContentTest`, `PdfContextHintsTest`, `ReaderZoomTest`, `PdfTextEditTest` (JVM) cover 0.8.9–0.8.14 logic
 
 On this Termux host no adb device/emulator is available, so these compile but
 have not been executed. The user-facing guide is

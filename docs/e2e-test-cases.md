@@ -38,6 +38,8 @@ executed here. Instrumentation APKs are compiled with
 | DICT-01 | Dictionary query normalization and fallback | JVM `TextActionsDictionaryTest` | Passing |
 | UX-01 | Onboarding topic order/one-time flag | JVM `OnboardingStoreTest`, `OnboardingContentTest` | Passing |
 | UX-02 | PDF hint state policy and no duplicate chips | JVM `PdfContextHintsTest` | Passing |
+| READ-01 | Continuous zoom clamp/step/toggle and label | JVM `ReaderZoomTest` | Passing |
+| EDIT-01 | Selected-text replacement geometry/JSON/filter | JVM `PdfTextEditTest`, `AnnotationJsonTest` | Passing |
 | HELP-01 | Help topics are complete, offline and ordered | JVM `HelpCenterContentTest` | Passing |
 | PDF-06 | Long press in VIEW mode enters selection and reports a point; long press in selection mode is inert | JVM `PdfTextLayoutTest` + instrumentation `PdfCanvasSelectionE2ETest` | Compiled |
 | DEVICE-01 | Stylus pressure curve and two/three-finger gesture behavior | Manual device required | Not run |

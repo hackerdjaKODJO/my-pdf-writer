@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>My PDF Writer 0.8.13 사용법</title>
+  <title>My PDF Writer 0.8.14 사용법</title>
   <style>
     :root {
       --bg: #f6f3ec;
@@ -281,7 +281,7 @@
     광고·계정·인터넷 없이 기기 안에서만 동작합니다.
   </p>
   <div class="meta">
-    <span class="pill">버전 0.8.13</span>
+    <span class="pill">버전 0.8.14</span>
     <span class="pill">Android 8.0+</span>
     <span class="pill">arm64 APK</span>
     <span class="pill">오프라인</span>
@@ -299,6 +299,7 @@
     <a href="#pages">페이지·템플릿·검색</a>
     <a href="#masking">가림 카드 학습</a>
     <a href="#checklist">체크리스트</a>
+    <a href="#continuous">연속 보기·텍스트 수정</a>
     <a href="#searchnav">검색 결과 이동</a>
     <a href="#backup">백업·내보내기</a>
     <a href="#trouble">문제 해결</a>
@@ -340,7 +341,7 @@
     <li>
       <div>
         <b>My Files에서 APK 열기</b><br>
-        <code>/sdcard/Download/MyPDFWriter-0.8.13-arm64.apk</code>를 탭합니다.
+        <code>/sdcard/Download/MyPDFWriter-0.8.14-arm64.apk</code>를 탭합니다.
         파일이 보이지 않으면 My Files의 <b>Downloads</b>에서 확인하세요.
       </div>
     </li>
@@ -577,6 +578,20 @@
     포함되지 않지만 노트 JSON과 백업에는 저장됩니다.</div>
 </section>
 
+<section id="continuous">
+  <h2>연속 보기와 텍스트 수정</h2>
+  <p><b>PDF 허브 → 연속 보기</b>에서 페이지를 세로로 이어서 봅니다. 페이지 번호
+    라벨은 제거되어 간격이 좁아졌고, 상단의 <b>− / + / 맞춤</b>으로 확대합니다.
+    페이지를 더블탭하면 1x와 2x가 전환됩니다. 확대 후에는 각 페이지를 좌우로
+    밀어 글자를볼 수 있습니다.</p>
+  <p>텍스트를 선택한 뒤 선택 바의 <b>텍스트 수정</b>을 누르면 선택한 문구를
+    종이색 상자로 덮고 새 문구를 쓸 수 있습니다. 내보내기 PDF에도 같은 화면이
+    평탄화되어 반영됩니다.</p>
+  <div class="warn"><strong>주의:</strong> 이는 원본 PDF의 텍스트 데이터를 실제로
+    바꾸는 기능이 아닙니다. 화면 덮어쓰기이며, 원본 글자는 여전히 검색·추출될 수
+    있습니다. 완전히 지워야 하면 기존의 <b>가림(REDACT)</b> 도구를 사용하세요.</div>
+</section>
+
 <section id="backup">
   <h2>9. 백업·내보내기</h2>
   <h3>백업/복원</h3>
@@ -653,7 +668,7 @@ cd my-pdf-writer
 </section>
 
 <footer>
-  My PDF Writer 0.8.13 · 로컬 전용 · 소스와 테스트는 GitHub 저장소 참고<br>
+  My PDF Writer 0.8.14 · 로컬 전용 · 소스와 테스트는 GitHub 저장소 참고<br>
   이 문서는 오프라인에서 열 수 있는 단일 HTML 파일입니다.
 </footer>
 
