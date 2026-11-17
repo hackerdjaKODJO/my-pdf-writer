@@ -34,6 +34,7 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.testTag
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.data.ChecklistCard
 import com.hackerdjakodjo.mypdfwriter.data.MaskingCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
@@ -98,6 +99,11 @@ fun NoteCanvas(
     showMaskingCards: Boolean = false,
     onRevealMaskingCard: (String) -> Unit = {},
     onMarkMaskingCard: (String, Boolean) -> Unit = { _, _ -> },
+    // Interactive checklist overlay. Defaults keep every existing caller unchanged.
+    checklists: List<ChecklistCard> = emptyList(),
+    showChecklists: Boolean = false,
+    onToggleChecklistItem: (String, String) -> Unit = { _, _ -> },
+    onHideChecklistOverlay: () -> Unit = {},
     backgroundBitmap: Bitmap? = null,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
     onErase: (List<NormalizedPoint>) -> Unit,
@@ -645,6 +651,24 @@ fun NoteCanvas(
                     pageHeight = pageHeight,
                     onReveal = onRevealMaskingCard,
                     onMark = onMarkMaskingCard,
+                )
+            }
+        }
+
+        // Checklist cards share the same transform. Disabled adds no touch targets,
+        // so the pen tools keep the whole page.
+        if (showChecklists && checklists.isNotEmpty()) {
+            Box(Modifier.fillMaxSize().clipToBounds()) {
+                ChecklistOverlayLayer(
+                    cards = checklists,
+                    fit = total,
+                    pan = pan,
+                    viewWidth = viewW,
+                    viewHeight = viewH,
+                    pageWidth = pageWidth,
+                    pageHeight = pageHeight,
+                    onToggleItem = onToggleChecklistItem,
+                    onHide = onHideChecklistOverlay,
                 )
             }
         }

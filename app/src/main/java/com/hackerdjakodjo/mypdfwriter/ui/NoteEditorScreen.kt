@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.AutoFixNormal
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
@@ -123,6 +124,8 @@ import com.hackerdjakodjo.mypdfwriter.audio.annotationRevealFraction
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.AudioNote
+import com.hackerdjakodjo.mypdfwriter.data.ChecklistCard
+import com.hackerdjakodjo.mypdfwriter.data.Checklists
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateAsset
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplatePaths
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateStore
@@ -310,6 +313,10 @@ fun NoteEditorScreen(
     // switched off from the overflow or the card sheet so it never blocks writing.
     var showMaskingCards by remember { mutableStateOf(false) }
     var showMaskingOnPage by remember { mutableStateOf(true) }
+    // Checklists are study-only like masking cards. The on-page overlay has its own
+    // switch (sheet, overflow and a hide button on each card) so pen tools stay clear.
+    var showChecklists by remember { mutableStateOf(false) }
+    var showChecklistsOnPage by remember { mutableStateOf(true) }
     var showDeletePage by remember { mutableStateOf(false) }
     var photoImporting by remember { mutableStateOf(false) }
     var photoError by remember { mutableStateOf<String?>(null) }
@@ -383,6 +390,42 @@ fun NoteEditorScreen(
         val mutable = currentPages.toMutableList()
         mutable[index] = target.copy(maskingCards = cards)
         applyChange(workingNotebook.copy(pages = mutable))
+    }
+
+    /** Inserts or replaces one checklist on any page; one undo step per change. */
+    fun upsertChecklist(targetPageIndex: Int, card: ChecklistCard) {
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
+        val index = targetPageIndex.coerceIn(0, currentPages.lastIndex)
+        val target = currentPages[index]
+        val cards = if (target.checklists.any { it.id == card.id }) {
+            target.checklists.map { if (it.id == card.id) card else it }
+        } else {
+            target.checklists + card
+        }
+        if (cards == target.checklists) return
+        val mutable = currentPages.toMutableList()
+        mutable[index] = target.copy(checklists = cards)
+        applyChange(workingNotebook.copy(pages = mutable))
+    }
+
+    fun deleteChecklist(targetPageIndex: Int, cardId: String) {
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
+        val index = targetPageIndex.coerceIn(0, currentPages.lastIndex)
+        val target = currentPages[index]
+        val cards = target.checklists.filterNot { it.id == cardId }
+        if (cards.size == target.checklists.size) return
+        val mutable = currentPages.toMutableList()
+        mutable[index] = target.copy(checklists = cards)
+        applyChange(workingNotebook.copy(pages = mutable))
+    }
+
+    /** One tap on an on-page checkbox is exactly one notebook undo step. */
+    fun toggleChecklistItem(targetPageIndex: Int, cardId: String, itemId: String) {
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
+        val index = targetPageIndex.coerceIn(0, currentPages.lastIndex)
+        val target = currentPages[index]
+        val card = target.checklists.firstOrNull { it.id == cardId } ?: return
+        upsertChecklist(targetPageIndex, Checklists.toggle(card, itemId))
     }
 
     /**
@@ -497,6 +540,7 @@ fun NoteEditorScreen(
                 it.copy(id = UUID.randomUUID().toString(), page = 0)
             },
             maskingCards = MaskingCards.freshIds(source.maskingCards),
+            checklists = Checklists.freshIds(source.checklists),
         )
         val mutable = currentPages.toMutableList()
         val insertAt = index + 1
@@ -1242,6 +1286,12 @@ fun NoteEditorScreen(
                                 upsertMaskingCard(safeIndex, MaskingCards.mark(card, correct))
                             }
                         },
+                        checklists = page.checklists,
+                        showChecklists = showChecklistsOnPage,
+                        onToggleChecklistItem = { cardId, itemId ->
+                            toggleChecklistItem(safeIndex, cardId, itemId)
+                        },
+                        onHideChecklistOverlay = { showChecklistsOnPage = false },
                         backgroundBitmap = pageBackground,
                         hint = canvasHint,
                         compact = compact,
@@ -1298,6 +1348,12 @@ fun NoteEditorScreen(
                             upsertMaskingCard(safeIndex, MaskingCards.mark(card, correct))
                         }
                     },
+                    checklists = page.checklists,
+                    showChecklists = showChecklistsOnPage,
+                    onToggleChecklistItem = { cardId, itemId ->
+                        toggleChecklistItem(safeIndex, cardId, itemId)
+                    },
+                    onHideChecklistOverlay = { showChecklistsOnPage = false },
                     backgroundBitmap = pageBackground,
                     hint = canvasHint,
                     compact = compact,
@@ -1564,6 +1620,22 @@ fun NoteEditorScreen(
         )
     }
 
+    if (showChecklists) {
+        ChecklistsSheet(
+            notebook = workingNotebook,
+            currentPageIndex = safeIndex,
+            showOnPage = showChecklistsOnPage,
+            onToggleShowOnPage = { showChecklistsOnPage = it },
+            onCardChange = { pageIndex, card -> upsertChecklist(pageIndex, card) },
+            onDeleteCard = { pageIndex, cardId -> deleteChecklist(pageIndex, cardId) },
+            onJump = { pageIndex ->
+                onPageIndexChange(pageIndex)
+                showChecklists = false
+            },
+            onDismiss = { showChecklists = false },
+        )
+    }
+
     if (photoImporting) {
         AlertDialog(
             onDismissRequest = {},
@@ -1745,6 +1817,12 @@ fun NoteEditorScreen(
             },
             showMaskingOnPage = showMaskingOnPage,
             onShowMaskingOnPage = { showMaskingOnPage = it },
+            onChecklists = {
+                showOverflow = false
+                showChecklists = true
+            },
+            showChecklistsOnPage = showChecklistsOnPage,
+            onShowChecklistsOnPage = { showChecklistsOnPage = it },
             onAudioNotes = {
                 showOverflow = false
                 showAudioNotes = true
@@ -1849,6 +1927,10 @@ private fun NoteCanvasPane(
     showMaskingCards: Boolean = false,
     onRevealMaskingCard: (String) -> Unit = {},
     onMarkMaskingCard: (String, Boolean) -> Unit = { _, _ -> },
+    checklists: List<ChecklistCard> = emptyList(),
+    showChecklists: Boolean = false,
+    onToggleChecklistItem: (String, String) -> Unit = { _, _ -> },
+    onHideChecklistOverlay: () -> Unit = {},
     backgroundBitmap: android.graphics.Bitmap?,
     hint: String,
     compact: Boolean = false,
@@ -1883,6 +1965,10 @@ private fun NoteCanvasPane(
             showMaskingCards = showMaskingCards,
             onRevealMaskingCard = onRevealMaskingCard,
             onMarkMaskingCard = onMarkMaskingCard,
+            checklists = checklists,
+            showChecklists = showChecklists,
+            onToggleChecklistItem = onToggleChecklistItem,
+            onHideChecklistOverlay = onHideChecklistOverlay,
             backgroundBitmap = backgroundBitmap,
             onAddStroke = onAddStroke,
             onErase = onErase,
@@ -3114,6 +3200,9 @@ private fun NoteOverflowSheet(
     onMaskingCards: () -> Unit,
     showMaskingOnPage: Boolean,
     onShowMaskingOnPage: (Boolean) -> Unit,
+    onChecklists: () -> Unit,
+    showChecklistsOnPage: Boolean,
+    onShowChecklistsOnPage: (Boolean) -> Unit,
     onAudioNotes: () -> Unit,
     onAudioReplay: () -> Unit,
     onOpenSourcePdf: (() -> Unit)?,
@@ -3245,6 +3334,31 @@ private fun NoteOverflowSheet(
                     },
                     checked = showMaskingOnPage,
                     onCheckedChange = onShowMaskingOnPage,
+                )
+            }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.Checklist,
+                    title = "체크리스트",
+                    supporting = "항목을 완료하며 진행률을 확인하는 오프라인 체크리스트",
+                    onClick = onChecklists,
+                )
+            }
+            item {
+                NoteMenuToggleRow(
+                    icon = if (showChecklistsOnPage) {
+                        Icons.Filled.Visibility
+                    } else {
+                        Icons.Filled.VisibilityOff
+                    },
+                    title = "카드 페이지에 체크리스트 표시",
+                    supporting = if (showChecklistsOnPage) {
+                        "종이 위 체크박스 표시 · 끄면 필기가 영역을 완전히 사용"
+                    } else {
+                        "체크리스트 숨김 · 필기 도구가 방해받지 않음"
+                    },
+                    checked = showChecklistsOnPage,
+                    onCheckedChange = onShowChecklistsOnPage,
                 )
             }
 

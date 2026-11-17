@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
+import com.hackerdjakodjo.mypdfwriter.data.Checklists
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateStore
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
@@ -246,6 +247,8 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             annotations = page.annotations.map {
                 it.copy(id = java.util.UUID.randomUUID().toString())
             },
+            // Study data travels with the page but each copy keeps its own ids.
+            checklists = Checklists.freshIds(page.checklists),
         )
         val pages = current.pages.toMutableList().also { it.add(index + 1, copy) }
         updateCurrent(current.copy(pages = pages))
