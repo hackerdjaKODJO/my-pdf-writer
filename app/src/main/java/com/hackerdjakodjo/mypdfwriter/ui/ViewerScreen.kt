@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -197,6 +198,9 @@ fun ViewerScreen(
     var textSelectMode by remember { mutableStateOf(false) }
     var selectedWords by remember { mutableStateOf<List<PdfTextWord>>(emptyList()) }
     var searchHighlights by remember { mutableStateOf<List<SearchMatchRect>>(emptyList()) }
+    // Explicit dismissal of the one contextual hint chip; resets on document,
+    // page, tool or selection-mode changes so guidance is not lost forever.
+    var hintDismissed by remember { mutableStateOf(false) }
     val selectedText = remember(selectedWords) { PdfTextLayout.selectionText(selectedWords) }
 
     /** Enter/leave the text-selection (lasso) mode used by both the dock and the hub. */
@@ -255,6 +259,9 @@ fun ViewerScreen(
             textSelectMode = false
             selectedWords = emptyList()
         }
+    }
+    LaunchedEffect(state.docId, state.pageIndex, state.tool, textSelectMode) {
+        hintDismissed = false
     }
     LaunchedEffect(state.searchQuery, state.pageIndex, state.revision) {
         val query = state.searchQuery.trim()
@@ -518,6 +525,28 @@ fun ViewerScreen(
         hasSelection = selectedWords.isNotEmpty(),
     )
 
+    // One state, one hint. The chip only draws what this pure policy allows, so
+    // the selection action bar and the tool hint can never be duplicated.
+    val contextHint = pdfContextHint(
+        PdfContextHintState(
+            tool = state.tool,
+            textSelectMode = textSelectMode,
+            hasSelection = selectedWords.isNotEmpty(),
+            textLoading = state.textLoading,
+            hasWords = pageTextWords.isNotEmpty(),
+            dismissed = hintDismissed,
+        ),
+    )
+    val toolHintRes = when (state.tool) {
+        Tool.VIEW -> R.string.hint_view
+        Tool.TEXT -> R.string.hint_text
+        Tool.STAMP -> R.string.hint_stamp
+        Tool.SIGNATURE -> R.string.hint_signature
+        Tool.REDACT -> R.string.hint_redact
+        Tool.ERASER -> R.string.hint_eraser
+        else -> R.string.hint_draw
+    }
+
     Scaffold(
         topBar = {
             if (chromePolicy.showTopAppBar) {
@@ -682,6 +711,22 @@ fun ViewerScreen(
             val latestOnFraction = rememberUpdatedState(onStudyPaneFractionChange)
             var dividerDragStart by remember { mutableFloatStateOf(0f) }
             var dividerDragY by remember { mutableFloatStateOf(0f) }
+            val showSearchNavigation = !state.searching && state.searchQuery.trim().isNotEmpty() &&
+                state.searchHits.isNotEmpty()
+            val pdfStripHeightDp = if (splitMode) {
+                (maxHeight * (1f - paneFraction)).value
+            } else {
+                Float.POSITIVE_INFINITY
+            }
+            val showHintChip = pdfContextHintChipVisible(
+                hint = contextHint,
+                // Both the full-screen and the floating selection bar carry the
+                // same status text while selection mode is active.
+                selectionBarVisible = textSelectMode,
+                searchNavigationVisible = showSearchNavigation,
+                splitMode = splitMode,
+                pdfStripHeightDp = pdfStripHeightDp,
+            )
             Column(
                 Modifier
                     .fillMaxSize()
@@ -725,81 +770,37 @@ fun ViewerScreen(
                         onRequestSelectionAt = requestSelectionAt,
                     )
 
-                    val selectionEmpty =
-                        textSelectMode && !state.textLoading && pageTextWords.isEmpty()
-                    val hintRes = when (state.tool) {
-                        Tool.VIEW -> R.string.hint_view
-                        Tool.TEXT -> R.string.hint_text
-                        Tool.STAMP -> R.string.hint_stamp
-                        Tool.SIGNATURE -> R.string.hint_signature
-                        Tool.REDACT -> R.string.hint_redact
-                        Tool.ERASER -> R.string.hint_eraser
-                        else -> R.string.hint_draw
-                    }
-                    val hintText = when {
-                        textSelectMode && state.textLoading -> "텍스트 위치를 읽는 중…"
-                        selectionEmpty -> "이 페이지에는 선택할 수 있는 텍스트가 없습니다. 아래에서 종료하세요."
-                        textSelectMode -> "단어 ${pageTextWords.size}개 · 탭하거나 드래그해 선택하세요."
-                        else -> stringResource(hintRes)
-                    }
+                    // The one hint chip is an overlay: it never adds layout height
+                    // and its top-center placement stays clear of the floating
+                    // page controls and the top-end search stepping chip.
                     Column(
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         if (annotationsHidden) {
                             HiddenAnnotationsBanner(onShow = { annotationsHidden = false })
-                            if (chromePolicy.showHintPill) Spacer(Modifier.height(6.dp))
+                            if (showHintChip) Spacer(Modifier.height(6.dp))
                         }
-                        // Split mode hides the large hint pill entirely; the
-                        // floating selection bar carries the only status text.
-                        if (chromePolicy.showHintPill) {
-                            Surface(
-                                color = when {
-                                    selectionEmpty -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.96f)
-                                    textSelectMode -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f)
-                                    else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
-                                },
-                                contentColor = when {
-                                    selectionEmpty -> MaterialTheme.colorScheme.onErrorContainer
-                                    textSelectMode -> MaterialTheme.colorScheme.onPrimaryContainer
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                shape = RoundedCornerShape(50),
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    if (textSelectMode) {
-                                        if (state.textLoading) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(14.dp),
-                                                strokeWidth = 2.dp,
-                                            )
-                                        } else {
-                                            Icon(
-                                                Icons.AutoMirrored.Outlined.TextSnippet,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp),
-                                            )
-                                        }
-                                        Spacer(Modifier.width(6.dp))
-                                    }
-                                    Text(
-                                        hintText,
-                                        style = MaterialTheme.typography.labelMedium,
-                                    )
-                                }
-                            }
+                        if (showHintChip) {
+                            PdfContextHintChip(
+                                text = pdfContextHintText(contextHint, stringResource(toolHintRes)),
+                                loading = contextHint == PdfContextHint.LOADING,
+                                ocrAction = contextHint == PdfContextHint.NO_TEXT,
+                                subtle = splitMode,
+                                onOcr = onOpenTools,
+                                onDismiss = { hintDismissed = true },
+                                modifier = Modifier.padding(
+                                    start = if (splitMode) 48.dp else 0.dp,
+                                    end = if (splitMode) 8.dp else 0.dp,
+                                ),
+                            )
                         }
                     }
 
                     // One-tap stepping over result pages. It is absent until a query
                     // has real hits, so the idle viewer and the tool dock stay calm,
                     // and its small top-end footprint never covers canvas gestures.
-                    if (!state.searching && state.searchQuery.trim().isNotEmpty() &&
-                        state.searchHits.isNotEmpty()
-                    ) {
+                    if (showSearchNavigation) {
                         val currentHit =
                             SearchNavigation.clamp(state.currentSearchHit, state.searchHits.size).coerceAtLeast(0)
                         SearchNextChip(
@@ -1004,7 +1005,15 @@ fun ViewerScreen(
         )
     }
     if (showSearch) {
-        SearchSheet(state, vm) { showSearch = false }
+        SearchSheet(
+            state = state,
+            vm = vm,
+            onDismiss = { showSearch = false },
+            onOpenOcr = {
+                showSearch = false
+                onOpenTools()
+            },
+        )
     }
     if (showAnnotations) {
         AnnotationSheet(state, vm, annotationsHidden = annotationsHidden) { showAnnotations = false }
@@ -1461,6 +1470,75 @@ private fun HiddenAnnotationsBanner(onShow: () -> Unit) {
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
+        }
+    }
+}
+
+/**
+ * Single compact, translucent first-use hint over the page. It carries only a
+ * dismiss control and — for scanned/empty pages — a direct local OCR shortcut;
+ * all other PDF tools stay reachable through the unchanged dock/hub.
+ */
+@Composable
+private fun PdfContextHintChip(
+    text: String,
+    loading: Boolean,
+    ocrAction: Boolean,
+    subtle: Boolean,
+    onOcr: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = if (subtle) 0.80f else 0.90f),
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        tonalElevation = 2.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .widthIn(max = 320.dp)
+                .padding(start = 12.dp, top = 4.dp, end = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    Icons.Outlined.Info,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (ocrAction) {
+                Spacer(Modifier.width(4.dp))
+                TextButton(
+                    onClick = onOcr,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(PDF_HINT_OCR_ACTION, style = MaterialTheme.typography.labelLarge)
+                }
+            }
+            IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    Icons.Outlined.Close,
+                    contentDescription = "힌트 닫기",
+                    modifier = Modifier.size(14.dp),
+                )
+            }
         }
     }
 }

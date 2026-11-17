@@ -331,7 +331,13 @@ fun NoteSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SearchSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
+fun SearchSheet(
+    state: ViewerUiState,
+    vm: PdfViewModel,
+    onDismiss: () -> Unit,
+    /** Optional offline OCR shortcut for empty/no-result states. */
+    onOpenOcr: (() -> Unit)? = null,
+) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val focusRequester = remember { FocusRequester() }
 
@@ -385,6 +391,7 @@ fun SearchSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    SearchOcrTip(onOpenOcr)
                 }
 
                 state.searchHits.isEmpty() -> {
@@ -393,6 +400,7 @@ fun SearchSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    SearchOcrTip(onOpenOcr)
                 }
 
                 else -> {
@@ -430,6 +438,31 @@ fun SearchSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
                 }
             }
             Spacer(Modifier.size(24.dp))
+        }
+    }
+}
+
+/**
+ * Local hint for blank/zero-result searches. The OCR action is optional so the
+ * sheet still works when the host has no tools callback to hand off to.
+ */
+@Composable
+private fun SearchOcrTip(onOpenOcr: (() -> Unit)?) {
+    Spacer(Modifier.size(4.dp))
+    Text(
+        SEARCH_EMPTY_OCR_TIP,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (onOpenOcr != null) {
+        TextButton(onClick = onOpenOcr) {
+            Icon(
+                Icons.Outlined.TextFields,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(PDF_HINT_OCR_ACTION)
         }
     }
 }
