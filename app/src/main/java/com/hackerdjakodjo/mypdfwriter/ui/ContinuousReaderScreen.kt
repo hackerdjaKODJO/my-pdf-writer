@@ -90,6 +90,8 @@ fun ContinuousReaderScreen(
     title: String,
     pageCount: Int,
     initialPage: Int,
+    /** Screen dimming factor in 0.4..1.0; 1f draws no scrim. */
+    brightness: Float = 1f,
     loadPage: suspend (Int, Float) -> Bitmap?,
     onBack: () -> Unit,
     onOpenPage: (Int) -> Unit,
@@ -365,6 +367,17 @@ fun ContinuousReaderScreen(
                             )
                         }
                     }
+                }
+
+                // Non-interactive brightness scrim over the pages only; the
+                // current-page indicator and debug HUD below stay fully readable.
+                val dimAlpha = 1f - brightness.coerceIn(0.4f, 1f)
+                if (dimAlpha > 0f) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = dimAlpha)),
+                    )
                 }
 
                 CurrentPageIndicator(

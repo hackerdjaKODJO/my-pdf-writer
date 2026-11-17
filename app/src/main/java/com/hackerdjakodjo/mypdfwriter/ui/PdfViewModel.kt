@@ -13,6 +13,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.DocState
 import com.hackerdjakodjo.mypdfwriter.data.DocStateStore
+import com.hackerdjakodjo.mypdfwriter.data.DisplayPrefs
 import com.hackerdjakodjo.mypdfwriter.data.DocumentStyle
 import com.hackerdjakodjo.mypdfwriter.data.DocumentStyleStore
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
@@ -31,6 +32,8 @@ import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfExporter
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfLink
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfLinks
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfMetadata
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfOutlineEntry
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfRepository
@@ -84,6 +87,10 @@ data class ViewerUiState(
     val noteDraft: String = "",
     val documentStyle: DocumentStyle = DocumentStyle(),
     val nightMode: Boolean = false,
+    /** Screen dimming factor in 0.4..1.0, persisted per document. */
+    val brightness: Float = DisplayPrefs.DEFAULT_BRIGHTNESS,
+    /** Session-only page lock: blocks page navigation until explicitly unlocked. */
+    val pageLocked: Boolean = false,
     val revision: Int = 0,
     val textLoading: Boolean = false,
     /**
@@ -134,6 +141,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     /** Selectable words for the currently displayed page. */
     val textWords: StateFlow<List<PdfTextWord>> = _textWords.asStateFlow()
 
+    private val _pageLinks = MutableStateFlow<List<PdfLink>>(emptyList())
+    /** Link annotations (internal page jumps and copy-only URIs) for the current page. */
+    val pageLinks: StateFlow<List<PdfLink>> = _pageLinks.asStateFlow()
+
     private var sourceFile: File? = null
     private var workingFile: File? = null
     private var currentUriString: String? = null
@@ -144,6 +155,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private var searchJob: Job? = null
     private var readingSaveJob: Job? = null
     private var textLayoutJob: Job? = null
+    private var linkLoadJob: Job? = null
     private var textLayoutLines: List<PdfTextLine> = emptyList()
     private var textLayoutKey: String? = null
     private var textLayoutLoadingKey: String? = null
@@ -180,6 +192,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 val pages = saved?.pages ?: List(sourceCount) { PageSpec(it) }
                 val annotations = saved?.annotations ?: emptyList()
                 val notes = saved?.notes ?: emptyMap()
+                val displayPrefs = saved?.displayPrefs ?: DisplayPrefs()
                 val reading = (readingStore.load(docId) ?: PdfReadingState()).normalized(pages.size)
                 val working = File(workingDir, "$docId.pdf")
                 repo.assemble(source, pages, working)
@@ -204,6 +217,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 val restoredPage = (requestedPage ?: reading.lastPage)
                     .coerceIn(0, (pages.size - 1).coerceAtLeast(0))
                 _pageBitmap.value = null
+                _pageLinks.value = emptyList()
                 _viewer.value = ViewerUiState(
                     docId = docId,
                     docName = displayName,
@@ -219,6 +233,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     busyLabel = text(R.string.rendering_page),
                     noteDraft = notes[restoredPage] ?: "",
                     documentStyle = style,
+                    nightMode = displayPrefs.nightMode,
+                    brightness = displayPrefs.brightness,
                 )
                 persistNow()
                 if (addToRecents) {
@@ -230,6 +246,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             }.onFailure { error ->
                 _viewer.value = null
                 _pageBitmap.value = null
+                _pageLinks.value = emptyList()
                 _excerpts.value = emptyList()
                 _bookmarks.value = emptyList()
                 currentUriString = null
@@ -263,10 +280,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun closeDocument() {
         renderJob?.cancel()
         searchJob?.cancel()
+        linkLoadJob?.cancel()
         saveReadingNow()
         persistNow()
         _viewer.value = null
         _pageBitmap.value = null
+        _pageLinks.value = emptyList()
         _outline.value = null
         _metadata.value = null
         _excerpts.value = emptyList()
@@ -296,6 +315,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             _pageBitmap.value = rendered.bitmap
+            loadPageLinks(index)
             _viewer.update {
                 it?.copy(
                     pageIndex = index,
@@ -312,6 +332,13 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     fun goToPage(index: Int) {
         val state = _viewer.value ?: return
+        if (!PageLockGate.allowsNavigation(state.pageLocked)) return
+        goToPageUnlocked(index)
+    }
+
+    /** Shared implementation for navigation that has already passed the lock gate. */
+    private fun goToPageUnlocked(index: Int) {
+        val state = _viewer.value ?: return
         val target = index.coerceIn(0, (state.pageCount - 1).coerceAtLeast(0))
         if (target == state.pageIndex && _pageBitmap.value != null) return
         renderPage(target)
@@ -321,6 +348,24 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun nextPage() = goToPage((_viewer.value?.pageIndex ?: 0) + 1)
 
     fun previousPage() = goToPage((_viewer.value?.pageIndex ?: 0) - 1)
+
+    /**
+     * Study-note source links keep working while the page is locked: they are an
+     * explicit "take me to the cited page" action, not incidental page stepping.
+     */
+    fun jumpToSourcePage(index: Int) {
+        val state = _viewer.value ?: return
+        if (!PageLockGate.allowsNavigation(state.pageLocked, explicitSourceJump = true)) return
+        goToPageUnlocked(index)
+    }
+
+    fun togglePageLock() {
+        val state = _viewer.value ?: return
+        _viewer.value = state.copy(
+            pageLocked = !state.pageLocked,
+            message = if (state.pageLocked) "페이지 잠금을 해제했습니다." else "페이지를 잠갔습니다. 페이지를 넘기려면 잠금을 해제하세요.",
+        )
+    }
 
     suspend fun loadThumbnail(index: Int): Bitmap? {
         val file = workingFile ?: return null
@@ -338,7 +383,40 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     fun currentWorkingFile(): File? = workingFile
 
-    fun toggleNightMode() = _viewer.update { it?.copy(nightMode = !it.nightMode) }
+    /** Extracts tap targets for the displayed page off the main thread. */
+    private fun loadPageLinks(pageIndex: Int) {
+        val source = sourceFile ?: return
+        val state = _viewer.value ?: return
+        val spec = state.pages.getOrNull(pageIndex) ?: return
+        val sourcePage = spec.sourcePage ?: return
+        val docId = state.docId
+        linkLoadJob?.cancel()
+        linkLoadJob = viewModelScope.launch {
+            val raw = withContext(Dispatchers.IO) {
+                PdfLinks.linksForFile(source, sourcePage, spec.extraRotation)
+            }
+            val mapped = PdfLinks.remapToDocument(raw, state.pages)
+            if (_viewer.value?.docId == docId && _viewer.value?.pageIndex == pageIndex) {
+                _pageLinks.value = mapped
+            }
+        }
+    }
+
+    /** Toggles day/night and persists it with the document so it survives close/reopen. */
+    fun toggleNightMode() {
+        val state = _viewer.value ?: return
+        _viewer.value = state.copy(nightMode = !state.nightMode)
+        persistNow()
+    }
+
+    /** Screen dimming factor in 0.4..1.0. Clamped by [DisplayPrefs] and persisted. */
+    fun setBrightness(value: Float) {
+        val state = _viewer.value ?: return
+        val clamped = DisplayPrefs.clampBrightness(value)
+        if (state.brightness == clamped) return
+        _viewer.value = state.copy(brightness = clamped)
+        persistNow()
+    }
 
     fun setDocumentStyle(style: DocumentStyle) {
         val state = _viewer.value ?: return
@@ -993,6 +1071,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     currentPageTextsKey = null
                     resetTextLayout()
                     _pageBitmap.value = null
+                    _pageLinks.value = emptyList()
                     persistNow()
                     renderPage(safeIndex)
                 }
@@ -1429,6 +1508,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     /** Selects a result row and jumps to its page; the highlight follows the page change. */
     fun goToSearchHit(index: Int) {
         val state = _viewer.value ?: return
+        if (!PageLockGate.allowsNavigation(state.pageLocked)) return
         val safe = SearchNavigation.clamp(index, state.searchHits.size)
         if (safe < 0) return
         _viewer.update { it?.copy(currentSearchHit = safe) }
@@ -1438,6 +1518,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     /** Wraps through result pages in either direction without leaving search mode. */
     fun moveSearchHit(delta: Int) {
         val state = _viewer.value ?: return
+        if (!PageLockGate.allowsNavigation(state.pageLocked)) return
         val count = state.searchHits.size
         if (count == 0) return
         val target = when {
@@ -1534,6 +1615,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             pages = state.pages,
             annotations = state.annotations,
             notes = state.notes,
+            displayPrefs = DisplayPrefs(
+                nightMode = state.nightMode,
+                brightness = state.brightness,
+            ),
         )
         viewModelScope.launch(Dispatchers.IO) { docStore.save(doc) }
     }

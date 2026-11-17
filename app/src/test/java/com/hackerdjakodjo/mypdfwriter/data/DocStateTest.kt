@@ -1,6 +1,8 @@
 package com.hackerdjakodjo.mypdfwriter.data
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,12 +20,14 @@ class DocStateTest {
         pages: List<PageSpec>,
         annotations: List<Annotation> = emptyList(),
         notes: Map<Int, String> = emptyMap(),
+        displayPrefs: DisplayPrefs = DisplayPrefs(),
     ) = DocState(
         docId = "doc",
         displayName = "lecture.pdf",
         pages = pages,
         annotations = annotations,
         notes = notes,
+        displayPrefs = displayPrefs,
     )
 
     @Test
@@ -84,5 +88,43 @@ class DocStateTest {
         assertEquals(listOf(PageSpec(null)), result.pages)
         assertTrue(result.annotations.isEmpty())
         assertTrue(result.notes.isEmpty())
+    }
+
+    @Test
+    fun jsonRoundTrip_keepsDisplayPrefs() {
+        val original = state(
+            pages = listOf(PageSpec(0)),
+            displayPrefs = DisplayPrefs(nightMode = true, brightness = 0.55f),
+        )
+
+        val parsed = DocState.fromJson("doc", JSONObject(original.toJson().toString()))
+
+        assertEquals(DisplayPrefs(nightMode = true, brightness = 0.55f), parsed.displayPrefs)
+    }
+
+    @Test
+    fun legacyJsonWithoutDisplay_loadsDefaultsAndDoesNotWriteTheField() {
+        val legacy = JSONObject().apply {
+            put("version", 1)
+            put("name", "lecture.pdf")
+            put("pages", org.json.JSONArray())
+            put("annotations", org.json.JSONArray())
+            put("notes", JSONObject())
+        }
+
+        val parsed = DocState.fromJson("doc", legacy)
+
+        assertEquals(DisplayPrefs(), parsed.displayPrefs)
+        assertFalse(parsed.toJson().has("display"))
+    }
+
+    @Test
+    fun normalized_preservesDisplayPrefs() {
+        val original = state(
+            pages = listOf(PageSpec(0), PageSpec(5)),
+            displayPrefs = DisplayPrefs(nightMode = true, brightness = 0.4f),
+        )
+
+        assertEquals(original.displayPrefs, original.normalized(3).displayPrefs)
     }
 }

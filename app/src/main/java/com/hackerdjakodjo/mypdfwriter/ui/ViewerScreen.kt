@@ -42,7 +42,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.DisplaySettings
 import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
@@ -54,7 +54,8 @@ import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Handyman
 import androidx.compose.material.icons.outlined.Highlight
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Palette
@@ -110,6 +111,7 @@ import com.hackerdjakodjo.mypdfwriter.data.AudioNote
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfLink
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchLayout
@@ -155,6 +157,7 @@ fun ViewerScreen(
     val excerpts by vm.excerpts.collectAsStateWithLifecycle()
     val bookmarks by vm.bookmarks.collectAsStateWithLifecycle()
     val pageTextWords by vm.textWords.collectAsStateWithLifecycle()
+    val pageLinks by vm.pageLinks.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val state = stateFlow.value ?: return
 
@@ -184,6 +187,7 @@ fun ViewerScreen(
     var showOutline by remember { mutableStateOf(false) }
     var showProperties by remember { mutableStateOf(false) }
     var showStyle by remember { mutableStateOf(false) }
+    var showDisplaySettings by remember { mutableStateOf(false) }
     var showHub by remember { mutableStateOf(false) }
     var showToolMore by remember { mutableStateOf(false) }
     var showToolStyle by remember { mutableStateOf(false) }
@@ -246,6 +250,21 @@ fun ViewerScreen(
         }
     }
 
+    /**
+     * VIEW-mode PDF link taps. Internal destinations use the normal (lock-gated)
+     * navigation path; external URIs are copy-only and never open a browser.
+     */
+    val handleLinkTap: (PdfLink) -> Unit = { link ->
+        when {
+            link.targetPage != null -> vm.goToPage(link.targetPage)
+            link.uri != null -> {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("PDF 링크", link.uri))
+                Toast.makeText(context, "링크 주소를 복사했습니다", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     /** Remember the last shape so the primary "도형" slot stays a one-tap action. */
     val selectTool: (Tool) -> Unit = { tool ->
         if (isShapeTool(tool)) lastShapeTool = tool
@@ -296,7 +315,7 @@ fun ViewerScreen(
     val sheetOpen = showPages || showNotes || showBookmarks || showSearch || showAnnotations ||
         showOrganize || showExcerpts || showContinuous || showSpread || showPopup || showAudioNotes ||
         showAudioReplay || showStudyNote || showReflow || showReadAloud || showOutline || showProperties ||
-        showStyle || showHub || showToolMore || showToolStyle ||
+        showStyle || showDisplaySettings || showHub || showToolMore || showToolStyle ||
         showSplitTools || showSplitSelectionMore || showTextEditDialog ||
         textTarget != null || stampTarget != null || signatureTarget != null
 
@@ -318,6 +337,7 @@ fun ViewerScreen(
                 sourceFile = source,
                 docName = state.docName,
                 initialPage = state.pageIndex,
+                brightness = state.brightness,
                 onBack = { showReflow = false },
                 onOpenPage = { page ->
                     vm.goToPage(page)
@@ -333,6 +353,7 @@ fun ViewerScreen(
             title = state.docName,
             pageCount = state.pageCount,
             initialPage = state.pageIndex,
+            brightness = state.brightness,
             loadPage = { index -> vm.loadReaderPage(index) },
             onBack = { showSpread = false },
             onOpenPage = { index ->
@@ -348,6 +369,7 @@ fun ViewerScreen(
             title = state.docName,
             pageCount = state.pageCount,
             initialPage = state.pageIndex,
+            brightness = state.brightness,
             loadPage = { index, zoom -> vm.loadReaderPage(index, zoom) },
             onBack = { showContinuous = false },
             onOpenPage = { index ->
@@ -451,10 +473,16 @@ fun ViewerScreen(
                 PdfHubAction("팝업 보기", Icons.Outlined.PictureInPictureAlt) { showPopup = true },
                 PdfHubAction("소리 내어 읽기", Icons.Outlined.RecordVoiceOver) { showReadAloud = true },
                 PdfHubAction(
-                    "야간 모드",
-                    if (state.nightMode) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
-                    trailing = if (state.nightMode) "켜짐" else "꺼짐",
-                ) { vm.toggleNightMode() },
+                    "화면 설정",
+                    Icons.Outlined.DisplaySettings,
+                    trailing = if (state.nightMode) "야간" else "주간",
+                    primary = true,
+                ) { showDisplaySettings = true },
+                PdfHubAction(
+                    if (state.pageLocked) "페이지 잠금 해제" else "페이지 잠금",
+                    if (state.pageLocked) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
+                    trailing = if (state.pageLocked) "켜짐" else null,
+                ) { vm.togglePageLock() },
                 PdfHubAction("텍스트 복사", Icons.Outlined.ContentCopy) { vm.copyPageText() },
                 PdfHubAction(
                     "화면에 맞추기",
@@ -487,7 +515,6 @@ fun ViewerScreen(
                     if (annotationsHidden) "주석 표시" else "주석 숨기기",
                     if (annotationsHidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
                     trailing = if (annotationsHidden) "숨김" else "표시 중",
-                    primary = true,
                 ) { annotationsHidden = !annotationsHidden },
                 PdfHubAction(
                     "발췌·번역",
@@ -760,6 +787,8 @@ fun ViewerScreen(
                         searchHighlights = searchHighlights,
                         pageCount = state.pageCount,
                         nightMode = state.nightMode,
+                        brightness = state.brightness,
+                        links = pageLinks,
                         textWords = pageTextWords,
                         textSelectMode = textSelectMode,
                         selectedWords = selectedWords,
@@ -775,7 +804,19 @@ fun ViewerScreen(
                         onRequestSignature = { signatureTarget = it },
                         onTextSelection = { selectedWords = it },
                         onRequestSelectionAt = requestSelectionAt,
+                        onLinkTapped = handleLinkTap,
                     )
+
+                    // Small, always-visible lock affordance. Bottom-start keeps it
+                    // clear of the bottom-center page pill and the top hint/search chips.
+                    if (state.pageLocked) {
+                        PageLockBadge(
+                            onUnlock = vm::togglePageLock,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = 10.dp, bottom = 12.dp),
+                        )
+                    }
 
                     // The one hint chip is an overlay: it never adds layout height
                     // and its top-center placement stays clear of the floating
@@ -1130,6 +1171,9 @@ fun ViewerScreen(
             },
         )
     }
+    if (showDisplaySettings) {
+        DisplaySettingsSheet(state = state, vm = vm, onDismiss = { showDisplaySettings = false })
+    }
     if (showHub) {
         PdfHubSheet(
             docName = state.docName,
@@ -1457,6 +1501,37 @@ private fun copySelection(context: Context, text: String) {
     }
     clipboard.setPrimaryClip(ClipData.newPlainText("선택한 텍스트", value))
     Toast.makeText(context, "선택한 텍스트를 복사했습니다.", Toast.LENGTH_SHORT).show()
+}
+
+/** Compact lock badge with an immediate unlock button, drawn over the PDF canvas. */
+@Composable
+private fun PageLockBadge(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 2.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 10.dp, top = 5.dp, bottom = 5.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Outlined.Lock,
+                contentDescription = "페이지 잠김",
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(6.dp))
+            Text("페이지 잠금", style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.width(8.dp))
+            TextButton(onClick = onUnlock, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
+                Text("해제", style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
 }
 
 /**

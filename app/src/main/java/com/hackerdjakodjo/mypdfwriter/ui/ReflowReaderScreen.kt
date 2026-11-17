@@ -99,6 +99,8 @@ fun ReflowReaderScreen(
     sourceFile: File,
     docName: String,
     initialPage: Int,
+    /** Screen dimming factor in 0.4..1.0; 1f draws no scrim. */
+    brightness: Float = 1f,
     onBack: () -> Unit,
     onOpenPage: (Int) -> Unit,
 ) {
@@ -357,6 +359,14 @@ fun ReflowReaderScreen(
                         Spacer(Modifier.height(28.dp))
                     }
                 }
+            }
+            val dimAlpha = 1f - brightness.coerceIn(0.4f, 1f)
+            if (dimAlpha > 0f) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = dimAlpha)),
+                )
             }
         }
     }

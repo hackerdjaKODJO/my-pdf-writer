@@ -38,6 +38,8 @@ import com.hackerdjakodjo.mypdfwriter.pdf.DocumentOverlayPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
 import com.hackerdjakodjo.mypdfwriter.ui.SearchHighlightOverlay
 import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfLink
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfLinks
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import kotlin.math.min
@@ -76,6 +78,10 @@ fun PdfCanvas(
     documentStyle: DocumentStyle = DocumentStyle(),
     pageCount: Int = 1,
     nightMode: Boolean = false,
+    /** Screen dimming factor in 0.4..1.0; 1f draws no scrim. */
+    brightness: Float = 1f,
+    /** Link annotations for this page. Only consulted for short taps in VIEW mode. */
+    links: List<PdfLink> = emptyList(),
     textWords: List<PdfTextWord> = emptyList(),
     textSelectMode: Boolean = false,
     selectedWords: List<PdfTextWord> = emptyList(),
@@ -94,6 +100,8 @@ fun PdfCanvas(
      * Never fired while drawing or while the selection gesture is active.
      */
     onRequestSelectionAt: (NormalizedPoint) -> Unit = {},
+    /** Called only when a short VIEW-mode tap lands on a link rectangle. */
+    onLinkTapped: (PdfLink) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val pageW = (bitmap?.width?.toFloat() ?: (displayWidthPt * 2f)).coerceAtLeast(1f)
@@ -112,6 +120,8 @@ fun PdfCanvas(
     // The VIEW-mode pointer handler uses a stable key, so read the host callback
     // through a live state to avoid capturing a stale page/selection snapshot.
     val currentRequestSelectionAt by rememberUpdatedState(onRequestSelectionAt)
+    val currentLinks by rememberUpdatedState(links)
+    val currentOnLinkTapped by rememberUpdatedState(onLinkTapped)
 
     LaunchedEffect(pageIndex) {
         livePoints.clear()
@@ -224,6 +234,13 @@ fun PdfCanvas(
                 }
                 .pointerInput(Unit) {
                     detectTapGestures(
+                        onTap = { position ->
+                            // Links are checked only for short taps in VIEW mode;
+                            // long-press selection and drawing are untouched.
+                            val point = transform.normalize(position)
+                            val link = PdfLinks.linkAt(currentLinks, point.x, point.y)
+                            if (link != null) currentOnLinkTapped(link)
+                        },
                         onDoubleTap = {
                             pan = Offset.Zero
                             onZoomChange(1f)
@@ -519,6 +536,20 @@ fun PdfCanvas(
                         native,
                         NormalizedPoint(eraser.x * pageW, eraser.y * pageH),
                         0.028f * pageW,
+                    )
+                }
+
+                // Brightness is a non-interactive dark scrim over the rendered page.
+                // It is drawn last so the page, night-mode inversion and all ink share
+                // the same screen dimming, and it never consumes pointer input.
+                val dimAlpha = ((1f - brightness.coerceIn(0.4f, 1f)) * 255f).roundToInt()
+                if (dimAlpha > 0) {
+                    native.drawRect(
+                        0f, 0f, pageW, pageH,
+                        Paint().apply {
+                            this.color = android.graphics.Color.argb(dimAlpha, 0, 0, 0)
+                            style = Paint.Style.FILL
+                        },
                     )
                 }
 
