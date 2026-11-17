@@ -29,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.Comment
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.Notes
@@ -758,6 +759,24 @@ fun ViewerScreen(
                         }
                     }
 
+                    // One-tap stepping over result pages. It is absent until a query
+                    // has real hits, so the idle viewer and the tool dock stay calm,
+                    // and its small top-end footprint never covers canvas gestures.
+                    if (!state.searching && state.searchQuery.trim().isNotEmpty() &&
+                        state.searchHits.isNotEmpty()
+                    ) {
+                        val currentHit =
+                            SearchNavigation.clamp(state.currentSearchHit, state.searchHits.size).coerceAtLeast(0)
+                        SearchNextChip(
+                            current = currentHit,
+                            total = state.searchHits.size,
+                            onNext = vm::nextSearchHit,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(end = 10.dp, top = 10.dp),
+                        )
+                    }
+
                     if (chromePolicy.showPageDropTarget && selectedText.isNotBlank()) {
                         StudyNoteDropTarget(
                             onDrop = appendStudyExcerpt,
@@ -1424,6 +1443,44 @@ private fun BusyOverlay(label: String?) {
                 Spacer(Modifier.width(12.dp))
                 Text(label ?: stringResource(R.string.rendering_page), style = MaterialTheme.typography.labelLarge)
             }
+        }
+    }
+}
+
+/** Compact result-stepping chip; only composed while a query has real hits. */
+@Composable
+private fun SearchNextChip(
+    current: Int,
+    total: Int,
+    onNext: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onNext,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f),
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        tonalElevation = 2.dp,
+        shadowElevation = 2.dp,
+        modifier = modifier,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(
+                stringResource(R.string.search_result_counter, current + 1, total),
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+            )
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                Icons.AutoMirrored.Outlined.ArrowForward,
+                contentDescription = stringResource(R.string.search_next_result),
+                modifier = Modifier.size(16.dp),
+            )
         }
     }
 }
