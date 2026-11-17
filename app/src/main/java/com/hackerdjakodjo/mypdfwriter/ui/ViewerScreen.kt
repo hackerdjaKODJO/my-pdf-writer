@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.Comment
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.automirrored.outlined.StickyNote2
@@ -130,6 +131,8 @@ fun ViewerScreen(
      * without closing the PDF.
      */
     onOpenStudyNote: ((StudySource) -> Unit)? = null,
+    /** Optional help hook. When present, the PDF hub offers a "도움말" action. */
+    onOpenHelp: (() -> Unit)? = null,
     /**
      * Height of the embedded study pane as a fraction of the PDF content area.
      * Ignored when [studyPane] is null.
@@ -206,6 +209,30 @@ fun ViewerScreen(
             textSelectMode = true
             selectedWords = emptyList()
             vm.loadTextWords(state.pageIndex)
+        }
+    }
+
+    /**
+     * Long press in VIEW mode enters selection mode. When this page's word geometry
+     * is already on screen, the word under the press is selected immediately;
+     * otherwise selection mode opens with the normal loading hint. Drawing and
+     * active selection gestures use different canvas paths and never call this.
+     */
+    val requestSelectionAt: (NormalizedPoint) -> Unit = { point ->
+        if (!textSelectMode) {
+            vm.setTool(Tool.VIEW)
+            textSelectMode = true
+            selectedWords = emptyList()
+            val pageWords = pageTextWords.filter {
+                it.pageIndex == state.pageIndex && it.text.isNotBlank()
+            }
+            if (!state.textLoading && pageWords.isNotEmpty()) {
+                selectedWords = listOfNotNull(
+                    PdfTextLayout.wordAt(pageWords, point.x, point.y),
+                )
+            } else {
+                vm.loadTextWords(state.pageIndex)
+            }
         }
     }
 
@@ -462,6 +489,12 @@ fun ViewerScreen(
                 },
                 PdfHubAction("문서 꾸미기", Icons.Outlined.Palette) { showStyle = true },
                 PdfHubAction("PDF 도구", Icons.Outlined.Handyman) { onOpenTools() },
+                onOpenHelp?.let {
+                    PdfHubAction("도움말", Icons.AutoMirrored.Outlined.HelpOutline) {
+                        showHub = false
+                        it()
+                    }
+                },
             ),
         ),
         PdfHubSection(
@@ -688,6 +721,7 @@ fun ViewerScreen(
                         onRequestStamp = { stampTarget = it },
                         onRequestSignature = { signatureTarget = it },
                         onTextSelection = { selectedWords = it },
+                        onRequestSelectionAt = requestSelectionAt,
                     )
 
                     val selectionEmpty =

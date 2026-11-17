@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -87,6 +88,12 @@ fun PdfCanvas(
     onRequestStamp: (NormalizedPoint) -> Unit,
     onRequestSignature: (NormalizedPoint) -> Unit,
     onTextSelection: (List<PdfTextWord>) -> Unit = {},
+    /**
+     * Long press while in VIEW mode. The host decides whether to enter text-selection
+     * mode and, when word geometry is already available, which word to preselect.
+     * Never fired while drawing or while the selection gesture is active.
+     */
+    onRequestSelectionAt: (NormalizedPoint) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val pageW = (bitmap?.width?.toFloat() ?: (displayWidthPt * 2f)).coerceAtLeast(1f)
@@ -102,6 +109,9 @@ fun PdfCanvas(
     val eraserTrail = remember { mutableStateListOf<NormalizedPoint>() }
     val selectedWordSet = remember(selectedWords) { selectedWords.toSet() }
     val transform = remember { CanvasTransform() }
+    // The VIEW-mode pointer handler uses a stable key, so read the host callback
+    // through a live state to avoid capturing a stale page/selection snapshot.
+    val currentRequestSelectionAt by rememberUpdatedState(onRequestSelectionAt)
 
     LaunchedEffect(pageIndex) {
         livePoints.clear()
@@ -217,6 +227,9 @@ fun PdfCanvas(
                         onDoubleTap = {
                             pan = Offset.Zero
                             onZoomChange(1f)
+                        },
+                        onLongPress = { position ->
+                            currentRequestSelectionAt(transform.normalize(position))
                         },
                     )
                 }
