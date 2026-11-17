@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -42,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.audio.AudioReplayController
 import com.hackerdjakodjo.mypdfwriter.audio.AudioReplayState
+import com.hackerdjakodjo.mypdfwriter.audio.PlaybackSpeed
 import com.hackerdjakodjo.mypdfwriter.data.AudioMarker
 import com.hackerdjakodjo.mypdfwriter.data.AudioNote
 import com.hackerdjakodjo.mypdfwriter.data.AudioNoteStore
@@ -74,6 +78,10 @@ import java.util.Locale
  * (or null after stop), the elapsed position, and whether audio is playing.
  * The viewer can use the note and position to reveal annotations whose
  * [com.hackerdjakodjo.mypdfwriter.data.Annotation.createdAt] has been reached.
+ * A compact rate chip row (0.5x … 2x) applies the selected speed immediately,
+ * including to the active note, and keeps that selection for the sheet session
+ * at a 1.0x default. It never changes a note's stored data.
+ *
  * The sheet stops playback and reports a cleared state before dismissing.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -93,6 +101,10 @@ fun AudioReplaySheet(
     var replayState by remember { mutableStateOf(AudioReplayState()) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
+    // Session-scoped playback rate: resets to 1.0x when the sheet is opened
+    // again, but survives note changes, seeking and stop within this session.
+    var playbackSpeed by remember(ownerId) { mutableFloatStateOf(PlaybackSpeed.DEFAULT) }
+
     val latestOnPlaybackState by rememberUpdatedState(onPlaybackState)
 
     val controller = remember(context) {
@@ -107,6 +119,9 @@ fun AudioReplaySheet(
     }
 
     LaunchedEffect(notes) { controller.updateNotes(notes) }
+    // Apply once on open and immediately on every chip tap, before play and
+    // while playing. Selection lives here; the controller mirrors it in state.
+    LaunchedEffect(playbackSpeed) { controller.setPlaybackSpeed(playbackSpeed) }
     LaunchedEffect(ownerId) {
         // Opening replay with nothing selected should leave the viewer unfiltered.
         latestOnPlaybackState(null, 0L, false)
@@ -208,6 +223,34 @@ fun AudioReplaySheet(
                 }
             }
 
+            item {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "재생 속도",
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                PlaybackSpeed.label(playbackSpeed),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        PlaybackSpeedChips(
+                            speed = playbackSpeed,
+                            onSpeedChange = { value -> playbackSpeed = value },
+                        )
+                    }
+                }
+            }
+
             errorMessage?.let { message ->
                 item {
                     Surface(
@@ -245,6 +288,7 @@ fun AudioReplaySheet(
                     AudioReplayTransport(
                         note = active,
                         state = replayState,
+                        speed = replayState.playbackSpeed,
                         onPlayPause = { toggleNote(active) },
                         onStop = { controller.stop() },
                         onSeek = { positionMs -> seekNote(active, positionMs) },
@@ -327,10 +371,49 @@ fun AudioReplaySheet(
     }
 }
 
+/** Compact, single-select row of the six supported playback rates. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PlaybackSpeedChips(
+    speed: Float,
+    onSpeedChange: (Float) -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        PlaybackSpeed.ALLOWED.forEach { value ->
+            val selected = PlaybackSpeed.normalize(speed) == value
+            Surface(
+                onClick = { onSpeedChange(value) },
+                shape = RoundedCornerShape(20.dp),
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+                },
+                contentColor = if (selected) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            ) {
+                Text(
+                    PlaybackSpeed.label(value),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun AudioReplayTransport(
     note: AudioNote,
     state: AudioReplayState,
+    speed: Float,
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
     onSeek: (Long) -> Unit,
@@ -443,7 +526,7 @@ private fun AudioReplayTransport(
                 )
 
                 Text(
-                    "이 위치까지 기록된 주석만 표시됩니다.",
+                    "속도 ${PlaybackSpeed.label(speed)} · 이 위치까지 기록된 주석만 표시됩니다.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

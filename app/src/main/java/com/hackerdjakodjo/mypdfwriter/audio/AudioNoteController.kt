@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.media.PlaybackParams
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -20,6 +21,8 @@ data class AudioNoteControllerState(
     val preparing: Boolean = false,
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
+    /** Playback rate currently applied to the player (1.0x until changed). */
+    val playbackSpeed: Float = PlaybackSpeed.DEFAULT,
 )
 
 /** Result of a successfully stopped microphone recording. */
@@ -66,6 +69,13 @@ class AudioNoteController(
     private var playerDuration = 0L
     private var playing = false
     private var preparing = false
+
+    /**
+     * Session-scoped playback rate. It survives stop/seek/note changes and is
+     * re-applied to every new player, so the replay sheet can remember the
+     * selected speed without touching the note schema.
+     */
+    private var playbackSpeed: Float = PlaybackSpeed.DEFAULT
 
     /** Invalidates listeners and prepared callbacks from an older player. */
     private var playerGeneration = 0
@@ -253,6 +263,7 @@ class AudioNoteController(
                     playerDuration.coerceAtLeast(0L),
                 )
                 runCatching { prepared.seekTo(target.toInt()) }
+                applyPlaybackSpeed(prepared, playbackSpeed)
                 playing = runCatching {
                     prepared.start()
                     true
@@ -320,6 +331,24 @@ class AudioNoteController(
         }
     }
 
+    /**
+     * Sets the playback rate for the current player and every future player in
+     * this session. Invalid values are snapped to the nearest supported rate by
+     * [PlaybackSpeed]. The rate is applied immediately while playing or paused,
+     * and again before each (re)start, so changing it mid-note never desyncs the
+     * [positionMs]/[durationMs] ticker, which always reads the real
+     * [MediaPlayer.currentPosition].
+     *
+     * On platform versions without [PlaybackParams] the value is remembered but
+     * playback stays at the normal rate; no exception escapes to the caller.
+     */
+    fun setPlaybackSpeed(speed: Float) {
+        if (closed) return
+        playbackSpeed = PlaybackSpeed.normalize(speed)
+        applyPlaybackSpeed(player, playbackSpeed)
+        notifyState()
+    }
+
     fun pause() {
         if (closed || recording || !playing) return
         val active = player ?: return
@@ -349,6 +378,7 @@ class AudioNoteController(
     fun resume() {
         if (closed || recording || playing || preparing) return
         val active = player ?: return
+        applyPlaybackSpeed(active, playbackSpeed)
         playing = runCatching {
             active.start()
             true
@@ -464,8 +494,25 @@ class AudioNoteController(
                 preparing = preparing,
                 positionMs = playerPosition,
                 durationMs = playerDuration,
+                playbackSpeed = playbackSpeed,
             ),
         )
+    }
+
+    /**
+     * Applies [speed] to [target] only when the platform supports playback
+     * parameters. Any failure (unsupported device/codec or player state) is
+     * swallowed so playback continues at the normal rate instead of crashing.
+     */
+    private fun applyPlaybackSpeed(target: MediaPlayer?, speed: Float) {
+        val active = target ?: return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        runCatching { applyPlaybackParams(active, speed) }
+    }
+
+    /** Called only when [Build.VERSION.SDK_INT] is at least M. */
+    private fun applyPlaybackParams(target: MediaPlayer, speed: Float) {
+        target.setPlaybackParams(PlaybackParams().setSpeed(speed))
     }
 
     @Suppress("DEPRECATION")

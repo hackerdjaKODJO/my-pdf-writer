@@ -17,6 +17,8 @@ data class AudioReplayState(
     val durationMs: Long = 0L,
     val playing: Boolean = false,
     val preparing: Boolean = false,
+    /** Rate applied to the active playback; session-scoped, default 1.0x. */
+    val playbackSpeed: Float = PlaybackSpeed.DEFAULT,
 ) {
     /**
      * Absolute wall-clock timestamp up to which annotations should be visible,
@@ -107,6 +109,15 @@ class AudioReplayController(
     }
 
     /**
+     * Applies [speed] to the active note immediately and remembers it for the
+     * rest of this replay session. The player reports the applied value back
+     * through [AudioReplayState.playbackSpeed]; [positionMs] and the reveal
+     * cutoff still come from the real `MediaPlayer` position, so changing speed
+     * cannot desync annotation reveal.
+     */
+    fun setPlaybackSpeed(speed: Float) = player.setPlaybackSpeed(speed)
+
+    /**
      * Starts [note] from [startMs]. A previous note is replaced. Returns false
      * when the local file is missing or the player cannot start.
      */
@@ -175,6 +186,7 @@ class AudioReplayController(
                 durationMs = duration.coerceAtLeast(0L),
                 playing = note != null && raw.playing,
                 preparing = note != null && raw.preparing,
+                playbackSpeed = raw.playbackSpeed,
             ),
         )
     }
