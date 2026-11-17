@@ -25,6 +25,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.ui.BackupSheet
 import com.hackerdjakodjo.mypdfwriter.ui.BackupViewModel
+import com.hackerdjakodjo.mypdfwriter.ui.HelpCenterSheet
 import com.hackerdjakodjo.mypdfwriter.ui.NoteEditorScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NoteTraceSheet
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookHomeScreen
@@ -94,6 +95,7 @@ class MainActivity : ComponentActivity() {
                 var showTools by remember { mutableStateOf(false) }
                 var showBackup by remember { mutableStateOf(false) }
                 var showTrace by remember { mutableStateOf(false) }
+                var showHelp by remember { mutableStateOf(false) }
                 val viewer by viewModel.viewer.collectAsStateWithLifecycle()
                 val notebooks by notebookViewModel.notebooks.collectAsStateWithLifecycle()
                 val currentNote by notebookViewModel.current.collectAsStateWithLifecycle()
@@ -163,6 +165,7 @@ class MainActivity : ComponentActivity() {
                                     viewModel.openDocumentAt(Uri.parse(uri), page)
                                 }
                             },
+                            onOpenHelp = { showHelp = true },
                         )
                         showTools -> ToolsScreen(
                             onBack = { showTools = false },
@@ -191,6 +194,7 @@ class MainActivity : ComponentActivity() {
                             onSetTags = { id, tags -> notebookViewModel.setTags(id, tags) },
                             onOpenBackup = { showBackup = true },
                             onOpenTrace = { showTrace = true },
+                            onOpenHelp = { showHelp = true },
                         )
                         else -> Box(Modifier.fillMaxSize()) {
                             val studySource = StudySource(
@@ -308,6 +312,7 @@ class MainActivity : ComponentActivity() {
                                                 // PDF page move together.
                                                 viewModel.goToPage(sourcePage)
                                             },
+                                            onOpenHelp = { showHelp = true },
                                         )
                                     }
                                 } else {
@@ -334,6 +339,9 @@ class MainActivity : ComponentActivity() {
                 }
                 if (BuildConfig.DEBUG && showTrace) {
                     NoteTraceSheet(onDismiss = { showTrace = false })
+                }
+                if (showHelp) {
+                    HelpCenterSheet(onDismiss = { showHelp = false })
                 }
             }
         }

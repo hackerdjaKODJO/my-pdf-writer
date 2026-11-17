@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.NoteAdd
 import androidx.compose.material.icons.automirrored.outlined.ViewList
@@ -158,6 +159,7 @@ fun NotebookHomeScreen(
     onSetTags: (String, List<String>) -> Unit,
     onOpenBackup: () -> Unit = {},
     onOpenTrace: (() -> Unit)? = null,
+    onOpenHelp: () -> Unit = {},
 ) {
     var section by remember { mutableStateOf(LibrarySection.NOTES) }
     var scope by remember { mutableStateOf(NoteScope.ALL) }
@@ -306,6 +308,16 @@ fun NotebookHomeScreen(
                                                 showOverflow = false
                                                 section = LibrarySection.NOTES
                                                 scope = NoteScope.TRASH
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("사용법/도움말") },
+                                            leadingIcon = {
+                                                Icon(Icons.AutoMirrored.Outlined.HelpOutline, contentDescription = null)
+                                            },
+                                            onClick = {
+                                                showOverflow = false
+                                                onOpenHelp()
                                             },
                                         )
                                         if (BuildConfig.DEBUG && onOpenTrace != null) {

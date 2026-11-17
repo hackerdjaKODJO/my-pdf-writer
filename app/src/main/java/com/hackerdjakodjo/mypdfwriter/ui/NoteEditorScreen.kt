@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -181,6 +182,7 @@ fun NoteEditorScreen(
     onOpenSourcePdf: ((Int) -> Unit)? = null,
     compact: Boolean = false,
     compactTopInsetDp: Int = 0,
+    onOpenHelp: () -> Unit = {},
 ) {
     // The parent only echoes notebook changes after recomposition. Keep the newest
     // locally committed notebook here so a second stroke that arrives before that
@@ -1810,6 +1812,10 @@ fun NoteEditorScreen(
             } else {
                 null
             },
+            onOpenHelp = {
+                showOverflow = false
+                onOpenHelp()
+            },
             onRename = {
                 showOverflow = false
                 showRename = true
@@ -3122,6 +3128,7 @@ private fun NoteOverflowSheet(
     onDeletePage: () -> Unit,
     onExportPdf: () -> Unit,
     onOpenTrace: (() -> Unit)?,
+    onOpenHelp: () -> Unit = {},
     onRename: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
@@ -3441,6 +3448,17 @@ private fun NoteOverflowSheet(
                     title = "PDF로 내보내기",
                     supporting = "현재 노트를 PDF 파일로 저장",
                     onClick = onExportPdf,
+                )
+            }
+
+            item { NoteMenuDivider() }
+            item { NoteMenuSection("도움말") }
+            item {
+                NoteMenuRow(
+                    icon = Icons.AutoMirrored.Outlined.HelpOutline,
+                    title = "도움말",
+                    supporting = "오프라인 사용 가이드 · 빠른 시작부터 문제 해결까지",
+                    onClick = onOpenHelp,
                 )
             }
 
