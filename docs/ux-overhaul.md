@@ -59,20 +59,28 @@ behavioral notes in `starnote-reverse-engineering.md`, `flexcil-analysis.md`, an
 - The PDF study pane opens at **85%** of the PDF content area (clamped 35–85%,
   presets 50/70/85%). 95% is intentionally not offered: it leaves only a 5% PDF
   strip, below the 15% minimum needed to keep the source page readable.
-- The pane header is one compact stack: drag handle, notebook title + source,
-  link and close actions, and a slim capture strip with the size presets. The
-  redundant "PDF 위 스터디 노트" heading is gone.
+- The pane header is a single compact floating overlay: one 44 dp row with a
+  resize grip, notebook title + source, a tiny size popup, capture, link and close
+  actions. The redundant "PDF 위 스터디 노트" heading and the permanent full-width
+  capture strip are gone.
+- The size popup exposes the 50/70/85% presets. Dragging the grip (or the
+  title/source block) resizes continuously; pulling below the minimum height plus
+  the dismissal overshoot closes the pane.
+- PDF excerpts can be dropped directly on the floating header. The capture action
+  reveals one compact drop row when the user wants an explicit target; the PDF
+  selection bar's `패널에 추가` flow is unchanged.
 - `NoteEditorScreen(compact = true)` hides the editor's own top app bar, replaces
   the large always-on hint pill with a one-line contextual hint for non-pen tools,
-  and uses a 42 dp tool row plus a 34 dp action row instead of the full dock.
-  Colour/style, undo/redo, favourite, overflow and the page pill sit in the slim
-  row; templates, layers, outline, search, audio, source PDF, page tools, export,
-  finger writing, pressure curves and trace stay in the existing sheets.
-- Compact mode has no page rail and tighter canvas padding, so the paper occupies
-  more of the pane. Full-screen note editing keeps its original top bar, dock and
-  hint behaviour.
-- While the pane is open the PDF viewer removes its top app bar and bottom dock;
-  the PDF starts at the top safe edge and the pane takes 85% of the full
+  and **floats** a translucent rounded dock (one 34 dp tool row + one 32 dp action
+  row) over the lower edge of the canvas instead of reserving a full-width bottom
+  bar. Colour/style, undo/redo, favourite, overflow and the page pill sit in the
+  slim row; templates, layers, outline, search, audio, source PDF, page tools,
+  export, finger writing, pressure curves and trace stay in the existing sheets.
+- The compact canvas fills the pane behind the floating dock and header, so the
+  paper occupies more of the pane. Full-screen note editing keeps its original
+  top bar, dock and hint behaviour.
+- While the study pane is open the PDF viewer removes its top app bar and bottom
+  dock; the PDF starts at the top safe edge and the pane takes 85% of the full
   remaining height. Back, page pill, text selection, bookmark, PDF tools and the
   hub float as 36 dp translucent controls over the PDF strip, and text selection
   uses a compact floating markup bar instead of a permanent row.

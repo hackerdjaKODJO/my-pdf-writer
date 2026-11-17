@@ -1,12 +1,13 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,15 +15,18 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
@@ -54,13 +60,14 @@ import kotlinx.coroutines.delay
  * their existing behavior while the PDF stays open above it.
  *
  * The pane is not a modal sheet: the caller gives it a fraction of the PDF content
- * area. The handle resizes live, preset chips set 50/70/85%, and pulling below the
- * minimum height dismisses it. The compact header only keeps the drag handle,
- * notebook title/source, link and close actions plus one slim capture strip; the
- * hosted note editor hides its own app bar and hint strip so the writing canvas
- * takes the available height. The capture strip accepts the same in-app drag
- * payload as the PDF selection bar, and the link action opens the local To/From
- * index built from [com.hackerdjakodjo.mypdfwriter.data.NotePage.sourcePageIndex].
+ * area. The pane canvas fills that whole area, and a compact translucent header
+ * floats over its top edge instead of reserving a full-width stack. The header's
+ * grip resizes live or dismisses the pane, a tiny size popup exposes the 50/70/85%
+ * presets, and the capture action reveals the drop target only when needed. PDF
+ * excerpts can also be dropped directly on the header. The compact note dock floats
+ * at the bottom, so the writing canvas uses the freed height. The link action opens
+ * the local To/From index built from
+ * [com.hackerdjakodjo.mypdfwriter.data.NotePage.sourcePageIndex].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,11 +85,21 @@ fun StudyPaneSheet(
     onJumpToSourcePage: (sourcePageIndex: Int, notePageIndex: Int) -> Unit,
 ) {
     var showLinks by remember(notebook.id) { mutableStateOf(false) }
+    var showCapture by remember(notebook.id) { mutableStateOf(false) }
     var captureMessage by remember(notebook.id) { mutableStateOf<String?>(null) }
     var paneHeightPx by remember { mutableFloatStateOf(0f) }
     val sourceName = notebook.sourceDocumentName.ifBlank { "원본 PDF" }
     val linkCount = remember(notebook.pages) {
         StudyNoteSourceLinks.fromNotebook(notebook).size
+    }
+    val handleDropExcerpt: (String, Int) -> Unit = { text, page ->
+        val added = onCaptureExcerpt(text, page)
+        captureMessage = if (added) {
+            "PDF p.${page + 1} 발췌를 추가했습니다"
+        } else {
+            "발췌를 추가하지 못했습니다"
+        }
+        showCapture = false
     }
 
     LaunchedEffect(captureMessage) {
@@ -101,45 +118,39 @@ fun StudyPaneSheet(
             tonalElevation = 3.dp,
             shadowElevation = 8.dp,
         ) {
-            Column(Modifier.fillMaxSize()) {
-                StudyPaneHeader(
+            Box(Modifier.fillMaxSize()) {
+                NoteEditorScreen(
+                    notebook = notebook,
+                    pageIndex = pageIndex,
+                    onBack = onDismiss,
+                    onChange = onChange,
+                    onPageIndexChange = onPageIndexChange,
+                    onExportPdf = onExportPdf,
+                    onOpenSourcePdf = onOpenSourcePdf,
+                    compact = true,
+                    compactTopInsetDp = studyPaneFloatingHeaderInsetDp(captureOpen = showCapture),
+                )
+                StudyPaneFloatingHeader(
                     notebookTitle = notebook.title,
                     sourceName = sourceName,
                     heightFraction = heightFraction,
                     paneHeightPx = paneHeightPx,
                     captureMessage = captureMessage,
                     linkCount = linkCount,
+                    captureOpen = showCapture,
                     onHeightFractionChange = onHeightFractionChange,
+                    onToggleCapture = { showCapture = !showCapture },
                     onOpenLinks = { showLinks = true },
                     onClose = onDismiss,
-                    onDropExcerpt = { text, page ->
-                        val added = onCaptureExcerpt(text, page)
-                        captureMessage = if (added) {
-                            "PDF p.${page + 1} 발췌를 추가했습니다"
-                        } else {
-                            "발췌를 추가하지 못했습니다"
-                        }
-                    },
+                    onDropExcerpt = handleDropExcerpt,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(
+                            start = STUDY_PANE_HEADER_SIDE_MARGIN_DP.dp,
+                            end = STUDY_PANE_HEADER_SIDE_MARGIN_DP.dp,
+                            top = STUDY_PANE_HEADER_TOP_MARGIN_DP.dp,
+                        ),
                 )
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-                )
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                ) {
-                    NoteEditorScreen(
-                        notebook = notebook,
-                        pageIndex = pageIndex,
-                        onBack = onDismiss,
-                        onChange = onChange,
-                        onPageIndexChange = onPageIndexChange,
-                        onExportPdf = onExportPdf,
-                        onOpenSourcePdf = onOpenSourcePdf,
-                        compact = true,
-                    )
-                }
             }
         }
 
@@ -157,20 +168,23 @@ fun StudyPaneSheet(
 }
 
 @Composable
-private fun StudyPaneHeader(
+private fun StudyPaneFloatingHeader(
     notebookTitle: String,
     sourceName: String,
     heightFraction: Float,
     paneHeightPx: Float,
     captureMessage: String?,
     linkCount: Int,
+    captureOpen: Boolean,
     onHeightFractionChange: (Float) -> Unit,
+    onToggleCapture: () -> Unit,
     onOpenLinks: () -> Unit,
     onClose: () -> Unit,
     onDropExcerpt: (text: String, pageIndex: Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     // The pane occupies heightFraction of the PDF content area, so its measured
-    // height lets the handle translate pixel drags into content-area fractions.
+    // height lets the grip translate pixel drags into content-area fractions.
     val latestFraction by rememberUpdatedState(heightFraction)
     val latestHeight by rememberUpdatedState(paneHeightPx)
     val latestOnFraction by rememberUpdatedState(onHeightFractionChange)
@@ -178,171 +192,245 @@ private fun StudyPaneHeader(
     var dragStartFraction by remember { mutableFloatStateOf(0f) }
     var dragTotalPx by remember { mutableFloatStateOf(0f) }
     var dragContentHeightPx by remember { mutableFloatStateOf(0f) }
-
-    Column(Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(16.dp)
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragStart = {
-                            dragStartFraction = latestFraction
-                            dragTotalPx = 0f
-                            dragContentHeightPx = if (dragStartFraction > 0.01f) {
-                                latestHeight / dragStartFraction
-                            } else {
-                                latestHeight
-                            }
-                        },
-                        onVerticalDrag = { change, dragAmount ->
-                            change.consume()
-                            dragTotalPx += dragAmount
-                            latestOnFraction(
-                                studyPaneFractionAfterDrag(
-                                    startFraction = dragStartFraction,
-                                    dragY = dragTotalPx,
-                                    totalHeightPx = dragContentHeightPx,
-                                ),
-                            )
-                        },
-                        onDragEnd = {
-                            if (
-                                shouldDismissStudyPaneAfterDrag(
-                                    startFraction = dragStartFraction,
-                                    dragY = dragTotalPx,
-                                    totalHeightPx = dragContentHeightPx,
-                                )
-                            ) {
-                                latestOnDismiss()
-                            }
-                        },
-                        onDragCancel = { dragTotalPx = 0f },
-                    )
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                Modifier
-                    .width(36.dp)
-                    .height(3.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                        shape = RoundedCornerShape(50),
+    var showSizeMenu by remember { mutableStateOf(false) }
+    var dropActive by remember { mutableStateOf(false) }
+    val dropModifier = rememberStudyNoteDropTarget(
+        onDrop = onDropExcerpt,
+        onActiveChange = { dropActive = it },
+    )
+    val subtitle = when {
+        captureMessage != null -> captureMessage
+        dropActive -> "PDF 발췌를 놓아 추가"
+        linkCount > 0 -> "$sourceName · 링크 $linkCount"
+        else -> sourceName
+    }
+    // The grip and the title/source block both resize the pane, so the whole
+    // header remains an easy one-thumb drag target without a separate strip.
+    val resizeDragModifier = Modifier.pointerInput(Unit) {
+        detectVerticalDragGestures(
+            onDragStart = {
+                dragStartFraction = latestFraction
+                dragTotalPx = 0f
+                dragContentHeightPx = if (dragStartFraction > 0.01f) {
+                    latestHeight / dragStartFraction
+                } else {
+                    latestHeight
+                }
+            },
+            onVerticalDrag = { change, dragAmount ->
+                change.consume()
+                dragTotalPx += dragAmount
+                latestOnFraction(
+                    studyPaneFractionAfterDrag(
+                        startFraction = dragStartFraction,
+                        dragY = dragTotalPx,
+                        totalHeightPx = dragContentHeightPx,
                     ),
-            )
-        }
+                )
+            },
+            onDragEnd = {
+                if (
+                    shouldDismissStudyPaneAfterDrag(
+                        startFraction = dragStartFraction,
+                        dragY = dragTotalPx,
+                        totalHeightPx = dragContentHeightPx,
+                    )
+                ) {
+                    latestOnDismiss()
+                }
+            },
+            onDragCancel = { dragTotalPx = 0f },
+        )
+    }
 
-        Row(
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Surface(
             modifier = Modifier
+                .widthIn(max = 460.dp)
                 .fillMaxWidth()
-                .height(40.dp)
-                .padding(start = 12.dp, end = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .then(dropModifier),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surface.copy(
+                alpha = if (dropActive) 1f else 0.94f,
+            ),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 3.dp,
+            shadowElevation = 8.dp,
+            border = BorderStroke(
+                width = if (dropActive) 2.dp else 1.dp,
+                color = if (dropActive) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+                },
+            ),
         ) {
-            Icon(
-                Icons.Outlined.EditNote,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.width(6.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    notebookTitle,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    buildString {
-                        append(sourceName)
-                        if (linkCount > 0) append(" · 링크 $linkCount")
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            IconButton(
-                onClick = onOpenLinks,
-                modifier = Modifier.size(36.dp),
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(
+                        (
+                            STUDY_PANE_HEADER_ROW_HEIGHT_DP +
+                                STUDY_PANE_HEADER_VERTICAL_PADDING_DP * 2
+                            ).dp,
+                    )
+                    .padding(start = 2.dp, end = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    Icons.Outlined.Link,
-                    contentDescription = if (linkCount == 0) {
-                        "원본 페이지 링크 없음"
-                    } else {
-                        "원본 페이지 링크 ${linkCount}개"
-                    },
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            IconButton(
-                onClick = onClose,
-                modifier = Modifier.size(36.dp),
-            ) {
-                Icon(
-                    Icons.Outlined.Close,
-                    contentDescription = "스터디 노트 닫기",
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
+                // Resize/dismiss grip. The old 16 dp handle strip is gone; the
+                // grip lives in the same row as the title to save vertical space.
+                Box(
+                    modifier = Modifier
+                        .width(26.dp)
+                        .fillMaxHeight()
+                        .semantics {
+                            contentDescription = "스터디 패널 높이 조절 · 아래로 밀어 닫기"
+                        }
+                        .then(resizeDragModifier),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.DragIndicator,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 8.dp, end = 8.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            StudyNoteDropTarget(
-                onDrop = onDropExcerpt,
-                caption = captureMessage ?: "PDF 선택 텍스트를 끌어다 놓기",
-                compact = true,
-                modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                STUDY_PANE_PRESETS.forEach { preset ->
-                    StudyPaneSizeChip(
-                        fraction = preset,
-                        selected = isStudyPanePresetSelected(heightFraction, preset),
-                        onClick = { onHeightFractionChange(preset) },
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(resizeDragModifier)
+                        .padding(end = 4.dp),
+                ) {
+                    Text(
+                        notebookTitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (captureMessage != null || dropActive) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                // Tiny size popup replaces the permanent 50/70/85% chip row.
+                Box {
+                    Surface(
+                        onClick = { showSizeMenu = true },
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ) {
+                        Text(
+                            studyPanePresetLabel(heightFraction),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showSizeMenu,
+                        onDismissRequest = { showSizeMenu = false },
+                    ) {
+                        STUDY_PANE_PRESETS.forEach { preset ->
+                            val selected =
+                                isStudyPanePresetSelected(heightFraction, preset)
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (selected) {
+                                            "패널 ${studyPanePresetLabel(preset)} · 현재"
+                                        } else {
+                                            "패널 ${studyPanePresetLabel(preset)}"
+                                        },
+                                        style = MaterialTheme.typography.labelLarge,
+                                    )
+                                },
+                                onClick = {
+                                    showSizeMenu = false
+                                    onHeightFractionChange(preset)
+                                },
+                            )
+                        }
+                    }
+                }
+
+                IconButton(
+                    onClick = onToggleCapture,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.Notes,
+                        contentDescription = if (captureOpen) {
+                            "발췌 놓기 닫기"
+                        } else {
+                            "PDF 발췌 놓기"
+                        },
+                        modifier = Modifier.size(17.dp),
+                        tint = if (captureOpen || dropActive) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+
+                IconButton(
+                    onClick = onOpenLinks,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        Icons.Outlined.Link,
+                        contentDescription = if (linkCount == 0) {
+                            "원본 페이지 링크 없음"
+                        } else {
+                            "원본 페이지 링크 ${linkCount}개"
+                        },
+                        modifier = Modifier.size(17.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        Icons.Outlined.Close,
+                        contentDescription = "스터디 노트 닫기",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         }
-    }
-}
 
-@Composable
-private fun StudyPaneSizeChip(
-    fraction: Float,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(50),
-        color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        },
-        contentColor = if (selected) {
-            MaterialTheme.colorScheme.onPrimaryContainer
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
-    ) {
-        Text(
-            studyPanePresetLabel(fraction),
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-        )
+        // The capture strip is opt-in: even when open it is one compact row, not
+        // part of a permanent stacked header. Dropping on the header itself also
+        // works, so selection-bar capture stays immediate.
+        if (captureOpen) {
+            Spacer(Modifier.height(STUDY_PANE_CAPTURE_PANEL_GAP_DP.dp))
+            StudyNoteDropTarget(
+                onDrop = onDropExcerpt,
+                caption = captureMessage ?: "PDF 선택 텍스트를 끌어다 놓기",
+                compact = true,
+                modifier = Modifier
+                    .widthIn(max = 460.dp)
+                    .fillMaxWidth(),
+            )
+        }
     }
 }
 

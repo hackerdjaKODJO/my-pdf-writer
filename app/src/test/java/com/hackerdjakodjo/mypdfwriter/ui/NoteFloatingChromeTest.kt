@@ -1,0 +1,111 @@
+package com.hackerdjakodjo.mypdfwriter.ui
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Pure checks for the floating compact study chrome: the note dock must be a
+ * small inset pill with 32–40 dp targets, and the study header must be much
+ * shorter than the old stacked full-width header.
+ */
+class NoteFloatingChromeTest {
+
+    @Test
+    fun `floating dock rows use dense 32 to 40 dp targets`() {
+        assertTrue(NOTE_COMPACT_TOOL_ROW_HEIGHT_DP in 32..40)
+        assertTrue(NOTE_COMPACT_ACTION_ROW_HEIGHT_DP in 32..40)
+        assertTrue(NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP in 32..40)
+        assertEquals(34, NOTE_COMPACT_TOOL_ROW_HEIGHT_DP)
+        assertEquals(32, NOTE_COMPACT_ACTION_ROW_HEIGHT_DP)
+    }
+
+    @Test
+    fun `floating dock height stays compact with and without a tool tray`() {
+        val closed = noteCompactDockHeightDp(showContextTray = false)
+        val expected = NOTE_COMPACT_DOCK_VERTICAL_PADDING_DP * 2 +
+            NOTE_COMPACT_TOOL_ROW_HEIGHT_DP +
+            NOTE_COMPACT_DOCK_DIVIDER_DP +
+            NOTE_COMPACT_ACTION_ROW_HEIGHT_DP
+
+        assertEquals(expected, closed)
+        assertTrue("floating dock should stay under 80 dp, was $closed", closed <= 80)
+        assertEquals(73, closed)
+
+        val tray = noteCompactDockHeightDp(showContextTray = true)
+        assertEquals(closed + NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP, tray)
+        assertTrue("tray dock should stay under 120 dp, was $tray", tray <= 120)
+        assertEquals(closed + NOTE_COMPACT_DOCK_BOTTOM_MARGIN_DP, noteCompactDockObscuredHeightDp(false))
+    }
+
+    @Test
+    fun `floating dock keeps side margins and a compact maximum width`() {
+        assertTrue(NOTE_COMPACT_DOCK_SIDE_MARGIN_DP >= 4)
+        assertTrue(NOTE_COMPACT_DOCK_BOTTOM_MARGIN_DP >= 4)
+        assertTrue(NOTE_COMPACT_DOCK_CORNER_DP >= 12)
+        assertEquals(340, NOTE_COMPACT_DOCK_MAX_WIDTH_DP)
+
+        // A 320 dp phone leaves an 8 dp margin on each side.
+        assertEquals(304, noteFloatingDockWidthDp(320))
+        assertTrue(noteFloatingDockWidthDp(320) < 320)
+        // Wider panes stop growing so the pill never becomes a full bar.
+        assertEquals(NOTE_COMPACT_DOCK_MAX_WIDTH_DP, noteFloatingDockWidthDp(412))
+        assertEquals(NOTE_COMPACT_DOCK_MAX_WIDTH_DP, noteFloatingDockWidthDp(1200))
+        // Degenerate widths clamp to zero instead of going negative.
+        assertEquals(0, noteFloatingDockWidthDp(NOTE_COMPACT_DOCK_SIDE_MARGIN_DP * 2))
+        assertEquals(0, noteFloatingDockWidthDp(-40))
+    }
+
+    @Test
+    fun `floating dock is shorter than the full-screen dock`() {
+        val floating = noteCompactDockHeightDp(showContextTray = false)
+        val full = noteFullDockHeightDp(showContextTray = false)
+
+        assertTrue(floating < full)
+        assertTrue(floating + NOTE_COMPACT_DOCK_BOTTOM_MARGIN_DP < full)
+    }
+
+    @Test
+    fun `study pane floating header replaces the full stacked header`() {
+        val header = studyPaneFloatingHeaderHeightDp(captureOpen = false)
+        val expected = STUDY_PANE_HEADER_ROW_HEIGHT_DP +
+            STUDY_PANE_HEADER_VERTICAL_PADDING_DP * 2
+
+        assertEquals(expected, header)
+        assertEquals(44, header)
+        assertTrue("floating header should fit one compact row, was $header", header <= 48)
+        assertTrue(
+            "floating header should be at most half the old stack",
+            header * 2 <= STUDY_PANE_LEGACY_STACKED_HEADER_HEIGHT_DP,
+        )
+
+        val withCapture = studyPaneFloatingHeaderHeightDp(captureOpen = true)
+        assertEquals(
+            header + STUDY_PANE_CAPTURE_PANEL_GAP_DP + STUDY_PANE_CAPTURE_PANEL_HEIGHT_DP,
+            withCapture,
+        )
+        assertTrue("full-header should be shorter than 100 dp, was $withCapture", withCapture < 100)
+    }
+
+    @Test
+    fun `compact hint inset clears the floating header`() {
+        val header = studyPaneFloatingHeaderHeightDp(captureOpen = false)
+        val inset = studyPaneFloatingHeaderInsetDp(captureOpen = false)
+
+        assertEquals(STUDY_PANE_HEADER_TOP_MARGIN_DP + header, inset)
+        assertTrue(inset >= header)
+        assertTrue("hint inset should stay small, was $inset", inset < 60)
+        assertEquals(
+            inset + STUDY_PANE_CAPTURE_PANEL_GAP_DP + STUDY_PANE_CAPTURE_PANEL_HEIGHT_DP,
+            studyPaneFloatingHeaderInsetDp(captureOpen = true),
+        )
+    }
+
+    @Test
+    fun `study pane header margins preserve the floating look`() {
+        assertTrue(STUDY_PANE_HEADER_SIDE_MARGIN_DP >= 4)
+        assertTrue(STUDY_PANE_HEADER_TOP_MARGIN_DP >= 2)
+        assertTrue(STUDY_PANE_HEADER_ROW_HEIGHT_DP <= 40)
+        assertTrue(STUDY_PANE_CAPTURE_PANEL_HEIGHT_DP <= 48)
+    }
+}

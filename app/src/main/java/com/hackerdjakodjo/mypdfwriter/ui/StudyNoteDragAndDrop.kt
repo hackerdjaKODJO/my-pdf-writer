@@ -79,6 +79,55 @@ private fun studyDragPayload(clipData: ClipData): StudyDragPayload? {
 }
 
 /**
+ * Drop target modifier shared by the large capture card and the floating study
+ * pane header. [onActiveChange] lets a caller highlight a tiny header while a PDF
+ * excerpt hovers over it, so a permanent full-width capture strip is unnecessary.
+ */
+@Composable
+internal fun rememberStudyNoteDropTarget(
+    onDrop: (text: String, pageIndex: Int) -> Unit,
+    onActiveChange: (Boolean) -> Unit = {},
+    enabled: Boolean = true,
+): Modifier {
+    val currentOnDrop by rememberUpdatedState(onDrop)
+    val currentOnActive by rememberUpdatedState(onActiveChange)
+    val target = remember {
+        object : DragAndDropTarget {
+            override fun onStarted(event: DragAndDropEvent) {
+                currentOnActive(studyDragPayload(event) != null)
+            }
+
+            override fun onEntered(event: DragAndDropEvent) {
+                currentOnActive(studyDragPayload(event) != null)
+            }
+
+            override fun onExited(event: DragAndDropEvent) {
+                currentOnActive(false)
+            }
+
+            override fun onEnded(event: DragAndDropEvent) {
+                currentOnActive(false)
+            }
+
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                currentOnActive(false)
+                val payload = studyDragPayload(event) ?: return false
+                currentOnDrop(payload.text, payload.pageIndex)
+                return true
+            }
+        }
+    }
+    return if (enabled) {
+        Modifier.dragAndDropTarget(
+            shouldStartDragAndDrop = { event -> studyDragPayload(event) != null },
+            target = target,
+        )
+    } else {
+        Modifier
+    }
+}
+
+/**
  * Capture target shown by the viewer, excerpt sheet and study pane header.
  * [onDrop] receives the dragged text and the page encoded at drag start;
  * [enabled] keeps the card visible but inert when there is nothing to drop yet;
@@ -93,41 +142,11 @@ internal fun StudyNoteDropTarget(
     compact: Boolean = false,
 ) {
     var active by remember { mutableStateOf(false) }
-    val currentOnDrop by rememberUpdatedState(onDrop)
-    val target = remember {
-        object : DragAndDropTarget {
-            override fun onStarted(event: DragAndDropEvent) {
-                active = studyDragPayload(event) != null
-            }
-
-            override fun onEntered(event: DragAndDropEvent) {
-                active = studyDragPayload(event) != null
-            }
-
-            override fun onExited(event: DragAndDropEvent) {
-                active = false
-            }
-
-            override fun onEnded(event: DragAndDropEvent) {
-                active = false
-            }
-
-            override fun onDrop(event: DragAndDropEvent): Boolean {
-                active = false
-                val payload = studyDragPayload(event) ?: return false
-                currentOnDrop(payload.text, payload.pageIndex)
-                return true
-            }
-        }
-    }
-    val dropModifier = if (enabled) {
-        Modifier.dragAndDropTarget(
-            shouldStartDragAndDrop = { event -> studyDragPayload(event) != null },
-            target = target,
-        )
-    } else {
-        Modifier
-    }
+    val dropModifier = rememberStudyNoteDropTarget(
+        onDrop = onDrop,
+        onActiveChange = { active = it },
+        enabled = enabled,
+    )
 
     Surface(
         modifier = modifier
