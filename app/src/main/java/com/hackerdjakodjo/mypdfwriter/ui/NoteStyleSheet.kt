@@ -52,6 +52,13 @@ internal val NOTE_PALETTE = listOf(
     0xFFF2C94C.toInt(),
 )
 
+/** Shared note vocabulary; keep the study-card names unchanged. */
+internal const val NOTE_TEXT_TOOL_LABEL = "글상자"
+internal const val NOTE_PAGE_MANAGER_LABEL = "페이지"
+internal const val NOTE_PEN_PRESETS_LABEL = "내 펜"
+internal const val NOTE_MASKING_CARD_LABEL = "가림 카드"
+internal const val NOTE_CHECKLIST_LABEL = "체크리스트"
+
 internal val NOTE_SHAPE_TOOLS = listOf(Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE)
 internal val NOTE_LASSO_TOOLS = listOf(Tool.LASSO, Tool.LASSO_RECT)
 
@@ -93,7 +100,7 @@ internal fun noteStyleShowsFontSize(tool: Tool): Boolean = tool == Tool.TEXT
 internal fun noteStyleTitle(tool: Tool): String = when (tool) {
     Tool.PEN -> "펜 스타일"
     Tool.HIGHLIGHT -> "형광펜 스타일"
-    Tool.TEXT -> "텍스트 스타일"
+    Tool.TEXT -> "$NOTE_TEXT_TOOL_LABEL 스타일"
     Tool.ERASER -> "지우개"
     Tool.LASSO, Tool.LASSO_RECT -> "올가미"
     Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> "도형 스타일"
@@ -159,7 +166,7 @@ internal fun NoteStyleSheet(
                 OutlinedButton(onClick = onOpenPenBox) {
                     Icon(Icons.Filled.Draw, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("필통")
+                    Text(NOTE_PEN_PRESETS_LABEL)
                 }
             }
 

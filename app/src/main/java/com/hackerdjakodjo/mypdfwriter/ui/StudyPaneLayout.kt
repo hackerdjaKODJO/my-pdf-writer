@@ -29,35 +29,27 @@ internal val STUDY_PANE_PRESETS = listOf(0.50f, 0.70f, 0.85f)
 
 /**
  * Floating header metrics (dp). The pane header is an overlay instead of a
- * full-width stack: one 40 dp row with a grip, title/source, size popup, capture,
- * link and close actions. The capture drop row is hidden behind the capture
- * action and only appears while the user is adding an excerpt.
+ * full-width stack: one 40 dp row with a grip, title/source, size popup, link and
+ * close actions. The whole header is the drop target, so a separate capture
+ * toggle and strip are unnecessary.
  */
 internal const val STUDY_PANE_HEADER_ROW_HEIGHT_DP = 40
 internal const val STUDY_PANE_HEADER_VERTICAL_PADDING_DP = 2
 internal const val STUDY_PANE_HEADER_SIDE_MARGIN_DP = 8
 internal const val STUDY_PANE_HEADER_TOP_MARGIN_DP = 4
-internal const val STUDY_PANE_CAPTURE_PANEL_GAP_DP = 4
-internal const val STUDY_PANE_CAPTURE_PANEL_HEIGHT_DP = 44
 
 /** Height of the old handle + title + permanent capture strip header. */
 internal const val STUDY_PANE_LEGACY_STACKED_HEADER_HEIGHT_DP = 90
 
-internal fun studyPaneFloatingHeaderHeightDp(captureOpen: Boolean): Int =
-    STUDY_PANE_HEADER_ROW_HEIGHT_DP +
-        STUDY_PANE_HEADER_VERTICAL_PADDING_DP * 2 +
-        if (captureOpen) {
-            STUDY_PANE_CAPTURE_PANEL_GAP_DP + STUDY_PANE_CAPTURE_PANEL_HEIGHT_DP
-        } else {
-            0
-        }
+internal fun studyPaneFloatingHeaderHeightDp(): Int =
+    STUDY_PANE_HEADER_ROW_HEIGHT_DP + STUDY_PANE_HEADER_VERTICAL_PADDING_DP * 2
 
 /**
  * Top inset the compact editor's contextual hint needs so it sits below the
  * floating header instead of behind it.
  */
-internal fun studyPaneFloatingHeaderInsetDp(captureOpen: Boolean = false): Int =
-    STUDY_PANE_HEADER_TOP_MARGIN_DP + studyPaneFloatingHeaderHeightDp(captureOpen)
+internal fun studyPaneFloatingHeaderInsetDp(): Int =
+    STUDY_PANE_HEADER_TOP_MARGIN_DP + studyPaneFloatingHeaderHeightDp()
 
 internal fun clampStudyPaneFraction(fraction: Float): Float {
     if (!fraction.isFinite()) return STUDY_PANE_DEFAULT_FRACTION

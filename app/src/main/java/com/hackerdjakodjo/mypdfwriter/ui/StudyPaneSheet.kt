@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.Link
@@ -63,10 +62,9 @@ import kotlinx.coroutines.delay
  * area. The pane canvas fills that whole area, and a compact translucent header
  * floats over its top edge instead of reserving a full-width stack. The header's
  * grip resizes live or dismisses the pane, a tiny size popup exposes the 50/70/85%
- * presets, and the capture action reveals the drop target only when needed. PDF
- * excerpts can also be dropped directly on the header. The compact note dock floats
- * at the bottom, so the writing canvas uses the freed height. The link action opens
- * the local To/From index built from
+ * presets, and the whole header is the drop target for PDF excerpts. The compact
+ * note dock floats at the bottom, so the writing canvas uses the freed height. The
+ * link action opens the local To/From index built from
  * [com.hackerdjakodjo.mypdfwriter.data.NotePage.sourcePageIndex].
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,7 +84,6 @@ fun StudyPaneSheet(
     onOpenHelp: () -> Unit = {},
 ) {
     var showLinks by remember(notebook.id) { mutableStateOf(false) }
-    var showCapture by remember(notebook.id) { mutableStateOf(false) }
     var captureMessage by remember(notebook.id) { mutableStateOf<String?>(null) }
     var paneHeightPx by remember { mutableFloatStateOf(0f) }
     val sourceName = notebook.sourceDocumentName.ifBlank { "원본 PDF" }
@@ -100,7 +97,6 @@ fun StudyPaneSheet(
         } else {
             "발췌를 추가하지 못했습니다"
         }
-        showCapture = false
     }
 
     LaunchedEffect(captureMessage) {
@@ -129,7 +125,7 @@ fun StudyPaneSheet(
                     onExportPdf = onExportPdf,
                     onOpenSourcePdf = onOpenSourcePdf,
                     compact = true,
-                    compactTopInsetDp = studyPaneFloatingHeaderInsetDp(captureOpen = showCapture),
+                    compactTopInsetDp = studyPaneFloatingHeaderInsetDp(),
                     onOpenHelp = onOpenHelp,
                 )
                 StudyPaneFloatingHeader(
@@ -139,9 +135,7 @@ fun StudyPaneSheet(
                     paneHeightPx = paneHeightPx,
                     captureMessage = captureMessage,
                     linkCount = linkCount,
-                    captureOpen = showCapture,
                     onHeightFractionChange = onHeightFractionChange,
-                    onToggleCapture = { showCapture = !showCapture },
                     onOpenLinks = { showLinks = true },
                     onClose = onDismiss,
                     onDropExcerpt = handleDropExcerpt,
@@ -177,9 +171,7 @@ private fun StudyPaneFloatingHeader(
     paneHeightPx: Float,
     captureMessage: String?,
     linkCount: Int,
-    captureOpen: Boolean,
     onHeightFractionChange: (Float) -> Unit,
-    onToggleCapture: () -> Unit,
     onOpenLinks: () -> Unit,
     onClose: () -> Unit,
     onDropExcerpt: (text: String, pageIndex: Int) -> Unit,
@@ -370,26 +362,6 @@ private fun StudyPaneFloatingHeader(
                 }
 
                 IconButton(
-                    onClick = onToggleCapture,
-                    modifier = Modifier.size(32.dp),
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Outlined.Notes,
-                        contentDescription = if (captureOpen) {
-                            "발췌 놓기 닫기"
-                        } else {
-                            "PDF 발췌 놓기"
-                        },
-                        modifier = Modifier.size(17.dp),
-                        tint = if (captureOpen || dropActive) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
-
-                IconButton(
                     onClick = onOpenLinks,
                     modifier = Modifier.size(32.dp),
                 ) {
@@ -417,21 +389,6 @@ private fun StudyPaneFloatingHeader(
                     )
                 }
             }
-        }
-
-        // The capture strip is opt-in: even when open it is one compact row, not
-        // part of a permanent stacked header. Dropping on the header itself also
-        // works, so selection-bar capture stays immediate.
-        if (captureOpen) {
-            Spacer(Modifier.height(STUDY_PANE_CAPTURE_PANEL_GAP_DP.dp))
-            StudyNoteDropTarget(
-                onDrop = onDropExcerpt,
-                caption = captureMessage ?: "PDF 선택 텍스트를 끌어다 놓기",
-                compact = true,
-                modifier = Modifier
-                    .widthIn(max = 460.dp)
-                    .fillMaxWidth(),
-            )
         }
     }
 }

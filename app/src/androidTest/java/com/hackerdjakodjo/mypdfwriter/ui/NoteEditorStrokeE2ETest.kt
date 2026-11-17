@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicReference
  * End-to-end regression coverage for note-stroke loss.
  *
  * The editor is launched with a state-backed [Notebook]. Two finger strokes are
- * injected back-to-back through the real `NoteCanvas` pointer input (the overflow
+ * injected back-to-back through the real `NoteCanvas` pointer input (the note
  * menu enables finger writing because instrumentation cannot inject a stylus),
  * then the latest notebook emitted through `onChange` is checked and serialized.
  */
@@ -70,7 +70,6 @@ class NoteEditorStrokeE2ETest {
 
         composeRule.waitForIdle()
         enableFingerWriting()
-
         // No idle wait between the strokes: this exercises both the stale
         // pointerInput callback and the parent's synchronous working notebook.
         drawStroke(yFraction = 0.34f)
@@ -108,25 +107,33 @@ class NoteEditorStrokeE2ETest {
 
     /**
      * Instrumentation only injects touch pointers, so finger writing has to be
-     * enabled through the note overflow sheet (더보기 -> 손가락 필기).
+     * enabled through the note menu (노트 메뉴 -> 필기 설정 -> 손가락 필기).
      */
     private fun enableFingerWriting() {
-        composeRule.onNodeWithContentDescription("더보기").performClick()
+        composeRule.onNodeWithContentDescription("노트 메뉴").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithText(SHEET_TITLE).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.waitForIdle()
 
-        val sheet = composeRule.onNode(hasScrollToIndexAction())
-        sheet.performScrollToNode(hasText(FINGER_WRITING_LABEL))
+        val menu = composeRule.onNode(hasScrollToIndexAction())
+        menu.performScrollToNode(hasText(INK_SETTINGS_LABEL))
+        composeRule.onNodeWithText(INK_SETTINGS_LABEL).performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText(SHEET_TITLE).fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText(FINGER_WRITING_LABEL).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitForIdle()
+
         composeRule.onNodeWithText(FINGER_WRITING_LABEL).performClick()
         composeRule.waitForIdle()
 
-        // The toggle keeps the sheet open; close it before touching the canvas.
-        sheet.performScrollToNode(hasText(CLOSE_LABEL))
+        // The toggle keeps the ink sub-sheet open; close it before touching the canvas.
         composeRule.onNodeWithText(CLOSE_LABEL).performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithText(SHEET_TITLE).fetchSemanticsNodes().isEmpty()
+            composeRule.onAllNodesWithText(FINGER_WRITING_LABEL).fetchSemanticsNodes().isEmpty()
         }
         composeRule.waitForIdle()
     }
@@ -143,6 +150,7 @@ class NoteEditorStrokeE2ETest {
     private companion object {
         const val NOTE_CANVAS_TAG = "note_canvas"
         const val SHEET_TITLE = "노트 메뉴"
+        const val INK_SETTINGS_LABEL = "필기 설정"
         const val FINGER_WRITING_LABEL = "손가락 필기"
         const val CLOSE_LABEL = "닫기"
     }

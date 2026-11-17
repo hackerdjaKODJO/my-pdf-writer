@@ -40,39 +40,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AutoFixNormal
 import androidx.compose.material.icons.filled.Bookmarks
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.Highlight
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TextFields
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -117,6 +97,8 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.BuildConfig
@@ -165,10 +147,10 @@ private const val NOTE_TRACE_TAG = "NoteEditor"
  * [compact] is used by [StudyPaneSheet]: the study-pane header owns the title and
  * close action, so the editor drops its own top app bar, cell-phone hint strip and
  * layout-consuming dock. The canvas fills the pane and a small translucent dock
- * floats near the bottom edge with the six primary tools plus colour/style,
- * undo/redo, favourite, overflow and the page pill. Every tool, sheet, page
- * manager, export, search, audio, layer, lasso, pressure and template action stays
- * reachable through the compact dock, page pill and overflow sheet.
+ * floats near the bottom edge with the six primary tools, one style slot,
+ * undo/redo, the note menu and the page pill. Every tool, sheet, page manager,
+ * export, search, audio, layer, lasso, pressure and template action stays
+ * reachable through the compact dock, page pill, page manager and note menu.
  *
  * [compactTopInsetDp] keeps the compact contextual hint below the study pane's
  * floating header without adding top padding to the canvas itself.
@@ -303,18 +285,22 @@ fun NoteEditorScreen(
         if (replayNote != null && replayNote?.pageIndex != safeIndex) 1f
         else annotationRevealFraction(annotation, replayNote, replayPositionMs)
     }
-    var showOverflow by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var showTemplateMenu by remember { mutableStateOf(false) }
+    var showStudyCardMenu by remember { mutableStateOf(false) }
+    var showAudioMenu by remember { mutableStateOf(false) }
+    var showInkSettings by remember { mutableStateOf(false) }
     var showTrace by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     var showStudio by remember { mutableStateOf(false) }
     var showQuickTemplates by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     // Masking cards are study-only. The on-page tape overlay is small and can be
-    // switched off from the overflow or the card sheet so it never blocks writing.
+    // switched off from the note menu or the card sheet so it never blocks writing.
     var showMaskingCards by remember { mutableStateOf(false) }
     var showMaskingOnPage by remember { mutableStateOf(true) }
     // Checklists are study-only like masking cards. The on-page overlay has its own
-    // switch (sheet, overflow and a hide button on each card) so pen tools stay clear.
+    // switch (sheet, note menu and a hide button on each card) so pen tools stay clear.
     var showChecklists by remember { mutableStateOf(false) }
     var showChecklistsOnPage by remember { mutableStateOf(true) }
     var showDeletePage by remember { mutableStateOf(false) }
@@ -1173,12 +1159,6 @@ fun NoteEditorScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { undo() }, enabled = canUndo) {
-                            Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "실행 취소")
-                        }
-                        IconButton(onClick = { redo() }, enabled = canRedo) {
-                            Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "다시 실행")
-                        }
                         IconButton(onClick = { toggleFavorite() }) {
                             Icon(
                                 if (workingNotebook.favorite) {
@@ -1194,8 +1174,14 @@ fun NoteEditorScreen(
                                 },
                             )
                         }
-                        IconButton(onClick = { showOverflow = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "더보기")
+                        IconButton(onClick = { showExportOptions = true }) {
+                            Icon(
+                                Icons.Filled.FileDownload,
+                                contentDescription = "PDF로 내보내기",
+                            )
+                        }
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "노트 메뉴")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -1414,9 +1400,7 @@ fun NoteEditorScreen(
                         canRedo = canRedo,
                         onUndo = { undo() },
                         onRedo = { redo() },
-                        favorite = workingNotebook.favorite,
-                        onToggleFavorite = { toggleFavorite() },
-                        onOpenOverflow = { showOverflow = true },
+                        onOpenMenu = { showMenu = true },
                         pageIndex = safeIndex,
                         pageCount = pages.size,
                         onPreviousPage = {
@@ -1741,10 +1725,29 @@ fun NoteEditorScreen(
                 showPageSheet = false
                 photoPagePicker.launch(arrayOf("image/*"))
             },
+            onPhotoBackground = {
+                showPageSheet = false
+                photoBackgroundPicker.launch(arrayOf("image/*"))
+            },
             onRotateClockwise = { rotatePages(clockwise = true) },
             onRotateCounterClockwise = { rotatePages(clockwise = false) },
-            onDuplicate = { duplicateSelectedPages() },
-            onDelete = { deleteSelectedPages() },
+            onDuplicate = {
+                if (selectedPageIds.isEmpty()) duplicatePage() else duplicateSelectedPages()
+            },
+            onDelete = {
+                if (selectedPageIds.isEmpty()) {
+                    showPageSheet = false
+                    showDeletePage = true
+                } else {
+                    deleteSelectedPages()
+                }
+            },
+            onMovePageUp = { movePage(-1) },
+            onMovePageDown = { movePage(1) },
+            onOpenOutline = {
+                showPageSheet = false
+                showOutline = true
+            },
             onDismiss = { showPageSheet = false },
         )
     }
@@ -1763,18 +1766,120 @@ fun NoteEditorScreen(
         )
     }
 
-    if (showOverflow) {
-        NoteOverflowSheet(
+    if (showMenu) {
+        NoteMenuSheet(
             notebookTitle = workingNotebook.title,
             pageIndex = safeIndex,
             pageCount = pages.size,
             templateLabel = page.template.label,
             layerName = activeLayer?.name ?: "레이어",
             layerCount = page.layers.size,
-            selectedPageCount = selectedPageIds.size,
-            canMoveUp = safeIndex > 0,
-            canMoveDown = safeIndex < pages.lastIndex,
-            canDeletePage = pages.size > 1,
+            favorite = if (compact) workingNotebook.favorite else null,
+            onToggleFavorite = if (compact) {
+                { toggleFavorite() }
+            } else {
+                null
+            },
+            onRename = {
+                showMenu = false
+                showRename = true
+            },
+            onPages = {
+                showMenu = false
+                showPageSheet = true
+            },
+            onTemplates = {
+                showMenu = false
+                showTemplateMenu = true
+            },
+            onLayers = {
+                showMenu = false
+                showLayers = true
+            },
+            onSearch = {
+                showMenu = false
+                showSearch = true
+            },
+            onStudyCards = {
+                showMenu = false
+                showStudyCardMenu = true
+            },
+            onAudio = {
+                showMenu = false
+                showAudioMenu = true
+            },
+            onInkSettings = {
+                showMenu = false
+                showInkSettings = true
+            },
+            onExportPdf = {
+                showMenu = false
+                showExportOptions = true
+            },
+            onOpenSourcePdf = if (
+                workingNotebook.sourceDocumentUri.isNotBlank() && onOpenSourcePdf != null
+            ) {
+                {
+                    showMenu = false
+                    val sourcePage = StudyNoteBuilder.sourcePage(workingNotebook, safeIndex) ?: 0
+                    onOpenSourcePdf.invoke(sourcePage)
+                }
+            } else {
+                null
+            },
+            onOpenHelp = {
+                showMenu = false
+                onOpenHelp()
+            },
+            onDismiss = { showMenu = false },
+        )
+    }
+
+    if (showTemplateMenu) {
+        NoteTemplateMenuSheet(
+            templateLabel = page.template.label,
+            onQuickTemplates = {
+                showTemplateMenu = false
+                showQuickTemplates = true
+            },
+            onStudio = {
+                showTemplateMenu = false
+                showStudio = true
+            },
+            onDismiss = { showTemplateMenu = false },
+        )
+    }
+
+    if (showStudyCardMenu) {
+        NoteStudyCardMenuSheet(
+            onMaskingCards = {
+                showStudyCardMenu = false
+                showMaskingCards = true
+            },
+            onChecklists = {
+                showStudyCardMenu = false
+                showChecklists = true
+            },
+            onDismiss = { showStudyCardMenu = false },
+        )
+    }
+
+    if (showAudioMenu) {
+        NoteAudioMenuSheet(
+            onAudioNotes = {
+                showAudioMenu = false
+                showAudioNotes = true
+            },
+            onAudioReplay = {
+                showAudioMenu = false
+                showAudioReplay = true
+            },
+            onDismiss = { showAudioMenu = false },
+        )
+    }
+
+    if (showInkSettings) {
+        NoteInkSettingsSheet(
             fingerWriting = fingerWriting,
             zoomLock = zoomLock,
             strokeStabilization = strokeStabilization,
@@ -1791,114 +1896,15 @@ fun NoteEditorScreen(
             onPressureInk = { pressureInk = it },
             onPressureCurve = { pressureCurve = it },
             onGestureUndo = { gestureUndo = it },
-            onTemplate = {
-                showOverflow = false
-                showStudio = true
-            },
-            onQuickTemplate = {
-                showOverflow = false
-                showQuickTemplates = true
-            },
-            onLayers = {
-                showOverflow = false
-                showLayers = true
-            },
-            onOutline = {
-                showOverflow = false
-                showOutline = true
-            },
-            onSearch = {
-                showOverflow = false
-                showSearch = true
-            },
-            onMaskingCards = {
-                showOverflow = false
-                showMaskingCards = true
-            },
-            showMaskingOnPage = showMaskingOnPage,
-            onShowMaskingOnPage = { showMaskingOnPage = it },
-            onChecklists = {
-                showOverflow = false
-                showChecklists = true
-            },
-            showChecklistsOnPage = showChecklistsOnPage,
-            onShowChecklistsOnPage = { showChecklistsOnPage = it },
-            onAudioNotes = {
-                showOverflow = false
-                showAudioNotes = true
-            },
-            onAudioReplay = {
-                showOverflow = false
-                showAudioReplay = true
-            },
-            onOpenSourcePdf = if (
-                workingNotebook.sourceDocumentUri.isNotBlank() && onOpenSourcePdf != null
-            ) {
-                {
-                    showOverflow = false
-                    val sourcePage = StudyNoteBuilder.sourcePage(workingNotebook, safeIndex) ?: 0
-                    onOpenSourcePdf.invoke(sourcePage)
-                }
-            } else {
-                null
-            },
-            onAddPage = {
-                showOverflow = false
-                addPage()
-            },
-            onPhotoPage = {
-                showOverflow = false
-                photoPagePicker.launch(arrayOf("image/*"))
-            },
-            onPhotoBackground = {
-                showOverflow = false
-                photoBackgroundPicker.launch(arrayOf("image/*"))
-            },
-            onRotateClockwise = {
-                showOverflow = false
-                rotatePages(clockwise = true)
-            },
-            onRotateCounterClockwise = {
-                showOverflow = false
-                rotatePages(clockwise = false)
-            },
-            onDuplicatePage = {
-                showOverflow = false
-                duplicatePage()
-            },
-            onMovePageUp = {
-                showOverflow = false
-                movePage(-1)
-            },
-            onMovePageDown = {
-                showOverflow = false
-                movePage(1)
-            },
-            onDeletePage = {
-                showOverflow = false
-                showDeletePage = true
-            },
-            onExportPdf = {
-                showOverflow = false
-                showExportOptions = true
-            },
             onOpenTrace = if (BuildConfig.DEBUG) {
                 {
-                    showOverflow = false
+                    showInkSettings = false
                     showTrace = true
                 }
             } else {
                 null
             },
-            onOpenHelp = {
-                showOverflow = false
-                onOpenHelp()
-            },
-            onRename = {
-                showOverflow = false
-                showRename = true
-            },
-            onDismiss = { showOverflow = false },
+            onDismiss = { showInkSettings = false },
         )
     }
 
@@ -2067,28 +2073,28 @@ private fun NoteDock(
                 ) {
                     NoteDockTool(
                         icon = Icons.Filled.Edit,
-                        label = "펜",
+                        label = noteToolLabel(Tool.PEN),
                         selected = tool == Tool.PEN,
                         onClick = { onTool(Tool.PEN) },
                         modifier = Modifier.weight(1f),
                     )
                     NoteDockTool(
                         icon = Icons.Filled.Highlight,
-                        label = "형광펜",
+                        label = noteToolLabel(Tool.HIGHLIGHT),
                         selected = tool == Tool.HIGHLIGHT,
                         onClick = { onTool(Tool.HIGHLIGHT) },
                         modifier = Modifier.weight(1f),
                     )
                     NoteDockTool(
                         icon = Icons.Filled.AutoFixNormal,
-                        label = "지우개",
+                        label = noteToolLabel(Tool.ERASER),
                         selected = tool == Tool.ERASER,
                         onClick = { onTool(Tool.ERASER) },
                         modifier = Modifier.weight(1f),
                     )
                     NoteDockTool(
                         icon = Icons.Filled.Gesture,
-                        label = "올가미",
+                        label = noteToolLabel(Tool.LASSO),
                         selected = noteIsLassoTool(tool),
                         onClick = {
                             onTool(if (noteIsLassoTool(tool)) tool else Tool.LASSO)
@@ -2097,14 +2103,14 @@ private fun NoteDock(
                     )
                     NoteDockTool(
                         icon = Icons.Filled.TextFields,
-                        label = "텍스트",
+                        label = noteToolLabel(Tool.TEXT),
                         selected = tool == Tool.TEXT,
                         onClick = { onTool(Tool.TEXT) },
                         modifier = Modifier.weight(1f),
                     )
                     NoteDockTool(
                         icon = Icons.Filled.Category,
-                        label = "도형",
+                        label = noteToolLabel(Tool.RECT),
                         selected = noteIsShapeTool(tool),
                         onClick = {
                             onTool(if (noteIsShapeTool(tool)) tool else Tool.RECT)
@@ -2123,12 +2129,7 @@ private fun NoteDock(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                NoteColorDot(
-                    color = color,
-                    selected = true,
-                    onClick = onOpenStyle,
-                )
-                NoteDockStyleButton(onClick = onOpenStyle)
+                NoteDockStyleButton(color = color, onClick = onOpenStyle)
                 IconButton(
                     onClick = onUndo,
                     enabled = canUndo,
@@ -2167,8 +2168,8 @@ private fun NoteDock(
 /**
  * Focused-pane variant of the note dock. It is a small translucent rounded pill
  * that floats over the bottom of the full-size canvas: one 34 dp primary tool row
- * and one 32 dp action row with colour/style, undo/redo, favourite, overflow and
- * the page pill. The study pane header supplies the title and close action, so no
+ * and one 32 dp action row with one style slot, undo/redo, the note menu and the
+ * page pill. The study pane header supplies the title and close action, so no
  * editor app bar is shown.
  */
 @Composable
@@ -2181,9 +2182,7 @@ private fun NoteFloatingDock(
     canRedo: Boolean,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
-    favorite: Boolean,
-    onToggleFavorite: () -> Unit,
-    onOpenOverflow: () -> Unit,
+    onOpenMenu: () -> Unit,
     pageIndex: Int,
     pageCount: Int,
     onPreviousPage: () -> Unit,
@@ -2277,45 +2276,34 @@ private fun NoteFloatingDock(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                NoteColorDot(
-                    color = color,
-                    selected = true,
-                    onClick = onOpenStyle,
-                    modifier = Modifier.padding(horizontal = 1.dp),
-                    size = 22.dp,
-                )
-                NoteCompactActionButton(
-                    icon = Icons.Filled.Palette,
-                    contentDescription = "스타일",
-                    onClick = onOpenStyle,
-                )
-                NoteCompactActionButton(
-                    icon = Icons.AutoMirrored.Filled.Undo,
-                    contentDescription = "실행 취소",
-                    onClick = onUndo,
-                    enabled = canUndo,
-                )
-                NoteCompactActionButton(
-                    icon = Icons.AutoMirrored.Filled.Redo,
-                    contentDescription = "다시 실행",
-                    onClick = onRedo,
-                    enabled = canRedo,
-                )
-                NoteCompactActionButton(
-                    icon = if (favorite) Icons.Filled.Star else Icons.Outlined.Star,
-                    contentDescription = "즐겨찾기",
-                    onClick = onToggleFavorite,
-                    tint = if (favorite) {
-                        MaterialTheme.colorScheme.secondary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
-                NoteCompactActionButton(
-                    icon = Icons.Filled.MoreVert,
-                    contentDescription = "더보기",
-                    onClick = onOpenOverflow,
-                )
+                NOTE_COMPACT_ACTION_SLOTS.forEach { slot ->
+                    when (slot) {
+                        NoteDockActionSlot.STYLE -> NoteCompactStyleButton(
+                            color = color,
+                            onClick = onOpenStyle,
+                        )
+
+                        NoteDockActionSlot.UNDO -> NoteCompactActionButton(
+                            icon = Icons.AutoMirrored.Filled.Undo,
+                            contentDescription = "실행 취소",
+                            onClick = onUndo,
+                            enabled = canUndo,
+                        )
+
+                        NoteDockActionSlot.REDO -> NoteCompactActionButton(
+                            icon = Icons.AutoMirrored.Filled.Redo,
+                            contentDescription = "다시 실행",
+                            onClick = onRedo,
+                            enabled = canRedo,
+                        )
+
+                        NoteDockActionSlot.MENU -> NoteCompactActionButton(
+                            icon = Icons.Filled.MoreVert,
+                            contentDescription = "노트 메뉴",
+                            onClick = onOpenMenu,
+                        )
+                    }
+                }
                 Spacer(Modifier.weight(1f))
                 NotePagePill(
                     pageIndex = pageIndex,
@@ -2395,6 +2383,36 @@ private fun NoteCompactActionButton(
     }
 }
 
+@Composable
+private fun NoteCompactStyleButton(color: Int, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .size(32.dp)
+            .semantics { contentDescription = "스타일" },
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color(color))
+                    .border(
+                        1.5.dp,
+                        MaterialTheme.colorScheme.onSurface,
+                        RoundedCornerShape(50),
+                    ),
+            )
+        }
+    }
+}
+
 private fun noteDockToolIcon(tool: Tool): ImageVector = when (tool) {
     Tool.PEN -> Icons.Filled.Edit
     Tool.HIGHLIGHT -> Icons.Filled.Highlight
@@ -2446,7 +2464,7 @@ private fun NoteDockTool(
 }
 
 @Composable
-private fun NoteDockStyleButton(onClick: () -> Unit) {
+private fun NoteDockStyleButton(color: Int, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(50),
@@ -2457,8 +2475,16 @@ private fun NoteDockStyleButton(onClick: () -> Unit) {
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Filled.Palette, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
+            // One style action: the active colour is a preview inside the button,
+            // not a second clickable control.
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color(color))
+                    .border(1.5.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(50)),
+            )
+            Spacer(Modifier.width(6.dp))
             Text("스타일", style = MaterialTheme.typography.labelMedium)
         }
     }
@@ -2482,6 +2508,9 @@ private fun NotePagePill(
         onClick = onOpenPages,
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        modifier = Modifier.semantics {
+            contentDescription = NOTE_PAGE_MANAGER_LABEL
+        },
     ) {
         Row(
             modifier = Modifier.height(rowHeight),
@@ -2730,10 +2759,14 @@ private fun NotePageManagerSheet(
     onSelect: (Int) -> Unit,
     onAdd: () -> Unit,
     onAddPhoto: () -> Unit,
+    onPhotoBackground: () -> Unit,
     onRotateClockwise: () -> Unit,
     onRotateCounterClockwise: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
+    onMovePageUp: () -> Unit,
+    onMovePageDown: () -> Unit,
+    onOpenOutline: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -2742,7 +2775,11 @@ private fun NotePageManagerSheet(
     var selectMode by remember { mutableStateOf(selectedPageIds.isNotEmpty()) }
     val entries = remember(pages, filter) { NotePageManager.entries(pages, filter) }
     val annotatedCount = remember(pages) { NotePageManager.annotatedCount(pages) }
-    val canDelete = selectedPageIds.isNotEmpty() && selectedPageIds.size < pages.size
+    val canDelete = if (selectedPageIds.isEmpty()) {
+        pages.size > 1
+    } else {
+        selectedPageIds.size < pages.size
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -2756,7 +2793,7 @@ private fun NotePageManagerSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("페이지 관리", style = MaterialTheme.typography.titleLarge)
+                    Text(NOTE_PAGE_MANAGER_LABEL, style = MaterialTheme.typography.titleLarge)
                     Text(
                         "${pages.size}쪽 · 필기 ${annotatedCount}쪽 · 선택 ${selectedPageIds.size}개",
                         style = MaterialTheme.typography.labelMedium,
@@ -2768,6 +2805,18 @@ private fun NotePageManagerSheet(
                     modifier = Modifier.heightIn(min = 44.dp),
                 ) {
                     Text(if (selectMode) "완료" else "선택")
+                }
+                if (onOpenOutline != null) {
+                    IconButton(
+                        onClick = onOpenOutline,
+                        modifier = Modifier.size(44.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.Bookmarks,
+                            contentDescription = "아웃라인/북마크",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
                 TextButton(
                     onClick = onDismiss,
@@ -2839,7 +2888,7 @@ private fun NotePageManagerSheet(
             HorizontalDivider(Modifier.padding(top = 8.dp))
             Text(
                 if (selectedPageIds.isEmpty()) {
-                    "추가·회전은 현재 ${safeCurrent + 1}쪽에 적용됩니다."
+                    "추가·이동·배경·회전은 현재 ${safeCurrent + 1}쪽에 적용됩니다."
                 } else {
                     "회전은 선택한 ${selectedPageIds.size}쪽에 한 번에 적용됩니다."
                 },
@@ -2867,6 +2916,26 @@ private fun NotePageManagerSheet(
                     Text("사진 페이지")
                 }
                 TextButton(
+                    onClick = onPhotoBackground,
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("배경 사진")
+                }
+                TextButton(
+                    onClick = onMovePageUp,
+                    enabled = safeCurrent > 0,
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("위로")
+                }
+                TextButton(
+                    onClick = onMovePageDown,
+                    enabled = safeCurrent < pages.lastIndex,
+                    modifier = Modifier.heightIn(min = 44.dp),
+                ) {
+                    Text("아래로")
+                }
+                TextButton(
                     onClick = onRotateClockwise,
                     enabled = pages.isNotEmpty(),
                     modifier = Modifier.heightIn(min = 44.dp),
@@ -2882,7 +2951,7 @@ private fun NotePageManagerSheet(
                 }
                 TextButton(
                     onClick = onDuplicate,
-                    enabled = selectedPageIds.isNotEmpty(),
+                    enabled = pages.isNotEmpty(),
                     modifier = Modifier.heightIn(min = 44.dp),
                 ) {
                     Text("복제")
@@ -3082,7 +3151,7 @@ private fun NoteExportOptionsSheet(
             }
             if (!selectedAvailable) {
                 Text(
-                    "페이지 관리에서 페이지를 선택하면 선택 내보내기를 사용할 수 있습니다.",
+                    "페이지 목록에서 선택하면 선택 내보내기를 사용할 수 있습니다.",
                     modifier = Modifier.padding(top = 4.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -3160,622 +3229,6 @@ private fun NoteExportOptionsSheet(
                 }
             }
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun NoteOverflowSheet(
-    notebookTitle: String,
-    pageIndex: Int,
-    pageCount: Int,
-    templateLabel: String,
-    layerName: String,
-    layerCount: Int,
-    selectedPageCount: Int,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
-    canDeletePage: Boolean,
-    fingerWriting: Boolean,
-    zoomLock: Boolean,
-    strokeStabilization: Boolean,
-    shapeRecognition: Boolean,
-    partialEraser: Boolean,
-    pressureInk: Boolean,
-    pressureCurve: PressureCurve,
-    gestureUndo: Boolean,
-    onFingerWriting: (Boolean) -> Unit,
-    onZoomLock: (Boolean) -> Unit,
-    onStrokeStabilization: (Boolean) -> Unit,
-    onShapeRecognition: (Boolean) -> Unit,
-    onPartialEraser: (Boolean) -> Unit,
-    onPressureInk: (Boolean) -> Unit,
-    onPressureCurve: (PressureCurve) -> Unit,
-    onGestureUndo: (Boolean) -> Unit,
-    onTemplate: () -> Unit,
-    onQuickTemplate: () -> Unit,
-    onLayers: () -> Unit,
-    onOutline: () -> Unit,
-    onSearch: () -> Unit,
-    onMaskingCards: () -> Unit,
-    showMaskingOnPage: Boolean,
-    onShowMaskingOnPage: (Boolean) -> Unit,
-    onChecklists: () -> Unit,
-    showChecklistsOnPage: Boolean,
-    onShowChecklistsOnPage: (Boolean) -> Unit,
-    onAudioNotes: () -> Unit,
-    onAudioReplay: () -> Unit,
-    onOpenSourcePdf: (() -> Unit)?,
-    onAddPage: () -> Unit,
-    onPhotoPage: () -> Unit,
-    onPhotoBackground: () -> Unit,
-    onRotateClockwise: () -> Unit,
-    onRotateCounterClockwise: () -> Unit,
-    onDuplicatePage: () -> Unit,
-    onMovePageUp: () -> Unit,
-    onMovePageDown: () -> Unit,
-    onDeletePage: () -> Unit,
-    onExportPdf: () -> Unit,
-    onOpenTrace: (() -> Unit)?,
-    onOpenHelp: () -> Unit = {},
-    onRename: (() -> Unit)? = null,
-    onDismiss: () -> Unit,
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 24.dp),
-        ) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("노트 메뉴", style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            "$notebookTitle · ${pageIndex + 1} / $pageCount",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    TextButton(onClick = onDismiss) { Text("닫기") }
-                }
-            }
-
-            item { NoteMenuSection("문서") }
-            if (onRename != null) {
-                item {
-                    NoteMenuRow(
-                        icon = Icons.Filled.Edit,
-                        title = "노트 이름 변경",
-                        supporting = "이 스터디 노트의 제목 수정",
-                        onClick = onRename,
-                    )
-                }
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Dashboard,
-                    title = "템플릿",
-                    supporting = "스튜디오 · 종이·방향·색·표지",
-                    onClick = onTemplate,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Dashboard,
-                    title = "빠른 템플릿",
-                    supporting = "현재: $templateLabel",
-                    onClick = onQuickTemplate,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Layers,
-                    title = "레이어",
-                    supporting = "${layerCount}개 · $layerName",
-                    onClick = onLayers,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Bookmarks,
-                    title = "아웃라인/북마크",
-                    supporting = "페이지 목록과 책갈피",
-                    onClick = onOutline,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Search,
-                    title = "노트 검색",
-                    supporting = "메모·텍스트·도장·서명에서 찾기",
-                    onClick = onSearch,
-                )
-            }
-            if (onOpenSourcePdf != null) {
-                item {
-                    NoteMenuRow(
-                        icon = Icons.Filled.PictureAsPdf,
-                        title = "원본 PDF 열기",
-                        supporting = "연결된 PDF에서 열기",
-                        onClick = onOpenSourcePdf,
-                    )
-                }
-            }
-
-            item { NoteMenuDivider() }
-            item { NoteMenuSection("스터디") }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.AutoFixNormal,
-                    title = "가림 카드",
-                    supporting = "질문을 가리고 정답을 확인하는 오프라인 복습 카드",
-                    onClick = onMaskingCards,
-                )
-            }
-            item {
-                NoteMenuToggleRow(
-                    icon = if (showMaskingOnPage) {
-                        Icons.Filled.Visibility
-                    } else {
-                        Icons.Filled.VisibilityOff
-                    },
-                    title = "카드 페이지에 표시",
-                    supporting = if (showMaskingOnPage) {
-                        "종이 위 테이프 표시 · 끄면 필기가 영역을 완전히 사용"
-                    } else {
-                        "테이프 숨김 · 필기 도구가 방해받지 않음"
-                    },
-                    checked = showMaskingOnPage,
-                    onCheckedChange = onShowMaskingOnPage,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Checklist,
-                    title = "체크리스트",
-                    supporting = "항목을 완료하며 진행률을 확인하는 오프라인 체크리스트",
-                    onClick = onChecklists,
-                )
-            }
-            item {
-                NoteMenuToggleRow(
-                    icon = if (showChecklistsOnPage) {
-                        Icons.Filled.Visibility
-                    } else {
-                        Icons.Filled.VisibilityOff
-                    },
-                    title = "카드 페이지에 체크리스트 표시",
-                    supporting = if (showChecklistsOnPage) {
-                        "종이 위 체크박스 표시 · 끄면 필기가 영역을 완전히 사용"
-                    } else {
-                        "체크리스트 숨김 · 필기 도구가 방해받지 않음"
-                    },
-                    checked = showChecklistsOnPage,
-                    onCheckedChange = onShowChecklistsOnPage,
-                )
-            }
-
-            item { NoteMenuDivider() }
-            item { NoteMenuSection("오디오") }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Mic,
-                    title = "오디오 노트",
-                    supporting = "이 페이지에 녹음 추가·재생",
-                    onClick = onAudioNotes,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.PlayArrow,
-                    title = "오디오 재생",
-                    supporting = "녹음과 필기를 함께 재생",
-                    onClick = onAudioReplay,
-                )
-            }
-
-            item { NoteMenuDivider() }
-            item { NoteMenuSection("페이지") }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Add,
-                    title = "페이지 추가",
-                    supporting = "현재 페이지 뒤에 추가",
-                    onClick = onAddPage,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Image,
-                    title = "사진 페이지 추가",
-                    supporting = "이미지를 가져와 현재 페이지 뒤에 새 사진 페이지로",
-                    onClick = onPhotoPage,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Image,
-                    title = "현재 페이지 사진 배경",
-                    supporting = "가져온 이미지를 이 페이지의 종이 배경으로",
-                    onClick = onPhotoBackground,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.ContentCopy,
-                    title = "페이지 복제",
-                    supporting = "필기까지 함께 복사",
-                    onClick = onDuplicatePage,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.ArrowUpward,
-                    title = "페이지 위로 이동",
-                    enabled = canMoveUp,
-                    onClick = onMovePageUp,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.ArrowDownward,
-                    title = "페이지 아래로 이동",
-                    enabled = canMoveDown,
-                    onClick = onMovePageDown,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Refresh,
-                    title = "시계 방향 회전",
-                    supporting = if (selectedPageCount > 0) {
-                        "선택 ${selectedPageCount}쪽 · 내용과 용지를 함께 90° 회전"
-                    } else {
-                        "현재 페이지 · 내용과 용지를 함께 90° 회전"
-                    },
-                    onClick = onRotateClockwise,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Refresh,
-                    title = "반시계 방향 회전",
-                    supporting = if (selectedPageCount > 0) {
-                        "선택 ${selectedPageCount}쪽 · 실행 취소로 되돌리기"
-                    } else {
-                        "현재 페이지 · 실행 취소로 되돌리기"
-                    },
-                    onClick = onRotateCounterClockwise,
-                )
-            }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.Delete,
-                    title = "페이지 삭제",
-                    enabled = canDeletePage,
-                    destructive = true,
-                    onClick = onDeletePage,
-                )
-            }
-
-            item { NoteMenuDivider() }
-            item { NoteMenuSection("필기 설정") }
-            item {
-                NoteMenuToggleRow(
-                    icon = Icons.Filled.Draw,
-                    title = "손가락 필기",
-                    supporting = if (fingerWriting) {
-                        "손가락으로 그리고 두 손가락으로 이동"
-                    } else {
-                        "스타일러스로 그리고 손가락으로 이동"
-                    },
-                    checked = fingerWriting,
-                    onCheckedChange = onFingerWriting,
-                )
-            }
-            item {
-                NoteMenuToggleRow(
-                    icon = Icons.Filled.Lock,
-                    title = "줌 잠금",
-                    supporting = "필기 중 페이지 확대·이동 잠금",
-                    checked = zoomLock,
-                    onCheckedChange = onZoomLock,
-                )
-            }
-            item {
-                NoteMenuToggleRow(
-                    icon = Icons.Filled.Draw,
-                    title = "필기 보정",
-                    supporting = "획의 미세한 떨림을 부드럽게 정리 (강도 25%)",
-                    checked = strokeStabilization,
-                    onCheckedChange = onStrokeStabilization,
-                )
-            }
-            item {
-                NoteMenuToggleRow(
-                    icon = Icons.Filled.Gesture,
-                    title = "필압 잉크",
-                    supporting = if (pressureInk) {
-                        "스타일러스 필압으로 붓·만년필 굵기 변화"
-                    } else {
-                        "모든 점을 압력 1로 기록"
-                    },
-                    checked = pressureInk,
-                    onCheckedChange = onPressureInk,
-                )
-            }
-            item {
-                NotePressureCurveRow(
-                    curve = pressureCurve,
-                    enabled = pressureInk,
-                    onCurve = onPressureCurve,
-                )
-            }
-            item {
-                NoteMenuToggleRow(
-                    icon = Icons.Filled.Gesture,
-                    title = "제스처 실행 취소",
-                    supporting = if (gestureUndo) {
-                        "두 손가락 탭 실행 취소 · 세 손가락 탭 다시 실행"
-                    } else {
-                        "다중 손가락 탭 제스처 사용 안 함"
-                    },
-                    checked = gestureUndo,
-                    onCheckedChange = onGestureUndo,
-                )
-            }
-            item {
-                NoteMenuToggleRow(
-                    icon = Icons.Filled.Category,
-                    title = "도형 자동 인식",
-                    supporting = "펜으로 그린 선·사각형·원을 도형으로 변환",
-                    checked = shapeRecognition,
-                    onCheckedChange = onShapeRecognition,
-                )
-            }
-            item {
-                NoteMenuToggleRow(
-                    icon = Icons.Filled.AutoFixNormal,
-                    title = "부분 지우개",
-                    supporting = if (partialEraser) {
-                        "닿은 부분만 지우고 획을 나눔 · 텍스트/도장/도형은 통째로"
-                    } else {
-                        "닿은 주석을 통째로 지움"
-                    },
-                    checked = partialEraser,
-                    onCheckedChange = onPartialEraser,
-                )
-            }
-
-            item { NoteMenuDivider() }
-            item { NoteMenuSection("내보내기") }
-            item {
-                NoteMenuRow(
-                    icon = Icons.Filled.FileDownload,
-                    title = "PDF로 내보내기",
-                    supporting = "현재 노트를 PDF 파일로 저장",
-                    onClick = onExportPdf,
-                )
-            }
-
-            item { NoteMenuDivider() }
-            item { NoteMenuSection("도움말") }
-            item {
-                NoteMenuRow(
-                    icon = Icons.AutoMirrored.Outlined.HelpOutline,
-                    title = "도움말",
-                    supporting = "오프라인 사용 가이드 · 빠른 시작부터 문제 해결까지",
-                    onClick = onOpenHelp,
-                )
-            }
-
-            if (onOpenTrace != null) {
-                item { NoteMenuDivider() }
-                item { NoteMenuSection("디버그") }
-                item {
-                    NoteMenuRow(
-                        icon = Icons.Filled.BugReport,
-                        title = "필기 추적",
-                        supporting = "획·저장·주석 수 변화 기록 보기",
-                        onClick = onOpenTrace,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun NoteMenuSection(label: String) {
-    Text(
-        label,
-        modifier = Modifier.padding(start = 10.dp, top = 10.dp, bottom = 2.dp),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-    )
-}
-
-@Composable
-private fun NoteMenuDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(vertical = 6.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-    )
-}
-
-@Composable
-private fun NoteMenuRow(
-    icon: ImageVector,
-    title: String,
-    supporting: String? = null,
-    enabled: Boolean = true,
-    destructive: Boolean = false,
-    onClick: () -> Unit,
-) {
-    val titleColor = when {
-        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-        destructive -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-    val iconColor = when {
-        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-        destructive -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.primary
-    }
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
-        shape = RoundedCornerShape(12.dp),
-        color = Color.Transparent,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp), tint = iconColor)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor)
-                if (!supporting.isNullOrBlank()) {
-                    Text(
-                        supporting,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun NoteMenuToggleRow(
-    icon: ImageVector,
-    title: String,
-    supporting: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Surface(
-        onClick = { onCheckedChange(!checked) },
-        shape = RoundedCornerShape(12.dp),
-        color = Color.Transparent,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 10.dp, end = 2.dp, top = 7.dp, bottom = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                modifier = Modifier.size(22.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    supporting,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
-        }
-    }
-}
-
-private fun pressureCurveLabel(curve: PressureCurve): String = when (curve) {
-    PressureCurve.SOFT -> "부드럽게"
-    PressureCurve.LINEAR -> "선형"
-    PressureCurve.FIRM -> "강하게"
-}
-
-private fun pressureCurveDescription(curve: PressureCurve): String = when (curve) {
-    PressureCurve.SOFT -> "가벼운 필압을 더 굵게 반영"
-    PressureCurve.LINEAR -> "필압에 비례해 굵기 변화"
-    PressureCurve.FIRM -> "충분히 눌러야 굵어짐"
-}
-
-@Composable
-private fun NotePressureCurveRow(
-    curve: PressureCurve,
-    enabled: Boolean,
-    onCurve: (PressureCurve) -> Unit,
-) {
-    // 25% and 75% are a compact, device-neutral illustration only. Real stylus
-    // digitizers still need on-device pressure tuning.
-    val sample = remember(curve) { pressureCurveRange(curve, 0.25f, 0.75f) }
-    val diagnostic = "필압 25→75% = 반영 " +
-        "${(sample.effectiveMin * 100).toInt()}→${(sample.effectiveMax * 100).toInt()}%"
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Filled.Draw,
-                contentDescription = null,
-                modifier = Modifier.size(22.dp),
-                tint = if (enabled) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                },
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("필압 반응", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "${pressureCurveDescription(curve)} · $diagnostic",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        Row(
-            modifier = Modifier.padding(start = 34.dp, top = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            PressureCurve.values().forEach { option ->
-                FilterChip(
-                    selected = option == curve,
-                    enabled = enabled,
-                    onClick = { onCurve(option) },
-                    label = { Text(pressureCurveLabel(option)) },
-                )
-            }
-        }
-        Text(
-            if (enabled) {
-                "기기별 필압 보정은 아직 필요합니다"
-            } else {
-                "필압 잉크를 켜면 적용됩니다 · 기기별 보정 필요"
-            },
-            modifier = Modifier.padding(start = 34.dp, top = 2.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-        )
     }
 }
 
@@ -4118,7 +3571,7 @@ private fun NoteTextDialog(
     var value by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("텍스트 입력") },
+        title = { Text("글상자 입력") },
         text = {
             OutlinedTextField(
                 value = value,
@@ -4145,7 +3598,7 @@ private fun NoteTextDialog(
 internal fun noteToolHint(tool: Tool): String = when (tool) {
     Tool.PEN, Tool.HIGHLIGHT -> "획을 그리세요"
     Tool.ERASER -> "획을 문질러 지우세요"
-    Tool.TEXT -> "빈 곳을 눌러 텍스트 입력"
+    Tool.TEXT -> "빈 곳을 눌러 글상자 입력"
     Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> "끌어서 도형 그리기"
     Tool.LASSO -> "끌어서 자유롭게 선택"
     Tool.LASSO_RECT -> "끌어서 사각형으로 선택"
