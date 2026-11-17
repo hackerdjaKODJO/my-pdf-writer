@@ -37,6 +37,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.DocumentOverlayPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
 import com.hackerdjakodjo.mypdfwriter.ui.SearchHighlightOverlay
 import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -150,23 +151,15 @@ fun PdfCanvas(
             return Offset(candidate.x.coerceIn(-limitX, limitX), candidate.y.coerceIn(-limitY, limitY))
         }
 
-        fun wordsInSelection(a: NormalizedPoint, b: NormalizedPoint): List<PdfTextWord> {
-            val left = minOf(a.x, b.x)
-            val top = minOf(a.y, b.y)
-            val right = maxOf(a.x, b.x)
-            val bottom = maxOf(a.y, b.y)
-            if (right - left < 0.008f && bottom - top < 0.008f) {
-                val x = (a.x + b.x) / 2f
-                val y = (a.y + b.y) / 2f
-                return textWords
-                    .filter { it.pageIndex == pageIndex && it.rect.contains(x, y) }
-                    .minByOrNull { it.rect.width * it.rect.height }
-                    ?.let { listOf(it) }
-                    .orEmpty()
-            }
-            val drag = NormalizedRect(left, top, right, bottom)
-            return textWords.filter { it.pageIndex == pageIndex && it.rect.intersects(drag) }
-        }
+        fun wordsInSelection(a: NormalizedPoint, b: NormalizedPoint): List<PdfTextWord> =
+            PdfTextLayout.wordsForGesture(
+                words = textWords,
+                pageIndex = pageIndex,
+                startX = a.x,
+                startY = a.y,
+                endX = b.x,
+                endY = b.y,
+            )
 
         val gestureModifier = if (textSelectMode && textWords.isNotEmpty()) {
             Modifier.pointerInput(pageIndex, textWords) {

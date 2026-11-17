@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.automirrored.outlined.Comment
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.automirrored.outlined.StickyNote2
+import androidx.compose.material.icons.automirrored.outlined.TextSnippet
 import androidx.compose.material.icons.automirrored.outlined.Toc
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Apps
@@ -58,7 +60,6 @@ import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material.icons.outlined.Visibility
@@ -74,6 +75,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -204,6 +206,10 @@ fun ViewerScreen(
         vm.setTool(tool)
     }
 
+    LaunchedEffect(state.docId) {
+        textSelectMode = false
+        selectedWords = emptyList()
+    }
     LaunchedEffect(state.pageIndex, state.revision) {
         selectedWords = emptyList()
         if (textSelectMode) vm.loadTextWords(state.pageIndex)
@@ -356,17 +362,23 @@ fun ViewerScreen(
     val progressPercent = (progress * 100).roundToInt()
     val currentBookmark = bookmarks.firstOrNull { it.pageIndex == state.pageIndex }
 
-    val studyNoteAction = onOpenStudyNote?.let { openStudyNote ->
-        PdfHubAction("스터디 노트", Icons.Outlined.EditNote) {
-            showHub = false
-            openStudyNote(StudySource(state.docName, vm.currentDocumentUri()))
+    val openNote: () -> Unit = {
+        val callback = onOpenStudyNote
+        if (callback != null) {
+            callback(StudySource(state.docName, vm.currentDocumentUri()))
+        } else {
+            showStudyNote = true
         }
+    }
+    val studyNoteAction = PdfHubAction("스터디 노트", Icons.Outlined.EditNote, primary = true) {
+        showHub = false
+        openNote()
     }
     val hubSections = listOf(
         PdfHubSection(
             title = "읽기",
             actions = listOf(
-                PdfHubAction("검색", Icons.Outlined.Search) { showSearch = true },
+                PdfHubAction("검색", Icons.Outlined.Search, primary = true) { showSearch = true },
                 PdfHubAction("목차", Icons.AutoMirrored.Outlined.Toc) {
                     vm.loadOutline()
                     showOutline = true
@@ -377,8 +389,10 @@ fun ViewerScreen(
                     trailing = if (bookmarks.isEmpty()) null else "${bookmarks.size}개",
                 ) { showBookmarks = true },
                 PdfHubAction(
-                    if (textSelectMode) "텍스트 선택 종료" else "텍스트 선택",
-                    Icons.Outlined.TextFields,
+                    "텍스트 선택",
+                    Icons.AutoMirrored.Outlined.TextSnippet,
+                    trailing = if (textSelectMode) "켜짐" else null,
+                    primary = true,
                     onClick = toggleTextSelection,
                 ),
                 PdfHubAction("텍스트 모드 (Reflow)", Icons.Outlined.AutoStories) { showReflow = true },
@@ -403,7 +417,7 @@ fun ViewerScreen(
             title = "문서",
             actions = listOfNotNull(
                 studyNoteAction,
-                PdfHubAction("페이지 정리", Icons.Outlined.GridView) {
+                PdfHubAction("페이지 관리", Icons.Outlined.GridView, primary = true) {
                     selectedPages = emptySet()
                     showOrganize = true
                 },
@@ -417,11 +431,13 @@ fun ViewerScreen(
                     "주석 목록",
                     Icons.AutoMirrored.Outlined.Comment,
                     trailing = if (state.annotations.isEmpty()) null else "${state.annotations.size}개",
+                    primary = true,
                 ) { showAnnotations = true },
                 PdfHubAction(
                     if (annotationsHidden) "주석 표시" else "주석 숨기기",
                     if (annotationsHidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
                     trailing = if (annotationsHidden) "숨김" else "표시 중",
+                    primary = true,
                 ) { annotationsHidden = !annotationsHidden },
                 PdfHubAction(
                     "발췌·번역",
@@ -441,7 +457,7 @@ fun ViewerScreen(
         PdfHubSection(
             title = "내보내기",
             actions = listOf(
-                PdfHubAction("PDF 내보내기", Icons.Outlined.FileDownload) {
+                PdfHubAction("PDF 내보내기", Icons.Outlined.FileDownload, primary = true) {
                     onExportRequest(vm.exportSuggestedName())
                 },
                 PdfHubAction("인쇄", Icons.Outlined.Print) { vm.printCurrent() },
@@ -476,6 +492,20 @@ fun ViewerScreen(
                     }
                 },
                 actions = {
+                    // Direct note entry, visible as soon as a PDF opens. The host
+                    // resolves or creates the study notebook behind this callback.
+                    TextButton(
+                        onClick = openNote,
+                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
+                    ) {
+                        Icon(
+                            Icons.Outlined.EditNote,
+                            contentDescription = "스터디 노트",
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text("노트", style = MaterialTheme.typography.labelLarge)
+                    }
                     IconButton(
                         onClick = {
                             if (currentBookmark != null) {
@@ -522,6 +552,7 @@ fun ViewerScreen(
                             hasSelection = selectedWords.isNotEmpty(),
                             loading = state.textLoading,
                             hasWords = pageTextWords.isNotEmpty(),
+                            wordCount = pageTextWords.size,
                             onCopy = { copySelection(context, selectedText) },
                             onTranslate = { TextActions.translate(context, selectedText) },
                             onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
@@ -560,11 +591,13 @@ fun ViewerScreen(
                             state = state,
                             shapeTool = lastShapeTool,
                             onSelectTool = selectTool,
-                            onLasso = toggleTextSelection,
+                            onTextSelect = toggleTextSelection,
                             onMore = { showToolMore = true },
                             onStyle = { showToolStyle = true },
                             onUndo = vm::undo,
                             onRedo = vm::redo,
+                            textSelectMode = textSelectMode,
+                            compact = studyPane != null,
                         )
                     }
                 }
@@ -624,6 +657,8 @@ fun ViewerScreen(
                         onTextSelection = { selectedWords = it },
                     )
 
+                    val selectionEmpty =
+                        textSelectMode && !state.textLoading && pageTextWords.isEmpty()
                     val hintRes = when (state.tool) {
                         Tool.VIEW -> R.string.hint_view
                         Tool.TEXT -> R.string.hint_text
@@ -634,9 +669,9 @@ fun ViewerScreen(
                         else -> R.string.hint_draw
                     }
                     val hintText = when {
-                        textSelectMode && state.textLoading -> "텍스트를 읽는 중…"
-                        textSelectMode && pageTextWords.isEmpty() -> "이 페이지에는 선택할 수 있는 텍스트가 없습니다."
-                        textSelectMode -> "텍스트를 드래그해 선택하세요."
+                        textSelectMode && state.textLoading -> "텍스트 위치를 읽는 중…"
+                        selectionEmpty -> "이 페이지에는 선택할 수 있는 텍스트가 없습니다. 아래에서 종료하세요."
+                        textSelectMode -> "단어 ${pageTextWords.size}개 · 탭하거나 드래그해 선택하세요."
                         else -> stringResource(hintRes)
                     }
                     Column(
@@ -648,15 +683,42 @@ fun ViewerScreen(
                             Spacer(Modifier.height(6.dp))
                         }
                         Surface(
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                            color = when {
+                                selectionEmpty -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.96f)
+                                textSelectMode -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f)
+                                else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+                            },
+                            contentColor = when {
+                                selectionEmpty -> MaterialTheme.colorScheme.onErrorContainer
+                                textSelectMode -> MaterialTheme.colorScheme.onPrimaryContainer
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                             shape = RoundedCornerShape(50),
                         ) {
-                            Text(
-                                hintText,
+                            Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (textSelectMode) {
+                                    if (state.textLoading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.AutoMirrored.Outlined.TextSnippet,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                                Text(
+                                    hintText,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
                         }
                     }
 
@@ -856,6 +918,15 @@ fun ViewerScreen(
                 showToolMore = false
             },
             onDismiss = { showToolMore = false },
+            canUndo = state.canUndo,
+            canRedo = state.canRedo,
+            onUndo = vm::undo,
+            onRedo = vm::redo,
+            styleEnabled = isStyleTool(state.tool),
+            onStyle = {
+                showToolMore = false
+                showToolStyle = true
+            },
         )
     }
     if (showToolStyle) {
@@ -914,6 +985,7 @@ private fun TextSelectionActionBar(
     hasSelection: Boolean,
     loading: Boolean,
     hasWords: Boolean,
+    wordCount: Int,
     onCopy: () -> Unit,
     onTranslate: () -> Unit,
     onExcerpt: () -> Unit,
@@ -923,18 +995,41 @@ private fun TextSelectionActionBar(
     onStrikeout: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val empty = !loading && !hasWords
     Column(
         Modifier
             .fillMaxWidth()
             .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 2.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Outlined.TextFields,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
+            Surface(
+                shape = RoundedCornerShape(9.dp),
+                color = if (empty) {
+                    MaterialTheme.colorScheme.errorContainer
+                } else {
+                    MaterialTheme.colorScheme.primaryContainer
+                },
+            ) {
+                Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                    if (loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(15.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.TextSnippet,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = if (empty) {
+                                MaterialTheme.colorScheme.onErrorContainer
+                            } else {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            },
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.width(8.dp))
             Column(
                 Modifier
@@ -950,9 +1045,9 @@ private fun TextSelectionActionBar(
                 Text(
                     when {
                         hasSelection -> text
-                        loading -> "텍스트를 읽는 중…"
-                        !hasWords -> "이 페이지에는 선택할 수 있는 텍스트가 없습니다."
-                        else -> "텍스트를 드래그해 선택하세요."
+                        loading -> "텍스트 위치를 읽는 중…"
+                        empty -> "이 페이지에는 선택할 수 있는 텍스트가 없습니다."
+                        else -> "단어를 탭하거나 드래그해 선택하세요."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
@@ -960,9 +1055,18 @@ private fun TextSelectionActionBar(
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        if (hasSelection) "${text.length}자 · 선택한 텍스트" else "텍스트 선택 모드",
+                        when {
+                            hasSelection -> "${text.length}자 · 선택한 텍스트"
+                            loading -> "텍스트 선택 준비 중"
+                            empty -> "텍스트 선택 모드 · 종료할 수 있습니다"
+                            else -> "텍스트 선택 중 · 단어 ${wordCount}개"
+                        },
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (empty) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
                     if (hasSelection) {
                         Spacer(Modifier.width(6.dp))
@@ -986,6 +1090,22 @@ private fun TextSelectionActionBar(
                     Icons.Outlined.Close,
                     contentDescription = if (hasSelection) "선택 해제" else "텍스트 선택 종료",
                 )
+            }
+        }
+        if (empty) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "스캔 이미지 PDF는 텍스트가 없을 수 있습니다. 계속 읽으려면 종료하세요.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onDismiss) {
+                    Text("텍스트 선택 종료")
+                }
             }
         }
         Row(

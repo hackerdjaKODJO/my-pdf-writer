@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Redo
+import androidx.compose.material.icons.automirrored.outlined.TextSnippet
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.Approval
 import androidx.compose.material.icons.outlined.ChevronLeft
@@ -30,7 +31,6 @@ import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FormatStrikethrough
 import androidx.compose.material.icons.outlined.FormatUnderlined
-import androidx.compose.material.icons.outlined.Gesture
 import androidx.compose.material.icons.outlined.Highlight
 import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.MoreHoriz
@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -58,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -106,11 +108,13 @@ fun ViewerToolDock(
     state: ViewerUiState,
     shapeTool: Tool,
     onSelectTool: (Tool) -> Unit,
-    onLasso: () -> Unit,
+    onTextSelect: () -> Unit,
     onMore: () -> Unit,
     onStyle: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
+    textSelectMode: Boolean = false,
+    compact: Boolean = false,
 ) {
     val entries = listOf(
         DockEntry(stringResource(R.string.tool_view), Icons.Outlined.Visibility, state.tool == Tool.VIEW) {
@@ -125,13 +129,15 @@ fun ViewerToolDock(
         DockEntry(stringResource(R.string.tool_eraser), Icons.Outlined.DeleteSweep, state.tool == Tool.ERASER) {
             onSelectTool(Tool.ERASER)
         },
-        DockEntry(stringResource(R.string.tool_text), Icons.Outlined.TextFields, state.tool == Tool.TEXT) {
+        DockEntry("글상자", Icons.Outlined.TextFields, state.tool == Tool.TEXT) {
             onSelectTool(Tool.TEXT)
         },
         DockEntry("도형", Icons.Outlined.CropSquare, isShapeTool(state.tool)) {
             onSelectTool(shapeTool)
         },
-        DockEntry("올가미", Icons.Outlined.Gesture, false, onLasso),
+        // Direct text selection entry: this used to be labelled "올가미",
+        // which hid the most useful PDF action behind a note-editor term.
+        DockEntry("텍스트 선택", Icons.AutoMirrored.Outlined.TextSnippet, textSelectMode, onTextSelect),
         DockEntry("더보기", Icons.Outlined.MoreHoriz, isExtraTool(state.tool), onMore),
     )
 
@@ -139,37 +145,49 @@ fun ViewerToolDock(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 2.dp, vertical = 4.dp),
+                .padding(horizontal = 2.dp, vertical = if (compact) 2.dp else 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             entries.forEach { entry ->
-                DockItem(entry = entry, modifier = Modifier.weight(1f))
+                DockItem(
+                    entry = entry,
+                    modifier = Modifier.weight(1f),
+                    compact = compact,
+                )
             }
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onUndo, enabled = state.canUndo) {
-                Icon(Icons.AutoMirrored.Outlined.Undo, contentDescription = stringResource(R.string.undo))
-            }
-            IconButton(onClick = onRedo, enabled = state.canRedo) {
-                Icon(Icons.AutoMirrored.Outlined.Redo, contentDescription = stringResource(R.string.redo))
-            }
-            Spacer(Modifier.weight(1f))
-            if (isStyleTool(state.tool)) {
-                StylePill(color = state.color, onStyle = onStyle)
+        // The focused study pane uses a single dense row. Undo/redo and style
+        // stay one tap away in "더보기" instead of spending another 48 dp row.
+        if (!compact) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onUndo, enabled = state.canUndo) {
+                    Icon(Icons.AutoMirrored.Outlined.Undo, contentDescription = stringResource(R.string.undo))
+                }
+                IconButton(onClick = onRedo, enabled = state.canRedo) {
+                    Icon(Icons.AutoMirrored.Outlined.Redo, contentDescription = stringResource(R.string.redo))
+                }
+                Spacer(Modifier.weight(1f))
+                if (isStyleTool(state.tool)) {
+                    StylePill(color = state.color, onStyle = onStyle)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun DockItem(entry: DockEntry, modifier: Modifier = Modifier) {
+private fun DockItem(
+    entry: DockEntry,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
     val contentColor = if (entry.selected) {
         MaterialTheme.colorScheme.onPrimaryContainer
     } else {
@@ -179,12 +197,12 @@ private fun DockItem(entry: DockEntry, modifier: Modifier = Modifier) {
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = entry.onClick)
-            .padding(vertical = 4.dp),
+            .padding(vertical = if (compact) 2.dp else 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             modifier = Modifier
-                .size(32.dp)
+                .size(if (compact) 28.dp else 32.dp)
                 .background(
                     color = if (entry.selected) {
                         MaterialTheme.colorScheme.primaryContainer
@@ -198,16 +216,20 @@ private fun DockItem(entry: DockEntry, modifier: Modifier = Modifier) {
             Icon(
                 entry.icon,
                 contentDescription = null,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(if (compact) 18.dp else 20.dp),
                 tint = contentColor,
             )
         }
         Spacer(Modifier.height(2.dp))
         Text(
             entry.label,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = if (compact) 9.sp else 10.sp,
+                lineHeight = if (compact) 11.sp else 12.sp,
+            ),
             color = contentColor,
-            maxLines = 1,
+            maxLines = 2,
+            textAlign = TextAlign.Center,
             overflow = TextOverflow.Ellipsis,
         )
     }
@@ -325,6 +347,12 @@ fun ViewerToolMoreSheet(
     currentTool: Tool,
     onSelectTool: (Tool) -> Unit,
     onDismiss: () -> Unit,
+    canUndo: Boolean = false,
+    canRedo: Boolean = false,
+    onUndo: (() -> Unit)? = null,
+    onRedo: (() -> Unit)? = null,
+    styleEnabled: Boolean = false,
+    onStyle: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -341,6 +369,63 @@ fun ViewerToolMoreSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (onUndo != null || onRedo != null || (onStyle != null && styleEnabled)) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "빠른 작업",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    onUndo?.let { undo ->
+                        AssistChip(
+                            onClick = undo,
+                            enabled = canUndo,
+                            label = { Text("실행 취소") },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.AutoMirrored.Outlined.Undo,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                        )
+                    }
+                    onRedo?.let { redo ->
+                        AssistChip(
+                            onClick = redo,
+                            enabled = canRedo,
+                            label = { Text("다시 실행") },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.AutoMirrored.Outlined.Redo,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                        )
+                    }
+                    if (onStyle != null && styleEnabled) {
+                        AssistChip(
+                            onClick = onStyle,
+                            label = { Text("스타일") },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Outlined.Tune,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.height(14.dp))
             ToolOptionSection(
                 title = "도형",
@@ -456,7 +541,7 @@ private fun ToolOptionTile(
 private val styleToolOptions = listOf(
     ToolOption(Tool.PEN, Icons.Outlined.Edit, "펜"),
     ToolOption(Tool.HIGHLIGHT, Icons.Outlined.Highlight, "형광펜"),
-    ToolOption(Tool.TEXT, Icons.Outlined.TextFields, "텍스트"),
+    ToolOption(Tool.TEXT, Icons.Outlined.TextFields, "글상자"),
     ToolOption(Tool.RECT, Icons.Outlined.CropSquare, "사각형"),
     ToolOption(Tool.ARROW, Icons.Outlined.NorthEast, "화살표"),
     ToolOption(Tool.LINE, Icons.Outlined.HorizontalRule, "직선"),
@@ -638,7 +723,7 @@ private fun styleToolLabel(tool: Tool): String = when (tool) {
     Tool.VIEW -> "보기"
     Tool.PEN -> "펜"
     Tool.HIGHLIGHT -> "형광펜"
-    Tool.TEXT -> "텍스트"
+    Tool.TEXT -> "글상자"
     Tool.RECT -> "사각형"
     Tool.ARROW -> "화살표"
     Tool.UNDERLINE -> "밑줄"

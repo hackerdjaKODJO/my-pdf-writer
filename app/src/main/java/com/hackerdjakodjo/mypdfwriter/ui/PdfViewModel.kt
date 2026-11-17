@@ -1079,19 +1079,23 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val key = textLayoutKeyFor(state, file)
 
         if (key == textLayoutKey) {
+            _viewer.update { it?.copy(textLoading = false) }
             publishTextWords(pageIndex)
             return
         }
         if (key == textLayoutLoadingKey && textLayoutJob?.isActive == true) {
             _textWords.value = emptyList()
+            _viewer.update { it?.copy(textLoading = true) }
             return
         }
 
         textLayoutJob?.cancel()
         textLayoutLoadingKey = key
         _textWords.value = emptyList()
+        // Flip the loading state before launching so the selection UI never
+        // shows a false "no text" empty state while extraction is starting.
+        _viewer.update { it?.copy(textLoading = true) }
         textLayoutJob = viewModelScope.launch {
-            _viewer.update { it?.copy(textLoading = true) }
             val lines = try {
                 withContext(Dispatchers.IO) { PdfTextLayout.lines(file) }
             } catch (cancelled: CancellationException) {
