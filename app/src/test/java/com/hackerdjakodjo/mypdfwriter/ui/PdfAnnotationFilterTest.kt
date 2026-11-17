@@ -48,7 +48,7 @@ class PdfAnnotationFilterTest {
         val rows = PdfAnnotationFilter.filter(allTypes(), AnnotationFilter.TEXT)
 
         assertEquals(
-            listOf(AnnotationType.TEXT, AnnotationType.STAMP),
+            listOf(AnnotationType.TEXT, AnnotationType.STAMP, AnnotationType.COVER_TEXT),
             rows.map { it.type },
         )
     }

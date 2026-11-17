@@ -624,7 +624,8 @@ private fun noteAnnotationHit(
         AnnotationType.TEXT,
         AnnotationType.STAMP -> distanceToPolyline(annotation.points[0], probes) <= radius * 2.4f
 
-        AnnotationType.REDACT -> annotation.points.size >= 2 && probes.any {
+        AnnotationType.REDACT,
+        AnnotationType.COVER_TEXT -> annotation.points.size >= 2 && probes.any {
             insideRect(it, annotation.points[0], annotation.points[1])
         }
     }

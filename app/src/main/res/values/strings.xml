@@ -147,12 +147,18 @@
     <string name="annotation_type_stamp">스탬프</string>
     <string name="annotation_type_signature">서명</string>
     <string name="annotation_type_redact">가림</string>
+    <string name="annotation_type_cover_text">텍스트 수정</string>
     <string name="annotation_summary_pen">자유 필기</string>
     <string name="annotation_summary_highlight">형광펜 표시</string>
     <string name="annotation_summary_shape">도형 주석</string>
     <string name="annotation_summary_redact">가림 영역</string>
     <string name="annotation_summary_stamp">스탬프: %1$s</string>
     <string name="annotation_summary_signature">서명: %1$s</string>
+    <string name="annotation_summary_cover_text">텍스트 수정: %1$s</string>
+    <!-- Visual text replacement dialog: the PDF content stream is never rewritten. -->
+    <string name="text_edit_dialog_title">선택한 텍스트 수정</string>
+    <string name="text_edit_dialog_hint">새 텍스트를 입력하세요</string>
+    <string name="text_edit_dialog_notice">화면에 덮어 표시합니다. 원본 PDF 내용은 바뀌지 않으며, 내보내기 시 덮은 화면이 PDF에 포함됩니다.</string>
 
     <!-- Misc -->
     <string name="delete">삭제</string>

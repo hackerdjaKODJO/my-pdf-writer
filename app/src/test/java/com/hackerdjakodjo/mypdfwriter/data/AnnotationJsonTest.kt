@@ -167,6 +167,7 @@ class AnnotationJsonTest {
             AnnotationType.STAMP,
             AnnotationType.SIGNATURE,
             AnnotationType.REDACT,
+            AnnotationType.COVER_TEXT,
         )
 
         newTypes.forEach { type ->
@@ -176,6 +177,30 @@ class AnnotationJsonTest {
             )
             assertEquals(type, Annotation.fromJson(json)?.type)
         }
+    }
+
+    @Test
+    fun coverText_roundTripsReplacementAndCoverGeometry() {
+        val original = Annotation(
+            type = AnnotationType.COVER_TEXT,
+            page = 2,
+            color = -1,
+            width = 0f,
+            points = listOf(
+                NormalizedPoint(0.10f, 0.20f),
+                NormalizedPoint(0.40f, 0.24f),
+            ),
+            text = "새 문구",
+            fontSize = 0.024f,
+            opacity = 1f,
+        )
+
+        val restored = Annotation.fromJson(original.toJson())
+
+        assertNotNull(restored)
+        assertEquals(original, restored)
+        assertEquals(2, restored!!.points.size)
+        assertEquals("새 문구", restored.text)
     }
 
     @Test

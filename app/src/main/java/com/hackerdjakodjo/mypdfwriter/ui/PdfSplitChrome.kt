@@ -290,8 +290,8 @@ internal fun SplitPdfToolbar(
 /**
  * Floating text-selection bar for split mode. It replaces the bottom dock and
  * overlays the PDF strip instead of adding a permanent row below the page.
- * Highlight/underline/strikeout/copy/dictionary stay one tap away; more opens
- * the secondary actions (translate, dictionary, excerpt, add to pane, clear).
+ * Highlight/underline/strikeout/text edit/copy/dictionary stay one tap away; more
+ * opens the secondary actions (translate, dictionary, excerpt, add to pane, clear).
  */
 @Composable
 internal fun SplitSelectionActionBar(
@@ -303,6 +303,7 @@ internal fun SplitSelectionActionBar(
     wordCount: Int,
     onCopy: () -> Unit,
     onDictionary: () -> Unit = {},
+    onEditText: () -> Unit = {},
     onHighlight: () -> Unit,
     onUnderline: () -> Unit,
     onStrikeout: () -> Unit,
@@ -332,6 +333,9 @@ internal fun SplitSelectionActionBar(
         Row(
             modifier = Modifier
                 .height(40.dp)
+                // The compact bar can exceed the strip width once every action is
+                // present; keep the extra tools reachable instead of clipping them.
+                .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -392,6 +396,12 @@ internal fun SplitSelectionActionBar(
                 icon = Icons.Outlined.FormatStrikethrough,
                 contentDescription = "취소선 표시",
                 onClick = onStrikeout,
+                enabled = hasSelection,
+            )
+            SplitChromeButton(
+                icon = Icons.Outlined.Edit,
+                contentDescription = "선택한 텍스트 수정",
+                onClick = onEditText,
                 enabled = hasSelection,
             )
             SplitChromeButton(
@@ -669,7 +679,7 @@ private fun SplitToolTile(
 
 /**
  * Secondary text actions for the split selection bar. The primary bar keeps
- * highlight/underline/strikeout/copy/dictionary; translate, dictionary,
+ * highlight/underline/strikeout/text edit/copy/dictionary; translate, dictionary,
  * excerpt, pane capture and clear stay one tap behind this sheet.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -682,6 +692,7 @@ internal fun SplitSelectionMoreSheet(
     onTranslate: () -> Unit,
     onDictionary: () -> Unit,
     onExcerpt: () -> Unit,
+    onEditText: () -> Unit,
     onCopy: () -> Unit,
     onAddToPane: (() -> Unit)?,
     onDismissSelection: () -> Unit,
@@ -752,6 +763,15 @@ internal fun SplitSelectionMoreSheet(
                 onClick = {
                     onDismiss()
                     onExcerpt()
+                },
+            )
+            SplitSheetAction(
+                label = "텍스트 수정 (화면 덮어쓰기)",
+                icon = Icons.Outlined.Edit,
+                enabled = hasSelection,
+                onClick = {
+                    onDismiss()
+                    onEditText()
                 },
             )
             SplitSheetAction(
