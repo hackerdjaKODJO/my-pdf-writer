@@ -29,7 +29,7 @@ enabled or working in this build. There are no runtime claims for either app. Al
 label quotations below are short functional evidence; no Flexcil copy,
 screenshots, templates, fonts, icons or branding are reproduced.
 
-### 1.1 Implementation status — 0.8.3 through 0.8.7 delivered
+### 1.1 Implementation status — 0.8.3 through 0.8.8 delivered
 
 The 0.8.3 delivery implements the primary handwriting gaps with original code. The 0.8.4 delivery adds the study pane, pressure ink, template studio and page/export organization described below; see the 0.8.4 status after the 0.8.3 table.
 
@@ -82,6 +82,10 @@ float in a compact bar. The note pane uses a 44dp floating header and a transluc
 floating 6-tool dock, leaving the canvas edge-to-edge behind them. The 85% pane
 therefore receives the height previously spent on fixed chrome. Real-device
 overlap/ergonomics still need a phone smoke test.
+
+**0.8.8 delivered:** an 18dp central boundary grip between the PDF strip and note
+pane drags the split fraction directly (35–85% clamp), complementing the pane
+header grip. Dragging up enlarges the note; dragging down enlarges the PDF.
 
 ## 2. Feature matrix
 
@@ -210,7 +214,8 @@ paid content or bypass premium/DRM; do not copy reference screenshots into
 | **0.8.5** | Custom image/PDF-first-page templates, resizable study pane/drop capture/To/From links, pressure curves and gesture undo/redo, page rotation/photo pages/note search. | Delivered: 327 JVM tests, debug/release/androidTest compile; custom assets included in backup; no new permissions; versionCode 14. Hardware pressure calibration and direct canvas drag remain. |
 | **0.8.6** | PDF UX simplification: 7-primary hub, forgiving tap/drag text selection, direct top-bar note entry, compact 85% study pane. | Delivered: 338 JVM tests; debug/release/androidTest compile; selection helper/E2E tests; on-device touch check pending. |
 | **0.8.7** | Split PDF/note space reclamation: no fixed PDF app bar/dock while the pane is open; floating PDF controls/selection bar, floating note header and floating 6-tool dock. | Delivered: 352 JVM tests; floating chrome tests/E2E compile; debug/release build. Real-device overlap/ergonomics pending. |
-| **0.8.8+** | Hardware pressure calibration, direct canvas-to-pane drag, custom PDF page selection, search next/previous. | Real-device pressure tuning and gesture verification; no permission changes. |
+| **0.8.8** | Draggable central PDF/note boundary. | Delivered: 18dp grip + 35–85% clamp; tests/build. |
+| **0.8.9+** | Hardware pressure calibration, direct canvas-to-pane drag, custom PDF page selection, search next/previous. | Real-device pressure tuning and gesture verification; no permission changes. |
 | Later / opt-in | Gesture undo/redo and eraser gesture; second-document split/floating popup; note-content search. Avoid cloud, ads and AI. | Only after conflict, discoverability and privacy review; no change to the no-INTERNET baseline. |
 
 The merge order remains: shared-file owners first, then new-file agents; check

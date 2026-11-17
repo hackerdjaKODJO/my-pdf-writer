@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -81,8 +82,10 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -90,6 +93,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -130,6 +134,8 @@ fun ViewerScreen(
      * Ignored when [studyPane] is null.
      */
     studyPaneFraction: Float = 0f,
+    /** Called continuously while the draggable PDF/note divider is moved. */
+    onStudyPaneFractionChange: (Float) -> Unit = {},
     /**
      * Live study-note pane content hosted below the PDF canvas and above the PDF
      * tool/selection bar. The host owns the notebook and height state.
@@ -635,7 +641,17 @@ fun ViewerScreen(
             } else {
                 0f
             }
-            Column(Modifier.fillMaxSize()) {
+            var splitAreaHeightPx by remember { mutableFloatStateOf(0f) }
+            val latestFraction = rememberUpdatedState(paneFraction)
+            val latestHeight = rememberUpdatedState(splitAreaHeightPx)
+            val latestOnFraction = rememberUpdatedState(onStudyPaneFractionChange)
+            var dividerDragStart by remember { mutableFloatStateOf(0f) }
+            var dividerDragY by remember { mutableFloatStateOf(0f) }
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { splitAreaHeightPx = it.height.toFloat() },
+            ) {
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -845,6 +861,51 @@ fun ViewerScreen(
                 }
 
                 if (studyPane != null) {
+                    // The visible boundary is the primary resize affordance:
+                    // drag it up for more note, down for more PDF. The floating
+                    // pane header still keeps its own drag handle.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(18.dp)
+                            .pointerInput(Unit) {
+                                detectVerticalDragGestures(
+                                    onDragStart = {
+                                        dividerDragStart = latestFraction.value
+                                        dividerDragY = 0f
+                                    },
+                                    onVerticalDrag = { change, dragAmount ->
+                                        change.consume()
+                                        dividerDragY += dragAmount
+                                        latestOnFraction.value(
+                                            studyPaneFractionAfterDrag(
+                                                startFraction = dividerDragStart,
+                                                dragY = dividerDragY,
+                                                totalHeightPx = latestHeight.value,
+                                            ),
+                                        )
+                                    },
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                            tonalElevation = 2.dp,
+                            shadowElevation = 2.dp,
+                        ) {
+                            Icon(
+                                Icons.Outlined.DragIndicator,
+                                contentDescription = "PDF와 노트 높이 조절",
+                                modifier = Modifier
+                                    .width(48.dp)
+                                    .height(16.dp)
+                                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     Box(
                         Modifier
                             .fillMaxWidth()

@@ -1,4 +1,4 @@
-# PC handoff — My PDF Writer 0.8.7
+# PC handoff — My PDF Writer 0.8.8
 
 This document lets another machine continue the work from the same source state.
 The Android app source, tests and design notes are in Git; APKs and signing keys
@@ -8,9 +8,9 @@ are not.
 
 | Field | Value |
 | --- | --- |
-| Version | `0.8.7` / `versionCode 16` |
-| Tag | `v0.8.7` |
-| Release commit | `v0.8.7` tag |
+| Version | `0.8.8` / `versionCode 17` |
+| Tag | `v0.8.8` |
+| Release commit | `v0.8.8` tag |
 | Branch | `feature/starnote` |
 | `main` | same commit as `feature/starnote` |
 | Package | `com.hackerdjakodjo.mypdfwriter` (release) / `.debug` |
@@ -20,8 +20,8 @@ are not.
 | Permissions | no `INTERNET`; `RECORD_AUDIO` is runtime-only for audio notes |
 
 The local phone review APK is
-`/sdcard/Download/MyPDFWriter-0.8.7-arm64.apk`
-(SHA-256 `a7eb788ef41d4e38dbb2e315c37d40895951780e2ffdce483b19ef861fb0032b`).
+`/sdcard/Download/MyPDFWriter-0.8.8-arm64.apk`
+(SHA-256 `d5de538012362e702404755a83a655cd813ab2fe4faa862f8b7b5b95e2dee411`).
 It is a debug-signed arm64-only APK and is not committed to Git.
 
 ## Continue on a PC
@@ -98,9 +98,9 @@ Start with:
    implemented, but hardware pressure range, dead zone and linearity have not
    been tuned against a real tablet. Add a calibration flow and test with a
    pressure-sensitive stylus.
-2. **0.8.7 split chrome** — compile/pure tests pass, but floating toolbar
-   overlap, tap/drag selection and compact handwriting ergonomics still need a
-   phone smoke test; instrumentation tests are not executed without adb.
+2. **0.8.8 split divider** — compile/pure tests pass, but the 18dp grip and
+   floating toolbar overlap, tap/drag selection and compact handwriting ergonomics
+   still need a phone smoke test; instrumentation tests are not executed without adb.
 3. **Direct canvas-to-pane drag** — the guaranteed capture paths are the
    selection-bar `패널에 추가` action and dragging the selected-text summary to
    the pane header. Direct drag from canvas text and source-rectangle backlinks

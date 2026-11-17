@@ -250,6 +250,9 @@ class MainActivity : ComponentActivity() {
                                     openStudyPane(notebook)
                                 },
                                 studyPaneFraction = studyPaneFraction,
+                                onStudyPaneFractionChange = { fraction ->
+                                    studyPaneFraction = clampStudyPaneFraction(fraction)
+                                },
                                 studyPane = if (paneNotebook != null) {
                                     {
                                         StudyPaneSheet(
