@@ -36,6 +36,8 @@ executed here. Instrumentation APKs are compiled with
 | CHECK-01 | Checklist JSON, item toggles, progress, fresh ids | JVM `ChecklistCardTest` | Passing |
 | AUDIO-01 | Playback speed rates, clamping, labels | JVM `PlaybackSpeedTest` | Passing |
 | DICT-01 | Dictionary query normalization and fallback | JVM `TextActionsDictionaryTest` | Passing |
+| UX-01 | Onboarding topic order/one-time flag | JVM `OnboardingStoreTest`, `OnboardingContentTest` | Passing |
+| UX-02 | PDF hint state policy and no duplicate chips | JVM `PdfContextHintsTest` | Passing |
 | HELP-01 | Help topics are complete, offline and ordered | JVM `HelpCenterContentTest` | Passing |
 | PDF-06 | Long press in VIEW mode enters selection and reports a point; long press in selection mode is inert | JVM `PdfTextLayoutTest` + instrumentation `PdfCanvasSelectionE2ETest` | Compiled |
 | DEVICE-01 | Stylus pressure curve and two/three-finger gesture behavior | Manual device required | Not run |

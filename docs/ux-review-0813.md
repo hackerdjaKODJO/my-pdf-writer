@@ -7,6 +7,9 @@
 > here is an implementation; every fix is a recommendation with acceptance
 > criteria for the owning agent.
 
+
+> **0.8.13 implementation update:** first-run onboarding and PDF contextual hints were implemented after this review snapshot; the remaining items are still recommendations.
+
 ## 1. Scope and method
 
 - **Baseline:** the checked-out 0.8.12 source only. Primary evidence:
