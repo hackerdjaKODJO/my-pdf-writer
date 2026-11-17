@@ -59,7 +59,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
@@ -67,7 +67,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlin.math.abs
-import kotlin.math.hypot
 
 /**
  * Vertical, read-only PDF page list.
@@ -117,6 +116,10 @@ fun ContinuousReaderScreen(
         if (zoom <= READER_ZOOM_MIN) panX = 0f
     }
     val toggleZoom: () -> Unit = { setZoom(toggleReaderZoom(latestZoom.value)) }
+
+    // Pure tracker that owns all pinch-distance math. This screen only feeds it
+    // pointer ids/positions and applies the resulting document-wide zoom.
+    val pinchTracker = remember { ReaderPinchTracker() }
 
     val currentPage by remember(listState, pageCount) {
         derivedStateOf {
@@ -177,61 +180,122 @@ fun ContinuousReaderScreen(
             if (pageCount <= 0) {
                 EmptyReader(onBack = onBack)
             } else {
-                LazyColumn(
-                    state = listState,
+                // The pinch detector lives on a Box that wraps ONLY the page list,
+                // not the whole screen or the page indicator. The LazyColumn keeps
+                // its own one-finger vertical scrolling; this handler only steps in
+                // once a second tracked pointer joins the gesture.
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(Unit) {
+                            // Ids already fed to the tracker during the current
+                            // gesture. Local to this input handler so a fresh
+                            // gesture starts clean and recomposition cannot feed
+                            // the same id twice.
+                            val seenIds = HashSet<Int>()
                             awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false)
-                                var startDistance = 0f
+                                val firstDown = awaitFirstDown(requireUnconsumed = false)
+                                if (seenIds.add(firstDown.id.value.toInt())) {
+                                    pinchTracker.onDown(firstDown.id.value.toInt(), firstDown.position)
+                                }
                                 var startZoom = READER_ZOOM_MIN
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val pressed: List<PointerInputChange> =
-                                        event.changes.filter { change -> change.pressed }
-                                    when {
-                                        pressed.size >= 2 -> {
-                                            if (startDistance <= 0f) {
-                                                startDistance = pinchDistance(pressed[0], pressed[1])
-                                                startZoom = latestZoom.value
+                                var baselineCaptured = false
+                                var firstFrame = true
+                                try {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val changes = event.changes
+
+                                        // onDown only for brand-new pointers. On the
+                                        // first frame every pressed pointer is new: a
+                                        // second finger can share the down event that
+                                        // awaitFirstDown consumed, so its down flag is
+                                        // already gone by the time we see it here.
+                                        changes.forEach { change ->
+                                            val isNew = if (firstFrame) {
+                                                change.pressed && seenIds.add(change.id.value.toInt())
+                                            } else {
+                                                change.pressed &&
+                                                    change.changedToDownIgnoreConsumed() &&
+                                                    seenIds.add(change.id.value.toInt())
                                             }
-                                            val distance = pinchDistance(pressed[0], pressed[1])
-                                            setZoom(zoomFromPinch(startZoom, startDistance, distance))
-                                            event.changes.forEach { change ->
-                                                if (change.pressed) change.consume()
+                                            if (isNew) {
+                                                pinchTracker.onDown(change.id.value.toInt(), change.position)
+                                            }
+                                        }
+                                        firstFrame = false
+                                        // Moves and lifts are meaningful only for
+                                        // pointers the tracker actually knows.
+                                        changes.forEach { change ->
+                                            if (change.pressed && change.id.value.toInt() in seenIds) {
+                                                pinchTracker.onMove(change.id.value.toInt(), change.position)
+                                            }
+                                        }
+                                        changes.forEach { change ->
+                                            if (!change.pressed && change.id.value.toInt() in seenIds) {
+                                                pinchTracker.onUp(change.id.value.toInt())
+                                                seenIds.remove(change.id.value.toInt())
                                             }
                                         }
 
-                                        pressed.isEmpty() -> {
-                                            startDistance = 0f
-                                            break
+                                        if (pinchTracker.active) {
+                                            // Freeze the document-wide zoom exactly
+                                            // once, when the pinch first activates.
+                                            if (!baselineCaptured) {
+                                                startZoom = latestZoom.value
+                                                baselineCaptured = true
+                                            }
+                                            setZoom(
+                                                zoomFromPinch(
+                                                    startZoom,
+                                                    pinchTracker.startDistance,
+                                                    pinchTracker.currentDistance,
+                                                )
+                                            )
+                                            // Two-finger events only. A single finger
+                                            // must stay unconsumed or vertical scroll
+                                            // in the LazyColumn stops working.
+                                            changes.forEach { change ->
+                                                if (change.pressed && change.id.value.toInt() in seenIds) {
+                                                    change.consume()
+                                                }
+                                            }
                                         }
+
+                                        if (changes.none { it.pressed }) break
                                     }
+                                } finally {
+                                    pinchTracker.clear()
+                                    seenIds.clear()
                                 }
                             }
                         },
-                    // Leave just enough room under the last page for the floating
-                    // current-page indicator; the old 18 dp label + gap made pages
-                    // look far apart.
-                    contentPadding = PaddingValues(
-                        start = 14.dp,
-                        end = 14.dp,
-                        top = 8.dp,
-                        bottom = 60.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
-                    items(count = pageCount, key = { index -> index }) { index ->
-                        ReaderPageCard(
-                            index = index,
-                            zoom = zoom,
-                            panX = panX,
-                            loadPage = loadPage,
-                            onOpenPage = onOpenPage,
-                            onToggleZoom = toggleZoom,
-                            onPanChange = { panX = it },
-                        )
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        // Leave just enough room under the last page for the floating
+                        // current-page indicator; the old 18 dp label + gap made pages
+                        // look far apart.
+                        contentPadding = PaddingValues(
+                            start = 14.dp,
+                            end = 14.dp,
+                            top = 8.dp,
+                            bottom = 60.dp,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                    ) {
+                        items(count = pageCount, key = { index -> index }) { index ->
+                            ReaderPageCard(
+                                index = index,
+                                zoom = zoom,
+                                panX = panX,
+                                loadPage = loadPage,
+                                onOpenPage = onOpenPage,
+                                onToggleZoom = toggleZoom,
+                                onPanChange = { panX = it },
+                            )
+                        }
                     }
                 }
 
@@ -470,12 +534,6 @@ private sealed interface ReaderPageState {
     data object Loading : ReaderPageState
     data class Ready(val bitmap: Bitmap) : ReaderPageState
     data object Failed : ReaderPageState
-}
-
-private fun pinchDistance(a: PointerInputChange, b: PointerInputChange): Float {
-    val dx = (a.position.x - b.position.x).toDouble()
-    val dy = (a.position.y - b.position.y).toDouble()
-    return hypot(dx, dy).toFloat()
 }
 
 private const val DEFAULT_PAGE_ASPECT = 0.707f
