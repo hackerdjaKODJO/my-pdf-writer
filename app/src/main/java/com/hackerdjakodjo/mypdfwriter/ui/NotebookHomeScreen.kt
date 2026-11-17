@@ -517,13 +517,15 @@ fun NotebookHomeScreen(
             initialScope = scope,
             initialFolder = selectedFolder,
             initialTag = selectedTag,
+            initialQuery = query,
             folders = folders,
             tagCounts = tagCounts,
             onDismiss = { showFilters = false },
-            onApply = { newScope, newFolder, newTag ->
+            onApply = { newScope, newFolder, newTag, newQuery ->
                 scope = newScope
                 selectedFolder = newFolder
                 selectedTag = newTag
+                query = newQuery
                 showFilters = false
             },
         )

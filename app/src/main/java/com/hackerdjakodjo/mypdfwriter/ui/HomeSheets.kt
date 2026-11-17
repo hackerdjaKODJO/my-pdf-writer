@@ -73,15 +73,17 @@ internal fun HomeFilterSheet(
     initialScope: NoteScope,
     initialFolder: String?,
     initialTag: String?,
+    initialQuery: String,
     folders: List<String>,
     tagCounts: List<Pair<String, Int>>,
     onDismiss: () -> Unit,
-    onApply: (scope: NoteScope, folder: String?, tag: String?) -> Unit,
+    onApply: (scope: NoteScope, folder: String?, tag: String?, query: String) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var scope by remember(initialScope) { mutableStateOf(initialScope) }
     var folder by remember(initialFolder) { mutableStateOf(initialFolder) }
     var tag by remember(initialTag) { mutableStateOf(initialTag) }
+    var query by remember(initialQuery) { mutableStateOf(initialQuery) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -163,6 +165,23 @@ internal fun HomeFilterSheet(
                 }
             }
 
+            FilterSection(title = "검색") {
+                if (query.isBlank()) {
+                    Text(
+                        "검색어 없음",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                } else {
+                    FilterChip(
+                        selected = true,
+                        onClick = { query = "" },
+                        label = { Text("검색 · “$query” 지우기") },
+                    )
+                }
+            }
+
             Spacer(Modifier.height(2.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(
@@ -170,13 +189,14 @@ internal fun HomeFilterSheet(
                         scope = NoteScope.ALL
                         folder = null
                         tag = null
+                        query = ""
                     },
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("초기화")
                 }
                 Button(
-                    onClick = { onApply(scope, folder, tag) },
+                    onClick = { onApply(scope, folder, tag, query) },
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("적용")

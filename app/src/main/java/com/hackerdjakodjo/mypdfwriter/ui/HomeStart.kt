@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -84,34 +85,75 @@ internal fun HomeStartContent(
             Spacer(Modifier.height(16.dp))
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            QuickAction(
-                label = "PDF 가져오기",
-                icon = Icons.Outlined.PictureAsPdf,
-                onClick = onImportPdf,
-                modifier = Modifier.weight(1f),
-            )
-            QuickAction(
-                label = "새 노트",
-                icon = Icons.AutoMirrored.Outlined.NoteAdd,
-                onClick = onCreateNote,
-                modifier = Modifier.weight(1f),
-            )
-            QuickAction(
-                label = "PDF 도구",
-                icon = Icons.AutoMirrored.Outlined.MenuBook,
-                onClick = onOpenTools,
-                modifier = Modifier.weight(1f),
-            )
-            QuickAction(
-                label = "백업/복원",
-                icon = Icons.Outlined.Archive,
-                onClick = onOpenBackup,
-                modifier = Modifier.weight(1f),
-            )
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (maxWidth < 400.dp) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        QuickAction(
+                            label = "PDF 가져오기",
+                            icon = Icons.Outlined.PictureAsPdf,
+                            onClick = onImportPdf,
+                            modifier = Modifier.weight(1f),
+                        )
+                        QuickAction(
+                            label = "새 노트",
+                            icon = Icons.AutoMirrored.Outlined.NoteAdd,
+                            onClick = onCreateNote,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        QuickAction(
+                            label = "PDF 도구",
+                            icon = Icons.AutoMirrored.Outlined.MenuBook,
+                            onClick = onOpenTools,
+                            modifier = Modifier.weight(1f),
+                        )
+                        QuickAction(
+                            label = "백업/복원",
+                            icon = Icons.Outlined.Archive,
+                            onClick = onOpenBackup,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    QuickAction(
+                        label = "PDF 가져오기",
+                        icon = Icons.Outlined.PictureAsPdf,
+                        onClick = onImportPdf,
+                        modifier = Modifier.weight(1f),
+                    )
+                    QuickAction(
+                        label = "새 노트",
+                        icon = Icons.AutoMirrored.Outlined.NoteAdd,
+                        onClick = onCreateNote,
+                        modifier = Modifier.weight(1f),
+                    )
+                    QuickAction(
+                        label = "PDF 도구",
+                        icon = Icons.AutoMirrored.Outlined.MenuBook,
+                        onClick = onOpenTools,
+                        modifier = Modifier.weight(1f),
+                    )
+                    QuickAction(
+                        label = "백업/복원",
+                        icon = Icons.Outlined.Archive,
+                        onClick = onOpenBackup,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.25
+# E2E test cases — My PDF Writer 0.8.26
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator; the build machine has no adb device attached, so only JVM tests are
@@ -9,7 +9,7 @@ executed here. Instrumentation APKs are compiled with
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 505 | **Passing** on this phone |
+| JVM unit tests | 528 | **Passing** on this phone |
 | Instrumentation/E2E | 7 classes (see below) | **Compiled**; on-device run pending |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally) |
@@ -60,6 +60,11 @@ executed here. Instrumentation APKs are compiled with
 | GR-03 | Internal PDF links extract/remap; external URIs are copy-only | JVM `PdfLinksTest` | Passing |
 | GR-04 | ACTION_SEND URI precedence and duplicate-carrier guard | JVM `IntentImportPolicyTest` | Passing |
 | GR-05 | Home sort keys, ties and case-insensitive names | JVM `HomeLibraryPolicyTest` | Passing |
+| UI-12 | Home filter sheet state, active chips, reset/apply | JVM `HomeFilterStateTest` + E2E | Passing |
+| UI-13 | Reader dock has six primary slots; annotation tools remain reachable | JVM `ViewerToolDockTest` | Passing |
+| UI-14 | PDF menu groups every action; advanced section is reachable | JVM `PdfHubSheetTest` | Passing |
+| UI-15 | Note menu exposes focused page/study/audio/writing sub-sheets | JVM `NoteEditorMenuTest` | Passing |
+| UI-16 | PDF tools are grouped without losing items | JVM `ToolsScreenSectionsTest` | Passing |
 
 ## Run on a device
 

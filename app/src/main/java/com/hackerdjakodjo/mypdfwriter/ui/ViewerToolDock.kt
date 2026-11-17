@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -408,6 +409,21 @@ private data class ToolOption(
     val hint: String? = null,
 )
 
+/** Base tools always present in the shared annotation sheet, including split mode. */
+internal val annotationBaseTools: List<Tool> = listOf(
+    Tool.VIEW,
+    Tool.PEN,
+    Tool.HIGHLIGHT,
+    Tool.ERASER,
+)
+
+private val baseToolOptions = listOf(
+    ToolOption(Tool.VIEW, Icons.Outlined.Visibility, "보기", "페이지를 넘기고 확대"),
+    ToolOption(Tool.PEN, Icons.Outlined.Edit, "펜", "자유롭게 필기"),
+    ToolOption(Tool.HIGHLIGHT, Icons.Outlined.Highlight, "형광펜", "끌어서 표시"),
+    ToolOption(Tool.ERASER, Icons.Outlined.DeleteSweep, "지우개", "획을 지움"),
+)
+
 private val textAndShapeToolOptions = listOf(
     ToolOption(Tool.TEXT, Icons.Outlined.TextFields, "글상자", "페이지를 눌러 입력"),
     ToolOption(Tool.RECT, Icons.Outlined.CropSquare, "사각형", "끌어서 사각형"),
@@ -453,6 +469,7 @@ fun ViewerToolMoreSheet(
         Column(
             Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
         ) {
@@ -519,6 +536,13 @@ fun ViewerToolMoreSheet(
                     }
                 }
             }
+            Spacer(Modifier.height(14.dp))
+            ToolOptionSection(
+                title = "기본 도구",
+                options = baseToolOptions,
+                currentTool = currentTool,
+                onSelectTool = onSelectTool,
+            )
             Spacer(Modifier.height(14.dp))
             ToolOptionSection(
                 title = "글상자·도형",
