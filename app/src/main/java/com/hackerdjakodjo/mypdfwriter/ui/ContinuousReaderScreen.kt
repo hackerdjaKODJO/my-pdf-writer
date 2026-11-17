@@ -1,6 +1,8 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import android.graphics.Bitmap
+import android.util.Log
+import com.hackerdjakodjo.mypdfwriter.BuildConfig
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -87,7 +89,7 @@ fun ContinuousReaderScreen(
     title: String,
     pageCount: Int,
     initialPage: Int,
-    loadPage: suspend (Int) -> Bitmap?,
+    loadPage: suspend (Int, Float) -> Bitmap?,
     onBack: () -> Unit,
     onOpenPage: (Int) -> Unit,
 ) {
@@ -201,6 +203,7 @@ fun ContinuousReaderScreen(
                                 var startZoom = READER_ZOOM_MIN
                                 var baselineCaptured = false
                                 var firstFrame = true
+                                var lastLoggedRenderZoom = readerRenderZoom(latestZoom.value)
                                 try {
                                     while (true) {
                                         val event = awaitPointerEvent()
@@ -248,13 +251,22 @@ fun ContinuousReaderScreen(
                                                 startZoom = latestZoom.value
                                                 baselineCaptured = true
                                             }
-                                            setZoom(
-                                                zoomFromPinch(
-                                                    startZoom,
-                                                    pinchTracker.startDistance,
-                                                    pinchTracker.currentDistance,
-                                                )
+                                            val nextZoom = zoomFromPinch(
+                                                startZoom,
+                                                pinchTracker.startDistance,
+                                                pinchTracker.currentDistance,
                                             )
+                                            setZoom(nextZoom)
+                                            val nextRenderZoom = readerRenderZoom(nextZoom)
+                                            if (BuildConfig.DEBUG && nextRenderZoom != lastLoggedRenderZoom) {
+                                                lastLoggedRenderZoom = nextRenderZoom
+                                                Log.d(
+                                                    "PdfContinuousPinch",
+                                                    "zoom=${readerZoomLabel(nextZoom)} " +
+                                                        "renderZoom=${readerZoomLabel(nextRenderZoom)} " +
+                                                        "dist=${pinchTracker.currentDistance}",
+                                                )
+                                            }
                                             // Two-finger events only. A single finger
                                             // must stay unconsumed or vertical scroll
                                             // in the LazyColumn stops working.
@@ -309,6 +321,25 @@ fun ContinuousReaderScreen(
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp),
                 )
+
+                if (BuildConfig.DEBUG) {
+                    val renderZoom = readerRenderZoom(zoom)
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(end = 10.dp, top = 6.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                    ) {
+                        Text(
+                            "DEBUG zoom=${readerZoomLabel(zoom)} " +
+                                "render=${readerZoomLabel(renderZoom)} " +
+                                "scale=${"%.2f".format(readerRenderScale(renderZoom))}",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
             }
         }
     }
@@ -319,24 +350,35 @@ private fun ReaderPageCard(
     index: Int,
     zoom: Float,
     panX: Float,
-    loadPage: suspend (Int) -> Bitmap?,
+    loadPage: suspend (Int, Float) -> Bitmap?,
     onOpenPage: (Int) -> Unit,
     onToggleZoom: () -> Unit,
     onPanChange: (Float) -> Unit,
 ) {
     var attempt by remember(index) { mutableIntStateOf(0) }
+    val renderZoom = readerRenderZoom(zoom)
+    val renderScale = readerRenderScale(renderZoom)
     val page by produceState<ReaderPageState>(
         initialValue = ReaderPageState.Loading,
         index,
         attempt,
+        renderZoom,
     ) {
         value = ReaderPageState.Loading
         val bitmap = try {
-            loadPage(index)
+            loadPage(index, renderZoom)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             null
+        }
+        if (BuildConfig.DEBUG && bitmap != null) {
+            Log.d(
+                "PdfContinuousRender",
+                "page=$index zoom=${readerZoomLabel(zoom)} " +
+                    "renderZoom=${readerZoomLabel(renderZoom)} scale=${renderScale}x " +
+                    "bitmap=${bitmap.width}x${bitmap.height}",
+            )
         }
         value = if (bitmap != null) ReaderPageState.Ready(bitmap) else ReaderPageState.Failed
     }

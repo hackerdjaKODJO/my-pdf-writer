@@ -348,7 +348,7 @@ fun ViewerScreen(
             title = state.docName,
             pageCount = state.pageCount,
             initialPage = state.pageIndex,
-            loadPage = { index -> vm.loadReaderPage(index) },
+            loadPage = { index, zoom -> vm.loadReaderPage(index, zoom) },
             onBack = { showContinuous = false },
             onOpenPage = { index ->
                 vm.goToPage(index)

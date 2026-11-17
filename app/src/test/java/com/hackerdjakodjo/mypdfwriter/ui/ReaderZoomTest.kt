@@ -72,6 +72,24 @@ class ReaderZoomTest {
     }
 
     @Test
+    fun `render zoom is quantized to quarter steps`() {
+        assertZoom(1.0f, readerRenderZoom(1.0f))
+        assertZoom(1.25f, readerRenderZoom(1.2f))
+        assertZoom(1.5f, readerRenderZoom(1.38f))
+        assertZoom(2.5f, readerRenderZoom(9f))
+        assertZoom(1.0f, readerRenderZoom(Float.NaN))
+    }
+
+    @Test
+    fun `render scale grows with zoom but stays bounded`() {
+        assertEquals(1.25f, readerRenderScale(1.0f), 0.0001f)
+        assertEquals(1.875f, readerRenderScale(1.5f), 0.0001f)
+        assertEquals(2.5f, readerRenderScale(2.0f), 0.0001f)
+        assertEquals(READER_MAX_RENDER_SCALE, readerRenderScale(2.5f), 0.0001f)
+        assertEquals(1.25f, readerRenderScale(Float.NaN), 0.0001f)
+    }
+
+    @Test
     fun `label renders a clamped percentage`() {
         assertEquals("100%", readerZoomLabel(1.0f))
         assertEquals("125%", readerZoomLabel(1.25f))

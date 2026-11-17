@@ -327,10 +327,11 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         return runCatching { repo.renderPage(file, index, 0.55f)?.bitmap }.getOrNull()
     }
 
-    /** Full-width page image for the continuous reader. */
-    suspend fun loadReaderPage(index: Int): Bitmap? {
+    /** Continuous-reader page image. The render scale follows the document zoom. */
+    suspend fun loadReaderPage(index: Int, zoom: Float = 1f): Bitmap? {
         val file = workingFile ?: return null
-        return runCatching { repo.renderPage(file, index, 1.25f)?.bitmap }.getOrNull()
+        val scale = readerRenderScale(readerRenderZoom(zoom))
+        return runCatching { repo.renderPage(file, index, scale)?.bitmap }.getOrNull()
     }
 
     fun currentSourceFile(): File? = sourceFile

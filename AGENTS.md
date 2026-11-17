@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.16`** — `versionCode = 25`.
-- **Next version is `0.8.17` — `versionCode = 26`.**
+- Current delivered version: **`0.8.17`** — `versionCode = 26`.
+- **Next version is `0.8.18` — `versionCode = 27`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.17` | 26 | 2026-11-17 | `v0.8.17` | Continuous pinch re-renders page bitmaps at zoom-dependent scale; debug render logs |
 | `0.8.16` | 25 | 2026-11-17 | `v0.8.16` | Reliable continuous pinch: tracked pointer ids, outer-box handler, single-finger scroll preserved |
 | `0.8.15` | 24 | 2026-11-17 | `v0.8.15` | Continuous reader pinch zoom with document-wide zoom/pan shared across pages |
 | `0.8.14` | 23 | 2026-11-17 | `v0.8.14` | Compact/zoomable continuous reader and visual selected-text replacement |

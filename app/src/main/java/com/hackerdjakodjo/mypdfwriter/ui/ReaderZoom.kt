@@ -55,6 +55,27 @@ fun zoomFromPinch(
     return clampReaderZoom(base * currentDistance / startDistance)
 }
 
+/** Rendering scale used when a continuous page fits the viewport width. */
+const val READER_BASE_RENDER_SCALE = 1.25f
+
+/** Upper bound so a 250% pinch does not allocate an oversized bitmap. */
+const val READER_MAX_RENDER_SCALE = 3.0f
+
+/**
+ * Quantized zoom used for bitmap re-rendering. Continuous pinch values are
+ * rounded to the nearest quarter step, so dragging does not re-render on every
+ * pointer frame but the actual page bitmap does grow with the zoom level.
+ */
+fun readerRenderZoom(zoom: Float): Float {
+    val clamped = clampReaderZoom(zoom)
+    return ((clamped * 4f).roundToInt() / 4f).coerceIn(READER_ZOOM_MIN, READER_ZOOM_MAX)
+}
+
+/** Actual PDF render scale for a given display zoom. */
+fun readerRenderScale(renderZoom: Float): Float =
+    (READER_BASE_RENDER_SCALE * clampReaderZoom(renderZoom))
+        .coerceAtMost(READER_MAX_RENDER_SCALE)
+
 /** Short percent label, e.g. `100%`, `125%` or `250%`. */
 fun readerZoomLabel(zoom: Float): String =
     "${(clampReaderZoom(zoom) * 100f).roundToInt()}%"

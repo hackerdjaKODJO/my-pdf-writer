@@ -69,7 +69,7 @@ only and is never written to disk or sent over the network.
 
 ## 0.8.8 E2E matrix
 
-Current JVM suite: 444 tests, 0 failures. The full case matrix, per-suite
+Current JVM suite: 446 tests, 0 failures. The full case matrix, per-suite
 status and on-device manual checklist are in
 [`e2e-test-cases.md`](e2e-test-cases.md). Current instrumented classes include:
 

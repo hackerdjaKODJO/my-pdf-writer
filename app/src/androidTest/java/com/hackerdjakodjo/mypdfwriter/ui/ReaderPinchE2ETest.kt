@@ -28,7 +28,7 @@ class ReaderPinchE2ETest {
                 title = "pinch-test",
                 pageCount = 3,
                 initialPage = 0,
-                loadPage = { Bitmap.createBitmap(80, 112, Bitmap.Config.ARGB_8888) },
+                loadPage = { _, _ -> Bitmap.createBitmap(80, 112, Bitmap.Config.ARGB_8888) },
                 onBack = {},
                 onOpenPage = {},
             )
