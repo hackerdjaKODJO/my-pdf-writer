@@ -10,7 +10,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,7 +25,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -38,21 +36,18 @@ import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.automirrored.outlined.StickyNote2
 import androidx.compose.material.icons.automirrored.outlined.TextSnippet
 import androidx.compose.material.icons.automirrored.outlined.Toc
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DisplaySettings
 import androidx.compose.material.icons.outlined.DragIndicator
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FitScreen
-import androidx.compose.material.icons.outlined.FormatStrikethrough
-import androidx.compose.material.icons.outlined.FormatUnderlined
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Handyman
-import androidx.compose.material.icons.outlined.Highlight
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
@@ -66,7 +61,6 @@ import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -96,7 +90,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -189,14 +182,14 @@ fun ViewerScreen(
     var showStyle by remember { mutableStateOf(false) }
     var showDisplaySettings by remember { mutableStateOf(false) }
     var showHub by remember { mutableStateOf(false) }
+    var showReadModes by remember { mutableStateOf(false) }
+    var showAudioMenu by remember { mutableStateOf(false) }
     var showToolMore by remember { mutableStateOf(false) }
     var showToolStyle by remember { mutableStateOf(false) }
-    var showSplitTools by remember { mutableStateOf(false) }
-    var showSplitSelectionMore by remember { mutableStateOf(false) }
+    var showSelectionMore by remember { mutableStateOf(false) }
     var showTextEditDialog by remember { mutableStateOf(false) }
     // Display-only: annotations stay stored and exported; this only hides the canvas layer.
     var annotationsHidden by remember(state.docId) { mutableStateOf(false) }
-    var lastShapeTool by remember { mutableStateOf(Tool.RECT) }
     var selectedPages by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var textTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
     var stampTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
@@ -265,11 +258,7 @@ fun ViewerScreen(
         }
     }
 
-    /** Remember the last shape so the primary "도형" slot stays a one-tap action. */
-    val selectTool: (Tool) -> Unit = { tool ->
-        if (isShapeTool(tool)) lastShapeTool = tool
-        vm.setTool(tool)
-    }
+    val selectTool: (Tool) -> Unit = { tool -> vm.setTool(tool) }
 
     LaunchedEffect(state.docId) {
         textSelectMode = false
@@ -315,8 +304,8 @@ fun ViewerScreen(
     val sheetOpen = showPages || showNotes || showBookmarks || showSearch || showAnnotations ||
         showOrganize || showExcerpts || showContinuous || showSpread || showPopup || showAudioNotes ||
         showAudioReplay || showStudyNote || showReflow || showReadAloud || showOutline || showProperties ||
-        showStyle || showDisplaySettings || showHub || showToolMore || showToolStyle ||
-        showSplitTools || showSplitSelectionMore || showTextEditDialog ||
+        showStyle || showDisplaySettings || showHub || showReadModes || showAudioMenu || showToolMore ||
+        showToolStyle || showSelectionMore || showTextEditDialog ||
         textTarget != null || stampTarget != null || signatureTarget != null
 
     BackHandler(enabled = !sheetOpen) {
@@ -442,112 +431,164 @@ fun ViewerScreen(
             showStudyNote = true
         }
     }
-    val studyNoteAction = PdfHubAction("스터디 노트", Icons.Outlined.EditNote) {
-        showHub = false
-        openNote()
+    fun hubAction(action: PdfMenuAction): PdfHubAction = when (action) {
+        PdfMenuAction.SEARCH -> PdfHubAction(action.label, Icons.Outlined.Search) {
+            showSearch = true
+        }
+
+        PdfMenuAction.OUTLINE -> PdfHubAction(action.label, Icons.AutoMirrored.Outlined.Toc) {
+            vm.loadOutline()
+            showOutline = true
+        }
+
+        PdfMenuAction.BOOKMARKS -> PdfHubAction(
+            action.label,
+            Icons.Outlined.StarBorder,
+            trailing = if (bookmarks.isEmpty()) null else "${bookmarks.size}개",
+        ) { showBookmarks = true }
+
+        PdfMenuAction.PAGE_NOTES -> PdfHubAction(
+            action.label,
+            Icons.AutoMirrored.Outlined.StickyNote2,
+            trailing = if (state.notes.isEmpty()) null else "${state.notes.size}개",
+        ) { showNotes = true }
+
+        PdfMenuAction.EXCERPTS -> PdfHubAction(
+            action.label,
+            Icons.AutoMirrored.Outlined.Notes,
+            trailing = if (excerpts.isEmpty()) null else "${excerpts.size}개",
+        ) { showExcerpts = true }
+
+        PdfMenuAction.TEXT_SELECT -> PdfHubAction(
+            action.label,
+            Icons.AutoMirrored.Outlined.TextSnippet,
+            trailing = if (textSelectMode) "켜짐" else null,
+            onClick = toggleTextSelection,
+        )
+
+        PdfMenuAction.STUDY_NOTE -> PdfHubAction(action.label, Icons.Outlined.EditNote) {
+            openNote()
+        }
+
+        PdfMenuAction.PAGE_MANAGE -> PdfHubAction(action.label, Icons.Outlined.GridView) {
+            selectedPages = emptySet()
+            showOrganize = true
+        }
+
+        PdfMenuAction.PAGE_EDIT -> PdfHubAction(action.label, Icons.Outlined.EditNote) {
+            showPages = true
+        }
+
+        PdfMenuAction.ANNOTATION_LIST -> PdfHubAction(
+            action.label,
+            Icons.AutoMirrored.Outlined.Comment,
+            trailing = if (state.annotations.isEmpty()) null else "${state.annotations.size}개",
+        ) { showAnnotations = true }
+
+        PdfMenuAction.TOGGLE_ANNOTATIONS -> PdfHubAction(
+            pdfMenuActionLabel(action, annotationsHidden = annotationsHidden),
+            if (annotationsHidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+            trailing = if (annotationsHidden) "숨김" else "표시 중",
+        ) { annotationsHidden = !annotationsHidden }
+
+        PdfMenuAction.DISPLAY_SETTINGS -> PdfHubAction(
+            action.label,
+            Icons.Outlined.DisplaySettings,
+            trailing = if (state.nightMode) "야간" else "주간",
+        ) { showDisplaySettings = true }
+
+        PdfMenuAction.READ_MODE -> PdfHubAction(action.label, Icons.Outlined.AutoStories) {
+            showReadModes = true
+        }
+
+        PdfMenuAction.AUDIO -> PdfHubAction(action.label, Icons.AutoMirrored.Outlined.VolumeUp) {
+            showAudioMenu = true
+        }
+
+        PdfMenuAction.EXPORT -> PdfHubAction(action.label, Icons.Outlined.FileDownload) {
+            onExportRequest(vm.exportSuggestedName())
+        }
+
+        PdfMenuAction.PRINT -> PdfHubAction(action.label, Icons.Outlined.Print) {
+            vm.printCurrent()
+        }
+
+        PdfMenuAction.SHARE -> PdfHubAction(action.label, Icons.Outlined.Share) {
+            vm.shareCurrent()
+        }
+
+        PdfMenuAction.PAGE_LOCK -> PdfHubAction(
+            pdfMenuActionLabel(action, pageLocked = state.pageLocked),
+            if (state.pageLocked) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
+            trailing = if (state.pageLocked) "켜짐" else null,
+        ) { vm.togglePageLock() }
+
+        PdfMenuAction.COPY_TEXT -> PdfHubAction(action.label, Icons.Outlined.ContentCopy) {
+            vm.copyPageText()
+        }
+
+        PdfMenuAction.FIT_SCREEN -> PdfHubAction(
+            action.label,
+            Icons.Outlined.FitScreen,
+            trailing = "${(state.zoom * 100).roundToInt()}%",
+        ) { vm.setZoom(1f) }
+
+        PdfMenuAction.DOCUMENT_INFO -> PdfHubAction(action.label, Icons.Outlined.Info) {
+            vm.loadMetadata()
+            showProperties = true
+        }
+
+        PdfMenuAction.DECORATE -> PdfHubAction(action.label, Icons.Outlined.Palette) {
+            showStyle = true
+        }
+
+        PdfMenuAction.PDF_TOOLS -> PdfHubAction(action.label, Icons.Outlined.Handyman) {
+            onOpenTools()
+        }
+
+        PdfMenuAction.HELP -> PdfHubAction(
+            action.label,
+            Icons.AutoMirrored.Outlined.HelpOutline,
+            enabled = onOpenHelp != null,
+        ) { onOpenHelp?.invoke() }
+
+        PdfMenuAction.READ_TEXT_MODE -> PdfHubAction(action.label, Icons.Outlined.AutoStories) {
+            showReflow = true
+        }
+
+        PdfMenuAction.READ_CONTINUOUS -> PdfHubAction(action.label, Icons.Outlined.ViewAgenda) {
+            showContinuous = true
+        }
+
+        PdfMenuAction.READ_SPREAD -> PdfHubAction(action.label, Icons.AutoMirrored.Outlined.MenuBook) {
+            showSpread = true
+        }
+
+        PdfMenuAction.READ_POPUP -> PdfHubAction(action.label, Icons.Outlined.PictureInPictureAlt) {
+            showPopup = true
+        }
+
+        PdfMenuAction.READ_ALOUD -> PdfHubAction(action.label, Icons.Outlined.RecordVoiceOver) {
+            showReadAloud = true
+        }
+
+        PdfMenuAction.AUDIO_NOTES -> PdfHubAction(action.label, Icons.Outlined.Mic) {
+            showAudioNotes = true
+        }
+
+        PdfMenuAction.AUDIO_REPLAY -> PdfHubAction(action.label, Icons.Outlined.PlayCircle) {
+            showAudioReplay = true
+        }
     }
-    val hubSections = listOf(
+    val hubSections = pdfMenuTopLevelGroups.map { group ->
         PdfHubSection(
-            title = "읽기",
-            actions = listOf(
-                PdfHubAction("검색", Icons.Outlined.Search, primary = true) { showSearch = true },
-                PdfHubAction("목차", Icons.AutoMirrored.Outlined.Toc, primary = true) {
-                    vm.loadOutline()
-                    showOutline = true
-                },
-                PdfHubAction(
-                    "북마크",
-                    Icons.Outlined.StarBorder,
-                    trailing = if (bookmarks.isEmpty()) null else "${bookmarks.size}개",
-                    primary = true,
-                ) { showBookmarks = true },
-                PdfHubAction(
-                    "텍스트 선택",
-                    Icons.AutoMirrored.Outlined.TextSnippet,
-                    trailing = if (textSelectMode) "켜짐" else null,
-                    onClick = toggleTextSelection,
-                ),
-                PdfHubAction("텍스트 모드 (Reflow)", Icons.Outlined.AutoStories) { showReflow = true },
-                PdfHubAction("연속 보기", Icons.Outlined.ViewAgenda) { showContinuous = true },
-                PdfHubAction("스프레드 보기", Icons.AutoMirrored.Outlined.MenuBook) { showSpread = true },
-                PdfHubAction("팝업 보기", Icons.Outlined.PictureInPictureAlt) { showPopup = true },
-                PdfHubAction("소리 내어 읽기", Icons.Outlined.RecordVoiceOver) { showReadAloud = true },
-                PdfHubAction(
-                    "화면 설정",
-                    Icons.Outlined.DisplaySettings,
-                    trailing = if (state.nightMode) "야간" else "주간",
-                    primary = true,
-                ) { showDisplaySettings = true },
-                PdfHubAction(
-                    if (state.pageLocked) "페이지 잠금 해제" else "페이지 잠금",
-                    if (state.pageLocked) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
-                    trailing = if (state.pageLocked) "켜짐" else null,
-                ) { vm.togglePageLock() },
-                PdfHubAction("텍스트 복사", Icons.Outlined.ContentCopy) { vm.copyPageText() },
-                PdfHubAction(
-                    "화면에 맞추기",
-                    Icons.Outlined.FitScreen,
-                    trailing = "${(state.zoom * 100).roundToInt()}%",
-                ) { vm.setZoom(1f) },
-            ),
-        ),
-        PdfHubSection(
-            title = "문서",
-            actions = listOfNotNull(
-                studyNoteAction,
-                PdfHubAction("페이지 관리", Icons.Outlined.GridView, primary = true) {
-                    selectedPages = emptySet()
-                    showOrganize = true
-                },
-                PdfHubAction("페이지 편집", Icons.Outlined.EditNote) { showPages = true },
-                PdfHubAction(
-                    "페이지 메모",
-                    Icons.AutoMirrored.Outlined.StickyNote2,
-                    trailing = if (state.notes.isEmpty()) null else "${state.notes.size}개",
-                ) { showNotes = true },
-                PdfHubAction(
-                    "주석 목록",
-                    Icons.AutoMirrored.Outlined.Comment,
-                    trailing = if (state.annotations.isEmpty()) null else "${state.annotations.size}개",
-                    primary = true,
-                ) { showAnnotations = true },
-                PdfHubAction(
-                    if (annotationsHidden) "주석 표시" else "주석 숨기기",
-                    if (annotationsHidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
-                    trailing = if (annotationsHidden) "숨김" else "표시 중",
-                ) { annotationsHidden = !annotationsHidden },
-                PdfHubAction(
-                    "발췌·번역",
-                    Icons.AutoMirrored.Outlined.Notes,
-                    trailing = if (excerpts.isEmpty()) null else "${excerpts.size}개",
-                ) { showExcerpts = true },
-                PdfHubAction("오디오 노트", Icons.Outlined.Mic) { showAudioNotes = true },
-                PdfHubAction("오디오 재생", Icons.Outlined.PlayCircle) { showAudioReplay = true },
-                PdfHubAction("문서 정보", Icons.Outlined.Info) {
-                    vm.loadMetadata()
-                    showProperties = true
-                },
-                PdfHubAction("문서 꾸미기", Icons.Outlined.Palette) { showStyle = true },
-                PdfHubAction("PDF 도구", Icons.Outlined.Handyman) { onOpenTools() },
-                onOpenHelp?.let {
-                    PdfHubAction("도움말", Icons.AutoMirrored.Outlined.HelpOutline) {
-                        showHub = false
-                        it()
-                    }
-                },
-            ),
-        ),
-        PdfHubSection(
-            title = "내보내기",
-            actions = listOf(
-                PdfHubAction("PDF 내보내기", Icons.Outlined.FileDownload, primary = true) {
-                    onExportRequest(vm.exportSuggestedName())
-                },
-                PdfHubAction("인쇄", Icons.Outlined.Print) { vm.printCurrent() },
-                PdfHubAction("공유", Icons.Outlined.Share) { vm.shareCurrent() },
-            ),
-        ),
-    )
+            title = group.title,
+            actions = pdfMenuActions(group).map { hubAction(it) },
+            expandable = group.expandable,
+        )
+    }
+    val readModeSheetActions = pdfReadModeActions.map { hubAction(it) }
+    val audioSheetActions = pdfAudioActions.map { hubAction(it) }
 
     // Split/focus chrome: with the study pane open no app bar or dock row may
     // consume height. All PDF controls become floating overlays over the strip.
@@ -607,6 +648,15 @@ fun ViewerScreen(
                         }
                     },
                     actions = {
+                        // One-tap search: the sheet is also reachable from the
+                        // grouped PDF menu, but search is common enough to keep
+                        // directly beside the document title.
+                        IconButton(onClick = { showSearch = true }) {
+                            Icon(
+                                Icons.Outlined.Search,
+                                contentDescription = "검색",
+                            )
+                        }
                         // Direct note entry, visible as soon as a PDF opens. The host
                         // resolves or creates the study notebook behind this callback.
                         TextButton(
@@ -615,7 +665,7 @@ fun ViewerScreen(
                         ) {
                             Icon(
                                 Icons.Outlined.EditNote,
-                                contentDescription = "스터디 노트",
+                                contentDescription = "노트 열기",
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.width(4.dp))
@@ -671,14 +721,7 @@ fun ViewerScreen(
                                 hasWords = pageTextWords.isNotEmpty(),
                                 wordCount = pageTextWords.size,
                                 onCopy = { copySelection(context, selectedText) },
-                                onTranslate = { TextActions.translate(context, selectedText) },
-                                onDictionary = { TextActions.define(context, selectedText) },
                                 onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
-                                onAddToPane = if (studyPane != null) {
-                                    { appendStudyExcerpt(selectedText, state.pageIndex) }
-                                } else {
-                                    null
-                                },
                                 onHighlight = {
                                     vm.addTextMarkup(
                                         selectedWords,
@@ -695,7 +738,7 @@ fun ViewerScreen(
                                     vm.addTextMarkup(selectedWords, AnnotationType.STRIKEOUT, state.color)
                                     selectedWords = emptyList()
                                 },
-                                onEditText = { showTextEditDialog = true },
+                                onMore = { showSelectionMore = true },
                                 onDismiss = {
                                     if (selectedWords.isNotEmpty()) {
                                         selectedWords = emptyList()
@@ -708,7 +751,6 @@ fun ViewerScreen(
                         } else {
                             ViewerToolDock(
                                 state = state,
-                                shapeTool = lastShapeTool,
                                 onSelectTool = selectTool,
                                 onTextSelect = toggleTextSelection,
                                 onMore = { showToolMore = true },
@@ -898,7 +940,7 @@ fun ViewerScreen(
                                         vm.addCurrentPageBookmark("${state.pageIndex + 1}쪽")
                                     }
                                 },
-                                onOpenTools = { showSplitTools = true },
+                                onOpenTools = { showToolMore = true },
                                 onOpenHub = { showHub = true },
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
@@ -914,7 +956,7 @@ fun ViewerScreen(
                                 hasWords = pageTextWords.isNotEmpty(),
                                 wordCount = pageTextWords.size,
                                 onCopy = { copySelection(context, selectedText) },
-                                onDictionary = { TextActions.define(context, selectedText) },
+                                onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
                                 onHighlight = {
                                     vm.addTextMarkup(
                                         selectedWords,
@@ -931,8 +973,7 @@ fun ViewerScreen(
                                     vm.addTextMarkup(selectedWords, AnnotationType.STRIKEOUT, state.color)
                                     selectedWords = emptyList()
                                 },
-                                onEditText = { showTextEditDialog = true },
-                                onMore = { showSplitSelectionMore = true },
+                                onMore = { showSelectionMore = true },
                                 onDismiss = {
                                     if (selectedWords.isNotEmpty()) {
                                         selectedWords = emptyList()
@@ -1183,6 +1224,22 @@ fun ViewerScreen(
             onDismiss = { showHub = false },
         )
     }
+    if (showReadModes) {
+        PdfHubSubSheet(
+            title = "읽기 모드",
+            subtitle = "텍스트·연속·스프레드·팝업 보기와 소리 내어 읽기",
+            actions = readModeSheetActions,
+            onDismiss = { showReadModes = false },
+        )
+    }
+    if (showAudioMenu) {
+        PdfHubSubSheet(
+            title = "오디오",
+            subtitle = "현재 PDF 페이지에 연결된 오디오 노트",
+            actions = audioSheetActions,
+            onDismiss = { showAudioMenu = false },
+        )
+    }
     if (showToolMore) {
         ViewerToolMoreSheet(
             currentTool = state.tool,
@@ -1213,37 +1270,16 @@ fun ViewerScreen(
             onDismiss = { showToolStyle = false },
         )
     }
-    if (showSplitTools) {
-        SplitPdfToolsSheet(
-            currentTool = state.tool,
-            textSelectMode = textSelectMode,
-            canUndo = state.canUndo,
-            canRedo = state.canRedo,
-            onSelectTool = selectTool,
-            onTextSelect = {
-                showSplitTools = false
-                toggleTextSelection()
-            },
-            onUndo = vm::undo,
-            onRedo = vm::redo,
-            onStyle = {
-                showSplitTools = false
-                showToolStyle = true
-            },
-            onDismiss = { showSplitTools = false },
-        )
-    }
-    if (showSplitSelectionMore) {
-        SplitSelectionMoreSheet(
+    if (showSelectionMore) {
+        TextSelectionMoreSheet(
             selectedText = selectedText,
             pageIndex = state.pageIndex,
             hasSelection = selectedWords.isNotEmpty(),
             canAddToPane = studyPane != null,
             onTranslate = { TextActions.translate(context, selectedText) },
             onDictionary = { TextActions.define(context, selectedText) },
-            onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
             onEditText = { showTextEditDialog = true },
-            onCopy = { copySelection(context, selectedText) },
+            onShare = { TextActions.shareText(context, selectedText) },
             onAddToPane = if (studyPane != null) {
                 { appendStudyExcerpt(selectedText, state.pageIndex) }
             } else {
@@ -1257,7 +1293,7 @@ fun ViewerScreen(
                     selectedWords = emptyList()
                 }
             },
-            onDismiss = { showSplitSelectionMore = false },
+            onDismiss = { showSelectionMore = false },
         )
     }
 
@@ -1321,14 +1357,11 @@ private fun TextSelectionActionBar(
     hasWords: Boolean,
     wordCount: Int,
     onCopy: () -> Unit,
-    onTranslate: () -> Unit,
-    onDictionary: () -> Unit,
     onExcerpt: () -> Unit,
-    onAddToPane: (() -> Unit)?,
     onHighlight: () -> Unit,
     onUnderline: () -> Unit,
     onStrikeout: () -> Unit,
-    onEditText: () -> Unit,
+    onMore: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val empty = !loading && !hasWords
@@ -1445,22 +1478,25 @@ private fun TextSelectionActionBar(
             }
         }
         Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SelectionAction("복사", Icons.Outlined.ContentCopy, hasSelection, onCopy)
-            SelectionAction("Google 번역", Icons.Outlined.Translate, hasSelection, onTranslate)
-            SelectionAction("사전", Icons.AutoMirrored.Outlined.MenuBook, hasSelection, onDictionary)
-            SelectionAction("발췌", Icons.AutoMirrored.Outlined.Notes, hasSelection, onExcerpt)
-            if (onAddToPane != null) {
-                SelectionAction("패널에 추가", Icons.Outlined.EditNote, hasSelection, onAddToPane)
+            TextSelectionPrimaryAction.entries.forEach { action ->
+                SelectionAction(
+                    action = action,
+                    enabled = action == TextSelectionPrimaryAction.MORE || hasSelection,
+                    onClick = when (action) {
+                        TextSelectionPrimaryAction.HIGHLIGHT -> onHighlight
+                        TextSelectionPrimaryAction.UNDERLINE -> onUnderline
+                        TextSelectionPrimaryAction.STRIKEOUT -> onStrikeout
+                        TextSelectionPrimaryAction.COPY -> onCopy
+                        TextSelectionPrimaryAction.EXCERPT -> onExcerpt
+                        TextSelectionPrimaryAction.MORE -> onMore
+                    },
+                    modifier = Modifier.weight(1f),
+                )
             }
-            SelectionAction("형광펜", Icons.Outlined.Highlight, hasSelection, onHighlight)
-            SelectionAction("밑줄", Icons.Outlined.FormatUnderlined, hasSelection, onUnderline)
-            SelectionAction("취소선", Icons.Outlined.FormatStrikethrough, hasSelection, onStrikeout)
-            SelectionAction("텍스트 수정", Icons.Outlined.Edit, hasSelection, onEditText)
-            SelectionAction("선택 해제", Icons.Outlined.Close, hasSelection, onDismiss)
         }
         Spacer(Modifier.height(4.dp))
     }
@@ -1468,25 +1504,37 @@ private fun TextSelectionActionBar(
 
 @Composable
 private fun SelectionAction(
-    label: String,
-    icon: ImageVector,
+    action: TextSelectionPrimaryAction,
     enabled: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(50),
+        shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 2.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            Icon(
+                textSelectionPrimaryIcon(action),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                action.label,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

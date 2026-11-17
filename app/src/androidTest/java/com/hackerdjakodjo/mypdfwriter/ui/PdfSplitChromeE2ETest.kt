@@ -56,7 +56,7 @@ class PdfSplitChromeE2ETest {
         composeRule.onNodeWithContentDescription("페이지 선택").performClick()
         composeRule.onNodeWithContentDescription("텍스트 선택").performClick()
         composeRule.onNodeWithContentDescription("현재 페이지 북마크").performClick()
-        composeRule.onNodeWithContentDescription("PDF 도구").performClick()
+        composeRule.onNodeWithContentDescription("주석").performClick()
         composeRule.onNodeWithContentDescription("PDF 메뉴").performClick()
 
         assertEquals(1, previous)
@@ -69,13 +69,12 @@ class PdfSplitChromeE2ETest {
     }
 
     @Test
-    fun selectionBarKeepsMarkupCopyAndMoreReachable() {
+    fun selectionBarKeepsMarkupCopyExcerptAndMoreReachable() {
         var highlight = 0
         var underline = 0
         var strikeout = 0
         var copy = 0
-        var dictionary = 0
-        var editText = 0
+        var excerpt = 0
         var more = 0
         var dismiss = 0
 
@@ -89,8 +88,7 @@ class PdfSplitChromeE2ETest {
                     hasWords = true,
                     wordCount = 12,
                     onCopy = { copy += 1 },
-                    onDictionary = { dictionary += 1 },
-                    onEditText = { editText += 1 },
+                    onExcerpt = { excerpt += 1 },
                     onHighlight = { highlight += 1 },
                     onUnderline = { underline += 1 },
                     onStrikeout = { strikeout += 1 },
@@ -105,8 +103,7 @@ class PdfSplitChromeE2ETest {
         composeRule.onNodeWithContentDescription("밑줄 표시").performClick()
         composeRule.onNodeWithContentDescription("취소선 표시").performClick()
         composeRule.onNodeWithContentDescription("선택한 텍스트 복사").performClick()
-        composeRule.onNodeWithContentDescription("사전에서 찾기").performClick()
-        composeRule.onNodeWithContentDescription("선택한 텍스트 수정").performClick()
+        composeRule.onNodeWithContentDescription("발췌로 저장").performClick()
         composeRule.onNodeWithContentDescription("선택 도구 더보기").performClick()
         composeRule.onNodeWithContentDescription("선택 해제").performClick()
 
@@ -114,8 +111,7 @@ class PdfSplitChromeE2ETest {
         assertEquals(1, underline)
         assertEquals(1, strikeout)
         assertEquals(1, copy)
-        assertEquals(1, dictionary)
-        assertEquals(1, editText)
+        assertEquals(1, excerpt)
         assertEquals(1, more)
         assertEquals(1, dismiss)
     }
@@ -132,6 +128,7 @@ class PdfSplitChromeE2ETest {
                     hasWords = false,
                     wordCount = 0,
                     onCopy = {},
+                    onExcerpt = {},
                     onHighlight = {},
                     onUnderline = {},
                     onStrikeout = {},
@@ -143,8 +140,9 @@ class PdfSplitChromeE2ETest {
 
         composeRule.onNodeWithText("없음").assertExists()
         composeRule.onNodeWithContentDescription("형광펜 표시").assertIsNotEnabled()
-        composeRule.onNodeWithContentDescription("사전에서 찾기").assertIsNotEnabled()
-        composeRule.onNodeWithContentDescription("선택한 텍스트 수정").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("선택한 텍스트 복사").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("발췌로 저장").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("선택 도구 더보기").assertExists()
         composeRule.onNodeWithContentDescription("텍스트 선택 종료").assertExists()
     }
 }

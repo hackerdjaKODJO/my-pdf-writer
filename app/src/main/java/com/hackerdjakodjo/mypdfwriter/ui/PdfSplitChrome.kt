@@ -16,44 +16,29 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.Notes
-import androidx.compose.material.icons.automirrored.outlined.Redo
 import androidx.compose.material.icons.automirrored.outlined.TextSnippet
-import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.Approval
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.CropSquare
-import androidx.compose.material.icons.outlined.DeleteSweep
-import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FormatStrikethrough
 import androidx.compose.material.icons.outlined.FormatUnderlined
 import androidx.compose.material.icons.outlined.Handyman
 import androidx.compose.material.icons.outlined.Highlight
-import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreHoriz
-import androidx.compose.material.icons.outlined.NorthEast
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Translate
-import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -71,7 +56,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.hackerdjakodjo.mypdfwriter.data.Tool
 
 /**
  * Split/focus chrome policy for the PDF viewer. Kept pure so the "which bars
@@ -134,6 +118,31 @@ internal fun splitSelectionToggleState(
     else -> SplitSelectionToggleState.ACTIVE
 }
 
+/**
+ * Markup-first primary actions shared by the full-screen selection bar and the
+ * floating split bar. Everything else moves into the selection "더보기" sheet.
+ */
+internal enum class TextSelectionPrimaryAction(
+    val label: String,
+    val contentDescription: String,
+) {
+    HIGHLIGHT("형광펜", "형광펜 표시"),
+    UNDERLINE("밑줄", "밑줄 표시"),
+    STRIKEOUT("취소선", "취소선 표시"),
+    COPY("복사", "선택한 텍스트 복사"),
+    EXCERPT("발췌", "발췌로 저장"),
+    MORE("더보기", "선택 도구 더보기"),
+}
+
+internal fun textSelectionPrimaryIcon(action: TextSelectionPrimaryAction): ImageVector = when (action) {
+    TextSelectionPrimaryAction.HIGHLIGHT -> Icons.Outlined.Highlight
+    TextSelectionPrimaryAction.UNDERLINE -> Icons.Outlined.FormatUnderlined
+    TextSelectionPrimaryAction.STRIKEOUT -> Icons.Outlined.FormatStrikethrough
+    TextSelectionPrimaryAction.COPY -> Icons.Outlined.ContentCopy
+    TextSelectionPrimaryAction.EXCERPT -> Icons.AutoMirrored.Outlined.Notes
+    TextSelectionPrimaryAction.MORE -> Icons.Outlined.MoreHoriz
+}
+
 /** All floating split-chrome targets stay in the 36-40 dp range. */
 internal const val SPLIT_CHROME_TARGET_DP = 36
 
@@ -166,8 +175,8 @@ internal fun SplitPdfBackButton(
 
 /**
  * Floating compact toolbar over the PDF strip: page pill, text-selection
- * toggle, current-page bookmark, PDF tool picker and hub. It never reserves
- * layout height; the note pane keeps the rest of the screen.
+ * toggle, current-page bookmark, annotation-tool sheet and PDF menu. It never
+ * reserves layout height; the note pane keeps the rest of the screen.
  */
 @Composable
 internal fun SplitPdfToolbar(
@@ -274,7 +283,7 @@ internal fun SplitPdfToolbar(
 
             SplitChromeButton(
                 icon = Icons.Outlined.Handyman,
-                contentDescription = "PDF 도구",
+                contentDescription = "주석",
                 onClick = onOpenTools,
             )
 
@@ -290,8 +299,8 @@ internal fun SplitPdfToolbar(
 /**
  * Floating text-selection bar for split mode. It replaces the bottom dock and
  * overlays the PDF strip instead of adding a permanent row below the page.
- * Highlight/underline/strikeout/text edit/copy/dictionary stay one tap away; more
- * opens the secondary actions (translate, dictionary, excerpt, add to pane, clear).
+ * The same markup-first order as the full-screen bar stays visible; translate,
+ * dictionary, pane capture, text edit, share and clear live in the more sheet.
  */
 @Composable
 internal fun SplitSelectionActionBar(
@@ -302,8 +311,7 @@ internal fun SplitSelectionActionBar(
     hasWords: Boolean,
     wordCount: Int,
     onCopy: () -> Unit,
-    onDictionary: () -> Unit = {},
-    onEditText: () -> Unit = {},
+    onExcerpt: () -> Unit,
     onHighlight: () -> Unit,
     onUnderline: () -> Unit,
     onStrikeout: () -> Unit,
@@ -380,47 +388,21 @@ internal fun SplitSelectionActionBar(
                 }
             }
 
-            SplitChromeButton(
-                icon = Icons.Outlined.Highlight,
-                contentDescription = "형광펜 표시",
-                onClick = onHighlight,
-                enabled = hasSelection,
-            )
-            SplitChromeButton(
-                icon = Icons.Outlined.FormatUnderlined,
-                contentDescription = "밑줄 표시",
-                onClick = onUnderline,
-                enabled = hasSelection,
-            )
-            SplitChromeButton(
-                icon = Icons.Outlined.FormatStrikethrough,
-                contentDescription = "취소선 표시",
-                onClick = onStrikeout,
-                enabled = hasSelection,
-            )
-            SplitChromeButton(
-                icon = Icons.Outlined.Edit,
-                contentDescription = "선택한 텍스트 수정",
-                onClick = onEditText,
-                enabled = hasSelection,
-            )
-            SplitChromeButton(
-                icon = Icons.Outlined.ContentCopy,
-                contentDescription = "선택한 텍스트 복사",
-                onClick = onCopy,
-                enabled = hasSelection,
-            )
-            SplitChromeButton(
-                icon = Icons.AutoMirrored.Outlined.MenuBook,
-                contentDescription = "사전에서 찾기",
-                onClick = onDictionary,
-                enabled = hasSelection,
-            )
-            SplitChromeButton(
-                icon = Icons.Outlined.MoreHoriz,
-                contentDescription = "선택 도구 더보기",
-                onClick = onMore,
-            )
+            TextSelectionPrimaryAction.entries.forEach { action ->
+                SplitChromeButton(
+                    icon = textSelectionPrimaryIcon(action),
+                    contentDescription = action.contentDescription,
+                    onClick = when (action) {
+                        TextSelectionPrimaryAction.HIGHLIGHT -> onHighlight
+                        TextSelectionPrimaryAction.UNDERLINE -> onUnderline
+                        TextSelectionPrimaryAction.STRIKEOUT -> onStrikeout
+                        TextSelectionPrimaryAction.COPY -> onCopy
+                        TextSelectionPrimaryAction.EXCERPT -> onExcerpt
+                        TextSelectionPrimaryAction.MORE -> onMore
+                    },
+                    enabled = action == TextSelectionPrimaryAction.MORE || hasSelection,
+                )
+            }
             SplitChromeButton(
                 icon = Icons.Outlined.Close,
                 contentDescription = if (hasSelection) "선택 해제" else "텍스트 선택 종료",
@@ -481,219 +463,22 @@ private fun SplitChromeButton(
     }
 }
 
-/** Tool tile used by the split-mode tool picker. */
-private data class SplitToolEntry(
-    val tool: Tool,
-    val label: String,
-    val icon: ImageVector,
-)
-
-private val splitToolEntries = listOf(
-    SplitToolEntry(Tool.VIEW, "보기", Icons.Outlined.Visibility),
-    SplitToolEntry(Tool.PEN, "펜", Icons.Outlined.Edit),
-    SplitToolEntry(Tool.HIGHLIGHT, "형광펜", Icons.Outlined.Highlight),
-    SplitToolEntry(Tool.ERASER, "지우개", Icons.Outlined.DeleteSweep),
-    SplitToolEntry(Tool.TEXT, "글상자", Icons.Outlined.TextFields),
-    SplitToolEntry(Tool.RECT, "사각형", Icons.Outlined.CropSquare),
-    SplitToolEntry(Tool.ARROW, "화살표", Icons.Outlined.NorthEast),
-    SplitToolEntry(Tool.LINE, "직선", Icons.Outlined.HorizontalRule),
-    SplitToolEntry(Tool.ELLIPSE, "타원", Icons.Outlined.Circle),
-    SplitToolEntry(Tool.UNDERLINE, "밑줄", Icons.Outlined.FormatUnderlined),
-    SplitToolEntry(Tool.STRIKEOUT, "취소선", Icons.Outlined.FormatStrikethrough),
-    SplitToolEntry(Tool.STAMP, "스탬프", Icons.Outlined.Approval),
-    SplitToolEntry(Tool.SIGNATURE, "서명", Icons.Outlined.Draw),
-    SplitToolEntry(Tool.REDACT, "가림", Icons.Outlined.VisibilityOff),
-)
-
 /**
- * Split-mode replacement for the full PDF tool dock. The dock row is removed
- * with the bottom bar, so this sheet keeps every annotation tool reachable
- * without spending permanent vertical space.
+ * Secondary text actions for both selection bars. The primary bar keeps the
+ * markup-first six; translate, dictionary, pane capture, text edit, share and
+ * clear stay one tap behind this sheet.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun SplitPdfToolsSheet(
-    currentTool: Tool,
-    textSelectMode: Boolean,
-    canUndo: Boolean,
-    canRedo: Boolean,
-    onSelectTool: (Tool) -> Unit,
-    onTextSelect: () -> Unit,
-    onUndo: () -> Unit,
-    onRedo: () -> Unit,
-    onStyle: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
-        ) {
-            Text("PDF 도구", style = MaterialTheme.typography.titleLarge)
-            Text(
-                "노트 패널을 유지한 채 PDF에 주석을 추가합니다.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                AssistChip(
-                    onClick = onUndo,
-                    enabled = canUndo,
-                    label = { Text("실행 취소") },
-                    leadingIcon = {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.Undo,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    },
-                )
-                AssistChip(
-                    onClick = onRedo,
-                    enabled = canRedo,
-                    label = { Text("다시 실행") },
-                    leadingIcon = {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.Redo,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    },
-                )
-                if (isStyleTool(currentTool)) {
-                    AssistChip(
-                        onClick = onStyle,
-                        label = { Text("스타일") },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Outlined.Tune,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        },
-                    )
-                }
-                AssistChip(
-                    onClick = onTextSelect,
-                    label = { Text(if (textSelectMode) "텍스트 선택 끄기" else "텍스트 선택") },
-                    leadingIcon = {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.TextSnippet,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    },
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "도구",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Spacer(Modifier.width(10.dp))
-                HorizontalDivider(
-                    modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            splitToolEntries.chunked(2).forEach { row ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    row.forEach { entry ->
-                        SplitToolTile(
-                            entry = entry,
-                            selected = currentTool == entry.tool,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                onDismiss()
-                                onSelectTool(entry.tool)
-                            },
-                        )
-                    }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(6.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun SplitToolTile(
-    entry: SplitToolEntry,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-        },
-        modifier = modifier,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                entry.icon,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = if (selected) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-            )
-            Text(
-                entry.label,
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-/**
- * Secondary text actions for the split selection bar. The primary bar keeps
- * highlight/underline/strikeout/text edit/copy/dictionary; translate, dictionary,
- * excerpt, pane capture and clear stay one tap behind this sheet.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun SplitSelectionMoreSheet(
+internal fun TextSelectionMoreSheet(
     selectedText: String,
     pageIndex: Int,
     hasSelection: Boolean,
     canAddToPane: Boolean,
     onTranslate: () -> Unit,
     onDictionary: () -> Unit,
-    onExcerpt: () -> Unit,
     onEditText: () -> Unit,
-    onCopy: () -> Unit,
+    onShare: () -> Unit,
     onAddToPane: (() -> Unit)?,
     onDismissSelection: () -> Unit,
     onDismiss: () -> Unit,
@@ -756,33 +541,6 @@ internal fun SplitSelectionMoreSheet(
                     onDictionary()
                 },
             )
-            SplitSheetAction(
-                label = "발췌로 저장",
-                icon = Icons.AutoMirrored.Outlined.Notes,
-                enabled = hasSelection,
-                onClick = {
-                    onDismiss()
-                    onExcerpt()
-                },
-            )
-            SplitSheetAction(
-                label = "텍스트 수정 (화면 덮어쓰기)",
-                icon = Icons.Outlined.Edit,
-                enabled = hasSelection,
-                onClick = {
-                    onDismiss()
-                    onEditText()
-                },
-            )
-            SplitSheetAction(
-                label = "클립보드에 복사",
-                icon = Icons.Outlined.ContentCopy,
-                enabled = hasSelection,
-                onClick = {
-                    onDismiss()
-                    onCopy()
-                },
-            )
             if (canAddToPane && onAddToPane != null) {
                 SplitSheetAction(
                     label = "노트 패널에 추가",
@@ -793,6 +551,26 @@ internal fun SplitSelectionMoreSheet(
                         onAddToPane()
                     },
                 )
+            }
+            SplitSheetAction(
+                label = "텍스트 수정 (화면 덮어쓰기)",
+                icon = Icons.Outlined.Edit,
+                enabled = hasSelection,
+                onClick = {
+                    onDismiss()
+                    onEditText()
+                },
+            )
+            SplitSheetAction(
+                label = "공유",
+                icon = Icons.Outlined.Share,
+                enabled = hasSelection,
+                onClick = {
+                    onDismiss()
+                    onShare()
+                },
+            )
+            if (canAddToPane) {
                 Text(
                     "선택 바를 길게 눌러 PDF p.${pageIndex + 1} 텍스트를 패널로 끌 수도 있습니다.",
                     style = MaterialTheme.typography.labelSmall,

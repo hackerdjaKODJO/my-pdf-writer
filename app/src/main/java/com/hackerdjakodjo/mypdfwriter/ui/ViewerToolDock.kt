@@ -59,6 +59,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -81,47 +83,69 @@ val annotationPalette = listOf(
 /** Tools that are drawn by dragging a two-point shape. */
 val viewerShapeTools = setOf(Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE)
 
+internal fun isShapeTool(tool: Tool): Boolean = tool in viewerShapeTools
+
 /** Tools whose colour/size/opacity can be adjusted. */
 internal fun isStyleTool(tool: Tool): Boolean =
     tool != Tool.VIEW && tool != Tool.ERASER && tool != Tool.REDACT
 
-/** Tools that live behind the compact "더보기" dock entry. */
-internal fun isExtraTool(tool: Tool): Boolean =
-    tool == Tool.STAMP || tool == Tool.SIGNATURE || tool == Tool.REDACT ||
-        tool == Tool.UNDERLINE || tool == Tool.STRIKEOUT
+/** Tools that live behind the single "주석" dock entry. */
+internal val dockAnnotationTools: Set<Tool> = viewerShapeTools + setOf(
+    Tool.TEXT,
+    Tool.UNDERLINE,
+    Tool.STRIKEOUT,
+    Tool.STAMP,
+    Tool.SIGNATURE,
+    Tool.REDACT,
+)
 
-internal fun isShapeTool(tool: Tool): Boolean = tool in viewerShapeTools
+internal fun isDockAnnotationTool(tool: Tool): Boolean = tool in dockAnnotationTools
 
 /**
- * The dock slot must name the tool that is actually active. Otherwise choosing
- * 밑줄/스탬프/가림 only highlights the generic "더보기" slot and the user has
- * to remember what is armed.
+ * The annotation slot must name the tool that is actually active. Otherwise
+ * choosing 글상자/도형/밑줄 only highlights a generic entry and the user has to
+ * remember what is armed.
  */
-internal fun dockMoreLabel(tool: Tool): String = when (tool) {
-    Tool.STAMP -> "스탬프"
-    Tool.SIGNATURE -> "서명"
-    Tool.REDACT -> "가림"
-    Tool.UNDERLINE -> "밑줄"
-    Tool.STRIKEOUT -> "취소선"
-    else -> "더보기"
-}
-
-/** The shape slot keeps the chosen shape visible instead of always saying 도형. */
-internal fun dockShapeLabel(tool: Tool): String = when (tool) {
+internal fun dockAnnotationLabel(tool: Tool): String = when (tool) {
+    Tool.TEXT -> "글상자"
     Tool.RECT -> "사각형"
     Tool.ARROW -> "화살표"
     Tool.LINE -> "직선"
     Tool.ELLIPSE -> "타원"
-    else -> "도형"
+    Tool.UNDERLINE -> "밑줄"
+    Tool.STRIKEOUT -> "취소선"
+    Tool.STAMP -> "스탬프"
+    Tool.SIGNATURE -> "서명"
+    Tool.REDACT -> "가림"
+    else -> "주석"
 }
 
-/** Keeps the dock icon aligned with the active shape label. */
-internal fun dockShapeIcon(tool: Tool): ImageVector = when (tool) {
+/** Keeps the annotation slot icon aligned with the active extra tool. */
+internal fun dockAnnotationIcon(tool: Tool): ImageVector = when (tool) {
+    Tool.TEXT -> Icons.Outlined.TextFields
     Tool.ARROW -> Icons.Outlined.NorthEast
     Tool.LINE -> Icons.Outlined.HorizontalRule
     Tool.ELLIPSE -> Icons.Outlined.Circle
-    else -> Icons.Outlined.CropSquare
+    Tool.UNDERLINE -> Icons.Outlined.FormatUnderlined
+    Tool.STRIKEOUT -> Icons.Outlined.FormatStrikethrough
+    Tool.STAMP -> Icons.Outlined.Approval
+    Tool.SIGNATURE -> Icons.Outlined.Draw
+    Tool.REDACT -> Icons.Outlined.VisibilityOff
+    Tool.RECT -> Icons.Outlined.CropSquare
+    else -> Icons.Outlined.MoreHoriz
 }
+
+/** Exactly six primary dock slots; everything else is one tap into 주석 도구. */
+internal enum class ViewerDockSlot {
+    VIEW,
+    PEN,
+    HIGHLIGHT,
+    ERASER,
+    TEXT_SELECT,
+    ANNOTATION,
+}
+
+internal val viewerDockSlots: List<ViewerDockSlot> = ViewerDockSlot.entries.toList()
 
 private data class DockEntry(
     val label: String,
@@ -131,13 +155,13 @@ private data class DockEntry(
 )
 
 /**
- * Thumb-reach toolbar for the viewer. Primary tools stay visible; the style
+ * Thumb-reach toolbar for the viewer. Six primary slots stay visible; 글상자,
+ * shapes and the other annotation tools live in one 주석 도구 sheet. Style
  * controls only appear for tools that actually use them.
  */
 @Composable
 fun ViewerToolDock(
     state: ViewerUiState,
-    shapeTool: Tool,
     onSelectTool: (Tool) -> Unit,
     onTextSelect: () -> Unit,
     onMore: () -> Unit,
@@ -147,30 +171,53 @@ fun ViewerToolDock(
     textSelectMode: Boolean = false,
     compact: Boolean = false,
 ) {
-    val entries = listOf(
-        DockEntry(stringResource(R.string.tool_view), Icons.Outlined.Visibility, state.tool == Tool.VIEW) {
-            onSelectTool(Tool.VIEW)
-        },
-        DockEntry(stringResource(R.string.tool_pen), Icons.Outlined.Edit, state.tool == Tool.PEN) {
-            onSelectTool(Tool.PEN)
-        },
-        DockEntry(stringResource(R.string.tool_highlight), Icons.Outlined.Highlight, state.tool == Tool.HIGHLIGHT) {
-            onSelectTool(Tool.HIGHLIGHT)
-        },
-        DockEntry(stringResource(R.string.tool_eraser), Icons.Outlined.DeleteSweep, state.tool == Tool.ERASER) {
-            onSelectTool(Tool.ERASER)
-        },
-        DockEntry("글상자", Icons.Outlined.TextFields, state.tool == Tool.TEXT) {
-            onSelectTool(Tool.TEXT)
-        },
-        DockEntry(dockShapeLabel(shapeTool), dockShapeIcon(shapeTool), isShapeTool(state.tool)) {
-            onSelectTool(shapeTool)
-        },
-        // Direct text selection entry: this used to be labelled "올가미",
-        // which hid the most useful PDF action behind a note-editor term.
-        DockEntry("텍스트 선택", Icons.AutoMirrored.Outlined.TextSnippet, textSelectMode, onTextSelect),
-        DockEntry(dockMoreLabel(state.tool), Icons.Outlined.MoreHoriz, isExtraTool(state.tool), onMore),
-    )
+    val viewLabel = stringResource(R.string.tool_view)
+    val penLabel = stringResource(R.string.tool_pen)
+    val highlightLabel = stringResource(R.string.tool_highlight)
+    val eraserLabel = stringResource(R.string.tool_eraser)
+    val entries = viewerDockSlots.map { slot ->
+        when (slot) {
+            ViewerDockSlot.VIEW -> DockEntry(
+                viewLabel,
+                Icons.Outlined.Visibility,
+                state.tool == Tool.VIEW && !textSelectMode,
+            ) { onSelectTool(Tool.VIEW) }
+
+            ViewerDockSlot.PEN -> DockEntry(
+                penLabel,
+                Icons.Outlined.Edit,
+                state.tool == Tool.PEN,
+            ) { onSelectTool(Tool.PEN) }
+
+            ViewerDockSlot.HIGHLIGHT -> DockEntry(
+                highlightLabel,
+                Icons.Outlined.Highlight,
+                state.tool == Tool.HIGHLIGHT,
+            ) { onSelectTool(Tool.HIGHLIGHT) }
+
+            ViewerDockSlot.ERASER -> DockEntry(
+                eraserLabel,
+                Icons.Outlined.DeleteSweep,
+                state.tool == Tool.ERASER,
+            ) { onSelectTool(Tool.ERASER) }
+
+            // Direct text selection entry: this used to be labelled "올가미",
+            // which hid the most useful PDF action behind a note-editor term.
+            ViewerDockSlot.TEXT_SELECT -> DockEntry(
+                "텍스트 선택",
+                Icons.AutoMirrored.Outlined.TextSnippet,
+                textSelectMode,
+                onTextSelect,
+            )
+
+            ViewerDockSlot.ANNOTATION -> DockEntry(
+                dockAnnotationLabel(state.tool),
+                dockAnnotationIcon(state.tool),
+                isDockAnnotationTool(state.tool),
+                onMore,
+            )
+        }
+    }
 
     Column(Modifier.fillMaxWidth()) {
         Row(
@@ -189,7 +236,8 @@ fun ViewerToolDock(
         }
 
         // The focused study pane uses a single dense row. Undo/redo and style
-        // stay one tap away in "더보기" instead of spending another 48 dp row.
+        // stay one tap away in the 주석 도구 sheet instead of spending another
+        // 48 dp row.
         if (!compact) {
             Row(
                 modifier = Modifier
@@ -227,6 +275,7 @@ private fun DockItem(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
+            .semantics { contentDescription = entry.label }
             .clickable(onClick = entry.onClick)
             .padding(vertical = if (compact) 2.dp else 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -359,11 +408,15 @@ private data class ToolOption(
     val hint: String? = null,
 )
 
-private val extraToolOptions = listOf(
+private val textAndShapeToolOptions = listOf(
+    ToolOption(Tool.TEXT, Icons.Outlined.TextFields, "글상자", "페이지를 눌러 입력"),
     ToolOption(Tool.RECT, Icons.Outlined.CropSquare, "사각형", "끌어서 사각형"),
     ToolOption(Tool.ARROW, Icons.Outlined.NorthEast, "화살표", "끌어서 화살표"),
     ToolOption(Tool.LINE, Icons.Outlined.HorizontalRule, "직선", "끌어서 직선"),
     ToolOption(Tool.ELLIPSE, Icons.Outlined.Circle, "타원", "끌어서 타원"),
+)
+
+private val markupAndStampToolOptions = listOf(
     ToolOption(Tool.UNDERLINE, Icons.Outlined.FormatUnderlined, "밑줄", "끌어서 밑줄"),
     ToolOption(Tool.STRIKEOUT, Icons.Outlined.FormatStrikethrough, "취소선", "끌어서 취소선"),
     ToolOption(Tool.STAMP, Icons.Outlined.Approval, "스탬프", "페이지를 눌러 배치"),
@@ -371,7 +424,11 @@ private val extraToolOptions = listOf(
     ToolOption(Tool.REDACT, Icons.Outlined.VisibilityOff, "가림", "끌어서 검게 가리기"),
 )
 
-/** Compact secondary tool picker for shapes and markup/stamp tools. */
+/**
+ * The single annotation-tool sheet shared by the full dock, split mode and
+ * selection flows. It owns 글상자 and every shape/markup/stamp tool so the
+ * bottom dock can stay at six primary slots.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViewerToolMoreSheet(
@@ -386,6 +443,11 @@ fun ViewerToolMoreSheet(
     onStyle: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val activeLabel = if (isDockAnnotationTool(currentTool)) {
+        "현재 ${dockAnnotationLabel(currentTool)} 도구가 선택되어 있습니다."
+    } else {
+        "도구를 고른 뒤 페이지 위에서 사용하세요."
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -394,9 +456,9 @@ fun ViewerToolMoreSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
         ) {
-            Text("더 많은 도구", style = MaterialTheme.typography.titleLarge)
+            Text("주석 도구", style = MaterialTheme.typography.titleLarge)
             Text(
-                "도형과 표시 도구를 선택한 뒤 페이지 위에서 사용하세요.",
+                activeLabel,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -459,15 +521,15 @@ fun ViewerToolMoreSheet(
             }
             Spacer(Modifier.height(14.dp))
             ToolOptionSection(
-                title = "도형",
-                options = extraToolOptions.take(4),
+                title = "글상자·도형",
+                options = textAndShapeToolOptions,
                 currentTool = currentTool,
                 onSelectTool = onSelectTool,
             )
             Spacer(Modifier.height(14.dp))
             ToolOptionSection(
                 title = "표시·스탬프",
-                options = extraToolOptions.drop(4),
+                options = markupAndStampToolOptions,
                 currentTool = currentTool,
                 onSelectTool = onSelectTool,
             )
