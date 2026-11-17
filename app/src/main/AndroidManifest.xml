@@ -59,6 +59,14 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:mimeType="application/pdf" />
             </intent-filter>
+
+            <!-- Receive PDFs shared from other offline apps (ACTION_SEND). Only
+                 application/pdf is accepted so no non-PDF text can be imported. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
         </activity>
     </application>
 

@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.content.IntentCompat
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +29,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.ui.BackupSheet
 import com.hackerdjakodjo.mypdfwriter.ui.BackupViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.HelpCenterSheet
+import com.hackerdjakodjo.mypdfwriter.ui.ImportIntentSnapshot
 import com.hackerdjakodjo.mypdfwriter.ui.NoteEditorScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NoteTraceSheet
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookHomeScreen
@@ -41,6 +43,7 @@ import com.hackerdjakodjo.mypdfwriter.ui.StudySource
 import com.hackerdjakodjo.mypdfwriter.ui.ToolsScreen
 import com.hackerdjakodjo.mypdfwriter.ui.ViewerScreen
 import com.hackerdjakodjo.mypdfwriter.ui.clampStudyPaneFraction
+import com.hackerdjakodjo.mypdfwriter.ui.resolveImportUri
 import com.hackerdjakodjo.mypdfwriter.ui.theme.MyPdfWriterTheme
 import kotlinx.coroutines.delay
 
@@ -386,10 +389,33 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleViewIntent(intent: Intent?) {
-        if (intent?.action != Intent.ACTION_VIEW) return
-        val uri = intent.data ?: return
+        // Resolve through a pure helper so URI precedence stays unit-testable.
+        val snapshot = ImportIntentSnapshot(
+            action = intent?.action,
+            dataUri = intent?.data?.toString(),
+            streamUri = intent?.let {
+                IntentCompat.getParcelableExtra(it, Intent.EXTRA_STREAM, Uri::class.java)
+            }?.toString(),
+            clipUris = intent?.clipData?.let { clip ->
+                (0 until clip.itemCount).mapNotNull { index ->
+                    clip.getItemAt(index)?.uri?.toString()
+                }
+            } ?: emptyList(),
+        )
+        val rawUri = resolveImportUri(snapshot) ?: return
+        // Consume every URI carrier: a redelivered intent (onNewIntent or
+        // recreation with the same Intent) must not open the same PDF twice.
+        intent?.data = null
+        intent?.removeExtra(Intent.EXTRA_STREAM)
+        intent?.clipData = null
+        val uri = Uri.parse(rawUri)
         notebookViewModel.close()
-        viewModel.openDocument(uri, addToRecents = false)
-        intent.data = null
+        if (intent?.action == Intent.ACTION_SEND) {
+            // Sharing a PDF into the app is an import: keep it in local recents.
+            viewModel.openDocument(uri)
+        } else {
+            // Preserve the existing ACTION_VIEW policy: open without adding to recents.
+            viewModel.openDocument(uri, addToRecents = false)
+        }
     }
 }
