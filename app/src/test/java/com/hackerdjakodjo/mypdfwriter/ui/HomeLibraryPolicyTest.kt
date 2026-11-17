@@ -4,8 +4,10 @@ import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HomeLibraryPolicyTest {
@@ -172,5 +174,96 @@ class HomeLibraryPolicyTest {
         val sortedPdfs = sortPdfs(pdfs, LibrarySort.RECENTLY_OPENED)
         assertNotSame(pdfs, sortedPdfs)
         assertEquals(listOf("a", "b"), pdfs.map { it.uri })
+    }
+
+    @Test
+    fun defaultFilterStateHasNoActiveFiltersOrChips() {
+        val state = HomeFilterState()
+
+        assertEquals(0, state.activeCount)
+        assertFalse(state.hasActiveFilters)
+        assertTrue(homeFilterChips(state).isEmpty())
+        assertEquals(NoteScope.ALL, state.scope)
+    }
+
+    @Test
+    fun blankSearchDoesNotCountAsAnActiveFilter() {
+        assertEquals(0, HomeFilterState(query = "   ").activeCount)
+        assertTrue(homeFilterChips(HomeFilterState(query = "\n")).isEmpty())
+    }
+
+    @Test
+    fun activeFilterCountCoversScopeFolderTagAndSearch() {
+        val state = HomeFilterState(
+            scope = NoteScope.FAVORITES,
+            folder = "강의",
+            tag = "영어",
+            query = "시험",
+        )
+
+        assertEquals(4, state.activeCount)
+        assertTrue(state.hasActiveFilters)
+    }
+
+    @Test
+    fun activeFilterChipsUseTheCompactHomeLabels() {
+        val chips = homeFilterChips(
+            HomeFilterState(
+                scope = NoteScope.FAVORITES,
+                folder = "강의",
+                tag = "영어",
+                query = "  기말  ",
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                HomeFilterKind.SCOPE to "즐겨찾기",
+                HomeFilterKind.FOLDER to "폴더 · 강의",
+                HomeFilterKind.TAG to "태그 · 영어",
+                HomeFilterKind.QUERY to "검색 · “기말”",
+            ),
+            chips.map { it.kind to it.label },
+        )
+    }
+
+    @Test
+    fun uncategorizedFolderChipIsNamed() {
+        val chips = homeFilterChips(HomeFilterState(folder = ""))
+
+        assertEquals(listOf(HomeFilterChip(HomeFilterKind.FOLDER, "폴더 · 미분류")), chips)
+    }
+
+    @Test
+    fun removingOneChipLeavesEveryOtherFilterAlone() {
+        val state = HomeFilterState(
+            scope = NoteScope.TRASH,
+            folder = "강의",
+            tag = "영어",
+            query = "기말",
+        )
+
+        assertEquals(NoteScope.ALL, state.without(HomeFilterKind.SCOPE).scope)
+        assertEquals(null, state.without(HomeFilterKind.FOLDER).folder)
+        assertEquals(null, state.without(HomeFilterKind.TAG).tag)
+        assertEquals("", state.without(HomeFilterKind.QUERY).query)
+
+        val withoutTag = state.without(HomeFilterKind.TAG)
+        assertEquals(NoteScope.TRASH, withoutTag.scope)
+        assertEquals("강의", withoutTag.folder)
+        assertEquals("기말", withoutTag.query)
+    }
+
+    @Test
+    fun clearingRestoresEveryFilterDefault() {
+        val state = HomeFilterState(
+            scope = NoteScope.FAVORITES,
+            folder = "강의",
+            tag = "영어",
+            query = "기말",
+        )
+
+        assertEquals(HomeFilterState(), state.cleared())
+        assertEquals(0, state.cleared().activeCount)
     }
 }

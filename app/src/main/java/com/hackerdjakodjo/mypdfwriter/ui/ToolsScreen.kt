@@ -102,6 +102,21 @@ private data class ToolItem(
     val enabled: Boolean = true,
 )
 
+/**
+ * Section order for the PDF tools hub. Kept as named constants so the grouping
+ * can be checked by a pure JVM test while every card still lives in this file.
+ */
+internal object PdfToolSections {
+    const val IMPORT = "가져오기·변환"
+    const val PAGES = "페이지"
+    const val OCR = "OCR·검색"
+    const val SECURITY = "보안·정보"
+    const val FORMS = "양식"
+    const val SHARE = "공유·인쇄"
+
+    val order: List<String> = listOf(IMPORT, PAGES, OCR, SECURITY, FORMS, SHARE)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ToolsScreen(
@@ -115,6 +130,7 @@ fun ToolsScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val source = state.sourceFile
 
     var pending by remember { mutableStateOf<PendingOutput?>(null) }
     var showExtract by remember { mutableStateOf(false) }
@@ -273,11 +289,9 @@ fun ToolsScreen(
             ) {
                 item { SourceCard(state, onPick = { pickPdf.launch(arrayOf("application/pdf")) }) }
 
-                item { OcrLanguageRow(ocrLanguage) { ocrLanguage = it } }
-
                 item {
                     ToolSection(
-                        title = "새로 만들기",
+                        title = PdfToolSections.IMPORT,
                         items = listOf(
                             ToolItem("PDF 합치기", "여러 PDF를 한 파일로", Icons.Outlined.CallMerge, {
                                 pickMultiplePdfs.launch(arrayOf("application/pdf"))
@@ -285,76 +299,108 @@ fun ToolsScreen(
                             ToolItem("이미지 → PDF", "사진을 페이지로", Icons.Outlined.AddPhotoAlternate, {
                                 pickImages.launch(arrayOf("image/*"))
                             }),
+                            ToolItem("PDF → 이미지", "모든 페이지를 PNG로", Icons.Outlined.Image, {
+                                if (source != null) {
+                                    pending = PendingOutput.Images(source)
+                                    openTree.launch(null)
+                                }
+                            }, source != null),
                         ),
                     )
                 }
 
                 item {
-                    val source = state.sourceFile
-                    val enabled = source != null
                     ToolSection(
-                        title = "선택한 PDF로",
+                        title = PdfToolSections.PAGES,
+                        items = listOf(
+                            ToolItem("페이지 추출", "원하는 페이지만 새 PDF로", Icons.Outlined.FileDownload, {
+                                if (source != null) showExtract = true
+                            }, source != null),
+                            ToolItem("문서 분할", "N쪽마다 파일 나누기", Icons.Outlined.CallSplit, {
+                                if (source != null) showSplit = true
+                            }, source != null),
+                        ),
+                    )
+                }
+
+                item { OcrLanguageRow(ocrLanguage) { ocrLanguage = it } }
+
+                item {
+                    ToolSection(
+                        title = PdfToolSections.OCR,
                         items = listOf(
                             ToolItem("OCR 텍스트", "스캔 PDF에서 글자 추출", Icons.Outlined.DocumentScanner, {
                                 if (source != null) {
                                     pending = PendingOutput.OcrText(source, ocrLanguage)
                                     createText.launch("ocr.txt")
                                 }
-                            }, enabled),
+                            }, source != null),
                             ToolItem("검색 가능한 PDF", "이미지 위에 보이지 않는 텍스트 레이어", Icons.Outlined.DocumentScanner, {
                                 if (source != null) {
                                     pending = PendingOutput.OcrPdf(source, ocrLanguage)
                                     createPdf.launch("searchable.pdf")
                                 }
-                            }, enabled),
-                            ToolItem("페이지 추출", "원하는 페이지만 새 PDF로", Icons.Outlined.FileDownload, {
-                                if (source != null) showExtract = true
-                            }, enabled),
-                            ToolItem("문서 분할", "N쪽마다 파일 나누기", Icons.Outlined.CallSplit, {
-                                if (source != null) showSplit = true
-                            }, enabled),
-                            ToolItem("PDF → 이미지", "모든 페이지를 PNG로", Icons.Outlined.Image, {
-                                if (source != null) {
-                                    pending = PendingOutput.Images(source)
-                                    openTree.launch(null)
-                                }
-                            }, enabled),
+                            }, source != null),
                             ToolItem("텍스트 추출", "복사 가능한 TXT로", Icons.Outlined.TextSnippet, {
                                 if (source != null) {
                                     pending = PendingOutput.ExtractText(source)
                                     createText.launch("document.txt")
                                 }
-                            }, enabled),
+                            }, source != null),
+                        ),
+                    )
+                }
+
+                item {
+                    ToolSection(
+                        title = PdfToolSections.SECURITY,
+                        items = listOf(
                             ToolItem("최적화", "메타데이터를 정리해 다시 저장", Icons.Outlined.Compress, {
                                 if (source != null) {
                                     pending = PendingOutput.Optimize(source)
                                     createPdf.launch("optimized.pdf")
                                 }
-                            }, enabled),
+                            }, source != null),
                             ToolItem("문서 정보", "제목·작성자·페이지 수", Icons.Outlined.Info, {
                                 if (source != null) {
                                     vm.loadMetadata()
                                     showMetadata = true
                                 }
-                            }, enabled),
+                            }, source != null),
                             ToolItem("암호 설정", "열기 암호로 보호", Icons.Outlined.Lock, {
                                 if (source != null) showProtect = true
-                            }, enabled),
+                            }, source != null),
                             ToolItem("암호 해제", "암호를 풀어 새 PDF로", Icons.Outlined.LockOpen, {
                                 if (source != null) showUnlock = true
-                            }, enabled),
+                            }, source != null),
+                        ),
+                    )
+                }
+
+                item {
+                    ToolSection(
+                        title = PdfToolSections.FORMS,
+                        items = listOf(
                             ToolItem("양식 채우기", "AcroForm 입력 후 저장", Icons.Outlined.FactCheck, {
                                 if (source != null) {
                                     vm.loadForms()
                                     showForms = true
                                 }
-                            }, enabled),
+                            }, source != null),
+                        ),
+                    )
+                }
+
+                item {
+                    ToolSection(
+                        title = PdfToolSections.SHARE,
+                        items = listOf(
                             ToolItem("인쇄", "Android 인쇄로 보내기", Icons.Outlined.Print, {
                                 source?.let(vm::print)
-                            }, enabled),
+                            }, source != null),
                             ToolItem("공유", "PDF를 다른 앱으로", Icons.Outlined.Share, {
                                 source?.let(vm::share)
-                            }, enabled),
+                            }, source != null),
                         ),
                     )
                 }

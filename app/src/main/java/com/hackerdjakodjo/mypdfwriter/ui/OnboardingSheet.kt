@@ -74,12 +74,12 @@ private fun onboardingCardsByKey(): Map<OnboardingTopicKey, OnboardingCard> = ma
     OnboardingTopicKey.HOME_QUICK_ACTIONS to OnboardingCard(
         key = OnboardingTopicKey.HOME_QUICK_ACTIONS,
         title = "홈에서 바로 시작",
-        body = "홈 화면의 이어서 읽기와 빠른 버튼으로 PDF 열기, 새 노트, 백업·복원을 바로 시작할 수 있어요.",
+        body = "홈 화면의 이어서 읽기와 빠른 버튼으로 PDF 가져오기, 새 노트, 백업·복원을 바로 시작할 수 있어요.",
     ),
     OnboardingTopicKey.OPEN_READ_PDF to OnboardingCard(
         key = OnboardingTopicKey.OPEN_READ_PDF,
         title = "PDF 열고 읽기",
-        body = "홈의 PDF 열기로 파일을 고르고, 두 손가락으로 확대하며 PDF 메뉴에서 자주 쓰는 도구를 찾을 수 있어요.",
+        body = "홈의 PDF 가져오기로 파일을 고르고, 두 손가락으로 확대하며 PDF 메뉴에서 자주 쓰는 도구를 찾을 수 있어요.",
     ),
     OnboardingTopicKey.SELECT_HIGHLIGHT to OnboardingCard(
         key = OnboardingTopicKey.SELECT_HIGHLIGHT,

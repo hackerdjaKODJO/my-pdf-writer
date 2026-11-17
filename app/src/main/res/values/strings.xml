@@ -7,9 +7,9 @@
     <string name="library_tagline">전공 공부를 위한 PDF 작업대</string>
     <string name="library_hero_title">강의자료 위에,\n바로 필기하세요</string>
     <string name="library_hero_body">PDF를 열고 형광펜·펜·텍스트로 표시한 뒤, 주석이 새겨진 PDF로 한 번에 내보낼 수 있습니다. 광고 없이, 완전 오프라인으로 동작합니다.</string>
-    <string name="open_pdf">PDF 열기</string>
+    <string name="open_pdf">PDF 가져오기</string>
     <string name="create_blank">빈 PDF</string>
-    <string name="recent_docs">최근 문서</string>
+    <string name="recent_docs">최근 PDF</string>
     <string name="recent_empty_title">아직 연 문서가 없습니다</string>
     <string name="recent_empty_body">기기에서 PDF를 선택하거나 빈 PDF를 만들어 시작하세요.</string>
     <string name="remove_from_recent">목록에서 제거</string>
