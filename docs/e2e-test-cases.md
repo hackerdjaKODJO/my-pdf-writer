@@ -41,6 +41,7 @@ executed here. Instrumentation APKs are compiled with
 | READ-01 | Continuous zoom clamp/pinch/toggle and label; pinch pointer tracking | JVM `ReaderZoomTest`, `ReaderPinchTrackerTest` | Passing |
 | READ-02 | Two-finger pinch changes document-wide zoom label | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | READ-05 | Pointer-count gate + gated zoom composition | JVM `ContinuousPinchGateTest`, `ContinuousPinchCompositionTest` | Passing |
+| READ-06 | Zoom enlarges page layout past viewport, not only the % label | Instrumentation `ReaderPinchE2ETest` (bounds assertion) | Compiled |
 | READ-03 | Render zoom quantization and bitmap scale | JVM `ReaderZoomTest` | Passing |
 | READ-04 | Pinch actually re-renders page bitmaps at higher zoom | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | TRACE-01 | PDF continuous trace events/fields | JVM `PdfContinuousTraceTest` | Passing |

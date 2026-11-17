@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
@@ -94,6 +97,30 @@ class ReaderPinchE2ETest {
     }
 
     @Test
+    fun zoomActuallyEnlargesThePageLayoutNotJustTheLabel() {
+        // Regression for the page staying at viewport width after zoom: the
+        // page surface must be allowed to measure wider than its parent and be
+        // clipped/panned by the reader viewport.
+        setReader()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        val before = page.getUnclippedBoundsInRoot()
+
+        composeRule.onRoot().performTouchInput {
+            click(center)
+            click(center)
+        }
+        composeRule.waitForIdle()
+
+        val after = page.getUnclippedBoundsInRoot()
+        val beforeWidth = before.right - before.left
+        val afterWidth = after.right - after.left
+        assertTrue(
+            "page width must grow after zoom; before=$beforeWidth after=$afterWidth",
+            afterWidth > beforeWidth * 1.5f,
+        )
+    }
+
+    @Test
     fun pinchActuallyRerendersPageBitmapsAtHigherZoom() {
         // Regression for "percentage changes, page image does not": the render
         // key passed to loadPage must grow after a two-finger spread, not just
@@ -118,6 +145,8 @@ class ReaderPinchE2ETest {
         composeRule.waitForIdle()
         val before = renderZooms.toList()
         assertTrue("initial render must happen: $renderZooms", before.isNotEmpty())
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        val beforeBounds = page.getUnclippedBoundsInRoot()
 
         composeRule.onRoot().performTouchInput {
             val cx = width / 2f
@@ -141,6 +170,14 @@ class ReaderPinchE2ETest {
             "loadPage must be called with a larger render zoom after pinch; " +
                 "before=$before after=${renderZooms.toList()}",
             maxAfter > maxBefore + 0.1f,
+        )
+        val afterBounds = page.getUnclippedBoundsInRoot()
+        val beforeWidth = beforeBounds.right - beforeBounds.left
+        val afterWidth = afterBounds.right - afterBounds.left
+        assertTrue(
+            "pinch must enlarge the page layout, not only the zoom label; " +
+                "before=$beforeWidth after=$afterWidth",
+            afterWidth > beforeWidth * 1.5f,
         )
     }
 }
