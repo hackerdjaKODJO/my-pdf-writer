@@ -41,6 +41,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.NoteAdd
+import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.BugReport
@@ -183,6 +184,15 @@ fun NotebookHomeScreen(
             },
         ),
     ) { mutableStateOf(NoteScope.ALL) }
+    var sort by rememberSaveable(
+        stateSaver = Saver(
+            save = { it.name },
+            restore = { name ->
+                runCatching { LibrarySort.valueOf(name) }.getOrNull()
+                    ?: LibrarySort.RECENTLY_MODIFIED
+            },
+        ),
+    ) { mutableStateOf(LibrarySort.RECENTLY_MODIFIED) }
     var query by rememberSaveable { mutableStateOf("") }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var gridMode by rememberSaveable { mutableStateOf(true) }
@@ -215,9 +225,9 @@ fun NotebookHomeScreen(
             .toList()
             .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
     }
-    val visibleNotebooks = remember(notebooks, scope, selectedFolder, selectedTag, query) {
+    val visibleNotebooks = remember(notebooks, scope, selectedFolder, selectedTag, query, sort) {
         val needle = query.trim()
-        notebooks.asSequence()
+        val filtered = notebooks.asSequence()
             .filter { notebook ->
                 when (scope) {
                     NoteScope.ALL -> !notebook.trashed
@@ -236,17 +246,17 @@ fun NotebookHomeScreen(
                     notebook.title.contains(needle, ignoreCase = true) ||
                     notebook.tags.any { it.contains(needle, ignoreCase = true) }
             }
-            .sortedByDescending { it.updatedAt }
             .toList()
+        sortNotebooks(filtered, sort)
     }
-    val visiblePdfs = remember(pdfs, query) {
+    val visiblePdfs = remember(pdfs, query, sort) {
         val needle = query.trim()
         val filtered = if (needle.isEmpty()) {
             pdfs
         } else {
             pdfs.filter { it.name.contains(needle, ignoreCase = true) }
         }
-        filtered.sortedByDescending { it.lastOpenedAt }
+        sortPdfs(filtered, sort)
     }
     val continuation = remember(notebooks, pdfs) {
         selectHomeContinuation(notebooks, pdfs)
@@ -424,6 +434,8 @@ fun NotebookHomeScreen(
                             selectedTag = selectedTag,
                             onTagChange = { selectedTag = it },
                             query = query,
+                            sort = sort,
+                            onSortChange = { sort = it },
                             gridMode = gridMode,
                             onToggleGrid = { gridMode = !gridMode },
                             showStart = showStart,
@@ -446,6 +458,8 @@ fun NotebookHomeScreen(
                             pdfs = visiblePdfs,
                             hasAnyPdf = pdfs.isNotEmpty(),
                             query = query,
+                            sort = sort,
+                            onSortChange = { sort = it },
                             gridMode = gridMode,
                             onToggleGrid = { gridMode = !gridMode },
                             horizontalPadding = horizontalPadding,
@@ -645,6 +659,8 @@ private fun NotesSection(
     selectedTag: String?,
     onTagChange: (String?) -> Unit,
     query: String,
+    sort: LibrarySort,
+    onSortChange: (LibrarySort) -> Unit,
     gridMode: Boolean,
     onToggleGrid: () -> Unit,
     showStart: Boolean,
@@ -668,6 +684,8 @@ private fun NotesSection(
             tagCounts = tagCounts,
             selectedTag = selectedTag,
             onTagChange = onTagChange,
+            sort = sort,
+            onSortChange = onSortChange,
             gridMode = gridMode,
             onToggleGrid = onToggleGrid,
             horizontalPadding = horizontalPadding,
@@ -785,6 +803,8 @@ private fun NotesFilters(
     tagCounts: List<Pair<String, Int>>,
     selectedTag: String?,
     onTagChange: (String?) -> Unit,
+    sort: LibrarySort,
+    onSortChange: (LibrarySort) -> Unit,
     gridMode: Boolean,
     onToggleGrid: () -> Unit,
     horizontalPadding: Dp,
@@ -821,6 +841,7 @@ private fun NotesFilters(
                     )
                 }
             }
+            SortMenuButton(sort = sort, onSortChange = onSortChange)
             IconButton(onClick = onToggleGrid) {
                 Icon(
                     if (gridMode) Icons.AutoMirrored.Outlined.ViewList else Icons.Outlined.GridView,
@@ -870,6 +891,36 @@ private fun NotesFilters(
             )
         }
         Spacer(Modifier.height(4.dp))
+    }
+}
+
+/** Compact sort control shared by the Notes and PDF filter areas. */
+@Composable
+private fun SortMenuButton(
+    sort: LibrarySort,
+    onSortChange: (LibrarySort) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.AutoMirrored.Outlined.Sort, contentDescription = "정렬: ${sort.label}")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            LibrarySort.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.label) },
+                    trailingIcon = {
+                        if (option == sort) {
+                            Icon(Icons.Outlined.Check, contentDescription = null)
+                        }
+                    },
+                    onClick = {
+                        open = false
+                        onSortChange(option)
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -1303,6 +1354,8 @@ private fun PdfSection(
     pdfs: List<RecentDoc>,
     hasAnyPdf: Boolean,
     query: String,
+    sort: LibrarySort,
+    onSortChange: (LibrarySort) -> Unit,
     gridMode: Boolean,
     onToggleGrid: () -> Unit,
     horizontalPadding: Dp,
@@ -1333,6 +1386,8 @@ private fun PdfSection(
                 PdfHeader(
                     count = pdfs.size,
                     filtered = query.isNotBlank(),
+                    sort = sort,
+                    onSortChange = onSortChange,
                     gridMode = gridMode,
                     onOpenTools = onOpenTools,
                     onToggleGrid = onToggleGrid,
@@ -1371,6 +1426,8 @@ private fun PdfSection(
                 PdfHeader(
                     count = pdfs.size,
                     filtered = query.isNotBlank(),
+                    sort = sort,
+                    onSortChange = onSortChange,
                     gridMode = gridMode,
                     onOpenTools = onOpenTools,
                     onToggleGrid = onToggleGrid,
@@ -1448,6 +1505,8 @@ private fun ImportPdfBanner(onImportPdf: () -> Unit, onCreatePdf: () -> Unit) {
 private fun PdfHeader(
     count: Int,
     filtered: Boolean,
+    sort: LibrarySort,
+    onSortChange: (LibrarySort) -> Unit,
     gridMode: Boolean,
     onOpenTools: () -> Unit,
     onToggleGrid: () -> Unit,
@@ -1462,6 +1521,7 @@ private fun PdfHeader(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        SortMenuButton(sort = sort, onSortChange = onSortChange)
         IconButton(onClick = onOpenTools) {
             Icon(Icons.Outlined.Dashboard, contentDescription = "PDF 도구")
         }
