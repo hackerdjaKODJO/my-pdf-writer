@@ -8,10 +8,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -203,95 +203,91 @@ fun ContinuousReaderScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(Unit) {
-                            coroutineScope {
+                            // Observe and consume pinch events in the Initial pass,
+                            // before the LazyColumn scroller and page tap/drag detectors
+                            // run in Main. This is the only reliable way to keep a
+                            // two-finger gesture away from the list scroller while
+                            // leaving single-finger vertical scrolling untouched.
+                            awaitEachGesture {
                                 val gate = ContinuousPinchGate()
-
-                                // Companion observer: never consumes anything, it only
-                                // counts distinct pointer ids. Initial pass is essential
-                                // because the LazyColumn scroller and each page's tap/drag
-                                // detectors run in the Main pass and may consume a down
-                                // before a parent Main-pass handler ever sees it.
-                                launch {
-                                    try {
-                                        awaitEachGesture {
-                                            val firstDown = awaitFirstDown(
-                                                requireUnconsumed = false,
-                                                pass = PointerEventPass.Initial,
-                                            )
-                                            gate.onDown(firstDown.id.value)
-                                            var firstFrame = true
-                                            while (true) {
-                                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                                val changes = event.changes
-                                                changes.forEach { change ->
-                                                    // On the first frame every pressed
-                                                    // pointer is new: a second finger can
-                                                    // share the down event awaitFirstDown
-                                                    // consumed, so its down flag is already
-                                                    // gone by the time we see it here.
-                                                    val isNew = if (firstFrame) {
-                                                        change.pressed
-                                                    } else {
-                                                        change.pressed &&
-                                                            change.changedToDownIgnoreConsumed()
-                                                    }
-                                                    if (isNew) gate.onDown(change.id.value)
-                                                    if (!change.pressed) gate.onUp(change.id.value)
-                                                }
-                                                firstFrame = false
-                                                pinchActive = gate.twoFinger
-                                                if (changes.none { it.pressed }) break
-                                            }
-                                            gate.clear()
-                                        }
-                                    } finally {
-                                        gate.clear()
-                                        pinchActive = false
-                                    }
-                                }
-
-                                // Compose's native transform detector. It also fires for
-                                // a single-finger drag (pan only), so zoom is gated on the
-                                // pointer count above. panChange and rotationChange are
-                                // deliberately ignored: zoom stays document-wide and
-                                // horizontal pan remains a separate, single-finger drag.
-                                // We never call consume() ourselves, so one finger can
-                                // still scroll the LazyColumn.
+                                val firstDown = awaitFirstDown(
+                                    requireUnconsumed = false,
+                                    pass = PointerEventPass.Initial,
+                                )
+                                gate.onDown(firstDown.id.value)
+                                pinchActive = false
+                                var firstFrame = true
                                 var tracedActivation = false
                                 var lastTracedRenderZoom = readerRenderZoom(latestZoom.value)
-                                detectTransformGestures { _, _, zoomChange, _ ->
-                                    val twoFinger = gate.twoFinger
-                                    if (!twoFinger) {
-                                        tracedActivation = false // next pinch gets a fresh baseline
-                                        return@detectTransformGestures
-                                    }
-                                    if (zoomChange == 1f) return@detectTransformGestures
+                                try {
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        val changes = event.changes
+                                        changes.forEach { change ->
+                                            val isNew = if (firstFrame) {
+                                                change.pressed
+                                            } else {
+                                                change.pressed &&
+                                                    change.changedToDownIgnoreConsumed()
+                                            }
+                                            if (isNew) gate.onDown(change.id.value)
+                                            if (!change.pressed) gate.onUp(change.id.value)
+                                        }
+                                        firstFrame = false
+                                        pinchActive = gate.twoFinger
 
-                                    val baselineZoom = latestZoom.value
-                                    if (!tracedActivation) {
-                                        tracedActivation = true
-                                        lastTracedRenderZoom = readerRenderZoom(baselineZoom)
-                                        // One event when the pinch first activates so a
-                                        // trace always contains the starting point. With
-                                        // native transforms there is no pixel distance,
-                                        // so `distance` carries the native zoom factor.
-                                        PdfContinuousTrace.pinch(
-                                            baselineZoom,
-                                            lastTracedRenderZoom,
-                                            zoomChange,
-                                        )
-                                    }
+                                        if (gate.twoFinger) {
+                                            // calculateZoom() compares the current pointer
+                                            // separation with the previous event. It only
+                                            // makes sense once two fingers are tracked.
+                                            val zoomChange = event.calculateZoom()
+                                            if (zoomChange.isFinite() && zoomChange > 0f &&
+                                                zoomChange != 1f
+                                            ) {
+                                                val baselineZoom = latestZoom.value
+                                                if (!tracedActivation) {
+                                                    tracedActivation = true
+                                                    lastTracedRenderZoom =
+                                                        readerRenderZoom(baselineZoom)
+                                                    PdfContinuousTrace.pinch(
+                                                        baselineZoom,
+                                                        lastTracedRenderZoom,
+                                                        zoomChange,
+                                                    )
+                                                }
+                                                val nextZoom = gatedPinchZoom(
+                                                    baselineZoom,
+                                                    zoomChange,
+                                                    true,
+                                                )
+                                                setZoom(nextZoom)
+                                                val nextRenderZoom = readerRenderZoom(nextZoom)
+                                                if (nextRenderZoom != lastTracedRenderZoom) {
+                                                    lastTracedRenderZoom = nextRenderZoom
+                                                    PdfContinuousTrace.pinch(
+                                                        nextZoom,
+                                                        nextRenderZoom,
+                                                        zoomChange,
+                                                    )
+                                                }
+                                            }
+                                            // Two-finger events only. Consuming here stops
+                                            // the list scroller and page pan detectors from
+                                            // fighting the pinch in the Main pass.
+                                            changes.forEach { change ->
+                                                if (change.pressed) change.consume()
+                                            }
+                                        } else {
+                                            tracedActivation = false
+                                            // Single-pointer events stay unconsumed so the
+                                            // LazyColumn keeps its normal vertical scroll.
+                                        }
 
-                                    val nextZoom = gatedPinchZoom(baselineZoom, zoomChange, twoFinger)
-                                    setZoom(nextZoom)
-                                    val nextRenderZoom = readerRenderZoom(nextZoom)
-                                    // Trace each render-zoom bucket transition (not every
-                                    // pointer frame) so the log stays bounded but still
-                                    // shows whether the value that keys re-rendering moved.
-                                    if (nextRenderZoom != lastTracedRenderZoom) {
-                                        lastTracedRenderZoom = nextRenderZoom
-                                        PdfContinuousTrace.pinch(nextZoom, nextRenderZoom, zoomChange)
+                                        if (changes.none { it.pressed }) break
                                     }
+                                } finally {
+                                    gate.clear()
+                                    pinchActive = false
                                 }
                             }
                         },
