@@ -5,10 +5,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,8 +20,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -38,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -48,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,8 +73,10 @@ import kotlin.math.abs
  *
  * Every visible page is rendered independently through [loadPage] and held only
  * while its lazy item is composed, so leaving this screen releases the page
- * bitmaps. There are no zoom controls by design: this mode is for scanning a
- * document, and a tap opens the full editor/viewer.
+ * bitmaps. Pages are separated by a small gap; a single tap opens the full
+ * editor/viewer while a double tap toggles zoom. Zoom is also available from the
+ * compact toolbar controls, and zoomed pages can be panned horizontally without
+ * interfering with vertical lazy scrolling.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,6 +102,11 @@ fun ContinuousReaderScreen(
             initialScrollDone = true
         }
     }
+
+    // Zoom is scoped to this screen and survives rotation; fit-to-width is the
+    // default. The stable lambda keeps page tap handlers from being re-registered.
+    var zoom by rememberSaveable { mutableFloatStateOf(READER_ZOOM_MIN) }
+    val toggleZoom: () -> Unit = remember { { zoom = toggleReaderZoom(zoom) } }
 
     val currentPage by remember(listState, pageCount) {
         derivedStateOf {
@@ -134,6 +150,39 @@ fun ContinuousReaderScreen(
                         )
                     }
                 },
+                actions = {
+                    Row(
+                        modifier = Modifier.padding(end = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(
+                            onClick = { zoom = stepReaderZoom(zoom, -1) },
+                            enabled = zoom > READER_ZOOM_MIN,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Text("−", style = MaterialTheme.typography.titleLarge)
+                        }
+                        Text(
+                            readerZoomLabel(zoom),
+                            style = MaterialTheme.typography.labelMedium,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.widthIn(min = 44.dp),
+                        )
+                        IconButton(
+                            onClick = { zoom = stepReaderZoom(zoom, 1) },
+                            enabled = zoom < READER_ZOOM_MAX,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Text("+", style = MaterialTheme.typography.titleLarge)
+                        }
+                        TextButton(
+                            onClick = { zoom = READER_ZOOM_MIN },
+                            modifier = Modifier.height(36.dp),
+                        ) {
+                            Text("맞춤", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                 ),
@@ -153,20 +202,24 @@ fun ContinuousReaderScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    // Leave room under the last page for the floating indicator.
+                    // Leave just enough room under the last page for the floating
+                    // current-page indicator; the old 18 dp label + gap made pages
+                    // look far apart.
                     contentPadding = PaddingValues(
                         start = 14.dp,
                         end = 14.dp,
-                        top = 12.dp,
-                        bottom = 88.dp,
+                        top = 8.dp,
+                        bottom = 60.dp,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     items(count = pageCount, key = { index -> index }) { index ->
                         ReaderPageCard(
                             index = index,
+                            zoom = zoom,
                             loadPage = loadPage,
                             onOpenPage = onOpenPage,
+                            onToggleZoom = toggleZoom,
                         )
                     }
                 }
@@ -186,8 +239,10 @@ fun ContinuousReaderScreen(
 @Composable
 private fun ReaderPageCard(
     index: Int,
+    zoom: Float,
     loadPage: suspend (Int) -> Bitmap?,
     onOpenPage: (Int) -> Unit,
+    onToggleZoom: () -> Unit,
 ) {
     var attempt by remember(index) { mutableIntStateOf(0) }
     val page by produceState<ReaderPageState>(
@@ -214,47 +269,60 @@ private fun ReaderPageCard(
         else -> DEFAULT_PAGE_ASPECT
     }.coerceIn(0.15f, 10f)
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Surface(
-            onClick = { onOpenPage(index) },
+    val zoomed = zoom > READER_ZOOM_MIN
+    // A failed page keeps its retry control usable instead of also opening the
+    // single-page viewer when the retry chip is tapped.
+    val canOpenPage = page !is ReaderPageState.Failed
+
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val pageWidth = maxWidth * zoom
+        val panState = rememberScrollState()
+        LaunchedEffect(zoom) { panState.scrollTo(0) }
+
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(aspectRatio),
-            shape = RoundedCornerShape(2.dp),
-            color = Color.White,
-            border = BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
-            ),
-            shadowElevation = 6.dp,
+                // Only horizontal drags are consumed here; vertical drags still
+                // reach the parent LazyColumn.
+                .then(if (zoomed) Modifier.horizontalScroll(panState) else Modifier)
+                .pointerInput(index, canOpenPage, onOpenPage, onToggleZoom) {
+                    detectTapGestures(
+                        onTap = { if (canOpenPage) onOpenPage(index) },
+                        onDoubleTap = { onToggleZoom() },
+                    )
+                },
+            contentAlignment = if (zoomed) Alignment.CenterStart else Alignment.Center,
         ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                when (val state = page) {
-                    is ReaderPageState.Ready -> {
-                        val image = remember(state.bitmap) { state.bitmap.asImageBitmap() }
-                        Image(
-                            bitmap = image,
-                            contentDescription = "${index + 1}쪽 페이지",
-                            contentScale = ContentScale.FillWidth,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
+            Surface(
+                modifier = Modifier
+                    .width(pageWidth)
+                    .aspectRatio(aspectRatio),
+                shape = RoundedCornerShape(2.dp),
+                color = Color.White,
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                ),
+                shadowElevation = 6.dp,
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    when (val state = page) {
+                        is ReaderPageState.Ready -> {
+                            val image = remember(state.bitmap) { state.bitmap.asImageBitmap() }
+                            Image(
+                                bitmap = image,
+                                contentDescription = "${index + 1}쪽 페이지",
+                                contentScale = ContentScale.FillWidth,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
 
-                    ReaderPageState.Loading -> LoadingPage()
-                    ReaderPageState.Failed -> FailedPage(onRetry = { attempt++ })
+                        ReaderPageState.Loading -> LoadingPage()
+                        ReaderPageState.Failed -> FailedPage(onRetry = { attempt++ })
+                    }
                 }
             }
         }
-
-        Spacer(Modifier.height(7.dp))
-        Text(
-            "${index + 1}쪽",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
