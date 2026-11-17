@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.automirrored.outlined.Redo
 import androidx.compose.material.icons.automirrored.outlined.TextSnippet
@@ -289,8 +290,8 @@ internal fun SplitPdfToolbar(
 /**
  * Floating text-selection bar for split mode. It replaces the bottom dock and
  * overlays the PDF strip instead of adding a permanent row below the page.
- * Highlight/underline/strikeout/copy stay one tap away; more opens the
- * secondary actions (translate, excerpt, add to pane, clear).
+ * Highlight/underline/strikeout/copy/dictionary stay one tap away; more opens
+ * the secondary actions (translate, dictionary, excerpt, add to pane, clear).
  */
 @Composable
 internal fun SplitSelectionActionBar(
@@ -301,6 +302,7 @@ internal fun SplitSelectionActionBar(
     hasWords: Boolean,
     wordCount: Int,
     onCopy: () -> Unit,
+    onDictionary: () -> Unit = {},
     onHighlight: () -> Unit,
     onUnderline: () -> Unit,
     onStrikeout: () -> Unit,
@@ -396,6 +398,12 @@ internal fun SplitSelectionActionBar(
                 icon = Icons.Outlined.ContentCopy,
                 contentDescription = "선택한 텍스트 복사",
                 onClick = onCopy,
+                enabled = hasSelection,
+            )
+            SplitChromeButton(
+                icon = Icons.AutoMirrored.Outlined.MenuBook,
+                contentDescription = "사전에서 찾기",
+                onClick = onDictionary,
                 enabled = hasSelection,
             )
             SplitChromeButton(
@@ -661,8 +669,8 @@ private fun SplitToolTile(
 
 /**
  * Secondary text actions for the split selection bar. The primary bar keeps
- * highlight/underline/strikeout/copy; translate, excerpt, pane capture and
- * clear stay one tap behind this sheet.
+ * highlight/underline/strikeout/copy/dictionary; translate, dictionary,
+ * excerpt, pane capture and clear stay one tap behind this sheet.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -672,6 +680,7 @@ internal fun SplitSelectionMoreSheet(
     hasSelection: Boolean,
     canAddToPane: Boolean,
     onTranslate: () -> Unit,
+    onDictionary: () -> Unit,
     onExcerpt: () -> Unit,
     onCopy: () -> Unit,
     onAddToPane: (() -> Unit)?,
@@ -725,6 +734,15 @@ internal fun SplitSelectionMoreSheet(
                 onClick = {
                     onDismiss()
                     onTranslate()
+                },
+            )
+            SplitSheetAction(
+                label = "사전에서 찾기",
+                icon = Icons.AutoMirrored.Outlined.MenuBook,
+                enabled = hasSelection,
+                onClick = {
+                    onDismiss()
+                    onDictionary()
                 },
             )
             SplitSheetAction(

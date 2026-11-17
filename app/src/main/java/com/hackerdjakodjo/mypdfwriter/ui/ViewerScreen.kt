@@ -610,6 +610,7 @@ fun ViewerScreen(
                                 wordCount = pageTextWords.size,
                                 onCopy = { copySelection(context, selectedText) },
                                 onTranslate = { TextActions.translate(context, selectedText) },
+                                onDictionary = { TextActions.define(context, selectedText) },
                                 onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
                                 onAddToPane = if (studyPane != null) {
                                     { appendStudyExcerpt(selectedText, state.pageIndex) }
@@ -864,6 +865,7 @@ fun ViewerScreen(
                                 hasWords = pageTextWords.isNotEmpty(),
                                 wordCount = pageTextWords.size,
                                 onCopy = { copySelection(context, selectedText) },
+                                onDictionary = { TextActions.define(context, selectedText) },
                                 onHighlight = {
                                     vm.addTextMarkup(
                                         selectedWords,
@@ -1018,6 +1020,7 @@ fun ViewerScreen(
                 showExcerpts = false
             },
             onTranslate = { text, target -> TextActions.translate(context, text, target) },
+            onDictionary = { text -> TextActions.define(context, text) },
             onShare = { text -> TextActions.shareText(context, text) },
             onStudyNote = {
                 showExcerpts = false
@@ -1176,6 +1179,7 @@ fun ViewerScreen(
             hasSelection = selectedWords.isNotEmpty(),
             canAddToPane = studyPane != null,
             onTranslate = { TextActions.translate(context, selectedText) },
+            onDictionary = { TextActions.define(context, selectedText) },
             onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
             onCopy = { copySelection(context, selectedText) },
             onAddToPane = if (studyPane != null) {
@@ -1242,6 +1246,7 @@ private fun TextSelectionActionBar(
     wordCount: Int,
     onCopy: () -> Unit,
     onTranslate: () -> Unit,
+    onDictionary: () -> Unit,
     onExcerpt: () -> Unit,
     onAddToPane: (() -> Unit)?,
     onHighlight: () -> Unit,
@@ -1369,6 +1374,7 @@ private fun TextSelectionActionBar(
         ) {
             SelectionAction("복사", Icons.Outlined.ContentCopy, hasSelection, onCopy)
             SelectionAction("Google 번역", Icons.Outlined.Translate, hasSelection, onTranslate)
+            SelectionAction("사전", Icons.AutoMirrored.Outlined.MenuBook, hasSelection, onDictionary)
             SelectionAction("발췌", Icons.AutoMirrored.Outlined.Notes, hasSelection, onExcerpt)
             if (onAddToPane != null) {
                 SelectionAction("패널에 추가", Icons.Outlined.EditNote, hasSelection, onAddToPane)
