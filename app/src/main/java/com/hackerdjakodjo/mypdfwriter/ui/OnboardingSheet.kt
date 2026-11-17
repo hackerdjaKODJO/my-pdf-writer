@@ -79,7 +79,7 @@ private fun onboardingCardsByKey(): Map<OnboardingTopicKey, OnboardingCard> = ma
     OnboardingTopicKey.OPEN_READ_PDF to OnboardingCard(
         key = OnboardingTopicKey.OPEN_READ_PDF,
         title = "PDF 열고 읽기",
-        body = "홈의 PDF 열기로 파일을 고르고, 두 손가락으로 확대하며 PDF 허브에서 자주 쓰는 도구를 찾을 수 있어요.",
+        body = "홈의 PDF 열기로 파일을 고르고, 두 손가락으로 확대하며 PDF 메뉴에서 자주 쓰는 도구를 찾을 수 있어요.",
     ),
     OnboardingTopicKey.SELECT_HIGHLIGHT to OnboardingCard(
         key = OnboardingTopicKey.SELECT_HIGHLIGHT,

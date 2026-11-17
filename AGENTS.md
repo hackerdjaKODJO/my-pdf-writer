@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.22`** — `versionCode = 31`.
-- **Next version is `0.8.23` — `versionCode = 32`.**
+- Current delivered version: **`0.8.23`** — `versionCode = 32`.
+- **Next version is `0.8.24` — `versionCode = 33`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.23` | 32 | 2026-11-17 | `v0.8.23` | Flexcil-pattern menu pass: persistent create FAB, saveable home tab/filter state, PDF recents first, tag search, PDF menu rename and unique primary set, active dock tool labels, Tools system-back |
 | `0.8.22` | 31 | 2026-11-17 | `v0.8.22` | Edge-to-edge zoom panning to both page edges; stable old bitmap during zoom re-render (no flicker) |
 | `0.8.21` | 30 | 2026-11-17 | `v0.8.21` | Layout-phase horizontal pan offset (no per-frame recomposition); diagonal drag pans X while LazyColumn scrolls Y; tap suppression |
 | `0.8.20` | 29 | 2026-11-17 | `v0.8.20` | Continuous page actually grows past viewport (`requiredWidth`); raw Initial-pass pinch tracking avoids awaitEachGesture down-consumption |

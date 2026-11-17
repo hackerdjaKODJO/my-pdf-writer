@@ -34,6 +34,26 @@ class ViewerToolDockTest {
     }
 
     @Test
+    fun dockShowsTheActiveExtraToolName() {
+        assertEquals("밑줄", dockMoreLabel(Tool.UNDERLINE))
+        assertEquals("취소선", dockMoreLabel(Tool.STRIKEOUT))
+        assertEquals("스탬프", dockMoreLabel(Tool.STAMP))
+        assertEquals("서명", dockMoreLabel(Tool.SIGNATURE))
+        assertEquals("가림", dockMoreLabel(Tool.REDACT))
+        assertEquals("더보기", dockMoreLabel(Tool.PEN))
+        assertEquals("더보기", dockMoreLabel(Tool.VIEW))
+    }
+
+    @Test
+    fun dockShowsTheActiveShapeName() {
+        assertEquals("사각형", dockShapeLabel(Tool.RECT))
+        assertEquals("화살표", dockShapeLabel(Tool.ARROW))
+        assertEquals("직선", dockShapeLabel(Tool.LINE))
+        assertEquals("타원", dockShapeLabel(Tool.ELLIPSE))
+        assertEquals("도형", dockShapeLabel(Tool.PEN))
+    }
+
+    @Test
     fun extraToolsMatchTheMoreSheetEntries() {
         listOf(
             Tool.STAMP,

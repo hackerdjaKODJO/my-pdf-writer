@@ -57,7 +57,7 @@ class PdfSplitChromeE2ETest {
         composeRule.onNodeWithContentDescription("텍스트 선택").performClick()
         composeRule.onNodeWithContentDescription("현재 페이지 북마크").performClick()
         composeRule.onNodeWithContentDescription("PDF 도구").performClick()
-        composeRule.onNodeWithContentDescription("PDF 허브").performClick()
+        composeRule.onNodeWithContentDescription("PDF 메뉴").performClick()
 
         assertEquals(1, previous)
         assertEquals(1, next)

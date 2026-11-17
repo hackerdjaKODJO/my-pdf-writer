@@ -39,7 +39,6 @@ import androidx.compose.material.icons.automirrored.outlined.StickyNote2
 import androidx.compose.material.icons.automirrored.outlined.TextSnippet
 import androidx.compose.material.icons.automirrored.outlined.Toc
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -56,6 +55,7 @@ import androidx.compose.material.icons.outlined.Handyman
 import androidx.compose.material.icons.outlined.Highlight
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PictureInPictureAlt
@@ -420,7 +420,7 @@ fun ViewerScreen(
             showStudyNote = true
         }
     }
-    val studyNoteAction = PdfHubAction("스터디 노트", Icons.Outlined.EditNote, primary = true) {
+    val studyNoteAction = PdfHubAction("스터디 노트", Icons.Outlined.EditNote) {
         showHub = false
         openNote()
     }
@@ -429,7 +429,7 @@ fun ViewerScreen(
             title = "읽기",
             actions = listOf(
                 PdfHubAction("검색", Icons.Outlined.Search, primary = true) { showSearch = true },
-                PdfHubAction("목차", Icons.AutoMirrored.Outlined.Toc) {
+                PdfHubAction("목차", Icons.AutoMirrored.Outlined.Toc, primary = true) {
                     vm.loadOutline()
                     showOutline = true
                 },
@@ -437,12 +437,12 @@ fun ViewerScreen(
                     "북마크",
                     Icons.Outlined.StarBorder,
                     trailing = if (bookmarks.isEmpty()) null else "${bookmarks.size}개",
+                    primary = true,
                 ) { showBookmarks = true },
                 PdfHubAction(
                     "텍스트 선택",
                     Icons.AutoMirrored.Outlined.TextSnippet,
                     trailing = if (textSelectMode) "켜짐" else null,
-                    primary = true,
                     onClick = toggleTextSelection,
                 ),
                 PdfHubAction("텍스트 모드 (Reflow)", Icons.Outlined.AutoStories) { showReflow = true },
@@ -566,7 +566,7 @@ fun ViewerScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                "${stringResource(R.string.page_of, state.pageIndex + 1, state.pageCount)} · 읽음 $progressPercent%",
+                                "${stringResource(R.string.page_of, state.pageIndex + 1, state.pageCount)} · 위치 $progressPercent%",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -618,7 +618,7 @@ fun ViewerScreen(
                             )
                         }
                         IconButton(onClick = { showHub = true }) {
-                            Icon(Icons.Outlined.Apps, contentDescription = "PDF 허브")
+                            Icon(Icons.Outlined.Menu, contentDescription = "PDF 메뉴")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),

@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.8
+# E2E test cases — My PDF Writer 0.8.23
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator; the build machine has no adb device attached, so only JVM tests are
@@ -9,8 +9,8 @@ executed here. Instrumentation APKs are compiled with
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 377 | **Passing** on this phone |
-| Instrumentation/E2E | 6 classes (see below) | **Compiled**; on-device run pending |
+| JVM unit tests | 468 | **Passing** on this phone |
+| Instrumentation/E2E | 7 classes (see below) | **Compiled**; on-device run pending |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally) |
 
@@ -24,7 +24,7 @@ executed here. Instrumentation APKs are compiled with
 | NOTE-03 | Direct note canvas receives both quick finger strokes | `NoteCanvasStrokeE2ETest` | Compiled |
 | PDF-01 | Tap near a text word selects it with finger tolerance | `PdfCanvasSelectionE2ETest` | Compiled |
 | PDF-02 | Drag selects every intersecting text word | `PdfCanvasSelectionE2ETest` | Compiled |
-| PDF-03 | Split chrome routes back/page/selection/tools/hub controls | `PdfSplitChromeE2ETest` | Compiled |
+| PDF-03 | Split chrome routes back/page/selection/tools/PDF menu controls | `PdfSplitChromeE2ETest` | Compiled |
 | PDF-04 | Simple hub shows seven primary tools and expands to every action | JVM `PdfHubSheetTest` | Passing |
 | PDF-05 | PDF/note divider clamps to 35–85% and updates the pane | JVM `StudyPaneLayoutTest` + UI manual | Passing preview; device drag pending |
 | NOTE-04 | Compact dock/tool targets and floating header metrics | JVM `NoteFloatingChromeTest` | Passing |
@@ -44,6 +44,10 @@ executed here. Instrumentation APKs are compiled with
 | READ-06 | Zoom enlarges page layout past viewport, not only the % label | Instrumentation `ReaderPinchE2ETest` (bounds assertion) | Compiled |
 | READ-07 | Horizontal pan moves the enlarged page, returns to the left edge, and does not open it | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | READ-08 | Previous bitmap stays visible while next zoom render is pending | Instrumentation `ReaderPinchE2ETest` | Compiled |
+| HOME-09 | Persistent create FAB is present on Home | Instrumentation `HomeStartE2ETest` | Compiled |
+| HOME-10 | Tag search filters the tag overview | JVM `HomeLibraryPolicyTest` | Passing |
+| HOME-11 | Home tab survives leaving Home and returning | Instrumentation `HomeStartE2ETest` | Compiled |
+| UI-11 | Viewer dock names the active extra tool/shape | JVM `ViewerToolDockTest` | Passing |
 | READ-03 | Render zoom quantization and bitmap scale | JVM `ReaderZoomTest` | Passing |
 | READ-04 | Pinch actually re-renders page bitmaps at higher zoom | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | TRACE-01 | PDF continuous trace events/fields | JVM `PdfContinuousTraceTest` | Passing |

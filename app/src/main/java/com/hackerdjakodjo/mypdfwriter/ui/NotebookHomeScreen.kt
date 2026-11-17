@@ -49,6 +49,7 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
@@ -70,6 +71,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -90,6 +92,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -161,13 +165,23 @@ fun NotebookHomeScreen(
     onOpenTrace: (() -> Unit)? = null,
     onOpenHelp: () -> Unit = {},
 ) {
-    var section by remember { mutableStateOf(LibrarySection.NOTES) }
-    var scope by remember { mutableStateOf(NoteScope.ALL) }
-    var query by remember { mutableStateOf("") }
-    var searchOpen by remember { mutableStateOf(false) }
-    var gridMode by remember { mutableStateOf(true) }
-    var selectedFolder by remember { mutableStateOf<String?>(null) }
-    var selectedTag by remember { mutableStateOf<String?>(null) }
+    var section by rememberSaveable(
+        stateSaver = Saver(
+            save = { it.name },
+            restore = { LibrarySection.valueOf(it) },
+        ),
+    ) { mutableStateOf(LibrarySection.NOTES) }
+    var scope by rememberSaveable(
+        stateSaver = Saver(
+            save = { it.name },
+            restore = { NoteScope.valueOf(it) },
+        ),
+    ) { mutableStateOf(NoteScope.ALL) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var gridMode by rememberSaveable { mutableStateOf(true) }
+    var selectedFolder by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedTag by rememberSaveable { mutableStateOf<String?>(null) }
     var showCreate by remember { mutableStateOf(false) }
     var showOverflow by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<Notebook?>(null) }
@@ -258,13 +272,27 @@ fun NotebookHomeScreen(
 
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
+            floatingActionButton = {
+                HomeCreateFab(
+                    onNewNote = { showCreate = true },
+                    onImportPdf = onImportPdf,
+                    onCreatePdf = onCreatePdf,
+                )
+            },
             topBar = {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     Column {
                         TopAppBar(
                             title = {
                                 Column {
-                                    Text("내 노트", style = MaterialTheme.typography.titleLarge)
+                                    Text(
+                                        when (section) {
+                                            LibrarySection.NOTES -> "내 노트"
+                                            LibrarySection.PDF -> "내 PDF"
+                                            LibrarySection.TAGS -> "태그"
+                                        },
+                                        style = MaterialTheme.typography.titleLarge,
+                                    )
                                     Text(
                                         subtitle,
                                         style = MaterialTheme.typography.labelMedium,
@@ -344,10 +372,10 @@ fun NotebookHomeScreen(
                             HomeSearchField(
                                 query = query,
                                 onQueryChange = { query = it },
-                                placeholder = if (section == LibrarySection.PDF) {
-                                    "PDF 이름 검색"
-                                } else {
-                                    "노트 제목·태그 검색"
+                                placeholder = when (section) {
+                                    LibrarySection.PDF -> "PDF 이름 검색"
+                                    LibrarySection.TAGS -> "태그 검색"
+                                    LibrarySection.NOTES -> "노트 제목·태그 검색"
                                 },
                             )
                         }
@@ -400,11 +428,18 @@ fun NotebookHomeScreen(
                             onOpenTools = onOpenTools,
                             horizontalPadding = horizontalPadding,
                             actions = actions,
+                            onClearFilters = {
+                                scope = NoteScope.ALL
+                                selectedFolder = null
+                                selectedTag = null
+                                query = ""
+                            },
                             onCreate = { showCreate = true },
                         )
 
                         LibrarySection.PDF -> PdfSection(
                             pdfs = visiblePdfs,
+                            hasAnyPdf = pdfs.isNotEmpty(),
                             query = query,
                             gridMode = gridMode,
                             onToggleGrid = { gridMode = !gridMode },
@@ -417,6 +452,7 @@ fun NotebookHomeScreen(
 
                         LibrarySection.TAGS -> TagsSection(
                             tagCounts = tagCounts,
+                            query = query,
                             horizontalPadding = horizontalPadding,
                             onTagSelected = { tag ->
                                 selectedTag = tag
@@ -483,6 +519,50 @@ fun NotebookHomeScreen(
                 deleteTarget = null
             },
         )
+    }
+}
+
+@Composable
+private fun HomeCreateFab(
+    onNewNote: () -> Unit,
+    onImportPdf: () -> Unit,
+    onCreatePdf: () -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        FloatingActionButton(onClick = { open = true }) {
+            Icon(Icons.Outlined.Add, contentDescription = "새로 만들기")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("새 노트") },
+                leadingIcon = {
+                    Icon(Icons.AutoMirrored.Outlined.NoteAdd, contentDescription = null)
+                },
+                onClick = {
+                    open = false
+                    onNewNote()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("PDF 가져오기") },
+                leadingIcon = {
+                    Icon(Icons.Outlined.PictureAsPdf, contentDescription = null)
+                },
+                onClick = {
+                    open = false
+                    onImportPdf()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("빈 PDF") },
+                leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onCreatePdf()
+                },
+            )
+        }
     }
 }
 
@@ -570,6 +650,7 @@ private fun NotesSection(
     onOpenTools: () -> Unit,
     horizontalPadding: Dp,
     actions: NotebookActions,
+    onClearFilters: () -> Unit,
     onCreate: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
@@ -594,7 +675,7 @@ private fun NotesSection(
                     start = horizontalPadding,
                     end = horizontalPadding,
                     top = 10.dp,
-                    bottom = 24.dp,
+                    bottom = 96.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -619,6 +700,7 @@ private fun NotesSection(
                         selectedFolder = selectedFolder,
                         selectedTag = selectedTag,
                         showCreateAction = !showStart,
+                        onClearFilters = onClearFilters,
                         onCreate = onCreate,
                     )
                 }
@@ -632,7 +714,7 @@ private fun NotesSection(
                     start = horizontalPadding,
                     end = horizontalPadding,
                     top = 10.dp,
-                    bottom = 24.dp,
+                    bottom = 96.dp,
                 ),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -662,7 +744,7 @@ private fun NotesSection(
                     start = horizontalPadding,
                     end = horizontalPadding,
                     top = 10.dp,
-                    bottom = 24.dp,
+                    bottom = 96.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -796,7 +878,9 @@ private fun TagFilterChip(
     Box {
         FilterChip(
             selected = selectedTag != null,
-            onClick = { open = true },
+            onClick = {
+                if (selectedTag != null) onTagChange(null) else open = true
+            },
             label = { Text(selectedTag ?: "태그") },
             leadingIcon = {
                 Icon(Icons.Outlined.LocalOffer, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -1150,6 +1234,7 @@ private fun EmptyNotesState(
     selectedFolder: String?,
     selectedTag: String?,
     showCreateAction: Boolean,
+    onClearFilters: () -> Unit,
     onCreate: () -> Unit,
 ) {
     val filtered = query.isNotBlank() || selectedFolder != null || selectedTag != null
@@ -1166,7 +1251,7 @@ private fun EmptyNotesState(
         filtered -> {
             title = "조건에 맞는 노트가 없어요"
             body = "검색어나 폴더·태그 필터를 바꿔 보세요."
-            action = null
+            action = "필터 초기화"
         }
 
         scope == NoteScope.TRASH -> {
@@ -1197,14 +1282,15 @@ private fun EmptyNotesState(
         icon = icon,
         title = title,
         body = body,
-        actionLabel = action.takeIf { showCreateAction },
-        onAction = onCreate,
+        actionLabel = if (filtered) action else action.takeIf { showCreateAction },
+        onAction = if (filtered) onClearFilters else onCreate,
     )
 }
 
 @Composable
 private fun PdfSection(
     pdfs: List<RecentDoc>,
+    hasAnyPdf: Boolean,
     query: String,
     gridMode: Boolean,
     onToggleGrid: () -> Unit,
@@ -1222,22 +1308,22 @@ private fun PdfSection(
                 start = horizontalPadding,
                 end = horizontalPadding,
                 top = 10.dp,
-                bottom = 24.dp,
+                bottom = 96.dp,
             ),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                ImportPdfBanner(onImportPdf = onImportPdf, onCreatePdf = onCreatePdf)
-            }
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                ToolsEntry(onClick = onOpenTools)
+            if (!hasAnyPdf) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    ImportPdfBanner(onImportPdf = onImportPdf, onCreatePdf = onCreatePdf)
+                }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 PdfHeader(
                     count = pdfs.size,
                     filtered = query.isNotBlank(),
                     gridMode = gridMode,
+                    onOpenTools = onOpenTools,
                     onToggleGrid = onToggleGrid,
                 )
             }
@@ -1259,17 +1345,19 @@ private fun PdfSection(
                 start = horizontalPadding,
                 end = horizontalPadding,
                 top = 10.dp,
-                bottom = 24.dp,
+                bottom = 96.dp,
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item { ImportPdfBanner(onImportPdf = onImportPdf, onCreatePdf = onCreatePdf) }
-            item { ToolsEntry(onClick = onOpenTools) }
+            if (!hasAnyPdf) {
+                item { ImportPdfBanner(onImportPdf = onImportPdf, onCreatePdf = onCreatePdf) }
+            }
             item {
                 PdfHeader(
                     count = pdfs.size,
                     filtered = query.isNotBlank(),
                     gridMode = gridMode,
+                    onOpenTools = onOpenTools,
                     onToggleGrid = onToggleGrid,
                 )
             }
@@ -1340,6 +1428,7 @@ private fun PdfHeader(
     count: Int,
     filtered: Boolean,
     gridMode: Boolean,
+    onOpenTools: () -> Unit,
     onToggleGrid: () -> Unit,
 ) {
     Row(
@@ -1352,6 +1441,9 @@ private fun PdfHeader(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        IconButton(onClick = onOpenTools) {
+            Icon(Icons.Outlined.Dashboard, contentDescription = "PDF 도구")
+        }
         IconButton(onClick = onToggleGrid) {
             Icon(
                 if (gridMode) Icons.AutoMirrored.Outlined.ViewList else Icons.Outlined.GridView,
@@ -1470,9 +1562,11 @@ private fun EmptyPdfState(query: String, onImportPdf: () -> Unit) {
 @Composable
 private fun TagsSection(
     tagCounts: List<Pair<String, Int>>,
+    query: String,
     horizontalPadding: Dp,
     onTagSelected: (String) -> Unit,
 ) {
+    val visibleTags = remember(tagCounts, query) { filterTagCounts(tagCounts, query) }
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 180.dp),
         modifier = Modifier.fillMaxSize(),
@@ -1480,7 +1574,7 @@ private fun TagsSection(
             start = horizontalPadding,
             end = horizontalPadding,
             top = 10.dp,
-            bottom = 24.dp,
+            bottom = 96.dp,
         ),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1495,16 +1589,20 @@ private fun TagsSection(
                 )
             }
         }
-        if (tagCounts.isEmpty()) {
+        if (visibleTags.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 EmptyState(
-                    icon = Icons.Outlined.LocalOffer,
-                    title = "태그가 없어요",
-                    body = "노트를 만들거나 태그를 편집하면 이곳에 태그가 모입니다.",
+                    icon = if (query.isBlank()) Icons.Outlined.LocalOffer else Icons.Outlined.Search,
+                    title = if (query.isBlank()) "태그가 없어요" else "검색 결과가 없어요",
+                    body = if (query.isBlank()) {
+                        "노트를 만들거나 태그를 편집하면 이곳에 태그가 모입니다."
+                    } else {
+                        "다른 태그 이름으로 검색해 보세요."
+                    },
                 )
             }
         } else {
-            gridItems(tagCounts, key = { it.first }) { (tag, count) ->
+            gridItems(visibleTags, key = { it.first }) { (tag, count) ->
                 TagCard(tag = tag, count = count, onClick = { onTagSelected(tag) })
             }
         }

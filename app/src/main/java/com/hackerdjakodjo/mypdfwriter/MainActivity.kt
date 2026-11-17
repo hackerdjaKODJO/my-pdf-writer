@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -101,6 +102,7 @@ class MainActivity : ComponentActivity() {
                 var showTrace by remember { mutableStateOf(false) }
                 var showHelp by remember { mutableStateOf(false) }
                 var showOnboarding by remember { mutableStateOf(false) }
+                val homeStateHolder = rememberSaveableStateHolder()
                 val viewer by viewModel.viewer.collectAsStateWithLifecycle()
                 val notebooks by notebookViewModel.notebooks.collectAsStateWithLifecycle()
                 val currentNote by notebookViewModel.current.collectAsStateWithLifecycle()
@@ -191,26 +193,28 @@ class MainActivity : ComponentActivity() {
                             initialSource = viewModel.currentSourceFile(),
                             initialName = viewer?.docName.orEmpty(),
                         )
-                        viewer == null -> NotebookHomeScreen(
-                            notebooks = notebooks,
-                            pdfs = pdfs,
-                            onOpenNotebook = { notebookViewModel.open(it) },
-                            onCreateNotebook = { draft -> notebookViewModel.create(draft) },
-                            onOpenPdf = { doc -> viewModel.openDocument(Uri.parse(doc.uri)) },
-                            onImportPdf = { openPdf.launch(arrayOf("application/pdf")) },
-                            onCreatePdf = { createPdf.launch("새 문서.pdf") },
-                            onOpenTools = { showTools = true },
-                            onToggleFavorite = { notebookViewModel.toggleFavorite(it) },
-                            onTrash = { notebookViewModel.trash(it) },
-                            onRestore = { notebookViewModel.restore(it) },
-                            onDeleteForever = { notebookViewModel.deleteForever(it) },
-                            onRename = { id, title -> notebookViewModel.rename(id, title) },
-                            onMoveFolder = { id, folder -> notebookViewModel.moveFolder(id, folder) },
-                            onSetTags = { id, tags -> notebookViewModel.setTags(id, tags) },
-                            onOpenBackup = { showBackup = true },
-                            onOpenTrace = { showTrace = true },
-                            onOpenHelp = { showHelp = true },
-                        )
+                        viewer == null -> homeStateHolder.SaveableStateProvider("home") {
+                            NotebookHomeScreen(
+                                notebooks = notebooks,
+                                pdfs = pdfs,
+                                onOpenNotebook = { notebookViewModel.open(it) },
+                                onCreateNotebook = { draft -> notebookViewModel.create(draft) },
+                                onOpenPdf = { doc -> viewModel.openDocument(Uri.parse(doc.uri)) },
+                                onImportPdf = { openPdf.launch(arrayOf("application/pdf")) },
+                                onCreatePdf = { createPdf.launch("새 문서.pdf") },
+                                onOpenTools = { showTools = true },
+                                onToggleFavorite = { notebookViewModel.toggleFavorite(it) },
+                                onTrash = { notebookViewModel.trash(it) },
+                                onRestore = { notebookViewModel.restore(it) },
+                                onDeleteForever = { notebookViewModel.deleteForever(it) },
+                                onRename = { id, title -> notebookViewModel.rename(id, title) },
+                                onMoveFolder = { id, folder -> notebookViewModel.moveFolder(id, folder) },
+                                onSetTags = { id, tags -> notebookViewModel.setTags(id, tags) },
+                                onOpenBackup = { showBackup = true },
+                                onOpenTrace = { showTrace = true },
+                                onOpenHelp = { showHelp = true },
+                            )
+                        }
                         else -> Box(Modifier.fillMaxSize()) {
                             val studySource = StudySource(
                                 docName = viewer?.docName.orEmpty(),

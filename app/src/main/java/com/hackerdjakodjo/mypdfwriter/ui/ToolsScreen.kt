@@ -1,6 +1,7 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -109,6 +110,7 @@ fun ToolsScreen(
     initialSource: File? = null,
     initialName: String = "",
 ) {
+    BackHandler(onBack = onBack)
     val vm: ToolsViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }

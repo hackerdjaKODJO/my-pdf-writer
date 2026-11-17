@@ -26,7 +26,6 @@ import androidx.compose.material.icons.automirrored.outlined.TextSnippet
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Approval
-import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Circle
@@ -42,6 +41,7 @@ import androidx.compose.material.icons.outlined.FormatUnderlined
 import androidx.compose.material.icons.outlined.Handyman
 import androidx.compose.material.icons.outlined.Highlight
 import androidx.compose.material.icons.outlined.HorizontalRule
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.StarBorder
@@ -279,8 +279,8 @@ internal fun SplitPdfToolbar(
             )
 
             SplitChromeButton(
-                icon = Icons.Outlined.Apps,
-                contentDescription = "PDF 허브",
+                icon = Icons.Outlined.Menu,
+                contentDescription = "PDF 메뉴",
                 onClick = onOpenHub,
             )
         }

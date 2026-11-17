@@ -152,7 +152,7 @@ private fun HubHeader(
     totalCount: Int,
 ) {
     Column(Modifier.padding(horizontal = 20.dp)) {
-        Text("PDF 허브", style = MaterialTheme.typography.titleLarge)
+        Text("PDF 메뉴", style = MaterialTheme.typography.titleLarge)
         Text(
             "$docName · ${pageIndex + 1} / $pageCount",
             style = MaterialTheme.typography.labelMedium,

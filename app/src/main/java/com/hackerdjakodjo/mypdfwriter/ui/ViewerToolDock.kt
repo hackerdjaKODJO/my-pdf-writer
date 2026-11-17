@@ -92,6 +92,29 @@ internal fun isExtraTool(tool: Tool): Boolean =
 
 internal fun isShapeTool(tool: Tool): Boolean = tool in viewerShapeTools
 
+/**
+ * The dock slot must name the tool that is actually active. Otherwise choosing
+ * 밑줄/스탬프/가림 only highlights the generic "더보기" slot and the user has
+ * to remember what is armed.
+ */
+internal fun dockMoreLabel(tool: Tool): String = when (tool) {
+    Tool.STAMP -> "스탬프"
+    Tool.SIGNATURE -> "서명"
+    Tool.REDACT -> "가림"
+    Tool.UNDERLINE -> "밑줄"
+    Tool.STRIKEOUT -> "취소선"
+    else -> "더보기"
+}
+
+/** The shape slot keeps the chosen shape visible instead of always saying 도형. */
+internal fun dockShapeLabel(tool: Tool): String = when (tool) {
+    Tool.RECT -> "사각형"
+    Tool.ARROW -> "화살표"
+    Tool.LINE -> "직선"
+    Tool.ELLIPSE -> "타원"
+    else -> "도형"
+}
+
 private data class DockEntry(
     val label: String,
     val icon: ImageVector,
@@ -132,13 +155,13 @@ fun ViewerToolDock(
         DockEntry("글상자", Icons.Outlined.TextFields, state.tool == Tool.TEXT) {
             onSelectTool(Tool.TEXT)
         },
-        DockEntry("도형", Icons.Outlined.CropSquare, isShapeTool(state.tool)) {
+        DockEntry(dockShapeLabel(shapeTool), Icons.Outlined.CropSquare, isShapeTool(state.tool)) {
             onSelectTool(shapeTool)
         },
         // Direct text selection entry: this used to be labelled "올가미",
         // which hid the most useful PDF action behind a note-editor term.
         DockEntry("텍스트 선택", Icons.AutoMirrored.Outlined.TextSnippet, textSelectMode, onTextSelect),
-        DockEntry("더보기", Icons.Outlined.MoreHoriz, isExtraTool(state.tool), onMore),
+        DockEntry(dockMoreLabel(state.tool), Icons.Outlined.MoreHoriz, isExtraTool(state.tool), onMore),
     )
 
     Column(Modifier.fillMaxWidth()) {

@@ -20,6 +20,10 @@
 - 화면과 동일한 평탄화 PDF 내보내기
 - 완전 오프라인, 광고 없음, 인터넷 권한 없음
 
+## 문서
+
+- [Menu and navigation pass — 0.8.23](ux-menu-0823.md)
+
 ## 문의
 
 [GitHub Issues](https://github.com/hackerdjaKODJO/my-pdf-writer/issues)
