@@ -197,13 +197,22 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
     ),
 )
 
+/** Label for the optional replay entry in the help center. */
+internal const val REPLAY_TUTORIAL_LABEL = "튜토리얼 다시 보기"
+
 /**
  * Fully offline, Material 3 bottom-sheet help center. Chips jump to a topic
  * section; every section shows short numbered steps plus optional note/caution
  * callouts. No external links, assets, fonts, web views or analytics.
+ *
+ * [onReplayTutorial] is optional: when supplied, the sheet offers a replay of
+ * the first-run tutorial. The caller owns closing this sheet and showing it.
  */
 @Composable
-fun HelpCenterSheet(onDismiss: () -> Unit) {
+fun HelpCenterSheet(
+    onDismiss: () -> Unit,
+    onReplayTutorial: (() -> Unit)? = null,
+) {
     val topics = remember { helpTopics() }
     var selectedKey by remember { mutableStateOf(topics.first().key) }
     val listState = rememberLazyListState()
@@ -227,6 +236,15 @@ fun HelpCenterSheet(onDismiss: () -> Unit) {
                     )
                 }
                 TextButton(onClick = onDismiss) { Text("닫기") }
+            }
+
+            if (onReplayTutorial != null) {
+                TextButton(
+                    onClick = { onReplayTutorial() },
+                    modifier = Modifier.padding(start = 14.dp, bottom = 6.dp),
+                ) {
+                    Text(REPLAY_TUTORIAL_LABEL)
+                }
             }
 
             Row(

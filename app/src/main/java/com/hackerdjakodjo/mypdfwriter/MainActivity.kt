@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
+import com.hackerdjakodjo.mypdfwriter.data.OnboardingStore
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.ui.BackupSheet
 import com.hackerdjakodjo.mypdfwriter.ui.BackupViewModel
@@ -30,6 +31,7 @@ import com.hackerdjakodjo.mypdfwriter.ui.NoteEditorScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NoteTraceSheet
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookHomeScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookViewModel
+import com.hackerdjakodjo.mypdfwriter.ui.OnboardingSheet
 import com.hackerdjakodjo.mypdfwriter.ui.PdfViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.STUDY_PANE_DEFAULT_FRACTION
 import com.hackerdjakodjo.mypdfwriter.ui.StudyNoteBuilder
@@ -39,12 +41,14 @@ import com.hackerdjakodjo.mypdfwriter.ui.ToolsScreen
 import com.hackerdjakodjo.mypdfwriter.ui.ViewerScreen
 import com.hackerdjakodjo.mypdfwriter.ui.clampStudyPaneFraction
 import com.hackerdjakodjo.mypdfwriter.ui.theme.MyPdfWriterTheme
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: PdfViewModel by viewModels()
     private val notebookViewModel: NotebookViewModel by viewModels()
     private val backupViewModel: BackupViewModel by viewModels()
+    private val onboardingStore by lazy { OnboardingStore(applicationContext) }
     private var backupIncludeSources = false
     /** Set only by the PDF study pane; the activity result then exports this detached note. */
     private var pendingNoteExport: Notebook? = null
@@ -96,6 +100,7 @@ class MainActivity : ComponentActivity() {
                 var showBackup by remember { mutableStateOf(false) }
                 var showTrace by remember { mutableStateOf(false) }
                 var showHelp by remember { mutableStateOf(false) }
+                var showOnboarding by remember { mutableStateOf(false) }
                 val viewer by viewModel.viewer.collectAsStateWithLifecycle()
                 val notebooks by notebookViewModel.notebooks.collectAsStateWithLifecycle()
                 val currentNote by notebookViewModel.current.collectAsStateWithLifecycle()
@@ -115,6 +120,16 @@ class MainActivity : ComponentActivity() {
                         notebookViewModel.refresh()
                         viewModel.reloadLibrary()
                         backupViewModel.consumeRestored()
+                    }
+                }
+                // First launch only: show the walkthrough after the home screen
+                // settles, then persist the one-time flag. Replay is driven by
+                // the help center and does not depend on this flag.
+                LaunchedEffect(Unit) {
+                    if (!onboardingStore.hasSeen()) {
+                        delay(300L)
+                        showOnboarding = true
+                        onboardingStore.markSeen()
                     }
                 }
                 // A detached pane belongs to one open PDF. If the document closes or
@@ -342,7 +357,19 @@ class MainActivity : ComponentActivity() {
                     NoteTraceSheet(onDismiss = { showTrace = false })
                 }
                 if (showHelp) {
-                    HelpCenterSheet(onDismiss = { showHelp = false })
+                    HelpCenterSheet(
+                        onDismiss = { showHelp = false },
+                        onReplayTutorial = {
+                            showHelp = false
+                            showOnboarding = true
+                        },
+                    )
+                }
+                if (showOnboarding) {
+                    OnboardingSheet(
+                        onDismiss = { showOnboarding = false },
+                        onComplete = { showOnboarding = false },
+                    )
                 }
             }
         }
