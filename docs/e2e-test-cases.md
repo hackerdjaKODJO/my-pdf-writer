@@ -9,7 +9,7 @@ executed here. Instrumentation APKs are compiled with
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 368 | **Passing** on this phone |
+| JVM unit tests | 377 | **Passing** on this phone |
 | Instrumentation/E2E | 6 classes (see below) | **Compiled**; on-device run pending |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally) |
@@ -33,6 +33,8 @@ executed here. Instrumentation APKs are compiled with
 | EXPORT-01 | Note export all/current/selected + hidden layers | JVM `NoteExportOptionsTest` | Passing |
 | SEARCH-01 | Search next/previous wraps, clamps, resets on query change | JVM `SearchNavigationTest` | Passing |
 | MASK-01 | Masking card legacy JSON, reveal/O-X scoring, duplication | JVM `MaskingCardTest`, `NotePageManagerTest` | Passing |
+| HELP-01 | Help topics are complete, offline and ordered | JVM `HelpCenterContentTest` | Passing |
+| PDF-06 | Long press in VIEW mode enters selection and reports a point; long press in selection mode is inert | JVM `PdfTextLayoutTest` + instrumentation `PdfCanvasSelectionE2ETest` | Compiled |
 | DEVICE-01 | Stylus pressure curve and two/three-finger gesture behavior | Manual device required | Not run |
 
 ## Run on a device

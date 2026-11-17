@@ -253,6 +253,7 @@ class MainActivity : ComponentActivity() {
                                         ?: notebookViewModel.createBlankStudyNote(source)
                                     openStudyPane(notebook)
                                 },
+                                onOpenHelp = { showHelp = true },
                                 studyPaneFraction = studyPaneFraction,
                                 onStudyPaneFractionChange = { fraction ->
                                     studyPaneFraction = clampStudyPaneFraction(fraction)
