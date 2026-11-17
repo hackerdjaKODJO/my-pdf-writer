@@ -1,4 +1,4 @@
-# PC handoff — My PDF Writer 0.8.21
+# PC handoff — My PDF Writer 0.8.22
 
 This document lets another machine continue the work from the same source state.
 The Android app source, tests and design notes are in Git; APKs and signing keys
@@ -8,9 +8,9 @@ are not.
 
 | Field | Value |
 | --- | --- |
-| Version | `0.8.21` / `versionCode 30` |
-| Tag | `v0.8.21` |
-| Release commit | `v0.8.21` tag |
+| Version | `0.8.22` / `versionCode 31` |
+| Tag | `v0.8.22` |
+| Release commit | `v0.8.22` tag |
 | Branch | `feature/starnote` |
 | `main` | same commit as `feature/starnote` |
 | Package | `com.hackerdjakodjo.mypdfwriter` (release) / `.debug` |
@@ -20,8 +20,8 @@ are not.
 | Permissions | no `INTERNET`; `RECORD_AUDIO` is runtime-only for audio notes |
 
 The local phone review APK is
-`/sdcard/Download/MyPDFWriter-0.8.21-arm64.apk`
-(SHA-256 `7a440f1f58364a3723d0ac093e6a4aa23f2c862828aa7e3d1710bc42501d1271`).
+`/sdcard/Download/MyPDFWriter-0.8.22-arm64.apk`
+(SHA-256 `ca54b14c39407d211d1de9b5ca94804ef70fcf754fb535e8d81e7a226d35ed44`).
 It is a debug-signed arm64-only APK and is not committed to Git.
 
 ## Continue on a PC

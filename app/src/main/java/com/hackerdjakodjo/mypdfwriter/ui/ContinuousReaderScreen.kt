@@ -209,7 +209,6 @@ fun ContinuousReaderScreen(
                         .fillMaxSize()
                         .pointerInput(Unit) {
                             val touchSlop = viewConfiguration.touchSlop
-                            val horizontalPaddingPx = 28.dp.toPx()
                             awaitPointerEventScope {
                                 val gate = ContinuousPinchGate()
                                 val seen = HashSet<Long>()
@@ -311,9 +310,7 @@ fun ContinuousReaderScreen(
                                                                 .viewportSize.width
                                                                 .toFloat()
                                                         val basePageWidth =
-                                                            (viewportWidth -
-                                                                horizontalPaddingPx)
-                                                                .coerceAtLeast(1f)
+                                                            viewportWidth.coerceAtLeast(1f)
                                                         val maxPan = basePageWidth *
                                                             (latestZoom.value -
                                                                 READER_ZOOM_MIN)
@@ -350,8 +347,6 @@ fun ContinuousReaderScreen(
                         // current-page indicator; the old 18 dp label + gap made pages
                         // look far apart.
                         contentPadding = PaddingValues(
-                            start = 14.dp,
-                            end = 14.dp,
                             top = 8.dp,
                             bottom = 60.dp,
                         ),
@@ -444,7 +439,10 @@ private fun ReaderPageCard(
         renderZoom,
         renderScale,
     ) {
-        value = ReaderPageState.Loading
+        // Keep the previous Ready bitmap visible while a new render-scale
+        // bitmap is produced. Resetting to Loading here made every zoom step
+        // flash a blank/loading page.
+        if (value !is ReaderPageState.Ready) value = ReaderPageState.Loading
         val bitmap = try {
             currentLoadPage(index, renderZoom)
         } catch (cancelled: CancellationException) {

@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -124,6 +125,39 @@ class ReaderPinchE2ETest {
     }
 
     @Test
+    fun zoomKeepsTheOldPageVisibleWhileTheNewBitmapRenders() {
+        // Before 0.8.22 the producer reset its state to Loading on every
+        // render-zoom change, so pinch/zoom flashed a blank page until the new
+        // bitmap arrived. The previous bitmap must stay on screen.
+        val renderGate = CompletableDeferred<Unit>()
+        val loadCount = AtomicInteger()
+        composeRule.setContent {
+            ContinuousReaderScreen(
+                title = "flicker-test",
+                pageCount = 1,
+                initialPage = 0,
+                loadPage = { _, _ ->
+                    if (loadCount.incrementAndGet() > 1) renderGate.await()
+                    Bitmap.createBitmap(80, 112, Bitmap.Config.ARGB_8888)
+                },
+                onBack = {},
+                onOpenPage = {},
+            )
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("1쪽 페이지").assertExists()
+
+        composeRule.onRoot().performTouchInput { click(center); click(center) }
+        composeRule.waitUntil(timeoutMillis = 5_000) { loadCount.get() >= 2 }
+
+        // The old bitmap is still displayed while loadPage() is suspended.
+        composeRule.onNodeWithContentDescription("1쪽 페이지").assertExists()
+        renderGate.complete(Unit)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("1쪽 페이지").assertExists()
+    }
+
+    @Test
     fun horizontalPanMovesThePageWithoutOpeningIt() {
         val opened = AtomicInteger(-1)
         composeRule.setContent {
@@ -158,6 +192,20 @@ class ReaderPinchE2ETest {
             panned.left < zoomed.left - 1.dp,
         )
         assertEquals("horizontal pan must not open the page", -1, opened.get())
+
+        // Drag back right: the page must be able to return all the way to the
+        // left edge (no 14 dp content-padding gap and no system-gesture steal).
+        composeRule.onRoot().performTouchInput {
+            down(0, center)
+            moveTo(0, center + Offset(420f, 0f), delayMillis = 16)
+            up(0)
+        }
+        composeRule.waitForIdle()
+        val backAtLeft = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "page must reach the left edge; left=${backAtLeft.left}",
+            backAtLeft.left <= 1.dp,
+        )
     }
 
     @Test

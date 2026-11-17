@@ -6,7 +6,7 @@
 광고·계정·인터넷 권한 없이 **기기 안에서만** 동작합니다.
 
 - **패키지**: `com.hackerdjakodjo.mypdfwriter`
-- **버전**: `0.8.21` (개발 빌드)
+- **버전**: `0.8.22` (개발 빌드)
 - **지원 OS**: Android 8.0 (API 26) 이상
 - **타깃 SDK**: 36 (Android 16)
 - **PC 인계 문서**: [`HANDOFF.md`](HANDOFF.md)
@@ -366,8 +366,9 @@ app/src/test/java/com/hackerdjakodjo/mypdfwriter/data/
 - **v0.8.18**: 연속 보기 핀치 이벤트를 Initial pass에서 포착, 렌더 키·캐시 키·stale lambda 수정, NoteTrace 추적 추가
 - **v0.8.19**: 네이티브 transform 제스처를 Initial pass 거리 비율 계산으로 대체, 두 손가락만 확대·한 손 스크롤 유지
 - **v0.8.20**: 연속 보기 확대가 %만 바뀌던 원인 수정 — 페이지가 뷰포트 폭에 강제로 맞춰지지 않고 실제로 커지도록 `requiredWidth` 적용, 핀치 입력은 raw Initial 패스에서 추적
-- **v0.8.21 (현재)**: 연속 보기 좌우 패닝을 레이아웃 단계 offset으로 옮겨 반응성 개선, 한 손 대각선 드래그에서 가로 패닝·세로 스크롤 동시 지원
-- **v0.8.22+**: 실기기 필압 캘리브레이션, 직접 캔버스 드래그, 접근성, 백업 암호화, EPUB/Word/PPT는 MyReader와 역할이 겹쳐 보류
+- **v0.8.21**: 연속 보기 좌우 패닝을 레이아웃 단계 offset으로 옮겨 반응성 개선, 한 손 대각선 드래그에서 가로 패닝·세로 스크롤 동시 지원
+- **v0.8.22 (현재)**: 좌우 페이지 여백 제거로 확대 후 양쪽 끝까지 패닝, 확대 재렌더링 중 이전 페이지 비트맵 유지로 깜박임 제거
+- **v0.8.23+**: 실기기 필압 캘리브레이션, 직접 캔버스 드래그, 접근성, 백업 암호화, EPUB/Word/PPT는 MyReader와 역할이 겹쳐 보류
 - **v1.0**: 사용자 승인 후 Play Store 정식 출시, 영어/일본어 UI, 온보딩
 
 자세한 출시 체크리스트는 [`docs/play-store-roadmap.md`](docs/play-store-roadmap.md)를 참고하세요.
