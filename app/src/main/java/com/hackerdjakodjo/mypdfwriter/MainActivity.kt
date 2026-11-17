@@ -319,7 +319,7 @@ class MainActivity : ComponentActivity() {
                                             },
                                             onOpenSourcePdf = { page ->
                                                 closeStudyPane()
-                                                viewModel.goToPage(page)
+                                                viewModel.jumpToSourcePage(page)
                                             },
                                             onCaptureExcerpt = appendToOpenPane,
                                             onJumpToSourcePage = { sourcePage, notePage ->
@@ -332,8 +332,9 @@ class MainActivity : ComponentActivity() {
                                                         .coerceAtLeast(0),
                                                 )
                                                 // Keep the pane open so the note and the
-                                                // PDF page move together.
-                                                viewModel.goToPage(sourcePage)
+                                                // PDF page move together. Source-link jumps
+                                                // stay available even while the page is locked.
+                                                viewModel.jumpToSourcePage(sourcePage)
                                             },
                                             onOpenHelp = { showHelp = true },
                                         )

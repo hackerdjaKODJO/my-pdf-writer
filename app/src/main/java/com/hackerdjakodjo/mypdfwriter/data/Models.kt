@@ -229,12 +229,52 @@ data class PageSpec(
     }
 }
 
+/**
+ * Per-document display preferences persisted alongside annotations and notes.
+ *
+ * Legacy documents have no `display` object and load with these defaults, so
+ * adding this field never changes the JSON of older files on read. Brightness is
+ * a screen dimming factor in 0.4..1.0 (1.0 = no dimming); values outside that
+ * range are clamped when read or set.
+ */
+data class DisplayPrefs(
+    val nightMode: Boolean = false,
+    val brightness: Float = DEFAULT_BRIGHTNESS,
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("night", nightMode)
+        put("bright", brightness.toDouble())
+    }
+
+    companion object {
+        const val MIN_BRIGHTNESS = 0.4f
+        const val MAX_BRIGHTNESS = 1f
+        const val DEFAULT_BRIGHTNESS = 1f
+
+        fun clampBrightness(value: Float): Float {
+            if (!value.isFinite()) return DEFAULT_BRIGHTNESS
+            return value.coerceIn(MIN_BRIGHTNESS, MAX_BRIGHTNESS)
+        }
+
+        fun fromJson(o: JSONObject?): DisplayPrefs {
+            if (o == null) return DisplayPrefs()
+            return DisplayPrefs(
+                nightMode = o.optBoolean("night", false),
+                brightness = clampBrightness(
+                    o.optDouble("bright", DEFAULT_BRIGHTNESS.toDouble()).toFloat(),
+                ),
+            )
+        }
+    }
+}
+
 data class DocState(
     val docId: String,
     val displayName: String,
     val pages: List<PageSpec>,
     val annotations: List<Annotation>,
     val notes: Map<Int, String>,
+    val displayPrefs: DisplayPrefs = DisplayPrefs(),
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("version", 1)
@@ -242,6 +282,8 @@ data class DocState(
         put("pages", JSONArray().apply { pages.forEach { put(it.toJson()) } })
         put("annotations", JSONArray().apply { annotations.forEach { put(it.toJson()) } })
         put("notes", JSONObject().apply { notes.forEach { (k, v) -> put(k.toString(), v) } })
+        // Omit the default so legacy/default documents keep the exact old JSON shape.
+        if (displayPrefs != DisplayPrefs()) put("display", displayPrefs.toJson())
     }
 
     /** Drops references that no longer exist after the source file changed. */
@@ -295,6 +337,7 @@ data class DocState(
                 pages = pages,
                 annotations = anns,
                 notes = notes,
+                displayPrefs = DisplayPrefs.fromJson(o.optJSONObject("display")),
             )
         }
     }

@@ -50,6 +50,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -78,11 +79,86 @@ import androidx.compose.ui.unit.sp
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.data.DisplayPrefs
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
+
+/**
+ * Material3 screen-settings sheet: day/night mode and an offline brightness
+ * dimmer. Both values live in the document's display prefs and are saved on
+ * change, so they survive closing and reopening the document.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DisplaySettingsSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Text("화면 설정", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.size(4.dp))
+            Text(
+                "이 문서에만 적용되며 다시 열어도 유지됩니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.size(18.dp))
+
+            Text("화면 모드", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.size(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = !state.nightMode,
+                    onClick = { if (state.nightMode) vm.toggleNightMode() },
+                    label = { Text("주간") },
+                )
+                FilterChip(
+                    selected = state.nightMode,
+                    onClick = { if (!state.nightMode) vm.toggleNightMode() },
+                    label = { Text("야간") },
+                )
+            }
+            Spacer(Modifier.size(20.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text("밝기", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                Text(
+                    "${(state.brightness * 100).roundToInt()}%",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Spacer(Modifier.size(4.dp))
+            Slider(
+                value = state.brightness,
+                valueRange = DisplayPrefs.MIN_BRIGHTNESS..DisplayPrefs.MAX_BRIGHTNESS,
+                onValueChange = vm::setBrightness,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "어둡게",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = { vm.setBrightness(DisplayPrefs.DEFAULT_BRIGHTNESS) }) {
+                    Text("기본값")
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

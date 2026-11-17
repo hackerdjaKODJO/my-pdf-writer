@@ -76,6 +76,8 @@ fun SpreadReaderScreen(
     title: String,
     pageCount: Int,
     initialPage: Int,
+    /** Screen dimming factor in 0.4..1.0; 1f draws no scrim. */
+    brightness: Float = 1f,
     loadPage: suspend (Int) -> Bitmap?,
     onBack: () -> Unit,
     onOpenPage: (Int) -> Unit,
@@ -166,6 +168,15 @@ fun SpreadReaderScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(horizontal = 10.dp, vertical = 8.dp),
+                    )
+                }
+
+                val dimAlpha = 1f - brightness.coerceIn(0.4f, 1f)
+                if (dimAlpha > 0f) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = dimAlpha)),
                     )
                 }
             }
