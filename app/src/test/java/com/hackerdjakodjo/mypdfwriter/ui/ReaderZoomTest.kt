@@ -56,6 +56,31 @@ class ReaderZoomTest {
     }
 
     @Test
+    fun `native transform zoom is ignored for a single finger`() {
+        // detectTransformGestures also reports one-finger drags as zoomChange=1f.
+        // The gate must leave zoom untouched so vertical scrolling still works.
+        assertZoom(1.5f, gatedPinchZoom(1.5f, 1f, twoFinger = false))
+        assertZoom(1.5f, gatedPinchZoom(1.5f, 2f, twoFinger = false))
+        assertZoom(READER_ZOOM_MIN, gatedPinchZoom(Float.NaN, 2f, twoFinger = false))
+    }
+
+    @Test
+    fun `native transform zoom is applied and clamped for two fingers`() {
+        assertZoom(2.0f, gatedPinchZoom(1.0f, 2f, twoFinger = true))
+        assertZoom(1.25f, gatedPinchZoom(1.0f, 1.25f, twoFinger = true))
+        assertZoom(1.0f, gatedPinchZoom(2.0f, 0.5f, twoFinger = true))
+        assertZoom(READER_ZOOM_MAX, gatedPinchZoom(2.0f, 4f, twoFinger = true))
+        assertZoom(READER_ZOOM_MIN, gatedPinchZoom(1.0f, 0.25f, twoFinger = true))
+    }
+
+    @Test
+    fun `native transform zoom rejects invalid deltas`() {
+        assertZoom(1.5f, gatedPinchZoom(1.5f, Float.NaN, twoFinger = true))
+        assertZoom(1.5f, gatedPinchZoom(1.5f, 0f, twoFinger = true))
+        assertZoom(1.5f, gatedPinchZoom(1.5f, -2f, twoFinger = true))
+    }
+
+    @Test
     fun `pinch scales the whole document and clamps`() {
         assertZoom(2.0f, zoomFromPinch(1.0f, 100f, 200f))
         assertZoom(1.5f, zoomFromPinch(1.0f, 200f, 300f))
