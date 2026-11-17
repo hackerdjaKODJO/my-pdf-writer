@@ -175,6 +175,8 @@ fun ViewerScreen(
     var showHub by remember { mutableStateOf(false) }
     var showToolMore by remember { mutableStateOf(false) }
     var showToolStyle by remember { mutableStateOf(false) }
+    var showSplitTools by remember { mutableStateOf(false) }
+    var showSplitSelectionMore by remember { mutableStateOf(false) }
     // Display-only: annotations stay stored and exported; this only hides the canvas layer.
     var annotationsHidden by remember(state.docId) { mutableStateOf(false) }
     var lastShapeTool by remember { mutableStateOf(Tool.RECT) }
@@ -248,6 +250,7 @@ fun ViewerScreen(
         showOrganize || showExcerpts || showContinuous || showSpread || showPopup || showAudioNotes ||
         showAudioReplay || showStudyNote || showReflow || showReadAloud || showOutline || showProperties ||
         showStyle || showHub || showToolMore || showToolStyle ||
+        showSplitTools || showSplitSelectionMore ||
         textTarget != null || stampTarget != null || signatureTarget != null
 
     BackHandler(enabled = !sheetOpen) {
@@ -466,139 +469,152 @@ fun ViewerScreen(
         ),
     )
 
+    // Split/focus chrome: with the study pane open no app bar or dock row may
+    // consume height. All PDF controls become floating overlays over the strip.
+    val splitMode = studyPane != null
+    val chromePolicy = pdfChromePolicy(
+        studyPaneOpen = splitMode,
+        textSelectMode = textSelectMode,
+        hasSelection = selectedWords.isNotEmpty(),
+    )
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            state.docName,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            "${stringResource(R.string.page_of, state.pageIndex + 1, state.pageCount)} · 읽음 $progressPercent%",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = vm::closeDocument) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
-                actions = {
-                    // Direct note entry, visible as soon as a PDF opens. The host
-                    // resolves or creates the study notebook behind this callback.
-                    TextButton(
-                        onClick = openNote,
-                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
-                    ) {
-                        Icon(
-                            Icons.Outlined.EditNote,
-                            contentDescription = "스터디 노트",
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text("노트", style = MaterialTheme.typography.labelLarge)
-                    }
-                    IconButton(
-                        onClick = {
-                            if (currentBookmark != null) {
-                                vm.deleteBookmark(currentBookmark.id)
-                            } else {
-                                vm.addCurrentPageBookmark("${state.pageIndex + 1}쪽")
-                            }
-                        },
-                    ) {
-                        Icon(
-                            if (currentBookmark != null) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                            contentDescription = if (currentBookmark != null) {
-                                "현재 페이지 북마크 해제"
-                            } else {
-                                "현재 페이지 북마크"
-                            },
-                            tint = if (currentBookmark != null) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                    }
-                    IconButton(onClick = { showHub = true }) {
-                        Icon(Icons.Outlined.Apps, contentDescription = "PDF 허브")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            )
-        },
-        bottomBar = {
-            Surface(tonalElevation = 3.dp) {
-                Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth().height(3.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    )
-                    if (textSelectMode) {
-                        TextSelectionActionBar(
-                            text = selectedText,
-                            pageIndex = state.pageIndex,
-                            hasSelection = selectedWords.isNotEmpty(),
-                            loading = state.textLoading,
-                            hasWords = pageTextWords.isNotEmpty(),
-                            wordCount = pageTextWords.size,
-                            onCopy = { copySelection(context, selectedText) },
-                            onTranslate = { TextActions.translate(context, selectedText) },
-                            onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
-                            onAddToPane = if (studyPane != null) {
-                                { appendStudyExcerpt(selectedText, state.pageIndex) }
-                            } else {
-                                null
-                            },
-                            onHighlight = {
-                                vm.addTextMarkup(
-                                    selectedWords,
-                                    AnnotationType.HIGHLIGHT,
-                                    0xFFFFD54F.toInt(),
-                                )
-                                selectedWords = emptyList()
-                            },
-                            onUnderline = {
-                                vm.addTextMarkup(selectedWords, AnnotationType.UNDERLINE, state.color)
-                                selectedWords = emptyList()
-                            },
-                            onStrikeout = {
-                                vm.addTextMarkup(selectedWords, AnnotationType.STRIKEOUT, state.color)
-                                selectedWords = emptyList()
-                            },
-                            onDismiss = {
-                                if (selectedWords.isNotEmpty()) {
-                                    selectedWords = emptyList()
+            if (chromePolicy.showTopAppBar) {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                state.docName,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                "${stringResource(R.string.page_of, state.pageIndex + 1, state.pageCount)} · 읽음 $progressPercent%",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = vm::closeDocument) {
+                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
+                        }
+                    },
+                    actions = {
+                        // Direct note entry, visible as soon as a PDF opens. The host
+                        // resolves or creates the study notebook behind this callback.
+                        TextButton(
+                            onClick = openNote,
+                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
+                        ) {
+                            Icon(
+                                Icons.Outlined.EditNote,
+                                contentDescription = "스터디 노트",
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("노트", style = MaterialTheme.typography.labelLarge)
+                        }
+                        IconButton(
+                            onClick = {
+                                if (currentBookmark != null) {
+                                    vm.deleteBookmark(currentBookmark.id)
                                 } else {
-                                    textSelectMode = false
-                                    selectedWords = emptyList()
+                                    vm.addCurrentPageBookmark("${state.pageIndex + 1}쪽")
                                 }
                             },
+                        ) {
+                            Icon(
+                                if (currentBookmark != null) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                                contentDescription = if (currentBookmark != null) {
+                                    "현재 페이지 북마크 해제"
+                                } else {
+                                    "현재 페이지 북마크"
+                                },
+                                tint = if (currentBookmark != null) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
+                        IconButton(onClick = { showHub = true }) {
+                            Icon(Icons.Outlined.Apps, contentDescription = "PDF 허브")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                )
+            }
+        },
+        bottomBar = {
+            if (chromePolicy.showBottomBar) {
+                Surface(tonalElevation = 3.dp) {
+                    Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth().height(3.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
                         )
-                    } else {
-                        ViewerToolDock(
-                            state = state,
-                            shapeTool = lastShapeTool,
-                            onSelectTool = selectTool,
-                            onTextSelect = toggleTextSelection,
-                            onMore = { showToolMore = true },
-                            onStyle = { showToolStyle = true },
-                            onUndo = vm::undo,
-                            onRedo = vm::redo,
-                            textSelectMode = textSelectMode,
-                            compact = studyPane != null,
-                        )
+                        if (textSelectMode) {
+                            TextSelectionActionBar(
+                                text = selectedText,
+                                pageIndex = state.pageIndex,
+                                hasSelection = selectedWords.isNotEmpty(),
+                                loading = state.textLoading,
+                                hasWords = pageTextWords.isNotEmpty(),
+                                wordCount = pageTextWords.size,
+                                onCopy = { copySelection(context, selectedText) },
+                                onTranslate = { TextActions.translate(context, selectedText) },
+                                onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
+                                onAddToPane = if (studyPane != null) {
+                                    { appendStudyExcerpt(selectedText, state.pageIndex) }
+                                } else {
+                                    null
+                                },
+                                onHighlight = {
+                                    vm.addTextMarkup(
+                                        selectedWords,
+                                        AnnotationType.HIGHLIGHT,
+                                        0xFFFFD54F.toInt(),
+                                    )
+                                    selectedWords = emptyList()
+                                },
+                                onUnderline = {
+                                    vm.addTextMarkup(selectedWords, AnnotationType.UNDERLINE, state.color)
+                                    selectedWords = emptyList()
+                                },
+                                onStrikeout = {
+                                    vm.addTextMarkup(selectedWords, AnnotationType.STRIKEOUT, state.color)
+                                    selectedWords = emptyList()
+                                },
+                                onDismiss = {
+                                    if (selectedWords.isNotEmpty()) {
+                                        selectedWords = emptyList()
+                                    } else {
+                                        textSelectMode = false
+                                        selectedWords = emptyList()
+                                    }
+                                },
+                            )
+                        } else {
+                            ViewerToolDock(
+                                state = state,
+                                shapeTool = lastShapeTool,
+                                onSelectTool = selectTool,
+                                onTextSelect = toggleTextSelection,
+                                onMore = { showToolMore = true },
+                                onStyle = { showToolStyle = true },
+                                onUndo = vm::undo,
+                                onRedo = vm::redo,
+                                textSelectMode = textSelectMode,
+                                compact = studyPane != null,
+                            )
+                        }
                     }
                 }
             }
@@ -611,9 +627,9 @@ fun ViewerScreen(
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            // The pane shares the content area with the PDF; the app bar and the
-            // PDF tool/selection bar stay visible, so the reader keeps context and
-            // can still start a text-selection drag while the note is open.
+            // Split mode removes the app bar and bottom dock from layout, so the
+            // PDF starts at the top safe edge and the pane gets the full rest of
+            // the screen. PDF controls float inside the strip instead.
             val paneFraction = if (studyPane != null) {
                 clampStudyPaneFraction(studyPaneFraction)
             } else {
@@ -680,49 +696,53 @@ fun ViewerScreen(
                     ) {
                         if (annotationsHidden) {
                             HiddenAnnotationsBanner(onShow = { annotationsHidden = false })
-                            Spacer(Modifier.height(6.dp))
+                            if (chromePolicy.showHintPill) Spacer(Modifier.height(6.dp))
                         }
-                        Surface(
-                            color = when {
-                                selectionEmpty -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.96f)
-                                textSelectMode -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f)
-                                else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
-                            },
-                            contentColor = when {
-                                selectionEmpty -> MaterialTheme.colorScheme.onErrorContainer
-                                textSelectMode -> MaterialTheme.colorScheme.onPrimaryContainer
-                                else -> MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            shape = RoundedCornerShape(50),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                        // Split mode hides the large hint pill entirely; the
+                        // floating selection bar carries the only status text.
+                        if (chromePolicy.showHintPill) {
+                            Surface(
+                                color = when {
+                                    selectionEmpty -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.96f)
+                                    textSelectMode -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f)
+                                    else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+                                },
+                                contentColor = when {
+                                    selectionEmpty -> MaterialTheme.colorScheme.onErrorContainer
+                                    textSelectMode -> MaterialTheme.colorScheme.onPrimaryContainer
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                shape = RoundedCornerShape(50),
                             ) {
-                                if (textSelectMode) {
-                                    if (state.textLoading) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(14.dp),
-                                            strokeWidth = 2.dp,
-                                        )
-                                    } else {
-                                        Icon(
-                                            Icons.AutoMirrored.Outlined.TextSnippet,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (textSelectMode) {
+                                        if (state.textLoading) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(14.dp),
+                                                strokeWidth = 2.dp,
+                                            )
+                                        } else {
+                                            Icon(
+                                                Icons.AutoMirrored.Outlined.TextSnippet,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        }
+                                        Spacer(Modifier.width(6.dp))
                                     }
-                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        hintText,
+                                        style = MaterialTheme.typography.labelMedium,
+                                    )
                                 }
-                                Text(
-                                    hintText,
-                                    style = MaterialTheme.typography.labelMedium,
-                                )
                             }
                         }
                     }
 
-                    if (textSelectMode && selectedText.isNotBlank()) {
+                    if (chromePolicy.showPageDropTarget && selectedText.isNotBlank()) {
                         StudyNoteDropTarget(
                             onDrop = appendStudyExcerpt,
                             caption = "선택한 텍스트를 여기로 끌어다 놓으세요",
@@ -733,16 +753,91 @@ fun ViewerScreen(
                         )
                     }
 
-                    ViewerPageNavigator(
-                        pageIndex = state.pageIndex,
-                        pageCount = state.pageCount,
-                        onPrevious = vm::previousPage,
-                        onNext = vm::nextPage,
-                        onOpenPages = { showPages = true },
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 14.dp),
-                    )
+                    if (splitMode) {
+                        SplitPdfBackButton(
+                            onBack = vm::closeDocument,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(start = 8.dp, top = 6.dp),
+                        )
+                        if (chromePolicy.showSplitToolbar) {
+                            SplitPdfToolbar(
+                                pageIndex = state.pageIndex,
+                                pageCount = state.pageCount,
+                                bookmarked = currentBookmark != null,
+                                textSelectMode = textSelectMode,
+                                textLoading = state.textLoading,
+                                hasWords = pageTextWords.isNotEmpty(),
+                                onPrevious = vm::previousPage,
+                                onNext = vm::nextPage,
+                                onOpenPages = { showPages = true },
+                                onToggleTextSelection = toggleTextSelection,
+                                onToggleBookmark = {
+                                    if (currentBookmark != null) {
+                                        vm.deleteBookmark(currentBookmark.id)
+                                    } else {
+                                        vm.addCurrentPageBookmark("${state.pageIndex + 1}쪽")
+                                    }
+                                },
+                                onOpenTools = { showSplitTools = true },
+                                onOpenHub = { showHub = true },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 6.dp),
+                            )
+                        }
+                        if (chromePolicy.showSplitSelectionBar) {
+                            SplitSelectionActionBar(
+                                selectedText = selectedText,
+                                pageIndex = state.pageIndex,
+                                hasSelection = selectedWords.isNotEmpty(),
+                                loading = state.textLoading,
+                                hasWords = pageTextWords.isNotEmpty(),
+                                wordCount = pageTextWords.size,
+                                onCopy = { copySelection(context, selectedText) },
+                                onHighlight = {
+                                    vm.addTextMarkup(
+                                        selectedWords,
+                                        AnnotationType.HIGHLIGHT,
+                                        0xFFFFD54F.toInt(),
+                                    )
+                                    selectedWords = emptyList()
+                                },
+                                onUnderline = {
+                                    vm.addTextMarkup(selectedWords, AnnotationType.UNDERLINE, state.color)
+                                    selectedWords = emptyList()
+                                },
+                                onStrikeout = {
+                                    vm.addTextMarkup(selectedWords, AnnotationType.STRIKEOUT, state.color)
+                                    selectedWords = emptyList()
+                                },
+                                onMore = { showSplitSelectionMore = true },
+                                onDismiss = {
+                                    if (selectedWords.isNotEmpty()) {
+                                        selectedWords = emptyList()
+                                    } else {
+                                        textSelectMode = false
+                                        selectedWords = emptyList()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(horizontal = 6.dp)
+                                    .padding(bottom = 6.dp),
+                            )
+                        }
+                    } else {
+                        ViewerPageNavigator(
+                            pageIndex = state.pageIndex,
+                            pageCount = state.pageCount,
+                            onPrevious = vm::previousPage,
+                            onNext = vm::nextPage,
+                            onOpenPages = { showPages = true },
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 14.dp),
+                        )
+                    }
 
                     if (state.busy) {
                         BusyOverlay(state.busyLabel)
@@ -938,6 +1033,51 @@ fun ViewerScreen(
             onFontSize = vm::setFontSize,
             onOpacity = vm::setOpacity,
             onDismiss = { showToolStyle = false },
+        )
+    }
+    if (showSplitTools) {
+        SplitPdfToolsSheet(
+            currentTool = state.tool,
+            textSelectMode = textSelectMode,
+            canUndo = state.canUndo,
+            canRedo = state.canRedo,
+            onSelectTool = selectTool,
+            onTextSelect = {
+                showSplitTools = false
+                toggleTextSelection()
+            },
+            onUndo = vm::undo,
+            onRedo = vm::redo,
+            onStyle = {
+                showSplitTools = false
+                showToolStyle = true
+            },
+            onDismiss = { showSplitTools = false },
+        )
+    }
+    if (showSplitSelectionMore) {
+        SplitSelectionMoreSheet(
+            selectedText = selectedText,
+            pageIndex = state.pageIndex,
+            hasSelection = selectedWords.isNotEmpty(),
+            canAddToPane = studyPane != null,
+            onTranslate = { TextActions.translate(context, selectedText) },
+            onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
+            onCopy = { copySelection(context, selectedText) },
+            onAddToPane = if (studyPane != null) {
+                { appendStudyExcerpt(selectedText, state.pageIndex) }
+            } else {
+                null
+            },
+            onDismissSelection = {
+                if (selectedWords.isNotEmpty()) {
+                    selectedWords = emptyList()
+                } else {
+                    textSelectMode = false
+                    selectedWords = emptyList()
+                }
+            },
+            onDismiss = { showSplitSelectionMore = false },
         )
     }
 

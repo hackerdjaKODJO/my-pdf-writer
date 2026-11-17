@@ -71,6 +71,11 @@ behavioral notes in `starnote-reverse-engineering.md`, `flexcil-analysis.md`, an
 - Compact mode has no page rail and tighter canvas padding, so the paper occupies
   more of the pane. Full-screen note editing keeps its original top bar, dock and
   hint behaviour.
+- While the pane is open the PDF viewer removes its top app bar and bottom dock;
+  the PDF starts at the top safe edge and the pane takes 85% of the full
+  remaining height. Back, page pill, text selection, bookmark, PDF tools and the
+  hub float as 36 dp translucent controls over the PDF strip, and text selection
+  uses a compact floating markup bar instead of a permanent row.
 
 ## Verification (0.8.1)
 
