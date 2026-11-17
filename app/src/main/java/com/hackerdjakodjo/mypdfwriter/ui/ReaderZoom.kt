@@ -38,6 +38,23 @@ fun toggleReaderZoom(current: Float): Float =
         READER_ZOOM_DOUBLE_TAP
     }
 
-/** Short percent label for the toolbar, e.g. `100%`, `125%` or `250%`. */
+/**
+ * Converts a two-finger pinch into a zoom factor. The whole continuous reader
+ * uses the returned value, so every page stays at the same zoom level.
+ */
+fun zoomFromPinch(
+    startZoom: Float,
+    startDistance: Float,
+    currentDistance: Float,
+): Float {
+    if (!startZoom.isFinite()) return READER_ZOOM_MIN
+    val base = clampReaderZoom(startZoom)
+    if (!startDistance.isFinite() || startDistance <= 0f || !currentDistance.isFinite()) {
+        return base
+    }
+    return clampReaderZoom(base * currentDistance / startDistance)
+}
+
+/** Short percent label, e.g. `100%`, `125%` or `250%`. */
 fun readerZoomLabel(zoom: Float): String =
     "${(clampReaderZoom(zoom) * 100f).roundToInt()}%"

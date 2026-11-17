@@ -5,14 +5,15 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,11 +21,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -50,12 +50,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
@@ -63,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlin.math.abs
+import kotlin.math.hypot
 
 /**
  * Vertical, read-only PDF page list.
@@ -74,9 +79,8 @@ import kotlin.math.abs
  * Every visible page is rendered independently through [loadPage] and held only
  * while its lazy item is composed, so leaving this screen releases the page
  * bitmaps. Pages are separated by a small gap; a single tap opens the full
- * editor/viewer while a double tap toggles zoom. Zoom is also available from the
- * compact toolbar controls, and zoomed pages can be panned horizontally without
- * interfering with vertical lazy scrolling.
+ * editor/viewer while a double tap toggles zoom. Pinch zoom and horizontal
+ * dragging apply to the entire continuous list, not just one page.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,10 +107,16 @@ fun ContinuousReaderScreen(
         }
     }
 
-    // Zoom is scoped to this screen and survives rotation; fit-to-width is the
-    // default. The stable lambda keeps page tap handlers from being re-registered.
+    // Zoom and horizontal pan are screen-wide: every page uses the same values,
+    // so a pinch on one page enlarges the whole continuous document.
     var zoom by rememberSaveable { mutableFloatStateOf(READER_ZOOM_MIN) }
-    val toggleZoom: () -> Unit = remember { { zoom = toggleReaderZoom(zoom) } }
+    var panX by remember { mutableFloatStateOf(0f) }
+    val latestZoom = rememberUpdatedState(zoom)
+    val setZoom: (Float) -> Unit = { value ->
+        zoom = clampReaderZoom(value)
+        if (zoom <= READER_ZOOM_MIN) panX = 0f
+    }
+    val toggleZoom: () -> Unit = { setZoom(toggleReaderZoom(latestZoom.value)) }
 
     val currentPage by remember(listState, pageCount) {
         derivedStateOf {
@@ -144,43 +154,11 @@ fun ContinuousReaderScreen(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            "전체 ${pageCount}쪽 · 연속 보기",
+                            "전체 ${pageCount}쪽 · 연속 보기" +
+                                if (zoom > READER_ZOOM_MIN) " · ${readerZoomLabel(zoom)}" else "",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    }
-                },
-                actions = {
-                    Row(
-                        modifier = Modifier.padding(end = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        IconButton(
-                            onClick = { zoom = stepReaderZoom(zoom, -1) },
-                            enabled = zoom > READER_ZOOM_MIN,
-                            modifier = Modifier.size(36.dp),
-                        ) {
-                            Text("−", style = MaterialTheme.typography.titleLarge)
-                        }
-                        Text(
-                            readerZoomLabel(zoom),
-                            style = MaterialTheme.typography.labelMedium,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.widthIn(min = 44.dp),
-                        )
-                        IconButton(
-                            onClick = { zoom = stepReaderZoom(zoom, 1) },
-                            enabled = zoom < READER_ZOOM_MAX,
-                            modifier = Modifier.size(36.dp),
-                        ) {
-                            Text("+", style = MaterialTheme.typography.titleLarge)
-                        }
-                        TextButton(
-                            onClick = { zoom = READER_ZOOM_MIN },
-                            modifier = Modifier.height(36.dp),
-                        ) {
-                            Text("맞춤", style = MaterialTheme.typography.labelMedium)
-                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -201,7 +179,38 @@ fun ContinuousReaderScreen(
             } else {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                var startDistance = 0f
+                                var startZoom = READER_ZOOM_MIN
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val pressed: List<PointerInputChange> =
+                                        event.changes.filter { change -> change.pressed }
+                                    when {
+                                        pressed.size >= 2 -> {
+                                            if (startDistance <= 0f) {
+                                                startDistance = pinchDistance(pressed[0], pressed[1])
+                                                startZoom = latestZoom.value
+                                            }
+                                            val distance = pinchDistance(pressed[0], pressed[1])
+                                            setZoom(zoomFromPinch(startZoom, startDistance, distance))
+                                            event.changes.forEach { change ->
+                                                if (change.pressed) change.consume()
+                                            }
+                                        }
+
+                                        pressed.isEmpty() -> {
+                                            startDistance = 0f
+                                            break
+                                        }
+                                    }
+                                }
+                            }
+                        },
                     // Leave just enough room under the last page for the floating
                     // current-page indicator; the old 18 dp label + gap made pages
                     // look far apart.
@@ -217,9 +226,11 @@ fun ContinuousReaderScreen(
                         ReaderPageCard(
                             index = index,
                             zoom = zoom,
+                            panX = panX,
                             loadPage = loadPage,
                             onOpenPage = onOpenPage,
                             onToggleZoom = toggleZoom,
+                            onPanChange = { panX = it },
                         )
                     }
                 }
@@ -240,9 +251,11 @@ fun ContinuousReaderScreen(
 private fun ReaderPageCard(
     index: Int,
     zoom: Float,
+    panX: Float,
     loadPage: suspend (Int) -> Bitmap?,
     onOpenPage: (Int) -> Unit,
     onToggleZoom: () -> Unit,
+    onPanChange: (Float) -> Unit,
 ) {
     var attempt by remember(index) { mutableIntStateOf(0) }
     val page by produceState<ReaderPageState>(
@@ -273,29 +286,47 @@ private fun ReaderPageCard(
     // A failed page keeps its retry control usable instead of also opening the
     // single-page viewer when the retry chip is tapped.
     val canOpenPage = page !is ReaderPageState.Failed
+    val latestPan by rememberUpdatedState(panX)
 
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clipToBounds(),
+    ) {
         val pageWidth = maxWidth * zoom
-        val panState = rememberScrollState()
-        LaunchedEffect(zoom) { panState.scrollTo(0) }
+        val maxPan = with(LocalDensity.current) {
+            (pageWidth - maxWidth).toPx().coerceAtLeast(0f)
+        }
+        val currentPan = panX.coerceIn(0f, maxPan)
+        val panOffset = with(LocalDensity.current) { currentPan.toDp() }
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                // Only horizontal drags are consumed here; vertical drags still
-                // reach the parent LazyColumn.
-                .then(if (zoomed) Modifier.horizontalScroll(panState) else Modifier)
+                .then(
+                    if (zoomed) {
+                        Modifier.pointerInput(index, maxPan, onPanChange) {
+                            detectHorizontalDragGestures { change, dragAmount ->
+                                change.consume()
+                                onPanChange((latestPan - dragAmount).coerceIn(0f, maxPan))
+                            }
+                        }
+                    } else {
+                        Modifier
+                    },
+                )
                 .pointerInput(index, canOpenPage, onOpenPage, onToggleZoom) {
                     detectTapGestures(
                         onTap = { if (canOpenPage) onOpenPage(index) },
                         onDoubleTap = { onToggleZoom() },
                     )
                 },
-            contentAlignment = if (zoomed) Alignment.CenterStart else Alignment.Center,
+            contentAlignment = Alignment.CenterStart,
         ) {
             Surface(
                 modifier = Modifier
                     .width(pageWidth)
+                    .offset(x = -panOffset)
                     .aspectRatio(aspectRatio),
                 shape = RoundedCornerShape(2.dp),
                 color = Color.White,
@@ -439,6 +470,12 @@ private sealed interface ReaderPageState {
     data object Loading : ReaderPageState
     data class Ready(val bitmap: Bitmap) : ReaderPageState
     data object Failed : ReaderPageState
+}
+
+private fun pinchDistance(a: PointerInputChange, b: PointerInputChange): Float {
+    val dx = (a.position.x - b.position.x).toDouble()
+    val dy = (a.position.y - b.position.y).toDouble()
+    return hypot(dx, dy).toFloat()
 }
 
 private const val DEFAULT_PAGE_ASPECT = 0.707f

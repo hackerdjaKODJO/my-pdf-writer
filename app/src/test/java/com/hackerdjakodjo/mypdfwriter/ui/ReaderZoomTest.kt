@@ -56,6 +56,22 @@ class ReaderZoomTest {
     }
 
     @Test
+    fun `pinch scales the whole document and clamps`() {
+        assertZoom(2.0f, zoomFromPinch(1.0f, 100f, 200f))
+        assertZoom(1.5f, zoomFromPinch(1.0f, 200f, 300f))
+        assertZoom(READER_ZOOM_MAX, zoomFromPinch(2.0f, 100f, 1000f))
+        assertZoom(READER_ZOOM_MIN, zoomFromPinch(1.0f, 200f, 20f))
+    }
+
+    @Test
+    fun `pinch ignores invalid distances and sanitizes start zoom`() {
+        assertZoom(1.25f, zoomFromPinch(1.25f, 0f, 500f))
+        assertZoom(1.25f, zoomFromPinch(1.25f, -10f, 500f))
+        assertZoom(1.25f, zoomFromPinch(1.25f, 100f, Float.NaN))
+        assertZoom(1.0f, zoomFromPinch(Float.NaN, 100f, 200f))
+    }
+
+    @Test
     fun `label renders a clamped percentage`() {
         assertEquals("100%", readerZoomLabel(1.0f))
         assertEquals("125%", readerZoomLabel(1.25f))
