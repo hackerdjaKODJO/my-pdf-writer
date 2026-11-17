@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DragIndicator
@@ -58,6 +59,7 @@ fun ExcerptSheet(
     onDelete: (String) -> Unit,
     onJump: (Int) -> Unit,
     onTranslate: (String, TranslateTarget) -> Unit,
+    onDictionary: (String) -> Unit,
     onShare: (String) -> Unit,
     onDismiss: () -> Unit,
     /** Optional integration hook; the viewer supplies it to open [StudyNoteSheet]. */
@@ -147,6 +149,7 @@ fun ExcerptSheet(
                             draggable = onDropExcerpt != null,
                             onJump = { onJump(excerpt.pageIndex) },
                             onTranslate = { onTranslate(excerpt.text, translateTarget) },
+                            onDictionary = { onDictionary(excerpt.text) },
                             onShare = { onShare(excerpt.text) },
                             onDelete = { onDelete(excerpt.id) },
                         )
@@ -191,6 +194,7 @@ private fun ExcerptRow(
     draggable: Boolean,
     onJump: () -> Unit,
     onTranslate: () -> Unit,
+    onDictionary: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -262,6 +266,15 @@ private fun ExcerptRow(
                     Icon(Icons.Outlined.Translate, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Google 번역")
+                }
+                TextButton(onClick = onDictionary) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.MenuBook,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("사전")
                 }
                 TextButton(onClick = onShare) {
                     Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(16.dp))

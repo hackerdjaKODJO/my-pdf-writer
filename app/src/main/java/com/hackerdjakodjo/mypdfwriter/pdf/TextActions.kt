@@ -25,6 +25,15 @@ object TextActions {
     private const val TRANSLATE_PACKAGE = "com.google.android.apps.translate"
     private const val MAX_URL_TEXT = 1800
 
+    /**
+     * Turns a PDF text selection into a single-line dictionary query. PDF text
+     * frequently wraps across lines; collapse every whitespace run into one
+     * space and trim the edges without altering the selected words themselves.
+     * Pure and device-independent so it can be unit tested.
+     */
+    internal fun dictionaryQuery(text: String): String =
+        text.replace(Regex("""\s+"""), " ").trim()
+
     fun translate(
         context: Context,
         text: String,
@@ -91,6 +100,41 @@ object TextActions {
         if (!opened) {
             shareText(context, value)
         }
+    }
+
+    /**
+     * Hands the exact selected text to whichever dictionary/notes app the user
+     * chooses via [Intent.createChooser]. The app itself ships no dictionary
+     * data, hardcodes no package and needs no INTERNET permission: the chosen
+     * app looks the word up under its own privacy policy. If no installed app
+     * can process the text, copy the query to the clipboard and tell the user
+     * briefly in Korean.
+     */
+    fun define(context: Context, text: String) {
+        val query = dictionaryQuery(text)
+        if (query.isEmpty()) return
+
+        val processText = Intent(Intent.ACTION_PROCESS_TEXT).apply {
+            type = MIME_TEXT
+            putExtra(Intent.EXTRA_PROCESS_TEXT, query)
+            putExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, true)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val chooser = Intent.createChooser(processText, "사전에서 찾기")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        val opened = runCatching { context.startActivity(chooser) }.isSuccess
+        if (!opened) copyQueryToClipboard(context, query)
+    }
+
+    private fun copyQueryToClipboard(context: Context, query: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        if (clipboard == null) {
+            Toast.makeText(context, "사전 앱이 없고 클립보드도 사용할 수 없습니다.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText("사전 검색어", query))
+        Toast.makeText(context, "사전 앱이 없어 검색어를 복사했습니다.", Toast.LENGTH_SHORT).show()
     }
 
     fun shareText(context: Context, text: String) {
