@@ -35,6 +35,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.PdfMetadata
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfOutlineEntry
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfRepository
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfShare
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextEdit
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLine
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
@@ -85,6 +86,11 @@ data class ViewerUiState(
     val nightMode: Boolean = false,
     val revision: Int = 0,
     val textLoading: Boolean = false,
+    /**
+     * Transient words currently selected on the canvas. Not persisted and not part
+     * of the undo snapshot; the UI mirrors this into `setSelectedWords`.
+     */
+    val selectedWords: List<PdfTextWord> = emptyList(),
 )
 
 class PdfViewModel(application: Application) : AndroidViewModel(application) {
@@ -655,7 +661,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
-            AnnotationType.REDACT -> {
+            AnnotationType.REDACT,
+            AnnotationType.COVER_TEXT -> {
                 if (annotation.points.size < 2) return false
                 val a = annotation.points[0]
                 val b = annotation.points[1]
@@ -715,7 +722,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         AnnotationType.ELLIPSE,
         AnnotationType.UNDERLINE,
         AnnotationType.STRIKEOUT,
-        AnnotationType.REDACT -> true
+        AnnotationType.REDACT,
+        AnnotationType.COVER_TEXT -> true
         else -> false
     }
 
@@ -1265,6 +1273,57 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Mirrors the canvas selection into the view model for text-replacement actions. */
+    fun setSelectedWords(words: List<PdfTextWord>) {
+        if (_viewer.value?.selectedWords == words) return
+        _viewer.update { it?.copy(selectedWords = words) }
+    }
+
+    /**
+     * Adds one `COVER_TEXT` annotation as a single undo step: an opaque cover over the
+     * selected source words and [replacement] drawn on top, then clears the selection.
+     *
+     * This is a **visual overlay only**. The source PDF bytes and its text content
+     * stream are never rewritten; the covered words are merely hidden on screen and
+     * under the overlay in a flattened export, where they remain extractable.
+     */
+    fun replaceSelectedText(replacement: String) {
+        val state = _viewer.value ?: return
+        val value = replacement.trim()
+        if (value.isEmpty()) {
+            _viewer.update { it?.copy(message = "바꿀 텍스트를 입력하세요.") }
+            return
+        }
+        val geometry = PdfTextEdit.geometry(state.selectedWords)
+        if (geometry == null || geometry.page !in 0 until state.pageCount) {
+            _viewer.update { it?.copy(message = "바꿀 텍스트를 먼저 선택하세요.") }
+            return
+        }
+
+        val annotation = Annotation(
+            type = AnnotationType.COVER_TEXT,
+            page = geometry.page,
+            // Paper-like default cover; the painter derives readable ink from it.
+            color = COVER_PAPER_COLOR,
+            width = 0f,
+            points = listOf(
+                NormalizedPoint(geometry.rect.left, geometry.rect.top),
+                NormalizedPoint(geometry.rect.right, geometry.rect.bottom),
+            ),
+            text = value,
+            fontSize = geometry.fontSize,
+            opacity = 1f,
+            createdAt = System.currentTimeMillis(),
+        )
+        mutateAnnotations { it + annotation }
+        _viewer.update {
+            it?.copy(
+                selectedWords = emptyList(),
+                message = "선택한 텍스트를 시각적으로 바꿨습니다. 원본 PDF는 그대로입니다.",
+            )
+        }
+    }
+
     fun addExcerptFromSelection(pageIndex: Int, text: String) {
         val state = _viewer.value ?: return
         val value = text.trim()
@@ -1514,5 +1573,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private companion object {
         const val RENDER_SCALE = 2.2f
         const val READING_SAVE_DELAY_MS = 450L
+        /** Opaque paper-like cover for visual text replacement. */
+        const val COVER_PAPER_COLOR = -1 // 0xFFFFFFFF, opaque white
     }
 }

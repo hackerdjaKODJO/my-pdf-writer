@@ -68,6 +68,7 @@ object AnnotationPainter {
             AnnotationType.STAMP -> drawStamp(canvas, annotation, width, height)
             AnnotationType.SIGNATURE -> drawSignature(canvas, annotation, width, height)
             AnnotationType.REDACT -> drawRedact(canvas, annotation, width, height)
+            AnnotationType.COVER_TEXT -> drawCoverText(canvas, annotation, width, height)
         }
     }
 
@@ -123,6 +124,8 @@ object AnnotationPainter {
 
             AnnotationType.TEXT -> drawText(canvas, annotation.faded(fraction), width, height)
             AnnotationType.STAMP -> drawStamp(canvas, annotation.faded(fraction), width, height)
+            // Text-like reveal: fade the whole cover + replacement in together.
+            AnnotationType.COVER_TEXT -> drawCoverText(canvas, annotation.faded(fraction), width, height)
 
             AnnotationType.SIGNATURE -> {
                 if (annotation.points.size > 1) {
@@ -701,4 +704,77 @@ object AnnotationPainter {
             paint,
         )
     }
+
+    private val COVER_TEXT_ON_LIGHT = 0xFF1A1A1A.toInt()
+    private val COVER_TEXT_ON_DARK = 0xFFFFFFFF.toInt()
+
+    /**
+     * Visual text replacement: an opaque paper-coloured rectangle followed by the
+     * replacement text in a contrasting colour. This is a pure overlay drawn by the
+     * same painter in the editor and in flattened export; it never modifies PDF text
+     * bytes, and the covered original words remain in the content stream.
+     *
+     * The rectangle is axis-aligned in display coordinates (the geometry produced by
+     * `PdfTextEdit`), so no text rotation is applied. The replacement font shrinks to
+     * fit the cover when it is longer than the original selection.
+     */
+    private fun drawCoverText(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
+        if (annotation.points.size < 2 || annotation.text.isBlank()) return
+        val a = annotation.points[0]
+        val b = annotation.points[1]
+        val left = minOf(a.x, b.x) * width
+        val right = maxOf(a.x, b.x) * width
+        val top = minOf(a.y, b.y) * height
+        val bottom = maxOf(a.y, b.y) * height
+        if (right <= left || bottom <= top) return
+
+        val cover = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = annotation.color
+            alpha = opacityAlpha(annotation)
+            style = Paint.Style.FILL
+        }
+        canvas.drawRect(left, top, right, bottom, cover)
+
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = if (isLightColor(annotation.color)) COVER_TEXT_ON_LIGHT else COVER_TEXT_ON_DARK
+            // Keep the replacement in step with the cover during replay fades.
+            alpha = opacityAlpha(annotation)
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            textAlign = Paint.Align.LEFT
+        }
+        val boxWidth = right - left
+        val boxHeight = bottom - top
+        val padding = min(boxWidth, boxHeight) * COVER_PADDING_FRACTION
+        val maxWidth = (boxWidth - padding * 2f).coerceAtLeast(1f)
+        val maxHeight = (boxHeight - padding * 2f).coerceAtLeast(1f)
+        val lines = annotation.text.replace('\r', '\n').split('\n')
+
+        textPaint.textSize = (annotation.fontSize * height).coerceAtLeast(8f)
+        val longest = lines.maxOfOrNull { textPaint.measureText(it) } ?: 0f
+        val proportionalHeight = textPaint.textSize * LINE_HEIGHT_FACTOR * lines.size
+        val scale = min(
+            if (longest > 0f) (maxWidth / longest).coerceAtMost(1f) else 1f,
+            (maxHeight / proportionalHeight).coerceAtMost(1f),
+        )
+        textPaint.textSize = (textPaint.textSize * scale).coerceAtLeast(6f)
+
+        val lineHeight = textPaint.textSize * LINE_HEIGHT_FACTOR
+        val blockHeight = lineHeight * lines.size
+        var baseline = top + padding + (maxHeight - blockHeight) / 2f - textPaint.ascent()
+        lines.forEach { line ->
+            canvas.drawText(line, left + padding, baseline, textPaint)
+            baseline += lineHeight
+        }
+    }
+
+    /** Perceived brightness of the cover colour, used to pick readable text ink. */
+    private fun isLightColor(color: Int): Boolean {
+        val r = Color.red(color)
+        val g = Color.green(color)
+        val b = Color.blue(color)
+        return (0.299f * r + 0.587f * g + 0.114f * b) > 150f
+    }
+
+    private const val COVER_PADDING_FRACTION = 0.12f
+    private const val LINE_HEIGHT_FACTOR = 1.22f
 }

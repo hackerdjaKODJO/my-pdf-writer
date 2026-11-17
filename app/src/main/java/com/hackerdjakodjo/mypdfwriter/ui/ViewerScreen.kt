@@ -45,6 +45,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.DragIndicator
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FitScreen
@@ -188,6 +189,7 @@ fun ViewerScreen(
     var showToolStyle by remember { mutableStateOf(false) }
     var showSplitTools by remember { mutableStateOf(false) }
     var showSplitSelectionMore by remember { mutableStateOf(false) }
+    var showTextEditDialog by remember { mutableStateOf(false) }
     // Display-only: annotations stay stored and exported; this only hides the canvas layer.
     var annotationsHidden by remember(state.docId) { mutableStateOf(false) }
     var lastShapeTool by remember { mutableStateOf(Tool.RECT) }
@@ -202,6 +204,10 @@ fun ViewerScreen(
     // page, tool or selection-mode changes so guidance is not lost forever.
     var hintDismissed by remember { mutableStateOf(false) }
     val selectedText = remember(selectedWords) { PdfTextLayout.selectionText(selectedWords) }
+
+    // The replacement action lives in the view model, so mirror the local canvas
+    // selection into it. This is transient UI state, never persisted or snapshotted.
+    LaunchedEffect(selectedWords) { vm.setSelectedWords(selectedWords) }
 
     /** Enter/leave the text-selection (lasso) mode used by both the dock and the hub. */
     val toggleTextSelection: () -> Unit = {
@@ -291,7 +297,7 @@ fun ViewerScreen(
         showOrganize || showExcerpts || showContinuous || showSpread || showPopup || showAudioNotes ||
         showAudioReplay || showStudyNote || showReflow || showReadAloud || showOutline || showProperties ||
         showStyle || showHub || showToolMore || showToolStyle ||
-        showSplitTools || showSplitSelectionMore ||
+        showSplitTools || showSplitSelectionMore || showTextEditDialog ||
         textTarget != null || stampTarget != null || signatureTarget != null
 
     BackHandler(enabled = !sheetOpen) {
@@ -662,6 +668,7 @@ fun ViewerScreen(
                                     vm.addTextMarkup(selectedWords, AnnotationType.STRIKEOUT, state.color)
                                     selectedWords = emptyList()
                                 },
+                                onEditText = { showTextEditDialog = true },
                                 onDismiss = {
                                     if (selectedWords.isNotEmpty()) {
                                         selectedWords = emptyList()
@@ -883,6 +890,7 @@ fun ViewerScreen(
                                     vm.addTextMarkup(selectedWords, AnnotationType.STRIKEOUT, state.color)
                                     selectedWords = emptyList()
                                 },
+                                onEditText = { showTextEditDialog = true },
                                 onMore = { showSplitSelectionMore = true },
                                 onDismiss = {
                                     if (selectedWords.isNotEmpty()) {
@@ -1190,6 +1198,7 @@ fun ViewerScreen(
             onTranslate = { TextActions.translate(context, selectedText) },
             onDictionary = { TextActions.define(context, selectedText) },
             onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
+            onEditText = { showTextEditDialog = true },
             onCopy = { copySelection(context, selectedText) },
             onAddToPane = if (studyPane != null) {
                 { appendStudyExcerpt(selectedText, state.pageIndex) }
@@ -1205,6 +1214,20 @@ fun ViewerScreen(
                 }
             },
             onDismiss = { showSplitSelectionMore = false },
+        )
+    }
+
+    if (showTextEditDialog) {
+        TextEditDialog(
+            initialText = selectedText,
+            onDismiss = { showTextEditDialog = false },
+            onConfirm = { replacement ->
+                // Visual overlay only: the view model writes one COVER_TEXT annotation,
+                // clears the selection and leaves the source PDF bytes untouched.
+                vm.replaceSelectedText(replacement)
+                selectedWords = emptyList()
+                showTextEditDialog = false
+            },
         )
     }
 
@@ -1261,6 +1284,7 @@ private fun TextSelectionActionBar(
     onHighlight: () -> Unit,
     onUnderline: () -> Unit,
     onStrikeout: () -> Unit,
+    onEditText: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val empty = !loading && !hasWords
@@ -1391,6 +1415,7 @@ private fun TextSelectionActionBar(
             SelectionAction("형광펜", Icons.Outlined.Highlight, hasSelection, onHighlight)
             SelectionAction("밑줄", Icons.Outlined.FormatUnderlined, hasSelection, onUnderline)
             SelectionAction("취소선", Icons.Outlined.FormatStrikethrough, hasSelection, onStrikeout)
+            SelectionAction("텍스트 수정", Icons.Outlined.Edit, hasSelection, onEditText)
             SelectionAction("선택 해제", Icons.Outlined.Close, hasSelection, onDismiss)
         }
         Spacer(Modifier.height(4.dp))

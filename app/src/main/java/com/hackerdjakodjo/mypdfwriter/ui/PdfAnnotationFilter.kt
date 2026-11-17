@@ -36,6 +36,7 @@ object PdfAnnotationFilter {
 
         AnnotationType.TEXT,
         AnnotationType.STAMP,
+        AnnotationType.COVER_TEXT,
         -> AnnotationFilter.TEXT
 
         AnnotationType.RECT,

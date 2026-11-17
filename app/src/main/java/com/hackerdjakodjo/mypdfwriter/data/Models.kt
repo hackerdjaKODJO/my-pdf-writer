@@ -61,6 +61,16 @@ enum class AnnotationType {
     STAMP,
     SIGNATURE,
     REDACT,
+    /**
+     * Opaque paper-like cover over selected source text plus replacement text.
+     *
+     * Visual overlay only: the source PDF bytes and its text content stream are
+     * never rewritten. The stored geometry is an axis-aligned two-point rectangle
+     * in display coordinates ([points]), [text] is the replacement and [fontSize]
+     * is normalized to the page height. Flattened export rasterizes this overlay
+     * into the page image; the original words remain in the PDF content stream.
+     */
+    COVER_TEXT,
 }
 
 enum class PenStyle {

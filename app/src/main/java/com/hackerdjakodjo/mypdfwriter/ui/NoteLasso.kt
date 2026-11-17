@@ -86,7 +86,8 @@ private fun annotationHitsLasso(annotation: Annotation, outline: List<Normalized
         AnnotationType.STAMP -> boxHitsLasso(stampBox(annotation), outline)
         AnnotationType.RECT,
         AnnotationType.ELLIPSE,
-        AnnotationType.REDACT -> {
+        AnnotationType.REDACT,
+        AnnotationType.COVER_TEXT -> {
             if (annotation.points.size >= 2) {
                 val a = annotation.points[0]
                 val b = annotation.points[1]

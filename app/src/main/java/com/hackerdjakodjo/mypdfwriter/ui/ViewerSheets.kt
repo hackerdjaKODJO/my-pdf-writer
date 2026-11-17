@@ -807,6 +807,8 @@ private fun annotationSummary(annotation: Annotation): String {
             stringResource(R.string.annotation_summary_stamp, stamp)
         annotation.type == AnnotationType.SIGNATURE && text.isNotEmpty() ->
             stringResource(R.string.annotation_summary_signature, text)
+        annotation.type == AnnotationType.COVER_TEXT && text.isNotEmpty() ->
+            stringResource(R.string.annotation_summary_cover_text, text)
         text.isNotEmpty() -> text
         stamp.isNotEmpty() -> stamp
         annotation.type == AnnotationType.PEN -> stringResource(R.string.annotation_summary_pen)
@@ -829,6 +831,7 @@ private fun annotationTypeLabelRes(type: AnnotationType): Int = when (type) {
     AnnotationType.STAMP -> R.string.annotation_type_stamp
     AnnotationType.SIGNATURE -> R.string.annotation_type_signature
     AnnotationType.REDACT -> R.string.annotation_type_redact
+    AnnotationType.COVER_TEXT -> R.string.annotation_type_cover_text
 }
 
 @Composable
@@ -1001,6 +1004,60 @@ fun TextAnnotationDialog(
                 placeholder = { Text(stringResource(R.string.text_hint)) },
                 minLines = 2,
             )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(value.trim()) },
+                enabled = value.isNotBlank(),
+            ) { Text(stringResource(R.string.add)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+}
+
+/**
+ * Prefilled replacement dialog for the selection action bars.
+ *
+ * The confirmation only creates a visual `COVER_TEXT` overlay; it never edits the
+ * PDF content stream. The notice is shown in the dialog so the limitation is clear
+ * before the user commits the change.
+ */
+@Composable
+fun TextEditDialog(
+    initialText: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var value by remember(initialText) { mutableStateOf(initialText) }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        delay(180)
+        runCatching { focusRequester.requestFocus() }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.TextFields, contentDescription = null) },
+        title = { Text(stringResource(R.string.text_edit_dialog_title)) },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                    label = { Text(stringResource(R.string.text_edit_dialog_hint)) },
+                    minLines = 2,
+                )
+                Spacer(Modifier.size(10.dp))
+                Text(
+                    stringResource(R.string.text_edit_dialog_notice),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         },
         confirmButton = {
             TextButton(
