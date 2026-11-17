@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.24`** — `versionCode = 33`.
-- **Next version is `0.8.25` — `versionCode = 34`.**
+- Current delivered version: **`0.8.25`** — `versionCode = 34`.
+- **Next version is `0.8.26` — `versionCode = 35`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.25` | 34 | 2026-11-17 | `v0.8.25` | GoodReader iOS survey applied offline: persisted display prefs + brightness, page lock, internal PDF links, ACTION_SEND PDF import, Home sort menu |
 | `0.8.24` | 33 | 2026-11-17 | `v0.8.24` | QA follow-up: empty-PDF search state, scope-preserving filter reset, tag clear accessibility, defensive saved-enum restore, shape icon/label sync |
 | `0.8.23` | 32 | 2026-11-17 | `v0.8.23` | Flexcil-pattern menu pass: persistent create FAB, saveable home tab/filter state, PDF recents first, tag search, PDF menu rename and unique primary set, active dock tool labels, Tools system-back |
 | `0.8.22` | 31 | 2026-11-17 | `v0.8.22` | Edge-to-edge zoom panning to both page edges; stable old bitmap during zoom re-render (no flicker) |

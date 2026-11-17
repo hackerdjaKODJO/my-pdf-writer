@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.24
+# E2E test cases — My PDF Writer 0.8.25
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator; the build machine has no adb device attached, so only JVM tests are
@@ -9,7 +9,7 @@ executed here. Instrumentation APKs are compiled with
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 469 | **Passing** on this phone |
+| JVM unit tests | 505 | **Passing** on this phone |
 | Instrumentation/E2E | 7 classes (see below) | **Compiled**; on-device run pending |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally) |
@@ -55,6 +55,11 @@ executed here. Instrumentation APKs are compiled with
 | HELP-01 | Help topics are complete, offline and ordered | JVM `HelpCenterContentTest` | Passing |
 | PDF-06 | Long press in VIEW mode enters selection and reports a point; long press in selection mode is inert | JVM `PdfTextLayoutTest` + instrumentation `PdfCanvasSelectionE2ETest` | Compiled |
 | DEVICE-01 | Stylus pressure curve and two/three-finger gesture behavior | Manual device required | Not run |
+| GR-01 | Persisted display prefs, brightness clamp and legacy JSON | JVM `DocStateTest`, `PdfDisplayPrefsTest` | Passing |
+| GR-02 | Page lock gates ordinary navigation but keeps source jumps | JVM `PageLockTest` | Passing |
+| GR-03 | Internal PDF links extract/remap; external URIs are copy-only | JVM `PdfLinksTest` | Passing |
+| GR-04 | ACTION_SEND URI precedence and duplicate-carrier guard | JVM `IntentImportPolicyTest` | Passing |
+| GR-05 | Home sort keys, ties and case-insensitive names | JVM `HomeLibraryPolicyTest` | Passing |
 
 ## Run on a device
 

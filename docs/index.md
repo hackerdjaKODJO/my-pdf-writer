@@ -23,6 +23,7 @@
 ## 문서
 
 - [Menu and navigation pass — 0.8.23](ux-menu-0823.md)
+- [GoodReader iOS survey — 0.8.25](goodreader-survey-0825.md)
 
 ## 문의
 
