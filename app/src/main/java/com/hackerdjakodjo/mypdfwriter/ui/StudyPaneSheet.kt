@@ -83,6 +83,7 @@ fun StudyPaneSheet(
     onOpenSourcePdf: (Int) -> Unit,
     onCaptureExcerpt: (text: String, pageIndex: Int) -> Boolean,
     onJumpToSourcePage: (sourcePageIndex: Int, notePageIndex: Int) -> Unit,
+    onOpenHelp: () -> Unit = {},
 ) {
     var showLinks by remember(notebook.id) { mutableStateOf(false) }
     var showCapture by remember(notebook.id) { mutableStateOf(false) }
@@ -129,6 +130,7 @@ fun StudyPaneSheet(
                     onOpenSourcePdf = onOpenSourcePdf,
                     compact = true,
                     compactTopInsetDp = studyPaneFloatingHeaderInsetDp(captureOpen = showCapture),
+                    onOpenHelp = onOpenHelp,
                 )
                 StudyPaneFloatingHeader(
                     notebookTitle = notebook.title,
