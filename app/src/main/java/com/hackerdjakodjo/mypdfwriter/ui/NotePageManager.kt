@@ -1,6 +1,7 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplatePaths
+import com.hackerdjakodjo.mypdfwriter.data.MaskingCards
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.NotePaper
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
@@ -91,9 +92,10 @@ object NotePageManager {
     /**
      * Inserts a duplicate directly after every selected page, in page order.
      *
-     * Existing pages and annotations keep their ids. Copies receive fresh page
-     * and annotation ids while keeping templates, memos, source links, layers,
-     * layer visibility/opacity and annotation timing. Bookmarks that follow an
+     * Existing pages and annotations keep their ids. Copies receive fresh page,
+     * annotation and masking-card ids while keeping templates, memos, source links,
+     * layers, layer visibility/opacity, card content/geometry/state and annotation
+     * timing. Bookmarks that follow an
      * inserted copy are remapped to the same logical page; no bookmark is copied.
      */
     fun duplicatePages(
@@ -268,5 +270,8 @@ object NotePageManager {
         annotations = page.annotations.map {
             it.copy(id = UUID.randomUUID().toString(), page = 0)
         },
+        // Cards travel with the page like annotations, but a duplicate must be an
+        // independent study record (fresh ids, same prompt/answer/rect/state).
+        maskingCards = MaskingCards.freshIds(page.maskingCards),
     )
 }

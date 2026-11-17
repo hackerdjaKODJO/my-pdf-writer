@@ -69,6 +69,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -123,6 +125,8 @@ import com.hackerdjakodjo.mypdfwriter.data.AudioNote
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateAsset
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplatePaths
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateStore
+import com.hackerdjakodjo.mypdfwriter.data.MaskingCard
+import com.hackerdjakodjo.mypdfwriter.data.MaskingCards
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.NotePaper
@@ -300,6 +304,10 @@ fun NoteEditorScreen(
     var showStudio by remember { mutableStateOf(false) }
     var showQuickTemplates by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
+    // Masking cards are study-only. The on-page tape overlay is small and can be
+    // switched off from the overflow or the card sheet so it never blocks writing.
+    var showMaskingCards by remember { mutableStateOf(false) }
+    var showMaskingOnPage by remember { mutableStateOf(true) }
     var showDeletePage by remember { mutableStateOf(false) }
     var photoImporting by remember { mutableStateOf(false) }
     var photoError by remember { mutableStateOf<String?>(null) }
@@ -345,6 +353,33 @@ fun NoteEditorScreen(
         if (updated == previous) return
         val mutable = currentPages.toMutableList()
         mutable[index] = updated
+        applyChange(workingNotebook.copy(pages = mutable))
+    }
+
+    /** Inserts or replaces one study card on any page; one undo step per change. */
+    fun upsertMaskingCard(targetPageIndex: Int, card: MaskingCard) {
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
+        val index = targetPageIndex.coerceIn(0, currentPages.lastIndex)
+        val target = currentPages[index]
+        val cards = if (target.maskingCards.any { it.id == card.id }) {
+            target.maskingCards.map { if (it.id == card.id) card else it }
+        } else {
+            target.maskingCards + card
+        }
+        if (cards == target.maskingCards) return
+        val mutable = currentPages.toMutableList()
+        mutable[index] = target.copy(maskingCards = cards)
+        applyChange(workingNotebook.copy(pages = mutable))
+    }
+
+    fun deleteMaskingCard(targetPageIndex: Int, cardId: String) {
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
+        val index = targetPageIndex.coerceIn(0, currentPages.lastIndex)
+        val target = currentPages[index]
+        val cards = target.maskingCards.filterNot { it.id == cardId }
+        if (cards.size == target.maskingCards.size) return
+        val mutable = currentPages.toMutableList()
+        mutable[index] = target.copy(maskingCards = cards)
         applyChange(workingNotebook.copy(pages = mutable))
     }
 
@@ -459,6 +494,7 @@ fun NoteEditorScreen(
             annotations = source.annotations.map {
                 it.copy(id = UUID.randomUUID().toString(), page = 0)
             },
+            maskingCards = MaskingCards.freshIds(source.maskingCards),
         )
         val mutable = currentPages.toMutableList()
         val insertAt = index + 1
@@ -1192,6 +1228,18 @@ fun NoteEditorScreen(
                         gestureUndoEnabled = gestureUndo,
                         selectionBounds = selectionBounds,
                         annotationProgress = annotationProgress,
+                        maskingCards = page.maskingCards,
+                        showMaskingCards = showMaskingOnPage,
+                        onRevealMaskingCard = { id ->
+                            page.maskingCards.firstOrNull { it.id == id }?.let { card ->
+                                upsertMaskingCard(safeIndex, MaskingCards.reveal(card))
+                            }
+                        },
+                        onMarkMaskingCard = { id, correct ->
+                            page.maskingCards.firstOrNull { it.id == id }?.let { card ->
+                                upsertMaskingCard(safeIndex, MaskingCards.mark(card, correct))
+                            }
+                        },
                         backgroundBitmap = pageBackground,
                         hint = canvasHint,
                         compact = compact,
@@ -1236,6 +1284,18 @@ fun NoteEditorScreen(
                     gestureUndoEnabled = gestureUndo,
                     selectionBounds = selectionBounds,
                     annotationProgress = annotationProgress,
+                    maskingCards = page.maskingCards,
+                    showMaskingCards = showMaskingOnPage,
+                    onRevealMaskingCard = { id ->
+                        page.maskingCards.firstOrNull { it.id == id }?.let { card ->
+                            upsertMaskingCard(safeIndex, MaskingCards.reveal(card))
+                        }
+                    },
+                    onMarkMaskingCard = { id, correct ->
+                        page.maskingCards.firstOrNull { it.id == id }?.let { card ->
+                            upsertMaskingCard(safeIndex, MaskingCards.mark(card, correct))
+                        }
+                    },
                     backgroundBitmap = pageBackground,
                     hint = canvasHint,
                     compact = compact,
@@ -1486,6 +1546,22 @@ fun NoteEditorScreen(
         )
     }
 
+    if (showMaskingCards) {
+        MaskingCardsSheet(
+            notebook = workingNotebook,
+            currentPageIndex = safeIndex,
+            showOnPage = showMaskingOnPage,
+            onToggleShowOnPage = { showMaskingOnPage = it },
+            onCardChange = { pageIndex, card -> upsertMaskingCard(pageIndex, card) },
+            onDeleteCard = { pageIndex, cardId -> deleteMaskingCard(pageIndex, cardId) },
+            onJump = { pageIndex ->
+                onPageIndexChange(pageIndex)
+                showMaskingCards = false
+            },
+            onDismiss = { showMaskingCards = false },
+        )
+    }
+
     if (photoImporting) {
         AlertDialog(
             onDismissRequest = {},
@@ -1661,6 +1737,12 @@ fun NoteEditorScreen(
                 showOverflow = false
                 showSearch = true
             },
+            onMaskingCards = {
+                showOverflow = false
+                showMaskingCards = true
+            },
+            showMaskingOnPage = showMaskingOnPage,
+            onShowMaskingOnPage = { showMaskingOnPage = it },
             onAudioNotes = {
                 showOverflow = false
                 showAudioNotes = true
@@ -1757,6 +1839,10 @@ private fun NoteCanvasPane(
     gestureUndoEnabled: Boolean,
     selectionBounds: NoteSelectionBounds?,
     annotationProgress: (Annotation) -> Float,
+    maskingCards: List<MaskingCard> = emptyList(),
+    showMaskingCards: Boolean = false,
+    onRevealMaskingCard: (String) -> Unit = {},
+    onMarkMaskingCard: (String, Boolean) -> Unit = { _, _ -> },
     backgroundBitmap: android.graphics.Bitmap?,
     hint: String,
     compact: Boolean = false,
@@ -1787,6 +1873,10 @@ private fun NoteCanvasPane(
             gestureUndoEnabled = gestureUndoEnabled,
             selectionBounds = selectionBounds,
             annotationProgress = annotationProgress,
+            maskingCards = maskingCards,
+            showMaskingCards = showMaskingCards,
+            onRevealMaskingCard = onRevealMaskingCard,
+            onMarkMaskingCard = onMarkMaskingCard,
             backgroundBitmap = backgroundBitmap,
             onAddStroke = onAddStroke,
             onErase = onErase,
@@ -3015,6 +3105,9 @@ private fun NoteOverflowSheet(
     onLayers: () -> Unit,
     onOutline: () -> Unit,
     onSearch: () -> Unit,
+    onMaskingCards: () -> Unit,
+    showMaskingOnPage: Boolean,
+    onShowMaskingOnPage: (Boolean) -> Unit,
     onAudioNotes: () -> Unit,
     onAudioReplay: () -> Unit,
     onOpenSourcePdf: (() -> Unit)?,
@@ -3118,6 +3211,34 @@ private fun NoteOverflowSheet(
                         onClick = onOpenSourcePdf,
                     )
                 }
+            }
+
+            item { NoteMenuDivider() }
+            item { NoteMenuSection("스터디") }
+            item {
+                NoteMenuRow(
+                    icon = Icons.Filled.AutoFixNormal,
+                    title = "가림 카드",
+                    supporting = "질문을 가리고 정답을 확인하는 오프라인 복습 카드",
+                    onClick = onMaskingCards,
+                )
+            }
+            item {
+                NoteMenuToggleRow(
+                    icon = if (showMaskingOnPage) {
+                        Icons.Filled.Visibility
+                    } else {
+                        Icons.Filled.VisibilityOff
+                    },
+                    title = "카드 페이지에 표시",
+                    supporting = if (showMaskingOnPage) {
+                        "종이 위 테이프 표시 · 끄면 필기가 영역을 완전히 사용"
+                    } else {
+                        "테이프 숨김 · 필기 도구가 방해받지 않음"
+                    },
+                    checked = showMaskingOnPage,
+                    onCheckedChange = onShowMaskingOnPage,
+                )
             }
 
             item { NoteMenuDivider() }

@@ -2,6 +2,8 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.data.MaskingCard
+import com.hackerdjakodjo.mypdfwriter.data.MaskingCardState
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NoteLayer
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
@@ -139,6 +141,39 @@ class NotePageManagerTest {
             it.id.takeIf { id -> id in setOf("p0", "p1", "p2") } ?: "copy"
         })
         assertSame(middle.layers, copyOfMiddle.notebook.pages[2].layers)
+    }
+
+    @Test
+    fun duplicatePagesGivesCardsFreshIdsAndKeepsStudyData() {
+        val card = MaskingCard(
+            id = "study-card",
+            prompt = "질문",
+            answer = "정답",
+            x = 0.2f,
+            y = 0.3f,
+            w = 0.4f,
+            h = 0.1f,
+            state = MaskingCardState.CORRECT,
+            createdAt = 123L,
+        )
+        val sourcePage = page("p0", PaperTemplate.LINED, emptyList())
+            .copy(maskingCards = listOf(card))
+        val source = notebook(sourcePage)
+
+        val result = NotePageManager.duplicatePages(source, setOf("p0"), currentIndex = 0)
+        val original = result.notebook.pages[0]
+        val copy = result.notebook.pages[1]
+
+        assertEquals("study-card", original.maskingCards.single().id)
+        assertEquals(1, copy.maskingCards.size)
+        assertNotEquals("study-card", copy.maskingCards.single().id)
+        assertEquals("질문", copy.maskingCards.single().prompt)
+        assertEquals("정답", copy.maskingCards.single().answer)
+        assertEquals(MaskingCardState.CORRECT, copy.maskingCards.single().state)
+        assertEquals(0.2f, copy.maskingCards.single().x)
+        assertEquals(0.4f, copy.maskingCards.single().w)
+        assertEquals(123L, copy.maskingCards.single().createdAt)
+        assertEquals("the source notebook is untouched", 1, source.pages[0].maskingCards.size)
     }
 
     @Test
