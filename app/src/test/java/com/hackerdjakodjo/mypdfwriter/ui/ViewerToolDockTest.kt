@@ -9,6 +9,24 @@ import org.junit.Test
 class ViewerToolDockTest {
 
     @Test
+    fun dockHasExactlyTheSixPrimarySlots() {
+        assertEquals(
+            listOf(
+                ViewerDockSlot.VIEW,
+                ViewerDockSlot.PEN,
+                ViewerDockSlot.HIGHLIGHT,
+                ViewerDockSlot.ERASER,
+                ViewerDockSlot.TEXT_SELECT,
+                ViewerDockSlot.ANNOTATION,
+            ),
+            viewerDockSlots,
+        )
+        assertEquals(6, viewerDockSlots.size)
+        assertFalse(ViewerDockSlot.entries.any { it.name == "SHAPE" })
+        assertFalse(ViewerDockSlot.entries.any { it.name == "TEXT_BOX" })
+    }
+
+    @Test
     fun shapeToolsMatchTheCanvasShapeGestures() {
         assertEquals(
             setOf(Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE),
@@ -34,38 +52,40 @@ class ViewerToolDockTest {
     }
 
     @Test
-    fun dockShowsTheActiveExtraToolName() {
-        assertEquals("밑줄", dockMoreLabel(Tool.UNDERLINE))
-        assertEquals("취소선", dockMoreLabel(Tool.STRIKEOUT))
-        assertEquals("스탬프", dockMoreLabel(Tool.STAMP))
-        assertEquals("서명", dockMoreLabel(Tool.SIGNATURE))
-        assertEquals("가림", dockMoreLabel(Tool.REDACT))
-        assertEquals("더보기", dockMoreLabel(Tool.PEN))
-        assertEquals("더보기", dockMoreLabel(Tool.VIEW))
+    fun annotationSlotShowsTheActiveExtraToolName() {
+        assertEquals("글상자", dockAnnotationLabel(Tool.TEXT))
+        assertEquals("사각형", dockAnnotationLabel(Tool.RECT))
+        assertEquals("화살표", dockAnnotationLabel(Tool.ARROW))
+        assertEquals("직선", dockAnnotationLabel(Tool.LINE))
+        assertEquals("타원", dockAnnotationLabel(Tool.ELLIPSE))
+        assertEquals("밑줄", dockAnnotationLabel(Tool.UNDERLINE))
+        assertEquals("취소선", dockAnnotationLabel(Tool.STRIKEOUT))
+        assertEquals("스탬프", dockAnnotationLabel(Tool.STAMP))
+        assertEquals("서명", dockAnnotationLabel(Tool.SIGNATURE))
+        assertEquals("가림", dockAnnotationLabel(Tool.REDACT))
+        assertEquals("주석", dockAnnotationLabel(Tool.PEN))
+        assertEquals("주석", dockAnnotationLabel(Tool.VIEW))
     }
 
     @Test
-    fun dockShowsTheActiveShapeName() {
-        assertEquals("사각형", dockShapeLabel(Tool.RECT))
-        assertEquals("화살표", dockShapeLabel(Tool.ARROW))
-        assertEquals("직선", dockShapeLabel(Tool.LINE))
-        assertEquals("타원", dockShapeLabel(Tool.ELLIPSE))
-        assertEquals("도형", dockShapeLabel(Tool.PEN))
-    }
-
-    @Test
-    fun extraToolsMatchTheMoreSheetEntries() {
+    fun annotationToolsMatchTheAnnotationSheetEntries() {
         listOf(
+            Tool.TEXT,
+            Tool.RECT,
+            Tool.ARROW,
+            Tool.LINE,
+            Tool.ELLIPSE,
+            Tool.UNDERLINE,
+            Tool.STRIKEOUT,
             Tool.STAMP,
             Tool.SIGNATURE,
             Tool.REDACT,
-            Tool.UNDERLINE,
-            Tool.STRIKEOUT,
         ).forEach { tool ->
-            assertTrue("$tool should live in the more sheet", isExtraTool(tool))
+            assertTrue("$tool should live in the annotation sheet", isDockAnnotationTool(tool))
         }
-        assertFalse(isExtraTool(Tool.PEN))
-        assertFalse(isExtraTool(Tool.RECT))
-        assertFalse(isExtraTool(Tool.TEXT))
+        assertFalse(isDockAnnotationTool(Tool.PEN))
+        assertFalse(isDockAnnotationTool(Tool.HIGHLIGHT))
+        assertFalse(isDockAnnotationTool(Tool.ERASER))
+        assertFalse(isDockAnnotationTool(Tool.VIEW))
     }
 }

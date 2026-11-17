@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -36,40 +38,141 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
-/** One row in the PDF hub. [trailing] is a short state/count label, for example "3개" or "켜짐". */
+/**
+ * Stable grouping for the single PDF menu. The order of [pdfMenuTopLevelGroups]
+ * is the visible order; every [PdfMenuAction] belongs to exactly one group, so
+ * adding an action cannot silently drop it from the sheet.
+ */
+internal enum class PdfMenuGroup(val title: String, val expandable: Boolean = false) {
+    READING("읽기"),
+    PAGES("페이지"),
+    VIEW("보기"),
+    EXPORT("내보내기"),
+    ADVANCED("고급", expandable = true),
+    READ_MODE("읽기 모드"),
+    AUDIO("오디오"),
+}
+
+internal val pdfMenuTopLevelGroups = listOf(
+    PdfMenuGroup.READING,
+    PdfMenuGroup.PAGES,
+    PdfMenuGroup.VIEW,
+    PdfMenuGroup.EXPORT,
+    PdfMenuGroup.ADVANCED,
+)
+
+/** The advanced group is collapsed on open so the menu stays one calm screen. */
+internal const val PDF_HUB_ADVANCED_DEFAULT_EXPANDED = false
+
+/**
+ * Every PDF action reachable from the menu. Actions in [PdfMenuGroup.READ_MODE]
+ * and [PdfMenuGroup.AUDIO] are rendered by their small sub-sheet.
+ */
+internal enum class PdfMenuAction(val group: PdfMenuGroup, val label: String) {
+    SEARCH(PdfMenuGroup.READING, "검색"),
+    OUTLINE(PdfMenuGroup.READING, "목차"),
+    BOOKMARKS(PdfMenuGroup.READING, "북마크 목록"),
+    PAGE_NOTES(PdfMenuGroup.READING, "페이지 메모"),
+    EXCERPTS(PdfMenuGroup.READING, "발췌·번역"),
+    TEXT_SELECT(PdfMenuGroup.READING, "텍스트 선택"),
+    STUDY_NOTE(PdfMenuGroup.READING, "스터디 노트"),
+
+    PAGE_MANAGE(PdfMenuGroup.PAGES, "페이지 관리"),
+    PAGE_EDIT(PdfMenuGroup.PAGES, "페이지 편집"),
+    ANNOTATION_LIST(PdfMenuGroup.PAGES, "주석 목록"),
+    TOGGLE_ANNOTATIONS(PdfMenuGroup.PAGES, "주석 숨기기/표시"),
+
+    DISPLAY_SETTINGS(PdfMenuGroup.VIEW, "화면 설정"),
+    READ_MODE(PdfMenuGroup.VIEW, "읽기 모드"),
+    AUDIO(PdfMenuGroup.VIEW, "오디오"),
+
+    EXPORT(PdfMenuGroup.EXPORT, "PDF 내보내기"),
+    PRINT(PdfMenuGroup.EXPORT, "인쇄"),
+    SHARE(PdfMenuGroup.EXPORT, "공유"),
+
+    PAGE_LOCK(PdfMenuGroup.ADVANCED, "페이지 잠금"),
+    COPY_TEXT(PdfMenuGroup.ADVANCED, "텍스트 복사"),
+    FIT_SCREEN(PdfMenuGroup.ADVANCED, "화면에 맞추기"),
+    DOCUMENT_INFO(PdfMenuGroup.ADVANCED, "문서 정보"),
+    DECORATE(PdfMenuGroup.ADVANCED, "문서 꾸미기"),
+    PDF_TOOLS(PdfMenuGroup.ADVANCED, "PDF 도구"),
+    HELP(PdfMenuGroup.ADVANCED, "도움말"),
+
+    READ_TEXT_MODE(PdfMenuGroup.READ_MODE, "텍스트 모드"),
+    READ_CONTINUOUS(PdfMenuGroup.READ_MODE, "연속 보기"),
+    READ_SPREAD(PdfMenuGroup.READ_MODE, "스프레드 보기"),
+    READ_POPUP(PdfMenuGroup.READ_MODE, "팝업 보기"),
+    READ_ALOUD(PdfMenuGroup.READ_MODE, "소리 내어 읽기"),
+
+    AUDIO_NOTES(PdfMenuGroup.AUDIO, "오디오 노트"),
+    AUDIO_REPLAY(PdfMenuGroup.AUDIO, "오디오 재생"),
+}
+
+internal val pdfReadModeActions = listOf(
+    PdfMenuAction.READ_TEXT_MODE,
+    PdfMenuAction.READ_CONTINUOUS,
+    PdfMenuAction.READ_SPREAD,
+    PdfMenuAction.READ_POPUP,
+    PdfMenuAction.READ_ALOUD,
+)
+
+internal val pdfAudioActions = listOf(
+    PdfMenuAction.AUDIO_NOTES,
+    PdfMenuAction.AUDIO_REPLAY,
+)
+
+internal fun pdfMenuActions(group: PdfMenuGroup): List<PdfMenuAction> =
+    PdfMenuAction.entries.filter { it.group == group }
+
+/**
+ * Two rows have state-dependent wording. Keeping this pure makes the label
+ * policy testable without composing the sheet.
+ */
+internal fun pdfMenuActionLabel(
+    action: PdfMenuAction,
+    pageLocked: Boolean = false,
+    annotationsHidden: Boolean = false,
+): String = when (action) {
+    PdfMenuAction.PAGE_LOCK -> if (pageLocked) "페이지 잠금 해제" else "페이지 잠금"
+    PdfMenuAction.TOGGLE_ANNOTATIONS -> if (annotationsHidden) "주석 표시" else "주석 숨기기"
+    else -> action.label
+}
+
+/** One row in the PDF menu. [trailing] is a short state/count label. */
 data class PdfHubAction(
     val label: String,
     val icon: ImageVector,
     val trailing: String? = null,
-    /** Primary actions stay visible in the simplified hub. */
-    val primary: Boolean = false,
+    val enabled: Boolean = true,
     val onClick: () -> Unit,
 )
 
-/** A labelled group of hub actions. */
+/** A labelled group of PDF menu actions. Expandable groups start collapsed. */
 data class PdfHubSection(
     val title: String,
     val actions: List<PdfHubAction>,
+    val expandable: Boolean = false,
+    val initiallyExpanded: Boolean = PDF_HUB_ADVANCED_DEFAULT_EXPANDED,
 )
 
-/** The simple hub never grows beyond one small screen of primary actions. */
-internal const val PDF_HUB_PRIMARY_LIMIT = 7
-
-/** Actions shown before the user expands the hub: primary actions, in section order. */
-internal fun hubPrimaryActions(sections: List<PdfHubSection>): List<PdfHubAction> =
-    sections.flatMap { it.actions }.filter { it.primary }.take(PDF_HUB_PRIMARY_LIMIT)
-
-/** Every action, used by the expanded groups. */
+/** Every action, including groups the user has not expanded yet. */
 internal fun hubAllActions(sections: List<PdfHubSection>): List<PdfHubAction> =
     sections.flatMap { it.actions }
 
+/** Actions currently reachable in the sheet; collapsed groups are excluded. */
+internal fun hubVisibleActions(
+    sections: List<PdfHubSection>,
+    expandedTitles: Set<String>,
+): List<PdfHubAction> = sections
+    .filter { !it.expandable || it.title in expandedTitles }
+    .flatMap { it.actions }
+
 /**
- * The PDF hub opens in a simple mode with the small set of actions users need
- * most often. "모든 도구 보기" expands the same sheet into the complete set of
- * grouped tools, so no capability is removed.
+ * The single PDF menu: always grouped, with the advanced group collapsed by
+ * default instead of a separate simple/expanded mode.
  *
- * Every row dismisses the hub before running its callback, so a target sheet or
- * reader mode appears without a second modal sheet stacked on top of the hub.
+ * Every row dismisses the menu before running its callback, so a target sheet,
+ * reader mode or sub-menu appears without stacking a second modal on the menu.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,13 +182,20 @@ fun PdfHubSheet(
     pageCount: Int,
     sections: List<PdfHubSection>,
     onDismiss: () -> Unit,
-    initiallyExpanded: Boolean = false,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var expanded by remember { mutableStateOf(initiallyExpanded) }
-    val primaryActions = hubPrimaryActions(sections)
-    val allActions = hubAllActions(sections)
-    val activeSections = sections.filter { it.actions.isNotEmpty() }
+    var expandedTitles by remember {
+        mutableStateOf(
+            sections
+                .filter { it.expandable && it.initiallyExpanded }
+                .map { it.title }
+                .toSet(),
+        )
+    }
+    val visibleSections = sections.filter {
+        !it.expandable || it.title in expandedTitles
+    }
+    val activeSections = visibleSections.filter { it.actions.isNotEmpty() }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         LazyColumn(
@@ -97,46 +207,73 @@ fun PdfHubSheet(
                     docName = docName,
                     pageIndex = pageIndex,
                     pageCount = pageCount,
-                    expanded = expanded,
-                    primaryCount = primaryActions.size,
-                    totalCount = allActions.size,
                 )
             }
 
-            if (!expanded) {
-                item(key = "hub_primary_grid") {
-                    HubPrimaryGrid(actions = primaryActions, onDismiss = onDismiss)
-                }
-                item(key = "hub_toggle_top") {
-                    HubExpandToggle(
-                        expanded = false,
-                        totalCount = allActions.size,
-                        onClick = { expanded = true },
+            sections.filter { it.actions.isNotEmpty() || it.expandable }.forEach { section ->
+                val expanded = section.title in expandedTitles
+                item(key = "header_${section.title}") {
+                    HubSectionHeader(
+                        section = section,
+                        expanded = expanded,
+                        onToggle = {
+                            expandedTitles = if (expanded) {
+                                expandedTitles - section.title
+                            } else {
+                                expandedTitles + section.title
+                            }
+                        },
                     )
                 }
-            } else {
-                item(key = "hub_toggle_top") {
-                    HubExpandToggle(
-                        expanded = true,
-                        totalCount = allActions.size,
-                        onClick = { expanded = false },
-                    )
-                }
-                activeSections.forEach { section ->
-                    item(key = "header_${section.title}") {
-                        HubSectionHeader(section.title)
-                    }
+                if (!section.expandable || expanded) {
                     items(section.actions, key = { "${section.title}_${it.label}" }) { action ->
                         HubActionRow(action = action, onDismiss = onDismiss)
                     }
                 }
-                item(key = "hub_toggle_bottom") {
-                    HubExpandToggle(
-                        expanded = true,
-                        totalCount = allActions.size,
-                        onClick = { expanded = false },
+            }
+
+            if (activeSections.isEmpty()) {
+                item(key = "hub_empty") {
+                    Text(
+                        "표시할 도구가 없습니다.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                     )
                 }
+            }
+        }
+    }
+}
+
+/** Small sub-sheet for 읽기 모드 and 오디오, without duplicating the main menu. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PdfHubSubSheet(
+    title: String,
+    subtitle: String,
+    actions: List<PdfHubAction>,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 24.dp),
+        ) {
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                Text(title, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.size(10.dp))
+            }
+            actions.forEach { action ->
+                HubActionRow(action = action, onDismiss = onDismiss)
             }
         }
     }
@@ -147,9 +284,6 @@ private fun HubHeader(
     docName: String,
     pageIndex: Int,
     pageCount: Int,
-    expanded: Boolean,
-    primaryCount: Int,
-    totalCount: Int,
 ) {
     Column(Modifier.padding(horizontal = 20.dp)) {
         Text("PDF 메뉴", style = MaterialTheme.typography.titleLarge)
@@ -162,11 +296,7 @@ private fun HubHeader(
         )
         Spacer(Modifier.size(4.dp))
         Text(
-            if (expanded) {
-                "모든 도구를 종류별로 모았습니다. 필요한 항목을 선택하세요."
-            } else {
-                "자주 쓰는 ${primaryCount}개 도구입니다. 전체 ${totalCount}개 도구는 아래에서 펼칠 수 있습니다."
-            },
+            "읽기·페이지·보기·내보내기로 묶었습니다. 자주 쓰지 않는 도구는 고급에서 펼치세요.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -175,153 +305,68 @@ private fun HubHeader(
 }
 
 @Composable
-private fun HubPrimaryGrid(actions: List<PdfHubAction>, onDismiss: () -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        if (actions.isEmpty()) {
-            Text(
-                "표시할 주요 도구가 없습니다. 모든 도구 보기에서 선택하세요.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
-            )
-            return@Column
-        }
-        actions.chunked(2).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                row.forEach { action ->
-                    HubPrimaryTile(
-                        action = action,
-                        modifier = Modifier.weight(1f),
-                        onDismiss = onDismiss,
-                    )
-                }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
-            }
-            Spacer(Modifier.size(8.dp))
-        }
-    }
-}
-
-@Composable
-private fun HubPrimaryTile(
-    action: PdfHubAction,
-    modifier: Modifier = Modifier,
-    onDismiss: () -> Unit,
+private fun HubSectionHeader(
+    section: PdfHubSection,
+    expanded: Boolean,
+    onToggle: () -> Unit,
 ) {
-    Surface(
-        onClick = {
-            onDismiss()
-            action.onClick()
-        },
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
-        modifier = modifier,
-    ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(9.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                    modifier = Modifier.size(30.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            action.icon,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                }
-                Spacer(Modifier.weight(1f))
-                action.trailing?.let { trailing ->
-                    Text(
-                        trailing,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        maxLines = 1,
-                    )
-                }
-            }
-            Spacer(Modifier.size(7.dp))
-            Text(
-                action.label,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-@Composable
-private fun HubExpandToggle(expanded: Boolean, totalCount: Int, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    if (section.expandable) {
+        Surface(
+            onClick = onToggle,
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
         ) {
-            Icon(
-                if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    if (expanded) "간단히 보기" else "모든 도구 보기",
+                    section.title,
                     style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
                 )
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    if (expanded) {
-                        "주요 도구만 다시 표시합니다."
-                    } else {
-                        "읽기·문서·내보내기 전체 ${totalCount}개"
-                    },
+                    "${section.actions.size}개",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    if (expanded) "접기" else "펼치기",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription = if (expanded) "${section.title} 접기" else "${section.title} 펼치기",
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
             }
-            Icon(
-                Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.outline,
+        }
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                section.title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(10.dp))
+            HorizontalDivider(
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
             )
         }
-    }
-}
-
-@Composable
-private fun HubSectionHeader(title: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.width(10.dp))
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-        )
     }
 }
 
@@ -332,12 +377,9 @@ private fun HubActionRow(action: PdfHubAction, onDismiss: () -> Unit) {
             onDismiss()
             action.onClick()
         },
+        enabled = action.enabled,
         shape = RoundedCornerShape(14.dp),
-        color = if (action.primary) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)
-        },
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 2.dp),
@@ -357,7 +399,11 @@ private fun HubActionRow(action: PdfHubAction, onDismiss: () -> Unit) {
                         action.icon,
                         contentDescription = null,
                         modifier = Modifier.size(19.dp),
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = if (action.enabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                        },
                     )
                 }
             }

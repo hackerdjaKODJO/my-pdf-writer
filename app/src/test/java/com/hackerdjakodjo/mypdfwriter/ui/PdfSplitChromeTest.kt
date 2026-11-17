@@ -91,6 +91,15 @@ class PdfSplitChromeTest {
     }
 
     @Test
+    fun selectionPrimaryActionsAreMarkupFirstAndCappedAtSix() {
+        assertEquals(
+            listOf("형광펜", "밑줄", "취소선", "복사", "발췌", "더보기"),
+            TextSelectionPrimaryAction.entries.map { it.label },
+        )
+        assertEquals(6, TextSelectionPrimaryAction.entries.size)
+    }
+
+    @Test
     fun floatingTargetsStayInTheCompactRange() {
         assertTrue(SPLIT_CHROME_TARGET_DP in 36..40)
     }
