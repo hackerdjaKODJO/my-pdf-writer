@@ -90,6 +90,21 @@ class ReaderZoomTest {
     }
 
     @Test
+    fun `every render zoom step produces a distinct scale`() {
+        // A pinch only changes the bitmap when the derived scale changes; the
+        // render key is (renderZoom, scale), so both must move together.
+        val steps = listOf(1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f)
+        val scales = steps.map { readerRenderScale(readerRenderZoom(it)) }
+        assertEquals("scales must be unique so the cache key changes", scales.size, scales.toSet().size)
+        for (i in 1 until scales.size) {
+            org.junit.Assert.assertTrue(
+                "scale must grow between steps $i and ${i - 1}: $scales",
+                scales[i] > scales[i - 1],
+            )
+        }
+    }
+
+    @Test
     fun `label renders a clamped percentage`() {
         assertEquals("100%", readerZoomLabel(1.0f))
         assertEquals("125%", readerZoomLabel(1.25f))
