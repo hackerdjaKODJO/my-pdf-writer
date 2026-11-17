@@ -237,6 +237,9 @@ fun ContinuousReaderScreen(
                                                 seenIds.remove(change.id.value.toInt())
                                             }
                                         }
+                                        // A lifted finger resets the tracker; the next
+                                        // two-finger contact needs a fresh zoom baseline.
+                                        if (!pinchTracker.active) baselineCaptured = false
 
                                         if (pinchTracker.active) {
                                             // Freeze the document-wide zoom exactly
