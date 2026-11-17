@@ -93,7 +93,7 @@ PDF 파일 접근은 사용자가 SAF 화면에서 직접 선택한 파일에 �
 - 온디바이스 OCR: Google ML Kit Text Recognition (한국어/English). 모델이 APK에 포함되어
   있으며, 이미지·인식 결과를 외부로 전송하지 않습니다. 앱 매니페스트에서 `INTERNET`과
   `ACCESS_NETWORK_STATE` 권한을 제거했습니다.
-- 결제 SDK: 없음 (v0.8.8 기준)
+- 결제 SDK: 없음 (v0.8.9 기준)
 
 따라서 개발자가 제3자에게 사용자 데이터를 제공하는 경우는 없습니다. ML Kit은 기기 내에서만 동작하는 로컬 SDK입니다.
 

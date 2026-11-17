@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>My PDF Writer 0.8.8 사용법</title>
+  <title>My PDF Writer 0.8.9 사용법</title>
   <style>
     :root {
       --bg: #f6f3ec;
@@ -281,7 +281,7 @@
     광고·계정·인터넷 없이 기기 안에서만 동작합니다.
   </p>
   <div class="meta">
-    <span class="pill">버전 0.8.8</span>
+    <span class="pill">버전 0.8.9</span>
     <span class="pill">Android 8.0+</span>
     <span class="pill">arm64 APK</span>
     <span class="pill">오프라인</span>
@@ -295,6 +295,8 @@
     <a href="#divider">PDF/노트 높이 조절</a>
     <a href="#write">필기 도구</a>
     <a href="#pages">페이지·템플릿·검색</a>
+    <a href="#masking">가림 카드 학습</a>
+    <a href="#searchnav">검색 결과 이동</a>
     <a href="#backup">백업·내보내기</a>
     <a href="#trouble">문제 해결</a>
   </nav>
@@ -309,7 +311,7 @@
     <li>
       <div>
         <b>My Files에서 APK 열기</b><br>
-        <code>/sdcard/Download/MyPDFWriter-0.8.8-arm64.apk</code>를 탭합니다.
+        <code>/sdcard/Download/MyPDFWriter-0.8.9-arm64.apk</code>를 탭합니다.
         파일이 보이지 않으면 My Files의 <b>Downloads</b>에서 확인하세요.
       </div>
     </li>
@@ -501,9 +503,30 @@
   <h3>노트 검색</h3>
   <p>노트 더보기의 <b>노트 검색</b>은 메모·텍스트·스탬프·서명을 찾습니다.
     결과를 누르면 해당 페이지로 이동합니다. 손글씨 획 자체는 아직 검색하지 않습니다.</p>
-  <h3>PDF 텍스트 검색</h3>
-  <p>PDF 허브의 검색은 페이지별 결과와 하이라이트를 보여줍니다. 검색 결과를
-    누르면 해당 페이지로 이동합니다.</p>
+  <h3 id="searchnav">검색 결과 다음/이전</h3>
+  <p>PDF 허브의 검색은 페이지별 결과와 하이라이트를 보여줍니다. 결과 목록에서
+    <span class="key">이전 결과</span> / <span class="key">다음 결과</span>를 누르면
+    결과 페이지로 이동하고 현재 결과가 강조됩니다. 화면 상단의 작은
+    <b>검색 n / 전체</b> 칩에서도 다음 결과로 이동할 수 있습니다.</p>
+  <div class="tip"><strong>팁:</strong> 결과는 마지막에서 처음으로 다시 이어집니다.
+    검색어를 바꾸면 첫 결과부터 다시 시작합니다.</div>
+</section>
+
+<section id="masking">
+  <h2>가림 카드 학습</h2>
+  <p class="sub">Flexcil/GoodNotes 스타일의 문제-정답 카드를 오프라인으로 만듭니다.</p>
+  <ol class="steps">
+    <li><div>노트의 <b>더보기 → 스터디 → 가림 카드</b>를 엽니다.</div></li>
+    <li><div><b>카드 만들기</b>로 질문과 정답을 입력합니다. 필요하면 페이지 위 위치와
+      크기를 퍼센트로 조절합니다.</div></li>
+    <li><div>페이지에 보이는 테이프를 탭하면 정답이 나타납니다. <b>O / X</b>로
+      정답 여부를 표시합니다.</div></li>
+    <li><div>카드 목록에서 진행률과 정답률을 확인하고, 카드를 수정·삭제하거나
+      해당 페이지로 이동합니다.</div></li>
+  </ol>
+  <div class="warn"><strong>주의:</strong> 가림 카드는 학습용 오버레이라 PDF 내보내기에는
+    포함되지 않습니다. 노트 JSON과 로컬 백업에는 저장됩니다. 필기 중 카드 영역이
+    방해되면 <b>카드 페이지에 표시</b> 스위치를 꺼 주세요.</div>
 </section>
 
 <section id="backup">
@@ -582,7 +605,7 @@ cd my-pdf-writer
 </section>
 
 <footer>
-  My PDF Writer 0.8.8 · 로컬 전용 · 소스와 테스트는 GitHub 저장소 참고<br>
+  My PDF Writer 0.8.9 · 로컬 전용 · 소스와 테스트는 GitHub 저장소 참고<br>
   이 문서는 오프라인에서 열 수 있는 단일 HTML 파일입니다.
 </footer>
 

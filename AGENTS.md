@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.8`** — `versionCode = 17`.
-- **Next version is `0.8.9` — `versionCode = 18`.**
+- Current delivered version: **`0.8.9`** — `versionCode = 18`.
+- **Next version is `0.8.10` — `versionCode = 19`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.9` | 18 | 2026-11-17 | `v0.8.9` | Commercial-quality review; offline masking study cards and PDF search next/previous navigation |
 | `0.8.8` | 17 | 2026-11-17 | `v0.8.8` | Draggable PDF/note boundary divider for direct split-height adjustment |
 | `0.8.7` | 16 | 2026-11-17 | `v0.8.7` | Split PDF/note space reclamation: floating PDF chrome and compact floating note header/dock |
 | `0.8.6` | 15 | 2026-11-17 | `v0.8.6` | Simplified PDF hub, restored tap/drag text selection, direct note entry, focused 85% study pane with compact note dock |
