@@ -1,4 +1,4 @@
-# PC handoff — My PDF Writer 0.8.11
+# PC handoff — My PDF Writer 0.8.12
 
 This document lets another machine continue the work from the same source state.
 The Android app source, tests and design notes are in Git; APKs and signing keys
@@ -8,14 +8,14 @@ are not.
 
 | Field | Value |
 | --- | --- |
-| Version | `0.8.11` / `versionCode 20` |
-| Tag | `v0.8.11` |
-| Release commit | `v0.8.11` tag |
+| Version | `0.8.12` / `versionCode 21` |
+| Tag | `v0.8.12` |
+| Release commit | `v0.8.12` tag |
 | Branch | `feature/starnote` |
 | `main` | same commit as `feature/starnote` |
 | Package | `com.hackerdjakodjo.mypdfwriter` (release) / `.debug` |
 | Remote | `https://github.com/hackerdjaKODJO/my-pdf-writer` |
-| JVM tests | **377 passing** |
+| JVM tests | **398 passing** |
 | On-device tests | Instrumentation APK compiles; not run (no adb device here) |
 | Permissions | no `INTERNET`; `RECORD_AUDIO` is runtime-only for audio notes |
 
@@ -94,6 +94,7 @@ Start with:
 - `docs/usage-guide.html` — offline user guide
 - `docs/commercial-tool-review.md` — Flexcil/GoodNotes behavioral review
 - `docs/masking-cards.md` — study card usage
+- `docs/flexcil-apk-feature-ledger.md` — APK static evidence ledger
 - `docs/e2e-test-cases.md` — case matrix, execution status and device checklist
 
 ## Known limitations / next work (0.8.6+)

@@ -4,6 +4,9 @@
 > `6917140` (v0.8.8 / versionCode 17). Prepared 2026-11-17. No app code, tests,
 > assets, manifests or build files were changed.
 
+
+> **0.8.12 implementation update:** the three P1 items below (interactive note checklists, audio playback speed, and external dictionary handoff) were implemented after this evidence/review snapshot with original code and no copied Flexcil assets.
+
 ## 1. Scope, evidence and boundaries
 
 **Offline-only comparison.** This is a product-quality review of the *current*

@@ -9,6 +9,9 @@
 > assets, templates, components, fonts, layouts, audio, screenshots, UI copy or
 > branding.
 
+
+> **0.8.12 implementation update:** the three P1 items below (interactive note checklists, audio playback speed, and external dictionary handoff) were implemented after this evidence/review snapshot with original code and no copied Flexcil assets.
+
 ---
 
 ## 1. Target identity, commands, limitations

@@ -33,6 +33,9 @@ executed here. Instrumentation APKs are compiled with
 | EXPORT-01 | Note export all/current/selected + hidden layers | JVM `NoteExportOptionsTest` | Passing |
 | SEARCH-01 | Search next/previous wraps, clamps, resets on query change | JVM `SearchNavigationTest` | Passing |
 | MASK-01 | Masking card legacy JSON, reveal/O-X scoring, duplication | JVM `MaskingCardTest`, `NotePageManagerTest` | Passing |
+| CHECK-01 | Checklist JSON, item toggles, progress, fresh ids | JVM `ChecklistCardTest` | Passing |
+| AUDIO-01 | Playback speed rates, clamping, labels | JVM `PlaybackSpeedTest` | Passing |
+| DICT-01 | Dictionary query normalization and fallback | JVM `TextActionsDictionaryTest` | Passing |
 | HELP-01 | Help topics are complete, offline and ordered | JVM `HelpCenterContentTest` | Passing |
 | PDF-06 | Long press in VIEW mode enters selection and reports a point; long press in selection mode is inert | JVM `PdfTextLayoutTest` + instrumentation `PdfCanvasSelectionE2ETest` | Compiled |
 | DEVICE-01 | Stylus pressure curve and two/three-finger gesture behavior | Manual device required | Not run |
