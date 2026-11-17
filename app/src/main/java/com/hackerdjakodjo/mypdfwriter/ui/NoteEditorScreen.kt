@@ -108,6 +108,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -155,9 +156,14 @@ private const val NOTE_TRACE_TAG = "NoteEditor"
  *
  * [compact] is used by [StudyPaneSheet]: the study-pane header owns the title and
  * close action, so the editor drops its own top app bar, cell-phone hint strip and
- * tall dock in favour of one tool row plus a slim action row. Every tool, sheet,
- * page manager, export, search, audio, layer, lasso, pressure and template action
- * stays reachable through the compact dock, page pill and overflow sheet.
+ * layout-consuming dock. The canvas fills the pane and a small translucent dock
+ * floats near the bottom edge with the six primary tools plus colour/style,
+ * undo/redo, favourite, overflow and the page pill. Every tool, sheet, page
+ * manager, export, search, audio, layer, lasso, pressure and template action stays
+ * reachable through the compact dock, page pill and overflow sheet.
+ *
+ * [compactTopInsetDp] keeps the compact contextual hint below the study pane's
+ * floating header without adding top padding to the canvas itself.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -170,6 +176,7 @@ fun NoteEditorScreen(
     onExportPdf: (NoteExportOptions) -> Unit,
     onOpenSourcePdf: ((Int) -> Unit)? = null,
     compact: Boolean = false,
+    compactTopInsetDp: Int = 0,
 ) {
     // The parent only echoes notebook changes after recomposition. Keep the newest
     // locally committed notebook here so a second stroke that arrives before that
@@ -1039,7 +1046,22 @@ fun NoteEditorScreen(
     BackHandler(onBack = leaveEditor)
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                // Keep transient messages above the floating dock instead of
+                // letting the pill cover them.
+                modifier = if (compact) {
+                    Modifier.padding(
+                        bottom = noteCompactDockObscuredHeightDp(
+                            showContextTray = noteIsShapeTool(tool) || noteIsLassoTool(tool),
+                        ).dp,
+                    )
+                } else {
+                    Modifier
+                },
+            )
+        },
         // The compact editor is hosted below the PDF app bar, so the system-bar
         // insets are already owned outside the pane. Zero here avoids a second
         // status-bar gap above the canvas.
@@ -1101,49 +1123,28 @@ fun NoteEditorScreen(
             }
         },
         bottomBar = {
-            Column {
-                if (selectedIds.isNotEmpty()) {
-                    NoteSelectionBar(
-                        count = selectedIds.size,
-                        onEdit = { showSelectionSheet = true },
-                        onColor = { recolorSelection(it) },
-                        onDuplicate = { duplicateSelection() },
-                        onDelete = { deleteSelection() },
-                        onClear = { selection = emptySet() },
-                    )
-                } else if (clipboard.isNotEmpty) {
-                    NoteClipboardBar(
-                        count = clipboard.size,
-                        sourcePageIndex = clipboard.sourcePageIndex,
-                        onPaste = { pasteClipboard() },
-                        onEdit = { showSelectionSheet = true },
-                        onClear = { clipboard = NoteClipboard() },
-                    )
-                }
-                if (compact) {
-                    NoteCompactDock(
-                        tool = tool,
-                        onTool = { tool = it },
-                        color = color,
-                        onOpenStyle = { showStyle = true },
-                        canUndo = canUndo,
-                        canRedo = canRedo,
-                        onUndo = { undo() },
-                        onRedo = { redo() },
-                        favorite = workingNotebook.favorite,
-                        onToggleFavorite = { toggleFavorite() },
-                        onOpenOverflow = { showOverflow = true },
-                        pageIndex = safeIndex,
-                        pageCount = pages.size,
-                        onPreviousPage = {
-                            if (notePagePreviousEnabled(safeIndex)) onPageIndexChange(safeIndex - 1)
-                        },
-                        onNextPage = {
-                            if (notePageNextEnabled(safeIndex, pages.size)) onPageIndexChange(safeIndex + 1)
-                        },
-                        onOpenPages = { showPageSheet = true },
-                    )
-                } else {
+            // Compact/study-pane mode has no layout-consuming bottom bar. Its
+            // selection/clipboard strips and dock float inside the canvas instead.
+            if (!compact) {
+                Column {
+                    if (selectedIds.isNotEmpty()) {
+                        NoteSelectionBar(
+                            count = selectedIds.size,
+                            onEdit = { showSelectionSheet = true },
+                            onColor = { recolorSelection(it) },
+                            onDuplicate = { duplicateSelection() },
+                            onDelete = { deleteSelection() },
+                            onClear = { selection = emptySet() },
+                        )
+                    } else if (clipboard.isNotEmpty) {
+                        NoteClipboardBar(
+                            count = clipboard.size,
+                            sourcePageIndex = clipboard.sourcePageIndex,
+                            onPaste = { pasteClipboard() },
+                            onEdit = { showSelectionSheet = true },
+                            onClear = { clipboard = NoteClipboard() },
+                        )
+                    }
                     NoteDock(
                         tool = tool,
                         onTool = { tool = it },
@@ -1173,6 +1174,7 @@ fun NoteEditorScreen(
                 .padding(padding),
         ) {
             val wide = maxWidth >= 840.dp && !compact
+            val compactDockWidth = noteFloatingDockWidthDp(maxWidth.value.toInt()).dp
             if (wide) {
                 Row(Modifier.fillMaxSize()) {
                     NoteCanvasPane(
@@ -1193,6 +1195,7 @@ fun NoteEditorScreen(
                         backgroundBitmap = pageBackground,
                         hint = canvasHint,
                         compact = compact,
+                        compactTopInsetDp = compactTopInsetDp,
                         onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
                         onErase = { erase(it) },
                         onRequestText = { textPoint = it },
@@ -1236,6 +1239,7 @@ fun NoteEditorScreen(
                     backgroundBitmap = pageBackground,
                     hint = canvasHint,
                     compact = compact,
+                    compactTopInsetDp = compactTopInsetDp,
                     onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
                     onErase = { erase(it) },
                     onRequestText = { textPoint = it },
@@ -1244,6 +1248,69 @@ fun NoteEditorScreen(
                     onGestureRedo = { redo() },
                     modifier = Modifier.fillMaxSize(),
                 )
+            }
+
+            if (compact) {
+                // The canvas above is already full-size. These controls float on
+                // top of its lower edge and never reserve layout height.
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(
+                            start = NOTE_COMPACT_DOCK_SIDE_MARGIN_DP.dp,
+                            end = NOTE_COMPACT_DOCK_SIDE_MARGIN_DP.dp,
+                            bottom = NOTE_COMPACT_DOCK_BOTTOM_MARGIN_DP.dp,
+                        ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (selectedIds.isNotEmpty()) {
+                        NoteSelectionBar(
+                            count = selectedIds.size,
+                            onEdit = { showSelectionSheet = true },
+                            onColor = { recolorSelection(it) },
+                            onDuplicate = { duplicateSelection() },
+                            onDelete = { deleteSelection() },
+                            onClear = { selection = emptySet() },
+                            compact = true,
+                            modifier = Modifier.width(compactDockWidth),
+                        )
+                    } else if (clipboard.isNotEmpty) {
+                        NoteClipboardBar(
+                            count = clipboard.size,
+                            sourcePageIndex = clipboard.sourcePageIndex,
+                            onPaste = { pasteClipboard() },
+                            onEdit = { showSelectionSheet = true },
+                            onClear = { clipboard = NoteClipboard() },
+                            compact = true,
+                            modifier = Modifier.width(compactDockWidth),
+                        )
+                    }
+                    NoteFloatingDock(
+                        tool = tool,
+                        onTool = { tool = it },
+                        color = color,
+                        onOpenStyle = { showStyle = true },
+                        canUndo = canUndo,
+                        canRedo = canRedo,
+                        onUndo = { undo() },
+                        onRedo = { redo() },
+                        favorite = workingNotebook.favorite,
+                        onToggleFavorite = { toggleFavorite() },
+                        onOpenOverflow = { showOverflow = true },
+                        pageIndex = safeIndex,
+                        pageCount = pages.size,
+                        onPreviousPage = {
+                            if (notePagePreviousEnabled(safeIndex)) onPageIndexChange(safeIndex - 1)
+                        },
+                        onNextPage = {
+                            if (notePageNextEnabled(safeIndex, pages.size)) onPageIndexChange(safeIndex + 1)
+                        },
+                        onOpenPages = { showPageSheet = true },
+                        modifier = Modifier.width(compactDockWidth),
+                    )
+                }
             }
         }
     }
@@ -1693,6 +1760,7 @@ private fun NoteCanvasPane(
     backgroundBitmap: android.graphics.Bitmap?,
     hint: String,
     compact: Boolean = false,
+    compactTopInsetDp: Int = 0,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
     onErase: (List<NormalizedPoint>) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
@@ -1741,7 +1809,7 @@ private fun NoteCanvasPane(
                 shape = RoundedCornerShape(50),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = if (compact) 2.dp else 10.dp),
+                    .padding(top = if (compact) compactTopInsetDp.dp else 10.dp),
             ) {
                 Text(
                     hint,
@@ -1915,12 +1983,14 @@ private fun NoteDock(
 }
 
 /**
- * Focused-pane variant of the note dock: one primary tool row and one slim row
- * with colour/style, undo/redo, favourite, overflow and the page pill. The study
- * pane header supplies the title and close action, so no editor app bar is shown.
+ * Focused-pane variant of the note dock. It is a small translucent rounded pill
+ * that floats over the bottom of the full-size canvas: one 34 dp primary tool row
+ * and one 32 dp action row with colour/style, undo/redo, favourite, overflow and
+ * the page pill. The study pane header supplies the title and close action, so no
+ * editor app bar is shown.
  */
 @Composable
-private fun NoteCompactDock(
+private fun NoteFloatingDock(
     tool: Tool,
     onTool: (Tool) -> Unit,
     color: Int,
@@ -1937,12 +2007,31 @@ private fun NoteCompactDock(
     onPreviousPage: () -> Unit,
     onNextPage: () -> Unit,
     onOpenPages: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Surface(tonalElevation = 2.dp) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(NOTE_COMPACT_DOCK_CORNER_DP.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 4.dp,
+        shadowElevation = 8.dp,
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+        ),
+    ) {
         // The study pane already ends above the viewer's navigation-bar-aware
         // tool dock, so adding navigationBarsPadding here would only create a
         // dead strip between the note dock and the PDF controls.
-        Column(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = NOTE_COMPACT_DOCK_HORIZONTAL_PADDING_DP.dp,
+                    vertical = NOTE_COMPACT_DOCK_VERTICAL_PADDING_DP.dp,
+                ),
+        ) {
             if (noteIsShapeTool(tool)) {
                 NoteToolTray(
                     label = "도형",
@@ -1966,7 +2055,7 @@ private fun NoteCompactDock(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(NOTE_COMPACT_TOOL_ROW_HEIGHT_DP.dp)
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = 1.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1994,13 +2083,15 @@ private fun NoteCompactDock(
                 }
             }
 
-            HorizontalDivider()
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+            )
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(NOTE_COMPACT_ACTION_ROW_HEIGHT_DP.dp)
-                    .padding(horizontal = 6.dp),
+                    .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -2008,8 +2099,8 @@ private fun NoteCompactDock(
                     color = color,
                     selected = true,
                     onClick = onOpenStyle,
-                    modifier = Modifier.padding(horizontal = 2.dp),
-                    size = 24.dp,
+                    modifier = Modifier.padding(horizontal = 1.dp),
+                    size = 22.dp,
                 )
                 NoteCompactActionButton(
                     icon = Icons.Filled.Palette,
@@ -2067,7 +2158,7 @@ private fun NoteCompactDockTool(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(9.dp),
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
@@ -2083,11 +2174,10 @@ private fun NoteCompactDockTool(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 2.dp),
+                .padding(vertical = 1.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(19.dp))
-            Spacer(Modifier.height(1.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
             Text(
                 label,
                 style = MaterialTheme.typography.labelSmall,
@@ -2309,8 +2399,16 @@ private fun NoteSelectionBar(
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     onClear: () -> Unit,
+    compact: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
+        modifier = modifier,
+        shape = if (compact) {
+            RoundedCornerShape(14.dp)
+        } else {
+            RectangleShape
+        },
         tonalElevation = 2.dp,
         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
     ) {
@@ -2318,7 +2416,10 @@ private fun NoteSelectionBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 5.dp),
+                .padding(
+                    horizontal = if (compact) 8.dp else 12.dp,
+                    vertical = if (compact) 2.dp else 5.dp,
+                ),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -2362,8 +2463,16 @@ private fun NoteClipboardBar(
     onPaste: () -> Unit,
     onEdit: () -> Unit,
     onClear: () -> Unit,
+    compact: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
+        modifier = modifier,
+        shape = if (compact) {
+            RoundedCornerShape(14.dp)
+        } else {
+            RectangleShape
+        },
         tonalElevation = 2.dp,
         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
     ) {
@@ -2371,7 +2480,10 @@ private fun NoteClipboardBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 5.dp),
+                .padding(
+                    horizontal = if (compact) 8.dp else 12.dp,
+                    vertical = if (compact) 2.dp else 5.dp,
+                ),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
