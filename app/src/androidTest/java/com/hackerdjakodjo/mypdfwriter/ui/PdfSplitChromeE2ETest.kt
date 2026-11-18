@@ -2,6 +2,8 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -66,6 +68,132 @@ class PdfSplitChromeE2ETest {
         assertEquals(1, bookmark)
         assertEquals(1, tools)
         assertEquals(1, hub)
+    }
+
+    @Test
+    fun compactToolbarKeepsPageNavigationAndBackWithoutTheExtraTools() {
+        var previous = 0
+        var next = 0
+        var pages = 0
+        var selection = 0
+        var bookmark = 0
+        var tools = 0
+        var hub = 0
+
+        composeRule.setContent {
+            MaterialTheme {
+                SplitPdfToolbar(
+                    pageIndex = 3,
+                    pageCount = 9,
+                    bookmarked = true,
+                    textSelectMode = false,
+                    textLoading = false,
+                    hasWords = true,
+                    onPrevious = { previous += 1 },
+                    onNext = { next += 1 },
+                    onOpenPages = { pages += 1 },
+                    onToggleTextSelection = { selection += 1 },
+                    onToggleBookmark = { bookmark += 1 },
+                    onOpenTools = { tools += 1 },
+                    onOpenHub = { hub += 1 },
+                    compact = true,
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("4 / 9").assertExists()
+        composeRule.onNodeWithContentDescription("이전 페이지").performClick()
+        composeRule.onNodeWithContentDescription("다음 페이지").performClick()
+        composeRule.onNodeWithContentDescription("페이지 선택").performClick()
+        listOf("텍스트 선택", "현재 페이지 북마크", "주석", "PDF 메뉴").forEach {
+            composeRule.onNodeWithContentDescription(it).assertIsNotDisplayed()
+        }
+
+        assertEquals(1, previous)
+        assertEquals(1, next)
+        assertEquals(1, pages)
+        assertEquals(0, selection)
+        assertEquals(0, bookmark)
+        assertEquals(0, tools)
+        assertEquals(0, hub)
+    }
+
+    @Test
+    fun splitBackButtonDispatchesClose() {
+        var back = 0
+        composeRule.setContent {
+            MaterialTheme { SplitPdfBackButton(onBack = { back += 1 }) }
+        }
+
+        composeRule.onNodeWithContentDescription("PDF 닫기").assertIsEnabled().performClick()
+        assertEquals(1, back)
+    }
+
+    @Test
+    fun dividerShowsPercentAndRoutesThePdfToolsChip() {
+        var toggled = 0
+        composeRule.setContent {
+            MaterialTheme {
+                SplitDivider(
+                    paneFraction = 0.70f,
+                    totalHeightPx = 1000f,
+                    pdfToolsVisible = true,
+                    onFractionChange = {},
+                    onPresetSelected = {},
+                    onTogglePdfTools = { toggled += 1 },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("노트 70%").assertExists()
+        composeRule
+            .onNodeWithContentDescription("노트 크기 조절 핸들, 현재 70%, 탭하면 크기 선택")
+            .assertExists()
+        composeRule.onNodeWithContentDescription("PDF 도구 숨기기").performClick()
+        assertEquals(1, toggled)
+    }
+
+    @Test
+    fun dividerTapOpensThePresetPopupAndAppliesAChoice() {
+        var selected = -1f
+        composeRule.setContent {
+            MaterialTheme {
+                SplitDivider(
+                    paneFraction = 0.70f,
+                    totalHeightPx = 1000f,
+                    pdfToolsVisible = false,
+                    onFractionChange = {},
+                    onPresetSelected = { selected = it },
+                    onTogglePdfTools = {},
+                )
+            }
+        }
+
+        composeRule
+            .onNodeWithContentDescription("노트 크기 조절 핸들, 현재 70%, 탭하면 크기 선택")
+            .performClick()
+        composeRule.onNodeWithContentDescription("노트 크기 50%").performClick()
+        assertEquals(0.50f, selected, 0.0001f)
+    }
+
+    @Test
+    fun presetRowsDispatchEveryPresetWithDescriptions() {
+        val picked = mutableListOf<Float>()
+        composeRule.setContent {
+            MaterialTheme {
+                StudyPaneSizePresets(
+                    currentFraction = 0.70f,
+                    onPresetSelected = { picked += it },
+                )
+            }
+        }
+
+        listOf(0.50f, 0.70f, 0.85f).forEach { preset ->
+            val label = "${(preset * 100).toInt()}%"
+            composeRule.onNodeWithText(label).assertExists()
+            composeRule.onNodeWithContentDescription("노트 크기 $label").performClick()
+        }
+        assertEquals(listOf(0.50f, 0.70f, 0.85f), picked)
     }
 
     @Test

@@ -2,6 +2,8 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FormatStrikethrough
@@ -47,15 +50,27 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import kotlin.math.roundToInt
 
 /**
  * Split/focus chrome policy for the PDF viewer. Kept pure so the "which bars
@@ -98,6 +113,27 @@ internal fun pdfChromePolicy(
         showSplitSelectionBar = false,
     )
 }
+
+/**
+ * How much of the floating PDF toolbar fits over the strip. When the note takes
+ * more than 80% of the content area (roughly a strip below 120dp on a phone),
+ * only the page pill and the separate top-start back button are shown so the
+ * source page stays readable.
+ */
+internal enum class SplitPdfChromeDensity {
+    FULL,
+    ESSENTIAL,
+}
+
+/** Above this pane share the PDF strip is too short for the full tool strip. */
+internal const val SPLIT_PDF_ESSENTIAL_PANE_FRACTION = 0.80f
+
+internal fun splitPdfChromeDensity(paneFraction: Float): SplitPdfChromeDensity =
+    if (clampStudyPaneFraction(paneFraction) > SPLIT_PDF_ESSENTIAL_PANE_FRACTION) {
+        SplitPdfChromeDensity.ESSENTIAL
+    } else {
+        SplitPdfChromeDensity.FULL
+    }
 
 /** Visual/state model for the floating text-selection toggle. */
 internal enum class SplitSelectionToggleState {
@@ -174,9 +210,11 @@ internal fun SplitPdfBackButton(
 }
 
 /**
- * Floating compact toolbar over the PDF strip: page pill, text-selection
- * toggle, current-page bookmark, annotation-tool sheet and PDF menu. It never
- * reserves layout height; the note pane keeps the rest of the screen.
+ * Floating top strip over the PDF area: page pill, text-selection toggle,
+ * current-page bookmark, annotation-tool sheet and PDF menu. It never reserves
+ * layout height; the note pane keeps the rest of the screen. In [compact] mode
+ * only the page pill remains (the top-start back button is drawn separately),
+ * which keeps a very short PDF strip readable.
  */
 @Composable
 internal fun SplitPdfToolbar(
@@ -194,6 +232,7 @@ internal fun SplitPdfToolbar(
     onOpenTools: () -> Unit,
     onOpenHub: () -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     val toggleState = splitSelectionToggleState(
         textSelectMode = textSelectMode,
@@ -210,88 +249,304 @@ internal fun SplitPdfToolbar(
         Row(
             modifier = Modifier
                 .height(40.dp)
+                // The full strip can exceed a narrow screen; keep every tool
+                // reachable instead of clipping the trailing icons.
+                .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier
-                    .height(SPLIT_CHROME_TARGET_DP.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                        RoundedCornerShape(50),
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            SplitPagePill(
+                pageIndex = pageIndex,
+                pageCount = pageCount,
+                onPrevious = onPrevious,
+                onNext = onNext,
+                onOpenPages = onOpenPages,
+            )
+
+            if (!compact) {
                 SplitChromeButton(
-                    icon = Icons.Outlined.ChevronLeft,
-                    contentDescription = "이전 페이지",
-                    onClick = onPrevious,
-                    enabled = pageIndex > 0,
+                    icon = Icons.AutoMirrored.Outlined.TextSnippet,
+                    contentDescription = when (toggleState) {
+                        SplitSelectionToggleState.IDLE -> "텍스트 선택"
+                        SplitSelectionToggleState.LOADING -> "텍스트 선택 준비 중"
+                        SplitSelectionToggleState.ACTIVE -> "텍스트 선택 끄기"
+                        SplitSelectionToggleState.EMPTY -> "선택할 텍스트 없음"
+                    },
+                    onClick = onToggleTextSelection,
+                    selected = toggleState == SplitSelectionToggleState.ACTIVE,
+                    loading = toggleState == SplitSelectionToggleState.LOADING,
+                    error = toggleState == SplitSelectionToggleState.EMPTY,
                 )
-                Surface(
-                    onClick = onOpenPages,
-                    modifier = Modifier.semantics { contentDescription = "페이지 선택" },
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .height(SPLIT_CHROME_TARGET_DP.dp)
-                            .padding(horizontal = 8.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            "${pageIndex + 1} / $pageCount",
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                        )
-                    }
-                }
+
                 SplitChromeButton(
-                    icon = Icons.Outlined.ChevronRight,
-                    contentDescription = "다음 페이지",
-                    onClick = onNext,
-                    enabled = pageIndex < pageCount - 1,
+                    icon = if (bookmarked) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                    contentDescription = if (bookmarked) {
+                        "현재 페이지 북마크 해제"
+                    } else {
+                        "현재 페이지 북마크"
+                    },
+                    onClick = onToggleBookmark,
+                    selected = bookmarked,
+                    selectedTint = MaterialTheme.colorScheme.primary,
+                )
+
+                SplitChromeButton(
+                    icon = Icons.Outlined.Handyman,
+                    contentDescription = "주석",
+                    onClick = onOpenTools,
+                )
+
+                SplitChromeButton(
+                    icon = Icons.Outlined.Menu,
+                    contentDescription = "PDF 메뉴",
+                    onClick = onOpenHub,
                 )
             }
+        }
+    }
+}
 
-            SplitChromeButton(
-                icon = Icons.AutoMirrored.Outlined.TextSnippet,
-                contentDescription = when (toggleState) {
-                    SplitSelectionToggleState.IDLE -> "텍스트 선택"
-                    SplitSelectionToggleState.LOADING -> "텍스트 선택 준비 중"
-                    SplitSelectionToggleState.ACTIVE -> "텍스트 선택 끄기"
-                    SplitSelectionToggleState.EMPTY -> "선택할 텍스트 없음"
-                },
-                onClick = onToggleTextSelection,
-                selected = toggleState == SplitSelectionToggleState.ACTIVE,
-                loading = toggleState == SplitSelectionToggleState.LOADING,
-                error = toggleState == SplitSelectionToggleState.EMPTY,
-            )
+/** Previous / page pill / next group, always available in both densities. */
+@Composable
+private fun SplitPagePill(
+    pageIndex: Int,
+    pageCount: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onOpenPages: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .height(SPLIT_CHROME_TARGET_DP.dp)
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                RoundedCornerShape(50),
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SplitChromeButton(
+            icon = Icons.Outlined.ChevronLeft,
+            contentDescription = "이전 페이지",
+            onClick = onPrevious,
+            enabled = pageIndex > 0,
+        )
+        Surface(
+            onClick = onOpenPages,
+            modifier = Modifier.semantics { contentDescription = "페이지 선택" },
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+        ) {
+            Box(
+                modifier = Modifier
+                    .height(SPLIT_CHROME_TARGET_DP.dp)
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "${pageIndex + 1} / $pageCount",
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                )
+            }
+        }
+        SplitChromeButton(
+            icon = Icons.Outlined.ChevronRight,
+            contentDescription = "다음 페이지",
+            onClick = onNext,
+            enabled = pageIndex < pageCount - 1,
+        )
+    }
+}
 
-            SplitChromeButton(
-                icon = if (bookmarked) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                contentDescription = if (bookmarked) {
-                    "현재 페이지 북마크 해제"
+/**
+ * Resize divider between the PDF strip and the note pane. The whole 28dp row is
+ * a vertical drag target; the centered pill also accepts tap (size presets) and
+ * double-tap (50% <-> 85%). A trailing chip toggles the PDF tool strip
+ * without touching the selection bar. Pure sizing/preset policy lives in
+ * [StudyPaneLayout.kt], so this composable only wires gestures to callbacks.
+ */
+@Composable
+internal fun SplitDivider(
+    paneFraction: Float,
+    totalHeightPx: Float,
+    pdfToolsVisible: Boolean,
+    onFractionChange: (Float) -> Unit,
+    onPresetSelected: (Float) -> Unit,
+    onTogglePdfTools: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var dragStartFraction by remember { mutableFloatStateOf(paneFraction) }
+    var dragY by remember { mutableFloatStateOf(0f) }
+    var showSizePopup by remember { mutableStateOf(false) }
+    val latestFraction = rememberUpdatedState(paneFraction)
+    val latestHeight = rememberUpdatedState(totalHeightPx)
+    val latestOnFraction = rememberUpdatedState(onFractionChange)
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP.dp)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragStart = {
+                        dragStartFraction = latestFraction.value
+                        dragY = 0f
+                        showSizePopup = false
+                    },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        dragY += dragAmount
+                        latestOnFraction.value(
+                            studyPaneFractionAfterDrag(
+                                startFraction = dragStartFraction,
+                                dragY = dragY,
+                                totalHeightPx = latestHeight.value,
+                            ),
+                        )
+                    },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            tonalElevation = 2.dp,
+            shadowElevation = 3.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .height(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP.dp)
+                    .clip(RoundedCornerShape(50))
+                    .semantics { contentDescription = studyPaneDividerDescription(paneFraction) }
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { showSizePopup = true },
+                            onDoubleTap = {
+                                showSizePopup = false
+                                onPresetSelected(studyPanePresetAfterDoubleTap(paneFraction))
+                            },
+                        )
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Spacer(Modifier.width(12.dp))
+                Icon(
+                    Icons.Outlined.DragIndicator,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    studyPaneDividerLabel(paneFraction),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.width(12.dp))
+            }
+        }
+
+        Surface(
+            onClick = onTogglePdfTools,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 8.dp)
+                .height(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP.dp)
+                .semantics { contentDescription = splitPdfToolsChipDescription(pdfToolsVisible) },
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+            contentColor = if (pdfToolsVisible) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Outlined.Handyman,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("PDF 도구", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
+        }
+
+        if (showSizePopup) {
+            val density = LocalDensity.current
+            Popup(
+                alignment = Alignment.TopCenter,
+                offset = IntOffset(
+                    0,
+                    with(density) { STUDY_PANE_DIVIDER_ROW_HEIGHT_DP.dp.toPx().roundToInt() },
+                ),
+                onDismissRequest = { showSizePopup = false },
+                properties = PopupProperties(focusable = true),
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 3.dp,
+                    shadowElevation = 8.dp,
+                ) {
+                    StudyPaneSizePresets(
+                        currentFraction = paneFraction,
+                        onPresetSelected = { fraction ->
+                            showSizePopup = false
+                            onPresetSelected(fraction)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Compact preset picker hosted by the divider popup; also testable standalone. */
+@Composable
+internal fun StudyPaneSizePresets(
+    currentFraction: Float,
+    onPresetSelected: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.width(132.dp).padding(vertical = 4.dp)) {
+        Text(
+            "노트 크기",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+        )
+        STUDY_PANE_PRESETS.forEach { preset ->
+            val selected = isStudyPanePresetSelected(currentFraction, preset)
+            Surface(
+                onClick = { onPresetSelected(preset) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(STUDY_PANE_PRESET_ROW_HEIGHT_DP.dp)
+                    .semantics { contentDescription = studyPanePresetDescription(preset) },
+                shape = RoundedCornerShape(10.dp),
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primaryContainer
                 } else {
-                    "현재 페이지 북마크"
+                    Color.Transparent
                 },
-                onClick = onToggleBookmark,
-                selected = bookmarked,
-                selectedTint = MaterialTheme.colorScheme.primary,
-            )
-
-            SplitChromeButton(
-                icon = Icons.Outlined.Handyman,
-                contentDescription = "주석",
-                onClick = onOpenTools,
-            )
-
-            SplitChromeButton(
-                icon = Icons.Outlined.Menu,
-                contentDescription = "PDF 메뉴",
-                onClick = onOpenHub,
-            )
+                contentColor = if (selected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(studyPanePresetLabel(preset), style = MaterialTheme.typography.bodyLarge)
+                }
+            }
         }
     }
 }

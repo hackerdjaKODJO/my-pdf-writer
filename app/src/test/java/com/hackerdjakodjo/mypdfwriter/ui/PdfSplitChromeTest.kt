@@ -110,4 +110,23 @@ class PdfSplitChromeTest {
         assertEquals(0.15f, 1f - paneFraction, 0.0001f)
         assertEquals(0.85f, paneFraction, 0.0001f)
     }
+
+    @Test
+    fun normalPanesShowTheFullPdfStrip() {
+        assertEquals(SplitPdfChromeDensity.FULL, splitPdfChromeDensity(0.35f))
+        assertEquals(SplitPdfChromeDensity.FULL, splitPdfChromeDensity(0.50f))
+        assertEquals(SplitPdfChromeDensity.FULL, splitPdfChromeDensity(0.70f))
+        // The threshold is exclusive: exactly 80% still fits the full strip.
+        assertEquals(SplitPdfChromeDensity.FULL, splitPdfChromeDensity(0.80f))
+        assertEquals(0.80f, SPLIT_PDF_ESSENTIAL_PANE_FRACTION, 0.0001f)
+    }
+
+    @Test
+    fun shortStripsKeepOnlyEssentialPdfControls() {
+        assertEquals(SplitPdfChromeDensity.ESSENTIAL, splitPdfChromeDensity(0.81f))
+        assertEquals(SplitPdfChromeDensity.ESSENTIAL, splitPdfChromeDensity(0.85f))
+        // Invalid values resolve through the default 85% pane.
+        assertEquals(SplitPdfChromeDensity.ESSENTIAL, splitPdfChromeDensity(Float.NaN))
+        assertEquals(SplitPdfChromeDensity.ESSENTIAL, splitPdfChromeDensity(2f))
+    }
 }

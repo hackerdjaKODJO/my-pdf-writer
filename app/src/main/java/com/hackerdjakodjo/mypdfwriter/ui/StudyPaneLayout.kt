@@ -104,3 +104,40 @@ internal fun studyPanePresetLabel(fraction: Float): String =
 
 internal fun isStudyPanePresetSelected(currentFraction: Float, presetFraction: Float): Boolean =
     abs(clampStudyPaneFraction(currentFraction) - presetFraction) < 0.001f
+
+/** Height of the resize divider row between the PDF strip and the note pane. */
+internal const val STUDY_PANE_DIVIDER_ROW_HEIGHT_DP = 28
+
+/** 44dp target used by the size-popup rows; the inline pill fits the 28dp row. */
+internal const val STUDY_PANE_PRESET_ROW_HEIGHT_DP = 44
+
+/** Midpoint between the 50% and 85% presets, used by divider double-tap. */
+private const val STUDY_PANE_DOUBLE_TAP_MIDPOINT_FRACTION = 0.675f
+
+/** Visible label on the centered divider pill, e.g. `노트 70%`. */
+internal fun studyPaneDividerLabel(fraction: Float): String =
+    "노트 ${studyPanePresetLabel(fraction)}"
+
+/** TalkBack description for the draggable/tappable divider pill. */
+internal fun studyPaneDividerDescription(fraction: Float): String =
+    "노트 크기 조절 핸들, 현재 ${studyPanePresetLabel(fraction)}, 탭하면 크기 선택"
+
+/** TalkBack description for one preset row of the compact size popup. */
+internal fun studyPanePresetDescription(fraction: Float): String =
+    "노트 크기 ${studyPanePresetLabel(fraction)}"
+
+/** TalkBack description for the divider's PDF-tool visibility chip. */
+internal fun splitPdfToolsChipDescription(visible: Boolean): String =
+    if (visible) "PDF 도구 숨기기" else "PDF 도구 표시"
+
+/**
+ * Double-tapping the pill jumps between the smallest and largest preset. From an
+ * in-between value the farther preset wins, so the gesture always lands on one
+ * of the two documented endpoints.
+ */
+internal fun studyPanePresetAfterDoubleTap(currentFraction: Float): Float =
+    if (clampStudyPaneFraction(currentFraction) <= STUDY_PANE_DOUBLE_TAP_MIDPOINT_FRACTION) {
+        STUDY_PANE_PRESETS.last()
+    } else {
+        STUDY_PANE_PRESETS.first()
+    }
