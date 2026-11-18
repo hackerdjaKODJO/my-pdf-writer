@@ -149,6 +149,15 @@ class NoteEditorControlsTest {
     }
 
     @Test
+    fun `restore pill label is distinct from every compact tool label`() {
+        // The pill is announced by its "도구" text; no tool may steal that label,
+        // otherwise the study-pane E2E target becomes ambiguous.
+        assertTrue(noteCompactToolLabel(Tool.PEN) != "도구")
+        assertTrue(NOTE_COMPACT_DOCK_TOOLS.none { noteCompactToolLabel(it) == "도구" })
+        assertEquals(NoteCompactChromeMode.RESTORE_PILL, noteCompactChromeMode(false))
+    }
+
+    @Test
     fun `compact hint is hidden for pen tools and stays one line`() {
         assertFalse(noteCompactHintVisible(Tool.PEN))
         assertFalse(noteCompactHintVisible(Tool.HIGHLIGHT))

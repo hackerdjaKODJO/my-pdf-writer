@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -156,6 +157,10 @@ private const val NOTE_TRACE_TAG = "NoteEditor"
  *
  * [compactTopInsetDp] keeps the compact contextual hint below the study pane's
  * floating header without adding top padding to the canvas itself.
+ *
+ * [compactShowTools] is owned by the study-pane header toggle. Hidden tools remove
+ * the floating dock entirely and leave a small `도구` restore pill in the bottom-end
+ * corner; shown tools keep the six-tool dock and its style/undo/redo/menu/page row.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -169,6 +174,8 @@ fun NoteEditorScreen(
     onOpenSourcePdf: ((Int) -> Unit)? = null,
     compact: Boolean = false,
     compactTopInsetDp: Int = 0,
+    compactShowTools: Boolean = true,
+    onCompactShowToolsChange: (Boolean) -> Unit = {},
     onOpenHelp: () -> Unit = {},
 ) {
     // The parent only echoes notebook changes after recomposition. Keep the newest
@@ -1145,6 +1152,7 @@ fun NoteEditorScreen(
         zoomLock = zoomLock,
     )
     val canvasHint = if (compact) compactHint else hint
+    val compactChromeMode = noteCompactChromeMode(compactShowTools)
 
     val darkPaper = false
 
@@ -1165,11 +1173,12 @@ fun NoteEditorScreen(
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
-                // Keep transient messages above the floating dock instead of
-                // letting the pill cover them.
+                // Keep transient messages above whichever chrome is currently
+                // floating: the full dock or the single restore pill.
                 modifier = if (compact) {
                     Modifier.padding(
-                        bottom = noteCompactDockObscuredHeightDp(
+                        bottom = noteCompactChromeObscuredHeightDp(
+                            mode = compactChromeMode,
                             showContextTray = noteIsShapeTool(tool) || noteIsLassoTool(tool),
                         ).dp,
                     )
@@ -1419,62 +1428,81 @@ fun NoteEditorScreen(
             }
 
             if (compact) {
-                // The canvas above is already full-size. These controls float on
-                // top of its lower edge and never reserve layout height.
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(
-                            start = NOTE_COMPACT_DOCK_SIDE_MARGIN_DP.dp,
-                            end = NOTE_COMPACT_DOCK_SIDE_MARGIN_DP.dp,
-                            bottom = NOTE_COMPACT_DOCK_BOTTOM_MARGIN_DP.dp,
-                        ),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    if (selectedIds.isNotEmpty()) {
-                        NoteSelectionBar(
-                            count = selectedIds.size,
-                            onEdit = { showSelectionSheet = true },
-                            onColor = { recolorSelection(it) },
-                            onDuplicate = { duplicateSelection() },
-                            onDelete = { deleteSelection() },
-                            onClear = { selection = emptySet() },
-                            compact = true,
-                            modifier = Modifier.width(compactDockWidth),
-                        )
-                    } else if (clipboard.isNotEmpty) {
-                        NoteClipboardBar(
-                            count = clipboard.size,
-                            sourcePageIndex = clipboard.sourcePageIndex,
-                            onPaste = { pasteClipboard() },
-                            onEdit = { showSelectionSheet = true },
-                            onClear = { clipboard = NoteClipboard() },
-                            compact = true,
+                when (compactChromeMode) {
+                    // The canvas above is already full-size. The dock floats over
+                    // its lower edge and never reserves layout height.
+                    NoteCompactChromeMode.DOCK -> Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(
+                                start = NOTE_COMPACT_DOCK_SIDE_MARGIN_DP.dp,
+                                end = NOTE_COMPACT_DOCK_SIDE_MARGIN_DP.dp,
+                                bottom = NOTE_COMPACT_DOCK_BOTTOM_MARGIN_DP.dp,
+                            ),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        if (selectedIds.isNotEmpty()) {
+                            NoteSelectionBar(
+                                count = selectedIds.size,
+                                onEdit = { showSelectionSheet = true },
+                                onColor = { recolorSelection(it) },
+                                onDuplicate = { duplicateSelection() },
+                                onDelete = { deleteSelection() },
+                                onClear = { selection = emptySet() },
+                                compact = true,
+                                modifier = Modifier.width(compactDockWidth),
+                            )
+                        } else if (clipboard.isNotEmpty) {
+                            NoteClipboardBar(
+                                count = clipboard.size,
+                                sourcePageIndex = clipboard.sourcePageIndex,
+                                onPaste = { pasteClipboard() },
+                                onEdit = { showSelectionSheet = true },
+                                onClear = { clipboard = NoteClipboard() },
+                                compact = true,
+                                modifier = Modifier.width(compactDockWidth),
+                            )
+                        }
+                        NoteFloatingDock(
+                            tool = tool,
+                            onTool = { tool = it },
+                            color = color,
+                            onOpenStyle = { showStyle = true },
+                            canUndo = canUndo,
+                            canRedo = canRedo,
+                            onUndo = { undo() },
+                            onRedo = { redo() },
+                            onOpenMenu = { showMenu = true },
+                            pageIndex = safeIndex,
+                            pageCount = pages.size,
+                            onPreviousPage = {
+                                if (notePagePreviousEnabled(safeIndex)) {
+                                    onPageIndexChange(safeIndex - 1)
+                                }
+                            },
+                            onNextPage = {
+                                if (notePageNextEnabled(safeIndex, pages.size)) {
+                                    onPageIndexChange(safeIndex + 1)
+                                }
+                            },
+                            onOpenPages = { showPageSheet = true },
                             modifier = Modifier.width(compactDockWidth),
                         )
                     }
-                    NoteFloatingDock(
-                        tool = tool,
-                        onTool = { tool = it },
-                        color = color,
-                        onOpenStyle = { showStyle = true },
-                        canUndo = canUndo,
-                        canRedo = canRedo,
-                        onUndo = { undo() },
-                        onRedo = { redo() },
-                        onOpenMenu = { showMenu = true },
-                        pageIndex = safeIndex,
-                        pageCount = pages.size,
-                        onPreviousPage = {
-                            if (notePagePreviousEnabled(safeIndex)) onPageIndexChange(safeIndex - 1)
-                        },
-                        onNextPage = {
-                            if (notePageNextEnabled(safeIndex, pages.size)) onPageIndexChange(safeIndex + 1)
-                        },
-                        onOpenPages = { showPageSheet = true },
-                        modifier = Modifier.width(compactDockWidth),
+
+                    // Tools hidden: only a 44 dp pill in the bottom-end corner
+                    // remains, so neither the centred paper nor the PDF above is
+                    // covered by a dock. The parent already owns navigation inset.
+                    NoteCompactChromeMode.RESTORE_PILL -> NoteCompactRestorePill(
+                        onClick = { onCompactShowToolsChange(true) },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(
+                                end = NOTE_COMPACT_RESTORE_PILL_END_MARGIN_DP.dp,
+                                bottom = NOTE_COMPACT_RESTORE_PILL_BOTTOM_MARGIN_DP.dp,
+                            ),
                     )
                 }
             }
@@ -2289,6 +2317,54 @@ private fun NoteDock(
                     onOpenPages = onOpenPages,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Tiny translucent pill shown when the study-pane header hides the note tools.
+ * It restores the full dock on tap. At 44 dp tall with a 44 dp minimum width it
+ * is a real accessibility target, and it is anchored to the bottom-end corner so
+ * it never covers the centred writing hotspot or the PDF above the pane.
+ */
+@Composable
+private fun NoteCompactRestorePill(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .height(NOTE_COMPACT_RESTORE_PILL_HEIGHT_DP.dp)
+            .widthIn(min = NOTE_COMPACT_RESTORE_PILL_MIN_WIDTH_DP.dp)
+            .semantics { contentDescription = "도구 표시" },
+        shape = RoundedCornerShape(NOTE_COMPACT_RESTORE_PILL_CORNER_DP.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        tonalElevation = 3.dp,
+        shadowElevation = 6.dp,
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                horizontal = NOTE_COMPACT_RESTORE_PILL_HORIZONTAL_PADDING_DP.dp,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Outlined.Tune,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                "도구",
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+            )
         }
     }
 }
