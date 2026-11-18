@@ -126,6 +126,7 @@ class NoteEditorControlsTest {
         assertEquals("내 펜", NOTE_PEN_PRESETS_LABEL)
         assertEquals("가림 카드", NOTE_MASKING_CARD_LABEL)
         assertEquals("체크리스트", NOTE_CHECKLIST_LABEL)
+        assertEquals("메모 카드", NOTE_MEMO_CARD_LABEL)
         assertTrue(noteStyleTitle(Tool.TEXT).contains(NOTE_TEXT_TOOL_LABEL))
         assertTrue(noteToolHint(Tool.TEXT).contains(NOTE_TEXT_TOOL_LABEL))
     }
