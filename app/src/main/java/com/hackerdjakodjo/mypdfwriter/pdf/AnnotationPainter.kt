@@ -9,8 +9,10 @@ import android.graphics.Typeface
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
+import com.hackerdjakodjo.mypdfwriter.data.InkResponse
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
-import com.hackerdjakodjo.mypdfwriter.data.inkPressureWidthFactor
+import com.hackerdjakodjo.mypdfwriter.data.inkResponseSeries
+import com.hackerdjakodjo.mypdfwriter.data.meanInkFlow
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -57,8 +59,19 @@ object AnnotationPainter {
             return
         }
         when (annotation.type) {
-            AnnotationType.PEN -> drawPen(canvas, annotation, width, height)
-            AnnotationType.HIGHLIGHT -> drawStroke(canvas, annotation, width, height, baseAlpha = 96)
+            AnnotationType.PEN -> {
+                val response = annotationInkResponse(annotation)
+                val widths = pressureWidths(annotation.points, annotation.penStyle, isHighlight = false)
+                drawPen(canvas, annotation, width, height, response, widths)
+            }
+            AnnotationType.HIGHLIGHT -> drawStroke(
+                canvas,
+                annotation,
+                width,
+                height,
+                baseAlpha = 96,
+                response = annotationInkResponse(annotation),
+            )
             AnnotationType.RECT -> drawRect(canvas, annotation, width, height)
             AnnotationType.ARROW -> drawArrow(canvas, annotation, width, height)
             AnnotationType.TEXT -> drawText(canvas, annotation, width, height)
@@ -87,12 +100,20 @@ object AnnotationPainter {
     ) {
         when (annotation.type) {
             AnnotationType.PEN, AnnotationType.HIGHLIGHT -> {
+                // Response factors come from the full annotation, not the revealed
+                // prefix, so a stroke's ink density never changes as it is uncovered.
+                val response = annotationInkResponse(annotation)
+                val fullWidths = pressureWidths(
+                    annotation.points,
+                    annotation.penStyle,
+                    annotation.type == AnnotationType.HIGHLIGHT,
+                )
                 val points = revealedPoints(annotation.points, fraction)
                 val partial = annotation.copy(points = points)
                 if (annotation.type == AnnotationType.PEN) {
-                    drawPen(canvas, partial, width, height)
+                    drawPen(canvas, partial, width, height, response, fullWidths.take(points.size))
                 } else {
-                    drawStroke(canvas, partial, width, height, baseAlpha = 96)
+                    drawStroke(canvas, partial, width, height, baseAlpha = 96, response = response)
                 }
             }
 
@@ -193,43 +214,105 @@ object AnnotationPainter {
      * PEN keeps the original smooth constant-width stroke for BALLPOINT, so PDF
      * annotations (which always use the default style) render exactly as before.
      */
-    private fun drawPen(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
+    private fun drawPen(
+        canvas: Canvas,
+        annotation: Annotation,
+        width: Float,
+        height: Float,
+        response: InkResponse,
+        widths: List<Float>,
+    ) {
         when (annotation.penStyle) {
-            PenStyle.BALLPOINT -> drawStroke(canvas, annotation, width, height, baseAlpha = 255)
-            PenStyle.FOUNTAIN -> drawFountain(canvas, annotation, width, height)
-            PenStyle.BRUSH -> drawBrush(canvas, annotation, width, height)
-            PenStyle.PENCIL -> drawPencil(canvas, annotation, width, height)
+            PenStyle.BALLPOINT -> drawStroke(canvas, annotation, width, height, baseAlpha = 255, response = response)
+            PenStyle.FOUNTAIN -> drawFountain(canvas, annotation, width, height, response, widths)
+            PenStyle.BRUSH -> drawBrush(canvas, annotation, width, height, response, widths)
+            PenStyle.PENCIL -> drawPencil(canvas, annotation, width, height, response)
         }
     }
 
     /**
-     * Per-point width multipliers from stylus pressure, smoothed with the same
-     * 1:2:1 neighbourhood used by the fountain nib. Pressure 1 everywhere is an
-     * exact identity, so legacy and finger strokes keep their old appearance.
+     * Stroke-wide response derived from the **full** annotation points. Drawing and
+     * replay both call this before any truncation so revealing a stroke cannot change
+     * its ink density. The flow component is exactly [meanInkFlow] of those points;
+     * width and grain are averaged from the same smoothed series.
+     *
+     * `InkResponse(1f, 1f, 1f)` is returned for empty strokes and for every uniform
+     * full-pressure stroke, which keeps legacy/finger ink byte-identical. Highlight
+     * annotations use the highlight profile regardless of their underlying pen style.
      */
-    private fun pressureWidths(points: List<NormalizedPoint>): FloatArray {
-        val count = points.size
-        if (count == 0) return FloatArray(0)
-        val factors = FloatArray(count) { index ->
-            inkPressureWidthFactor(points[index].pressure)
+    internal fun annotationInkResponse(annotation: Annotation): InkResponse {
+        val highlight = annotation.type == AnnotationType.HIGHLIGHT
+        val series = inkResponseSeries(annotation.points, annotation.penStyle, highlight)
+        if (series.isEmpty()) return InkResponse(1f, 1f, 1f)
+        var width = 0f
+        var grain = 0f
+        series.forEach {
+            width += it.width
+            grain += it.grain
         }
-        if (count < 3) return factors
-        return FloatArray(count) { index ->
-            val previous = factors[(index - 1).coerceAtLeast(0)]
-            val current = factors[index]
-            val next = factors[(index + 1).coerceAtMost(count - 1)]
-            (previous + current * 2f + next) * 0.25f
-        }
+        val count = series.size.toFloat()
+        return InkResponse(
+            width = width / count,
+            flow = meanInkFlow(annotation.points, annotation.penStyle, highlight),
+            grain = grain / count,
+        )
     }
 
+    /**
+     * Per-point width multipliers from stylus pressure. The series applies the same
+     * 1:2:1 neighbourhood smoothing the legacy fountain/brush nib used, and the
+     * FOUNTAIN/BRUSH profile replays `inkPressureWidthFactor` verbatim, so their
+     * geometry is unchanged at every pressure. Fully neutral strokes stay exact 1f.
+     */
+    private fun pressureWidths(
+        points: List<NormalizedPoint>,
+        penStyle: PenStyle,
+        isHighlight: Boolean,
+    ): List<Float> = inkResponseSeries(points, penStyle, isHighlight).map { it.width }
+
+    /** Scales an existing alpha; neutral factors leave it untouched. */
+    internal fun scaledInkAlpha(base: Int, factor: Float, min: Int = 0): Int =
+        (base * factor).roundToInt().coerceIn(min, 255)
+
+    /** Brush wash density: the legacy 0.20 halo, thinned by flow and grain. */
+    internal fun brushHaloAlpha(baseAlpha: Int, flow: Float, grain: Float): Int =
+        scaledInkAlpha(baseAlpha, 0.20f * flow * grain)
+
+    internal const val PENCIL_WIDTH_FACTOR = 0.62f
+    internal const val PENCIL_CENTER_ALPHA = 0.52f
+    internal const val PENCIL_SIDE_ALPHA = 0.34f
+    internal const val PENCIL_CENTER_GRAIN = 0.0004f
+    internal const val PENCIL_SIDE_GRAIN = 0.0011f
+
+    /** Pencil base stroke width; neutral mean width reproduces the old 0.62 factor. */
+    internal fun pencilStrokeWidth(base: Float, meanWidth: Float): Float =
+        base * PENCIL_WIDTH_FACTOR * meanWidth
+
+    /** One of the three graphite passes; neutral flow reproduces 0.52/0.34/0.34. */
+    internal fun pencilPassAlpha(baseAlpha: Int, pass: Int, flow: Float): Int {
+        val factor = if (pass == 1) PENCIL_CENTER_ALPHA else PENCIL_SIDE_ALPHA
+        return scaledInkAlpha(baseAlpha, factor * flow, min = 1)
+    }
+
+    /** Jitter amplitude for a graphite pass; neutral grain keeps the old constants. */
+    internal fun pencilPassGrain(pass: Int, grain: Float): Float =
+        (if (pass == 1) PENCIL_CENTER_GRAIN else PENCIL_SIDE_GRAIN) * grain
+
+    /**
+     * Constant-width stroke (ballpoint pen and highlighter). Pressure only changes
+     * darkness: the paint alpha is `meanInkFlow` of the full annotation, so light
+     * ballpoint contact fades and a light highlighter paints a fainter overlay.
+     */
     private fun drawStroke(
         canvas: Canvas,
         annotation: Annotation,
         width: Float,
         height: Float,
         baseAlpha: Int,
+        response: InkResponse,
     ) {
         val paint = basePaint(annotation, width, baseAlpha)
+        paint.alpha = scaledInkAlpha(opacityAlpha(annotation, baseAlpha), response.flow)
         val points = annotation.points
         if (points.size == 1) {
             val p = points.first()
@@ -267,10 +350,17 @@ object AnnotationPainter {
      * strokes across it swell, which produces the familiar italic-nib feel without
      * needing a custom font or texture.
      */
-    private fun drawFountain(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
+    private fun drawFountain(
+        canvas: Canvas,
+        annotation: Annotation,
+        width: Float,
+        height: Float,
+        response: InkResponse,
+        widths: List<Float>,
+    ) {
         val points = annotation.points
         val base = (annotation.width * width).coerceAtLeast(1.1f)
-        val pressure = pressureWidths(points)
+        val pressure = widths
         if (points.size == 1) {
             drawPenDot(
                 canvas,
@@ -279,6 +369,7 @@ object AnnotationPainter {
                 width,
                 height,
                 base * 0.52f * pressure.first(),
+                flow = response.flow,
             )
             return
         }
@@ -306,7 +397,7 @@ object AnnotationPainter {
         }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = annotation.color
-            alpha = opacityAlpha(annotation)
+            alpha = scaledInkAlpha(opacityAlpha(annotation), response.flow)
             style = Paint.Style.FILL
         }
         canvas.drawPath(path, paint)
@@ -328,10 +419,17 @@ object AnnotationPainter {
      * Soft brush: a broad translucent pass under a tapered ink core. The envelope
      * thins the ends and swells the middle while the halo keeps the edge fuzzy.
      */
-    private fun drawBrush(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
+    private fun drawBrush(
+        canvas: Canvas,
+        annotation: Annotation,
+        width: Float,
+        height: Float,
+        response: InkResponse,
+        widths: List<Float>,
+    ) {
         val points = annotation.points
         val base = (annotation.width * width).coerceAtLeast(1.1f)
-        val pressure = pressureWidths(points)
+        val pressure = widths
         if (points.size == 1) {
             drawPenDot(
                 canvas,
@@ -340,6 +438,7 @@ object AnnotationPainter {
                 width,
                 height,
                 base * 0.58f * pressure.first(),
+                flow = response.flow,
             )
             return
         }
@@ -348,19 +447,21 @@ object AnnotationPainter {
             val t = if (lastIndex == 0) 0.5f else index.toFloat() / lastIndex
             0.38f + 0.72f * sin(PI * t).pow(0.6).toFloat()
         }
+        // Light pressure thins and fades the wash as well as the core, giving a
+        // dry-brush look; at neutral flow/grain this is the old 0.20 halo verbatim.
         val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = annotation.color
-            alpha = (opacityAlpha(annotation) * 0.20f).roundToInt().coerceIn(0, 255)
+            alpha = brushHaloAlpha(opacityAlpha(annotation), response.flow, response.grain)
             style = Paint.Style.FILL
         }
         val halo = ribbonPath(points, width, height) { index ->
-            base * envelope[index] * pressure[index] * 0.80f
+            base * envelope[index] * pressure[index] * 0.80f * response.grain
         }
         canvas.drawPath(halo, haloPaint)
 
         val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = annotation.color
-            alpha = opacityAlpha(annotation)
+            alpha = scaledInkAlpha(opacityAlpha(annotation), response.flow)
             style = Paint.Style.FILL
         }
         val core = ribbonPath(points, width, height) { index ->
@@ -385,27 +486,39 @@ object AnnotationPainter {
      * Pencil: three thin, slightly jittered passes at low alpha. The offsets are
      * deterministic so the editor preview and the exported PDF look the same.
      */
-    private fun drawPencil(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
+    private fun drawPencil(
+        canvas: Canvas,
+        annotation: Annotation,
+        width: Float,
+        height: Float,
+        response: InkResponse,
+    ) {
         val points = annotation.points
         val base = (annotation.width * width).coerceAtLeast(1f)
         if (points.size == 1) {
-            drawPenDot(canvas, annotation, points.first(), width, height, base * 0.34f)
+            drawPenDot(
+                canvas,
+                annotation,
+                points.first(),
+                width,
+                height,
+                base * 0.34f * response.width,
+                flow = response.flow,
+            )
             return
         }
         val alpha = opacityAlpha(annotation)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = annotation.color
             style = Paint.Style.STROKE
-            strokeWidth = base * 0.62f
+            strokeWidth = pencilStrokeWidth(base, response.width)
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
         val offsets = floatArrayOf(-0.55f, 0f, 0.55f)
         offsets.forEachIndexed { pass, offset ->
-            paint.alpha = (alpha * if (pass == 1) 0.52f else 0.34f)
-                .roundToInt()
-                .coerceIn(1, 255)
-            val grain = if (pass == 1) 0.0004f else 0.0011f
+            paint.alpha = pencilPassAlpha(alpha, pass, response.flow)
+            val grain = pencilPassGrain(pass, response.grain)
             val jittered = if (pass == 1) {
                 points
             } else {
@@ -472,10 +585,11 @@ object AnnotationPainter {
         width: Float,
         height: Float,
         radius: Float,
+        flow: Float = 1f,
     ) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = annotation.color
-            alpha = opacityAlpha(annotation)
+            alpha = scaledInkAlpha(opacityAlpha(annotation), flow)
             style = Paint.Style.FILL
         }
         canvas.drawCircle(point.x * width, point.y * height, radius, paint)
