@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.26
+# E2E test cases — My PDF Writer 0.8.27
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator; the build machine has no adb device attached, so only JVM tests are
@@ -9,7 +9,7 @@ executed here. Instrumentation APKs are compiled with
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 528 | **Passing** on this phone |
+| JVM unit tests | 570 | **Passing** on this phone |
 | Instrumentation/E2E | 7 classes (see below) | **Compiled**; on-device run pending |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally) |
@@ -65,6 +65,10 @@ executed here. Instrumentation APKs are compiled with
 | UI-14 | PDF menu groups every action; advanced section is reachable | JVM `PdfHubSheetTest` | Passing |
 | UI-15 | Note menu exposes focused page/study/audio/writing sub-sheets | JVM `NoteEditorMenuTest` | Passing |
 | UI-16 | PDF tools are grouped without losing items | JVM `ToolsScreenSectionsTest` | Passing |
+| MEMO-01 | Memo card JSON, clamping, fresh ids and legacy pages | JVM `MemoCardTest`, `NotePageManagerTest` | Passing |
+| MEMO-02 | Memo card screen rect, drag/resize helper and pointer gating | JVM `MemoCardOverlayTest` + `NoteCanvasStrokeE2ETest` | Compiled |
+| MEMO-03 | Memo card list/editor/delete and export painter | JVM `MemoCardsSheetTest`, `NoteCardPainterTest` | Passing |
+| PEN-01 | Favorite pen defaults, clear semantics, cap/prune/reorder | JVM `PenBoxTest`, `FavoritePenStripTest` | Passing |
 
 ## Run on a device
 

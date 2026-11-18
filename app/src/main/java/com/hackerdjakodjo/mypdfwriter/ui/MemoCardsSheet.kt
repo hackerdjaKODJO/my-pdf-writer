@@ -165,7 +165,7 @@ fun MemoCardsSheet(
 
             item {
                 Text(
-                    "메모 카드는 노트 JSON과 로컬 백업에 저장되지만 PDF 내보내기에는 포함되지 않습니다.",
+                    "메모 카드는 노트 JSON과 로컬 백업에 저장되며 PDF 내보내기에도 기본적으로 포함됩니다. 페이지에서 숨기기는 보기 전용입니다.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 10.dp),
@@ -210,7 +210,7 @@ fun MemoCardsSheet(
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             title = { Text("메모 카드 삭제") },
-            text = { Text("이 카드의 메모를 삭제합니다. 삭제 후 되돌릴 수 없습니다.") },
+            text = { Text("이 카드의 메모를 삭제합니다. 실행 취소로 되돌릴 수 있습니다.") },
             confirmButton = {
                 TextButton(
                     onClick = {

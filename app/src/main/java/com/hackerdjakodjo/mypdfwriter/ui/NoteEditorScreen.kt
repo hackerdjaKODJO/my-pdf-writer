@@ -234,6 +234,11 @@ fun NoteEditorScreen(
     val penBoxStore = remember(context) { PenBoxStore(context) }
     val customTemplateStore = remember(context) { CustomTemplateStore(context) }
     var penPresets by remember(penBoxStore) { mutableStateOf(penBoxStore.load()) }
+    var favoritePens by remember(penBoxStore) { mutableStateOf(penBoxStore.loadFavorites()) }
+
+    fun refreshFavoritePens() {
+        favoritePens = penBoxStore.loadFavorites()
+    }
     val pageBackground = remember(page.id, page.customBackground) {
         page.customBackground?.let(customTemplateStore::load)
     }
@@ -1065,6 +1070,7 @@ fun NoteEditorScreen(
         val updated = penPresets + saved
         penPresets = updated
         penBoxStore.save(updated)
+        refreshFavoritePens()
     }
 
     fun deletePenPreset(preset: PenPreset) {
@@ -1072,6 +1078,7 @@ fun NoteEditorScreen(
         val updated = penPresets.filterNot { it.id == preset.id }
         penPresets = updated
         penBoxStore.save(updated)
+        refreshFavoritePens()
     }
 
     fun renamePenPreset(preset: PenPreset, name: String) {
@@ -1080,6 +1087,7 @@ fun NoteEditorScreen(
         val updated = penPresets.map { if (it.id == preset.id) it.copy(name = clean) else it }
         penPresets = updated
         penBoxStore.save(updated)
+        refreshFavoritePens()
     }
 
     fun erase(trail: List<NormalizedPoint>) {
@@ -1560,26 +1568,36 @@ fun NoteEditorScreen(
 
     if (showPenBox) {
         val currentTool = if (tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN
+        val currentPen = PenPreset(
+            id = "current-pen",
+            name = "현재 펜",
+            color = color,
+            width = if (currentTool == Tool.HIGHLIGHT) {
+                noteStrokeWidth(AnnotationType.HIGHLIGHT, strokeWidth)
+            } else {
+                strokeWidth
+            },
+            opacity = if (currentTool == Tool.HIGHLIGHT) 1f else opacity,
+            penStyle = if (currentTool == Tool.PEN) penStyle else PenStyle.BALLPOINT,
+            tool = currentTool,
+        )
         PenBoxSheet(
             presets = penPresets,
-            current = PenPreset(
-                id = "current-pen",
-                name = "현재 펜",
-                color = color,
-                width = if (currentTool == Tool.HIGHLIGHT) {
-                    noteStrokeWidth(AnnotationType.HIGHLIGHT, strokeWidth)
-                } else {
-                    strokeWidth
-                },
-                opacity = if (currentTool == Tool.HIGHLIGHT) 1f else opacity,
-                penStyle = if (currentTool == Tool.PEN) penStyle else PenStyle.BALLPOINT,
-                tool = currentTool,
-            ),
+            current = currentPen,
             onDismiss = { showPenBox = false },
             onApply = { applyPenPreset(it) },
             onSaveCurrent = { saveCurrentPen(it) },
             onDelete = { deletePenPreset(it) },
             onRename = { preset, name -> renamePenPreset(preset, name) },
+            favorites = favoritePens,
+            onToggleFavorite = { preset ->
+                penBoxStore.toggleFavorite(preset.id)
+                refreshFavoritePens()
+            },
+            onMoveFavorite = { from, to ->
+                penBoxStore.moveFavorite(from, to)
+                refreshFavoritePens()
+            },
         )
     }
 
@@ -1745,6 +1763,25 @@ fun NoteEditorScreen(
                 showPenBox = true
             },
             onDismiss = { showStyle = false },
+            favorites = favoritePens,
+            currentPen = PenPreset(
+                id = "current-pen",
+                name = "현재 펜",
+                color = color,
+                width = if (tool == Tool.HIGHLIGHT) {
+                    noteStrokeWidth(AnnotationType.HIGHLIGHT, strokeWidth)
+                } else {
+                    strokeWidth
+                },
+                opacity = if (tool == Tool.HIGHLIGHT) 1f else opacity,
+                penStyle = if (tool == Tool.PEN) penStyle else PenStyle.BALLPOINT,
+                tool = if (tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN,
+            ),
+            onApplyFavorite = { applyPenPreset(it) },
+            onOpenPenRegistry = {
+                showStyle = false
+                showPenBox = true
+            },
         )
     }
 

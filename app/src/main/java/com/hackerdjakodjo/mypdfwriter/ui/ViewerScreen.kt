@@ -98,6 +98,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.R
+import com.hackerdjakodjo.mypdfwriter.data.PenBoxStore
+import com.hackerdjakodjo.mypdfwriter.data.PenPreset
+import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.audio.annotationRevealFraction
 import com.hackerdjakodjo.mypdfwriter.data.AudioNote
@@ -111,6 +114,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
 import com.hackerdjakodjo.mypdfwriter.pdf.TextActions
 import kotlinx.coroutines.launch
+import java.util.UUID
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -152,7 +156,34 @@ fun ViewerScreen(
     val pageTextWords by vm.textWords.collectAsStateWithLifecycle()
     val pageLinks by vm.pageLinks.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val penBoxStore = remember(context) { PenBoxStore(context) }
+    var viewerFavorites by remember(penBoxStore) { mutableStateOf(penBoxStore.loadFavorites()) }
+    var showViewerPenBox by remember { mutableStateOf(false) }
+    var viewerPenStyle by remember { mutableStateOf(PenStyle.BALLPOINT) }
+
+    fun refreshViewerFavorites() {
+        viewerFavorites = penBoxStore.loadFavorites()
+    }
+
+    fun applyViewerFavorite(preset: PenPreset) {
+        vm.setTool(preset.tool)
+        vm.setColor(preset.color)
+        vm.setStrokeWidth(preset.width)
+        vm.setOpacity(preset.opacity)
+        viewerPenStyle = preset.penStyle
+    }
+
     val state = stateFlow.value ?: return
+
+    fun currentViewerPen(): PenPreset = PenPreset(
+        id = "current-pen",
+        name = "현재 펜",
+        color = state.color,
+        width = state.strokeWidth,
+        opacity = state.opacity,
+        penStyle = viewerPenStyle,
+        tool = if (state.tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN,
+    )
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -1257,8 +1288,55 @@ fun ViewerScreen(
                 showToolMore = false
                 showToolStyle = true
             },
+            favorites = viewerFavorites,
+            currentPen = currentViewerPen(),
+            onApplyFavorite = { applyViewerFavorite(it) },
+            onOpenPenRegistry = {
+                showToolMore = false
+                showViewerPenBox = true
+            },
         )
     }
+    if (showViewerPenBox) {
+        PenBoxSheet(
+            presets = penBoxStore.load(),
+            current = currentViewerPen(),
+            onDismiss = { showViewerPenBox = false },
+            onApply = { applyViewerFavorite(it) },
+            onSaveCurrent = { name ->
+                val saved = currentViewerPen().copy(
+                    id = UUID.randomUUID().toString(),
+                    name = name.trim().ifBlank { "새 펜" },
+                )
+                penBoxStore.save(penBoxStore.load() + saved)
+                refreshViewerFavorites()
+            },
+            onDelete = { preset ->
+                val presets = penBoxStore.load()
+                if (presets.size > 1) {
+                    penBoxStore.save(presets.filterNot { it.id == preset.id })
+                    refreshViewerFavorites()
+                }
+            },
+            onRename = { preset, name ->
+                val clean = name.trim().ifBlank { preset.name }
+                penBoxStore.save(
+                    penBoxStore.load().map { if (it.id == preset.id) it.copy(name = clean) else it },
+                )
+                refreshViewerFavorites()
+            },
+            favorites = viewerFavorites,
+            onToggleFavorite = { preset ->
+                penBoxStore.toggleFavorite(preset.id)
+                refreshViewerFavorites()
+            },
+            onMoveFavorite = { from, to ->
+                penBoxStore.moveFavorite(from, to)
+                refreshViewerFavorites()
+            },
+        )
+    }
+
     if (showToolStyle) {
         ViewerStyleSheet(
             state = state,

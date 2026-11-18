@@ -67,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hackerdjakodjo.mypdfwriter.R
+import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import kotlin.math.roundToInt
 
@@ -457,6 +458,10 @@ fun ViewerToolMoreSheet(
     onRedo: (() -> Unit)? = null,
     styleEnabled: Boolean = false,
     onStyle: (() -> Unit)? = null,
+    favorites: List<PenPreset> = emptyList(),
+    currentPen: PenPreset? = null,
+    onApplyFavorite: ((PenPreset) -> Unit)? = null,
+    onOpenPenRegistry: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val activeLabel = if (isDockAnnotationTool(currentTool)) {
@@ -479,6 +484,20 @@ fun ViewerToolMoreSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (currentPen != null && onApplyFavorite != null) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "즐겨찾는 펜",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                FavoritePenStrip(
+                    favorites = favorites,
+                    current = currentPen,
+                    onApply = onApplyFavorite,
+                    onOpenRegistry = { onOpenPenRegistry?.invoke() },
+                )
+            }
             if (onUndo != null || onRedo != null || (onStyle != null && styleEnabled)) {
                 Spacer(Modifier.height(12.dp))
                 Text(

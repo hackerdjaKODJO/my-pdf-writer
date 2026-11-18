@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import kotlin.math.roundToInt
@@ -135,6 +136,10 @@ internal fun NoteStyleSheet(
     onPenStyle: (PenStyle) -> Unit,
     onOpenPenBox: () -> Unit,
     onDismiss: () -> Unit,
+    favorites: List<PenPreset> = emptyList(),
+    currentPen: PenPreset? = null,
+    onApplyFavorite: ((PenPreset) -> Unit)? = null,
+    onOpenPenRegistry: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val showsColor = noteStyleShowsColor(tool)
@@ -171,6 +176,17 @@ internal fun NoteStyleSheet(
             }
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
+
+            if (favorites.isNotEmpty() && currentPen != null && onApplyFavorite != null) {
+                StyleSectionLabel("즐겨찾는 펜")
+                FavoritePenStrip(
+                    favorites = favorites,
+                    current = currentPen,
+                    onApply = onApplyFavorite,
+                    onOpenRegistry = { onOpenPenRegistry?.invoke() ?: onOpenPenBox() },
+                )
+                Spacer(Modifier.height(10.dp))
+            }
 
             if (showsColor) {
                 StyleSectionLabel("색상")

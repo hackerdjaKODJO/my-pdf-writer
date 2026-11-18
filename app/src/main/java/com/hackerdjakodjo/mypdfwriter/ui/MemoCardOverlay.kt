@@ -257,7 +257,7 @@ private fun MemoCardView(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.VisibilityOff,
-                        contentDescription = "메모 카드 숨기기",
+                        contentDescription = "모든 메모 카드 숨기기",
                         tint = card.tint.line,
                         modifier = Modifier.size(12.dp),
                     )
