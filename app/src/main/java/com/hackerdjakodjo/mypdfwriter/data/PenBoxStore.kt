@@ -27,9 +27,45 @@ class PenBoxStore(context: Context) {
         val array = JSONArray()
         safe.forEach { array.put(it.toJson()) }
         prefs.edit().putString(KEY, array.toString()).apply()
+        // A deleted preset must not leave a dangling favorite id behind. When the
+        // key is absent we deliberately do not create it: first-run defaults apply.
+        pruneFavoritesIfPresent(safe)
     }
 
-    private companion object {
+    /** Raw favorites value, or null when the key was never written (first run). */
+    fun favoritesRaw(): String? = prefs.getString(FavoritePens.KEY, null)
+
+    /** Ordered favorite presets, pruned and capped. Missing key => first four pens. */
+    fun loadFavorites(): List<PenPreset> = FavoritePens.fromRaw(favoritesRaw(), load())
+
+    fun saveFavorites(ids: List<String>) {
+        prefs.edit().putString(FavoritePens.KEY, FavoritePens.encode(ids)).apply()
+    }
+
+    fun toggleFavorite(presetId: String) {
+        val presets = load()
+        saveFavorites(FavoritePens.toggle(currentIds(presets), presetId, presets))
+    }
+
+    fun moveFavorite(from: Int, to: Int) {
+        val presets = load()
+        saveFavorites(FavoritePens.move(currentIds(presets), from, to))
+    }
+
+    fun isFavorite(presetId: String): Boolean = loadFavorites().any { it.id == presetId }
+
+    private fun currentIds(presets: List<PenPreset>): List<String> {
+        val ids = FavoritePens.decode(favoritesRaw()) ?: FavoritePens.defaultIds(presets)
+        return FavoritePens.prune(ids, presets)
+    }
+
+    private fun pruneFavoritesIfPresent(presets: List<PenPreset>) {
+        val ids = FavoritePens.decode(favoritesRaw()) ?: return
+        val pruned = FavoritePens.prune(ids, presets)
+        if (pruned != ids) saveFavorites(pruned)
+    }
+
+    internal companion object {
         const val PREFS = "pen_box"
         const val KEY = "presets_v1"
     }

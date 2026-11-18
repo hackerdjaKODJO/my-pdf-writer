@@ -2,6 +2,7 @@ package com.hackerdjakodjo.mypdfwriter.data
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -51,5 +52,92 @@ class PenBoxTest {
         )
         assertEquals(Tool.PEN, restored.tool)
         assertEquals(PenStyle.BALLPOINT, restored.penStyle)
+    }
+
+    @Test
+    fun favoritesUseTheSameBackupCoveredPenBoxFile() {
+        assertEquals("pen_box", PenBoxStore.PREFS)
+        assertEquals("presets_v1", PenBoxStore.KEY)
+        assertEquals("favorites_v1", FavoritePens.KEY)
+        assertTrue("pen_box.xml" in BackupArchive.PREFERENCE_FILES)
+        assertEquals("${PenBoxStore.PREFS}.xml", BackupArchive.PREFERENCE_FILES.first())
+    }
+
+    @Test
+    fun missingFavoritesKeySuggestsFirstFourDefaultPens() {
+        val presets = defaultPenPresets()
+
+        val favorites = FavoritePens.fromRaw(null, presets)
+
+        assertEquals(presets.take(4).map { it.id }, favorites.map { it.id })
+        assertFalse(favorites.any { it.tool == Tool.HIGHLIGHT })
+    }
+
+    @Test
+    fun presentButEmptyOrBrokenFavoritesKeyStaysCleared() {
+        val presets = defaultPenPresets()
+
+        assertTrue(FavoritePens.fromRaw(FavoritePens.encode(emptyList()), presets).isEmpty())
+        assertTrue(FavoritePens.fromRaw("[]", presets).isEmpty())
+        assertTrue(FavoritePens.fromRaw("not-json", presets).isEmpty())
+        assertTrue(FavoritePens.decode(null) == null)
+        assertEquals(emptyList<String>(), FavoritePens.decode("[]"))
+    }
+
+    @Test
+    fun favoritesAreCappedAtSixAndRoundTripThroughStorage() {
+        val presets = (0 until 8).map { index ->
+            PenPreset(id = "p$index", name = "펜 $index")
+        }
+        var ids = FavoritePens.defaultIds(presets)
+        ids = FavoritePens.toggle(ids, "p4", presets)
+        ids = FavoritePens.toggle(ids, "p5", presets)
+        ids = FavoritePens.toggle(ids, "p6", presets)
+
+        assertEquals(FavoritePens.MAX_SLOTS, ids.size)
+        assertFalse("p6" in ids)
+        val restored = FavoritePens.decode(FavoritePens.encode(ids))
+        assertEquals(ids, restored)
+        assertEquals(ids, FavoritePens.prune(restored!!, presets))
+    }
+
+    @Test
+    fun pruningDropsDeletedIdsAndDuplicates() {
+        val presets = listOf(
+            PenPreset(id = "a", name = "A"),
+            PenPreset(id = "b", name = "B"),
+            PenPreset(id = "c", name = "C"),
+        )
+        val stale = listOf("a", "deleted", "b", "a", "c")
+
+        assertEquals(listOf("a", "b", "c"), FavoritePens.prune(stale, presets))
+        assertEquals(listOf("a", "b", "c"), FavoritePens.resolve(stale, presets).map { it.id })
+    }
+
+    @Test
+    fun toggleAndMoveKeepOrderAndIgnoreInvalidRequests() {
+        val presets = (0 until 6).map { index -> PenPreset(id = "p$index", name = "펜 $index") }
+        val ids = listOf("p0", "p1", "p2")
+
+        assertEquals(listOf("p1", "p0", "p2"), FavoritePens.move(ids, 0, 1))
+        assertEquals(ids, FavoritePens.move(ids, 0, 0))
+        assertEquals(ids, FavoritePens.move(ids, -1, 2))
+        assertEquals(ids, FavoritePens.move(ids, 0, 99))
+
+        assertEquals(listOf("p0", "p2"), FavoritePens.toggle(ids, "p1", presets))
+        assertEquals(ids, FavoritePens.toggle(ids, "not-a-preset", presets))
+        assertEquals(ids + "p3", FavoritePens.toggle(ids, "p3", presets))
+    }
+
+    @Test
+    fun samePenStyleComparesInkSettingsRatherThanIdentity() {
+        val pen = PenPreset(id = "one", color = 1, width = 0.004f, opacity = 0.9f)
+        val clone = pen.copy(id = "two")
+        val otherColor = pen.copy(color = 2)
+
+        assertTrue(samePenStyle(pen, clone))
+        assertFalse(samePenStyle(pen, otherColor))
+        assertFalse(samePenStyle(pen, pen.copy(penStyle = PenStyle.BRUSH)))
+        assertFalse(samePenStyle(pen, pen.copy(tool = Tool.HIGHLIGHT)))
     }
 }
