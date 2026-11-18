@@ -31,11 +31,14 @@ import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.ChecklistCard
 import com.hackerdjakodjo.mypdfwriter.data.MaskingCard
+import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
@@ -77,6 +80,8 @@ private const val CANVAS_TRACE_TAG = "NoteCanvas"
  *    three-finger tap requests redo when [onGestureUndo]/[onGestureRedo] are
  *    supplied. Taps are ignored after drawing, panning, zooming, lasso or any
  *    stylus contact.
+ *  - memo cards: when [showMemoCardsOnPage] is on, a touch inside a card rectangle
+ *    is owned by the overlay and never starts a stroke, pan, zoom or undo gesture.
  */
 @Composable
 fun NoteCanvas(
@@ -104,6 +109,14 @@ fun NoteCanvas(
     showChecklists: Boolean = false,
     onToggleChecklistItem: (String, String) -> Unit = { _, _ -> },
     onHideChecklistOverlay: () -> Unit = {},
+    // Original post-it cards. Defaults keep all other callers unchanged; the
+    // overlay sits above the pen canvas and consumes its own touches.
+    memoCards: List<MemoCard> = emptyList(),
+    showMemoCardsOnPage: Boolean = false,
+    onOpenMemoCard: (String) -> Unit = {},
+    onMemoCardChange: (MemoCard) -> Unit = {},
+    onHideMemoCardOverlay: () -> Unit = {},
+    onDeleteMemoCard: (String) -> Unit = {},
     backgroundBitmap: Bitmap? = null,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
     onErase: (List<NormalizedPoint>) -> Unit,
@@ -120,6 +133,11 @@ fun NoteCanvas(
 
     val pageWidth = PaperBackground.pageWidthPx(NOTE_PAGE_SCALE, page.orientation)
     val pageHeight = PaperBackground.pageHeightPx(NOTE_PAGE_SCALE, page.orientation)
+    // Minimum tappable size for a memo card, in pixels. Shared by the hit-test
+    // gate below and by the drawn overlay so they agree on every card's bounds.
+    val memoDensity = LocalDensity.current
+    val minMemoWidthPx = with(memoDensity) { 92.dp.toPx() }
+    val minMemoHeightPx = with(memoDensity) { 56.dp.toPx() }
 
     // The pointerInput coroutine below lives across strokes and does not restart when
     // the parent recomposes. Always read the newest callbacks so a stroke commits onto
@@ -164,6 +182,27 @@ fun NoteCanvas(
             )
             if (clamped != pan) pan = clamped
         }
+
+        // A touch that lands on a visible memo card belongs to that card. The
+        // pen gesture must not start a stroke (or pan/zoom/undo) for it, even
+        // though the pointer is also delivered to the canvas below the overlay.
+        val memoHitTest: (Offset) -> Boolean = { position ->
+            showMemoCardsOnPage && memoCards.isNotEmpty() && fit > 0f &&
+                memoCards.any { card ->
+                    memoScreenRect(
+                        card = card,
+                        fit = total,
+                        pan = pan,
+                        viewWidth = viewW,
+                        viewHeight = viewH,
+                        pageWidth = pageWidth,
+                        pageHeight = pageHeight,
+                        minWidthPx = minMemoWidthPx,
+                        minHeightPx = minMemoHeightPx,
+                    ).contains(position)
+                }
+        }
+        val currentMemoHitTest by rememberUpdatedState(memoHitTest)
 
         val gestureModifier = Modifier.pointerInput(
             page.id,
@@ -216,9 +255,11 @@ fun NoteCanvas(
                 val stylusDown = down.type == PointerType.Stylus
                 val eraserStylus = down.type == PointerType.Eraser
                 val gestureTool = if (eraserStylus) Tool.ERASER else tool
-                val canDraw = gestureTool != Tool.VIEW && (!penOnly || stylusDown || eraserStylus)
+                val memoIntercepted = currentMemoHitTest(down.position)
+                val canDraw = !memoIntercepted && gestureTool != Tool.VIEW &&
+                    (!penOnly || stylusDown || eraserStylus)
                 var drawing = canDraw
-                var tapCandidate = !canDraw
+                var tapCandidate = !canDraw && !memoIntercepted
                 val drawingSeen = canDraw
                 var stylusSeen = stylusDown || eraserStylus
                 var maxPointers = 1
@@ -285,6 +326,13 @@ fun NoteCanvas(
 
                 while (true) {
                     val event = awaitPointerEvent()
+                    if (memoIntercepted) {
+                        // The card overlay owns this gesture (tap, move, resize or
+                        // menu). Swallow the rest of it so no pan/zoom leaks out.
+                        event.changes.firstOrNull { it.id == down.id }?.consume()
+                        if (event.changes.none { it.pressed }) break
+                        continue
+                    }
                     val pressed = event.changes.filter { it.pressed }
                     maxPointers = maxOf(maxPointers, pressed.size)
                     if (event.changes.any {
@@ -441,6 +489,10 @@ fun NoteCanvas(
                         if (updatedPan != pan) pan = updatedPan
                     }
                 }
+
+                // A memo-card touch has already been consumed above: no stroke,
+                // pan, gesture-undo or double-tap reset may come out of it.
+                if (memoIntercepted) return@awaitEachGesture
 
                 val gestureEnd = SystemClock.uptimeMillis()
                 val gestureDuration = (gestureEnd - gestureStart).coerceAtLeast(0L)
@@ -669,6 +721,29 @@ fun NoteCanvas(
                     pageHeight = pageHeight,
                     onToggleItem = onToggleChecklistItem,
                     onHide = onHideChecklistOverlay,
+                )
+            }
+        }
+
+        // Original post-it cards share the exact pen-canvas transform. The
+        // hit-test gate above and this layer use the same memoScreenRect helper,
+        // so a card can never be drawn under the pen or missed by a tap.
+        if (showMemoCardsOnPage && memoCards.isNotEmpty()) {
+            Box(Modifier.fillMaxSize().clipToBounds()) {
+                MemoCardLayer(
+                    cards = memoCards,
+                    fit = total,
+                    pan = pan,
+                    viewWidth = viewW,
+                    viewHeight = viewH,
+                    pageWidth = pageWidth,
+                    pageHeight = pageHeight,
+                    minWidthPx = minMemoWidthPx,
+                    minHeightPx = minMemoHeightPx,
+                    onOpen = onOpenMemoCard,
+                    onCardChange = onMemoCardChange,
+                    onHide = onHideMemoCardOverlay,
+                    onDelete = onDeleteMemoCard,
                 )
             }
         }

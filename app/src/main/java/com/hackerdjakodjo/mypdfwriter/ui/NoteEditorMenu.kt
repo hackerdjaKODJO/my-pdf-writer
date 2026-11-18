@@ -57,6 +57,9 @@ import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
 
+/** Shared label so the study-card sub-sheet and tests use one vocabulary. */
+internal const val NOTE_MEMO_CARD_LABEL = "메모 카드"
+
 /**
  * The main note menu is a short index, not a junk drawer. Page operations live in
  * the page manager, card overlays live in the study-card sheets, and the eight ink
@@ -235,7 +238,7 @@ internal fun NoteMenuSheet(
                         NoteMenuEntry.STUDY_CARDS -> NoteMenuRow(
                             icon = Icons.Filled.Checklist,
                             title = "학습 카드",
-                            supporting = "가림 카드 · 체크리스트",
+                            supporting = "메모 카드 · 가림 카드 · 체크리스트",
                             onClick = onStudyCards,
                         )
 
@@ -353,6 +356,7 @@ internal fun NoteTemplateMenuSheet(
 internal fun NoteStudyCardMenuSheet(
     onMaskingCards: () -> Unit,
     onChecklists: () -> Unit,
+    onMemoCards: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     NoteMenuSubSheet(
@@ -360,6 +364,13 @@ internal fun NoteStudyCardMenuSheet(
         subtitle = "오프라인 복습 · 페이지에 표시 여부는 각 카드 화면에서",
         onDismiss = onDismiss,
     ) {
+        NoteMenuRow(
+            icon = Icons.Filled.Dashboard,
+            title = NOTE_MEMO_CARD_LABEL,
+            supporting = "페이지에 붙여 둔 짧은 쪽지 · 색상·크기 조절",
+            onClick = onMemoCards,
+        )
+        NoteMenuDivider()
         NoteMenuRow(
             icon = Icons.Filled.AutoFixNormal,
             title = NOTE_MASKING_CARD_LABEL,

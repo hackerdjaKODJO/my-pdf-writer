@@ -113,6 +113,8 @@ import com.hackerdjakodjo.mypdfwriter.data.CustomTemplatePaths
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateStore
 import com.hackerdjakodjo.mypdfwriter.data.MaskingCard
 import com.hackerdjakodjo.mypdfwriter.data.MaskingCards
+import com.hackerdjakodjo.mypdfwriter.data.MemoCard
+import com.hackerdjakodjo.mypdfwriter.data.Memos
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.NotePaper
@@ -303,6 +305,16 @@ fun NoteEditorScreen(
     // switch (sheet, note menu and a hide button on each card) so pen tools stay clear.
     var showChecklists by remember { mutableStateOf(false) }
     var showChecklistsOnPage by remember { mutableStateOf(true) }
+    // Post-it cards are offline notes. Their overlay can be hidden without
+    // deleting the cards, giving the pen back an unobstructed page.
+    var showMemoCards by remember { mutableStateOf(false) }
+    var showMemoCardsOnPage by remember { mutableStateOf(true) }
+    // Tapping a card body opens the manager sheet straight into that card's editor.
+    var memoEditRequest by remember { mutableStateOf<String?>(null) }
+    fun openMemoEditor(card: MemoCard) {
+        memoEditRequest = card.id
+        showMemoCards = true
+    }
     var showDeletePage by remember { mutableStateOf(false) }
     var photoImporting by remember { mutableStateOf(false) }
     var photoError by remember { mutableStateOf<String?>(null) }
@@ -402,6 +414,33 @@ fun NoteEditorScreen(
         if (cards.size == target.checklists.size) return
         val mutable = currentPages.toMutableList()
         mutable[index] = target.copy(checklists = cards)
+        applyChange(workingNotebook.copy(pages = mutable))
+    }
+
+    /** Inserts or replaces one post-it card on any page; one undo step per change. */
+    fun upsertMemoCard(targetPageIndex: Int, card: MemoCard) {
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
+        val index = targetPageIndex.coerceIn(0, currentPages.lastIndex)
+        val target = currentPages[index]
+        val cards = if (target.memoCards.any { it.id == card.id }) {
+            target.memoCards.map { if (it.id == card.id) card else it }
+        } else {
+            target.memoCards + card
+        }
+        if (cards == target.memoCards) return
+        val mutable = currentPages.toMutableList()
+        mutable[index] = target.copy(memoCards = cards)
+        applyChange(workingNotebook.copy(pages = mutable))
+    }
+
+    fun deleteMemoCard(targetPageIndex: Int, cardId: String) {
+        val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
+        val index = targetPageIndex.coerceIn(0, currentPages.lastIndex)
+        val target = currentPages[index]
+        val cards = target.memoCards.filterNot { it.id == cardId }
+        if (cards.size == target.memoCards.size) return
+        val mutable = currentPages.toMutableList()
+        mutable[index] = target.copy(memoCards = cards)
         applyChange(workingNotebook.copy(pages = mutable))
     }
 
@@ -527,6 +566,7 @@ fun NoteEditorScreen(
             },
             maskingCards = MaskingCards.freshIds(source.maskingCards),
             checklists = Checklists.freshIds(source.checklists),
+            memoCards = Memos.freshIds(source.memoCards),
         )
         val mutable = currentPages.toMutableList()
         val insertAt = index + 1
@@ -1278,6 +1318,14 @@ fun NoteEditorScreen(
                             toggleChecklistItem(safeIndex, cardId, itemId)
                         },
                         onHideChecklistOverlay = { showChecklistsOnPage = false },
+                        memoCards = page.memoCards,
+                        showMemoCardsOnPage = showMemoCardsOnPage,
+                        onOpenMemoCard = { id ->
+                            page.memoCards.firstOrNull { it.id == id }?.let(::openMemoEditor)
+                        },
+                        onMemoCardChange = { card -> upsertMemoCard(safeIndex, card) },
+                        onHideMemoCardOverlay = { showMemoCardsOnPage = false },
+                        onDeleteMemoCard = { id -> deleteMemoCard(safeIndex, id) },
                         backgroundBitmap = pageBackground,
                         hint = canvasHint,
                         compact = compact,
@@ -1340,6 +1388,14 @@ fun NoteEditorScreen(
                         toggleChecklistItem(safeIndex, cardId, itemId)
                     },
                     onHideChecklistOverlay = { showChecklistsOnPage = false },
+                    memoCards = page.memoCards,
+                    showMemoCardsOnPage = showMemoCardsOnPage,
+                    onOpenMemoCard = { id ->
+                        page.memoCards.firstOrNull { it.id == id }?.let(::openMemoEditor)
+                    },
+                    onMemoCardChange = { card -> upsertMemoCard(safeIndex, card) },
+                    onHideMemoCardOverlay = { showMemoCardsOnPage = false },
+                    onDeleteMemoCard = { id -> deleteMemoCard(safeIndex, id) },
                     backgroundBitmap = pageBackground,
                     hint = canvasHint,
                     compact = compact,
@@ -1620,6 +1676,24 @@ fun NoteEditorScreen(
         )
     }
 
+    if (showMemoCards) {
+        MemoCardsSheet(
+            notebook = workingNotebook,
+            currentPageIndex = safeIndex,
+            showOnPage = showMemoCardsOnPage,
+            onToggleShowOnPage = { showMemoCardsOnPage = it },
+            onCardChange = { pageIndex, card -> upsertMemoCard(pageIndex, card) },
+            onDeleteCard = { pageIndex, cardId -> deleteMemoCard(pageIndex, cardId) },
+            onJump = { pageIndex ->
+                onPageIndexChange(pageIndex)
+                showMemoCards = false
+            },
+            editCardId = memoEditRequest,
+            onEditHandled = { memoEditRequest = null },
+            onDismiss = { showMemoCards = false },
+        )
+    }
+
     if (photoImporting) {
         AlertDialog(
             onDismissRequest = {},
@@ -1860,6 +1934,11 @@ fun NoteEditorScreen(
                 showStudyCardMenu = false
                 showChecklists = true
             },
+            onMemoCards = {
+                showStudyCardMenu = false
+                memoEditRequest = null
+                showMemoCards = true
+            },
             onDismiss = { showStudyCardMenu = false },
         )
     }
@@ -1937,6 +2016,12 @@ private fun NoteCanvasPane(
     showChecklists: Boolean = false,
     onToggleChecklistItem: (String, String) -> Unit = { _, _ -> },
     onHideChecklistOverlay: () -> Unit = {},
+    memoCards: List<MemoCard> = emptyList(),
+    showMemoCardsOnPage: Boolean = false,
+    onOpenMemoCard: (String) -> Unit = {},
+    onMemoCardChange: (MemoCard) -> Unit = {},
+    onHideMemoCardOverlay: () -> Unit = {},
+    onDeleteMemoCard: (String) -> Unit = {},
     backgroundBitmap: android.graphics.Bitmap?,
     hint: String,
     compact: Boolean = false,
@@ -1975,6 +2060,12 @@ private fun NoteCanvasPane(
             showChecklists = showChecklists,
             onToggleChecklistItem = onToggleChecklistItem,
             onHideChecklistOverlay = onHideChecklistOverlay,
+            memoCards = memoCards,
+            showMemoCardsOnPage = showMemoCardsOnPage,
+            onOpenMemoCard = onOpenMemoCard,
+            onMemoCardChange = onMemoCardChange,
+            onHideMemoCardOverlay = onHideMemoCardOverlay,
+            onDeleteMemoCard = onDeleteMemoCard,
             backgroundBitmap = backgroundBitmap,
             onAddStroke = onAddStroke,
             onErase = onErase,
