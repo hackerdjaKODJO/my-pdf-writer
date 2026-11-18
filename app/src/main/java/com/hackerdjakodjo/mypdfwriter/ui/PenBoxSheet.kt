@@ -2,6 +2,7 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,11 +15,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,13 +48,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.data.FavoritePens
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.data.samePenStyle
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import kotlin.math.PI
 import kotlin.math.sin
@@ -63,7 +72,9 @@ internal fun penStyleLabel(style: PenStyle): String = when (style) {
 
 /**
  * Bottom sheet for saved pens. Applying a preset updates the active tool, colour,
- * width, opacity and pen style in one tap. Presets stay local in PenBoxStore.
+ * width, opacity and pen style in one tap. Presets and the ordered favorites
+ * registry both stay local in PenBoxStore. The extra favorites parameters have
+ * defaults so older call sites keep working until the integrator wires them.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,10 +86,32 @@ fun PenBoxSheet(
     onSaveCurrent: (String) -> Unit,
     onDelete: (PenPreset) -> Unit,
     onRename: (PenPreset, String) -> Unit,
+    favorites: List<PenPreset> = presets.take(FavoritePens.DEFAULT_FAVORITE_COUNT),
+    onToggleFavorite: (PenPreset) -> Unit = {},
+    onMoveFavorite: (from: Int, to: Int) -> Unit = { _, _ -> },
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var saveDialog by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<PenPreset?>(null) }
+
+    // Optimistic local copy gives instant feedback even before the store recomposes.
+    val favoriteIds = favorites.map { it.id }.joinToString(",")
+    var localFavorites by remember(favoriteIds) {
+        mutableStateOf(favorites.take(FavoritePens.MAX_SLOTS))
+    }
+
+    fun toggleFavorite(preset: PenPreset) {
+        // Resolve against every preset so starring a pen that is not yet a favorite works.
+        val ids = FavoritePens.toggle(localFavorites.map { it.id }, preset.id, presets)
+        localFavorites = FavoritePens.resolve(ids, presets)
+        onToggleFavorite(preset)
+    }
+
+    fun moveFavorite(from: Int, to: Int) {
+        val ids = FavoritePens.move(localFavorites.map { it.id }, from, to)
+        localFavorites = FavoritePens.resolve(ids, presets)
+        onMoveFavorite(from, to)
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -104,6 +137,46 @@ fun PenBoxSheet(
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
+            // Compact favorites section, always above the full pen list.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("즐겨찾는 펜", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "${localFavorites.size}/${FavoritePens.MAX_SLOTS}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            if (localFavorites.isEmpty()) {
+                Text(
+                    "별을 눌러 자주 쓰는 펜을 담아보세요",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    localFavorites.forEachIndexed { index, preset ->
+                        FavoritePenChip(
+                            preset = preset,
+                            active = samePenStyle(preset, current),
+                            canMoveLeft = index > 0,
+                            canMoveRight = index < localFavorites.lastIndex,
+                            onApply = { onApply(preset) },
+                            onToggleFavorite = { toggleFavorite(preset) },
+                            onMoveLeft = { moveFavorite(index, index - 1) },
+                            onMoveRight = { moveFavorite(index, index + 1) },
+                        )
+                    }
+                }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -111,18 +184,15 @@ fun PenBoxSheet(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(presets, key = { it.id }) { preset ->
-                    val active = preset.color == current.color &&
-                        preset.width == current.width &&
-                        preset.opacity == current.opacity &&
-                        preset.penStyle == current.penStyle &&
-                        preset.tool == current.tool
                     PenBoxRow(
                         preset = preset,
-                        active = active,
+                        active = samePenStyle(preset, current),
+                        favorite = preset.id in localFavorites.map { it.id },
                         canDelete = presets.size > 1,
                         onApply = { onApply(preset) },
                         onRename = { renameTarget = preset },
                         onDelete = { onDelete(preset) },
+                        onToggleFavorite = { toggleFavorite(preset) },
                     )
                 }
             }
@@ -167,14 +237,80 @@ fun PenBoxSheet(
     }
 }
 
+/** One favorite in the registry section: ink preview, star and simple reorder buttons. */
+@Composable
+private fun FavoritePenChip(
+    preset: PenPreset,
+    active: Boolean,
+    canMoveLeft: Boolean,
+    canMoveRight: Boolean,
+    onApply: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onMoveLeft: () -> Unit,
+    onMoveRight: () -> Unit,
+) {
+    Surface(
+        onClick = onApply,
+        shape = RoundedCornerShape(10.dp),
+        color = if (active) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        },
+        border = BorderStroke(
+            if (active) 1.5.dp else 1.dp,
+            if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.width(96.dp).padding(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            PenBoxPreview(preset = preset, modifier = Modifier.fillMaxWidth().height(24.dp))
+            Text(
+                preset.name,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onMoveLeft, enabled = canMoveLeft, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "앞으로 이동",
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                IconButton(onClick = onToggleFavorite, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        Icons.Filled.Star,
+                        contentDescription = "즐겨찾기 해제",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                IconButton(onClick = onMoveRight, enabled = canMoveRight, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "뒤로 이동",
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun PenBoxRow(
     preset: PenPreset,
     active: Boolean,
+    favorite: Boolean,
     canDelete: Boolean,
     onApply: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    onToggleFavorite: () -> Unit,
 ) {
     Surface(
         onClick = onApply,
@@ -193,15 +329,20 @@ private fun PenBoxRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Canvas(Modifier.size(16.dp)) {
                 drawCircle(Color(preset.color))
             }
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text(preset.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    preset.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     buildString {
                         if (preset.tool == Tool.HIGHLIGHT) {
@@ -221,9 +362,21 @@ private fun PenBoxRow(
             }
             PenBoxPreview(
                 preset = preset,
-                modifier = Modifier.width(76.dp).height(30.dp),
+                modifier = Modifier.width(60.dp).height(30.dp),
             )
-            IconButton(onClick = onRename, modifier = Modifier.size(36.dp)) {
+            IconButton(onClick = onToggleFavorite, modifier = Modifier.size(34.dp)) {
+                Icon(
+                    if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                    contentDescription = if (favorite) "즐겨찾기 해제" else "즐겨찾기에 추가",
+                    modifier = Modifier.size(18.dp),
+                    tint = if (favorite) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+            IconButton(onClick = onRename, modifier = Modifier.size(34.dp)) {
                 Icon(
                     Icons.Filled.Edit,
                     contentDescription = "이름 변경",
@@ -233,7 +386,7 @@ private fun PenBoxRow(
             IconButton(
                 onClick = onDelete,
                 enabled = canDelete,
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(34.dp),
             ) {
                 Icon(
                     Icons.Filled.Delete,
@@ -245,8 +398,9 @@ private fun PenBoxRow(
     }
 }
 
+/** Shared ink-stroke swatch. Internal so the favorite strip reuses the exact look. */
 @Composable
-private fun PenBoxPreview(preset: PenPreset, modifier: Modifier = Modifier) {
+internal fun PenBoxPreview(preset: PenPreset, modifier: Modifier = Modifier) {
     val type = if (preset.tool == Tool.HIGHLIGHT) AnnotationType.HIGHLIGHT else AnnotationType.PEN
     val points = remember {
         (0..10).map { index ->
