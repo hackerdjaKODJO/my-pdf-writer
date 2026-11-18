@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.Checklists
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateStore
+import com.hackerdjakodjo.mypdfwriter.data.MaskingCards
+import com.hackerdjakodjo.mypdfwriter.data.Memos
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NotebookDraft
@@ -241,17 +243,8 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
 
     fun duplicatePage(index: Int) {
         val current = _current.value ?: return
-        val page = current.pages.getOrNull(index) ?: return
-        val copy = page.copy(
-            id = java.util.UUID.randomUUID().toString(),
-            annotations = page.annotations.map {
-                it.copy(id = java.util.UUID.randomUUID().toString())
-            },
-            // Study data travels with the page but each copy keeps its own ids.
-            checklists = Checklists.freshIds(page.checklists),
-        )
-        val pages = current.pages.toMutableList().also { it.add(index + 1, copy) }
-        updateCurrent(current.copy(pages = pages))
+        val updated = duplicatePageInNotebook(current, index) ?: return
+        updateCurrent(updated)
         _pageIndex.value = index + 1
     }
 
@@ -384,6 +377,38 @@ private fun noteAnnotationCounts(notebook: Notebook): String =
 
 private fun noteAnnotationTotal(notebook: Notebook): Int =
     notebook.pages.sumOf { it.annotations.size }
+
+/**
+ * Pure page duplication behind [NotebookViewModel.duplicatePage]. Kept free of
+ * Android state so the fan-out of study and memo ids stays JVM-tested.
+ *
+ * The original page and its cards are untouched; the copy owns fresh page,
+ * annotation, checklist, masking-card and memo-card ids while content, tints,
+ * geometry, study state and timestamps travel with it in order.
+ */
+internal fun duplicateNotePage(page: NotePage): NotePage = page.copy(
+    id = java.util.UUID.randomUUID().toString(),
+    annotations = page.annotations.map {
+        it.copy(id = java.util.UUID.randomUUID().toString())
+    },
+    // Study data and post-its travel with the page, but each copy keeps its own
+    // ids so an edit on one page can never change the other.
+    checklists = Checklists.freshIds(page.checklists),
+    maskingCards = MaskingCards.freshIds(page.maskingCards),
+    memoCards = Memos.freshIds(page.memoCards),
+)
+
+/**
+ * Inserts one duplicate directly after [index] and returns the whole notebook as
+ * a single new value, so the caller commits one change. Returns null when the
+ * index is out of range.
+ */
+internal fun duplicatePageInNotebook(notebook: Notebook, index: Int): Notebook? {
+    val page = notebook.pages.getOrNull(index) ?: return null
+    val copy = duplicateNotePage(page)
+    val pages = notebook.pages.toMutableList().also { it.add(index + 1, copy) }
+    return notebook.copy(pages = pages)
+}
 
 /**
  * Debug-only diagnostic: an incoming update may legitimately remove annotations

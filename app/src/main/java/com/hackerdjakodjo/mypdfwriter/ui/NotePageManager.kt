@@ -3,6 +3,7 @@ package com.hackerdjakodjo.mypdfwriter.ui
 import com.hackerdjakodjo.mypdfwriter.data.Checklists
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplatePaths
 import com.hackerdjakodjo.mypdfwriter.data.MaskingCards
+import com.hackerdjakodjo.mypdfwriter.data.Memos
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.NotePaper
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
@@ -94,9 +95,9 @@ object NotePageManager {
      * Inserts a duplicate directly after every selected page, in page order.
      *
      * Existing pages and annotations keep their ids. Copies receive fresh page,
-     * annotation and masking-card ids while keeping templates, memos, source links,
-     * layers, layer visibility/opacity, card content/geometry/state and annotation
-     * timing. Bookmarks that follow an
+     * annotation, masking-card, checklist and memo-card ids while keeping templates,
+     * memos, source links, layers, layer visibility/opacity, card content/geometry/
+     * state and annotation timing. Bookmarks that follow an
      * inserted copy are remapped to the same logical page; no bookmark is copied.
      */
     fun duplicatePages(
@@ -276,5 +277,8 @@ object NotePageManager {
         maskingCards = MaskingCards.freshIds(page.maskingCards),
         // A duplicated page owns independent checklist records and item ids.
         checklists = Checklists.freshIds(page.checklists),
+        // Post-its are page notes too: fresh ids stop an edit on one page from
+        // changing the copy, while text/tint/geometry/timestamps travel unchanged.
+        memoCards = Memos.freshIds(page.memoCards),
     )
 }

@@ -4,6 +4,8 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.MaskingCard
 import com.hackerdjakodjo.mypdfwriter.data.MaskingCardState
+import com.hackerdjakodjo.mypdfwriter.data.MemoCard
+import com.hackerdjakodjo.mypdfwriter.data.MemoTint
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NoteLayer
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
@@ -40,6 +42,19 @@ class NotePageManagerTest {
 
     private fun notebook(vararg pages: NotePage, bookmarks: List<PageBookmark> = emptyList()) =
         Notebook(id = "notebook", pages = pages.toList(), bookmarks = bookmarks)
+
+    private fun memo(id: String) = MemoCard(
+        id = id,
+        text = "복습 메모",
+        tint = MemoTint.SKY,
+        x = 0.18f,
+        y = 0.24f,
+        w = 0.36f,
+        h = 0.22f,
+        tilt = -3f,
+        createdAt = 111L,
+        updatedAt = 222L,
+    )
 
     @Test
     fun entriesExposeAllAndAnnotatedPagesInOrder() {
@@ -174,6 +189,75 @@ class NotePageManagerTest {
         assertEquals(0.4f, copy.maskingCards.single().w)
         assertEquals(123L, copy.maskingCards.single().createdAt)
         assertEquals("the source notebook is untouched", 1, source.pages[0].maskingCards.size)
+    }
+
+    @Test
+    fun duplicatePagesGivesMemoCardsFreshIdsAndKeepsContent() {
+        val sourcePage = page("p0", PaperTemplate.LINED, emptyList()).copy(
+            memoCards = listOf(memo("memo-1"), memo("memo-2").copy(text = "둘째")),
+        )
+        val source = notebook(sourcePage)
+
+        val result = NotePageManager.duplicatePages(source, setOf("p0"), currentIndex = 0)
+        val original = result.notebook.pages[0]
+        val copy = result.notebook.pages[1]
+
+        assertEquals(listOf("memo-1", "memo-2"), original.memoCards.map { it.id })
+        assertEquals(2, copy.memoCards.size)
+        assertEquals(
+            "no memo id is shared with the source or with another copy",
+            4,
+            (original.memoCards.map { it.id } + copy.memoCards.map { it.id }).toSet().size,
+        )
+        copy.memoCards.forEachIndexed { index, card ->
+            val src = sourcePage.memoCards[index]
+            assertNotEquals(src.id, card.id)
+            assertEquals(src.text, card.text)
+            assertEquals(src.tint, card.tint)
+            assertEquals(src.x, card.x)
+            assertEquals(src.y, card.y)
+            assertEquals(src.w, card.w)
+            assertEquals(src.h, card.h)
+            assertEquals(src.tilt, card.tilt)
+            assertEquals(src.createdAt, card.createdAt)
+            assertEquals(src.updatedAt, card.updatedAt)
+        }
+        assertEquals("card order travels with the page", listOf("복습 메모", "둘째"), copy.memoCards.map { it.text })
+        assertEquals(MemoTint.SKY, copy.memoCards.first().tint)
+        assertEquals("the source notebook is untouched", 2, source.pages[0].memoCards.size)
+        assertEquals("one commit adds exactly one page", source.pages.size + 1, result.notebook.pages.size)
+    }
+
+    @Test
+    fun duplicatePagesRefreshesMaskingAndMemoIdsTogether() {
+        val sourcePage = page("p0", PaperTemplate.LINED, emptyList()).copy(
+            maskingCards = listOf(MaskingCard(id = "study-1", prompt = "질문", answer = "정답")),
+            memoCards = listOf(memo("memo-1")),
+        )
+
+        val result = NotePageManager.duplicatePages(notebook(sourcePage), setOf("p0"), currentIndex = 0)
+        val copy = result.notebook.pages[1]
+
+        assertNotEquals("study-1", copy.maskingCards.single().id)
+        assertEquals("질문", copy.maskingCards.single().prompt)
+        assertEquals("정답", copy.maskingCards.single().answer)
+        assertNotEquals("memo-1", copy.memoCards.single().id)
+        assertEquals("복습 메모", copy.memoCards.single().text)
+        assertEquals(MemoTint.SKY, copy.memoCards.single().tint)
+    }
+
+    @Test
+    fun duplicatePagesOnLegacyPageWithoutCardsIsSafe() {
+        val legacy = NotePage(id = "p0")
+
+        val result = NotePageManager.duplicatePages(notebook(legacy), setOf("p0"), currentIndex = 0)
+
+        val copy = result.notebook.pages[1]
+        assertNotEquals("p0", copy.id)
+        assertTrue(copy.memoCards.isEmpty())
+        assertTrue(copy.maskingCards.isEmpty())
+        assertTrue(copy.checklists.isEmpty())
+        assertEquals("p0", result.notebook.pages[0].id)
     }
 
     @Test
