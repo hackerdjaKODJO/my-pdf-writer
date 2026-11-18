@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.ChecklistCard
+import com.hackerdjakodjo.mypdfwriter.data.DEFAULT_INK_PRESSURE
 import com.hackerdjakodjo.mypdfwriter.data.MaskingCard
 import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
@@ -274,19 +275,27 @@ fun NoteCanvas(
 
                 // Raw pressure is tracked only for the concise trace below. The
                 // stored point always receives the selected curve's effective value.
+                // Each sample reads the change's own current pointer type instead of
+                // the type latched at pointer-down, so a stylus that starts writing
+                // part-way through a finger stroke is sampled too.
                 var rawPressureMin = Float.POSITIVE_INFINITY
                 var rawPressureMax = Float.NEGATIVE_INFINITY
-                fun capturePressure(change: PointerInputChange, stylus: Boolean): Float {
-                    if (!pressureEnabled || !stylus) return 1f
-                    val raw = clampInkPressure(change.pressure)
-                    if (change.pressed) {
+                fun capturePressure(change: PointerInputChange): Float {
+                    val effective = effectiveInkPressure(
+                        pointerType = change.type,
+                        rawPressure = change.pressure,
+                        pressureEnabled = pressureEnabled,
+                        pressureCurve = pressureCurve,
+                    )
+                    if (pressureEnabled && change.type == PointerType.Stylus && change.pressed) {
+                        val raw = clampInkPressure(change.pressure)
                         rawPressureMin = minOf(rawPressureMin, raw)
                         rawPressureMax = maxOf(rawPressureMax, raw)
                     }
-                    return pressureCurve.applyTo(raw)
+                    return effective
                 }
 
-                val downPressure = capturePressure(down, stylusDown)
+                val downPressure = capturePressure(down)
 
                 if (canDraw) {
                     down.consume()
@@ -349,7 +358,7 @@ fun NoteCanvas(
                             break
                         }
                         val otherPointerDown = event.changes.any { it.pressed && it.id != down.id }
-                        val primaryPressure = capturePressure(primary, stylusDown)
+                        val primaryPressure = capturePressure(primary)
 
                         // A second finger while drawing with a finger turns the rest of
                         // this gesture into pan/zoom. Never cancel a stylus stroke when a
@@ -812,6 +821,26 @@ private fun drawLassoPreview(
         pathEffect = DashPathEffect(floatArrayOf(10f, 7f), 0f)
     }
     canvas.drawPath(path, stroke)
+}
+
+/**
+ * Effective ink pressure for one captured pointer sample.
+ *
+ * Only a stylus carries pressure: fingers, mice, erasers and unknown pointers
+ * always store the neutral [DEFAULT_INK_PRESSURE]. The enable gate and the
+ * [pressureCurve] are both applied here, once, at capture time; the renderer
+ * never re-applies the curve. Reading [pointerType] from the current sample (not
+ * from a type latched at pointer-down) keeps a stylus that joins an already
+ * started finger stroke pressure-aware.
+ */
+internal fun effectiveInkPressure(
+    pointerType: PointerType,
+    rawPressure: Float,
+    pressureEnabled: Boolean,
+    pressureCurve: PressureCurve,
+): Float {
+    if (!pressureEnabled || pointerType != PointerType.Stylus) return DEFAULT_INK_PRESSURE
+    return pressureCurve.applyTo(clampInkPressure(rawPressure))
 }
 
 internal fun noteStrokeWidth(type: AnnotationType, strokeWidth: Float): Float =
