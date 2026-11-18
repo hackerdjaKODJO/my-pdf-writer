@@ -9,7 +9,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -84,7 +83,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -231,6 +229,9 @@ fun ViewerScreen(
     // Explicit dismissal of the one contextual hint chip; resets on document,
     // page, tool or selection-mode changes so guidance is not lost forever.
     var hintDismissed by remember { mutableStateOf(false) }
+    // Divider chip: the floating PDF tool strip starts visible and can be hidden
+    // without affecting the selection bar or any document callback.
+    var pdfToolsVisible by remember { mutableStateOf(true) }
     val selectedText = remember(selectedWords) { PdfTextLayout.selectionText(selectedWords) }
 
     // The replacement action lives in the view model, so mirror the local canvas
@@ -629,6 +630,17 @@ fun ViewerScreen(
         textSelectMode = textSelectMode,
         hasSelection = selectedWords.isNotEmpty(),
     )
+    // The pane share decides how much of the floating PDF strip fits. On a very
+    // short strip only the page pill remains; the back button stays top-start.
+    val pdfChromeDensity = if (splitMode) {
+        splitPdfChromeDensity(clampStudyPaneFraction(studyPaneFraction))
+    } else {
+        SplitPdfChromeDensity.FULL
+    }
+    val splitToolbarVisible = splitMode && chromePolicy.showSplitToolbar && pdfToolsVisible
+    // Hint and search chips share the top edge with the toolbar, so they sit in
+    // the next row whenever the strip is drawn.
+    val splitTopOverlayOffsetDp = if (splitToolbarVisible) 52 else 10
 
     // One state, one hint. The chip only draws what this pure policy allows, so
     // the selection action bar and the tool hint can never be duplicated.
@@ -813,11 +825,6 @@ fun ViewerScreen(
                 0f
             }
             var splitAreaHeightPx by remember { mutableFloatStateOf(0f) }
-            val latestFraction = rememberUpdatedState(paneFraction)
-            val latestHeight = rememberUpdatedState(splitAreaHeightPx)
-            val latestOnFraction = rememberUpdatedState(onStudyPaneFractionChange)
-            var dividerDragStart by remember { mutableFloatStateOf(0f) }
-            var dividerDragY by remember { mutableFloatStateOf(0f) }
             val showSearchNavigation = !state.searching && state.searchQuery.trim().isNotEmpty() &&
                 state.searchHits.isNotEmpty()
             val pdfStripHeightDp = if (splitMode) {
@@ -891,11 +898,13 @@ fun ViewerScreen(
                         )
                     }
 
-                    // The one hint chip is an overlay: it never adds layout height
-                    // and its top-center placement stays clear of the floating
-                    // page controls and the top-end search stepping chip.
+                    // The one hint chip is an overlay: it never adds layout height.
+                    // In split mode it drops one row below the floating tool strip
+                    // so the two never cover each other.
                     Column(
-                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = splitTopOverlayOffsetDp.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         if (annotationsHidden) {
@@ -930,7 +939,7 @@ fun ViewerScreen(
                             onNext = vm::nextSearchHit,
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(end = 10.dp, top = 10.dp),
+                                .padding(end = 10.dp, top = splitTopOverlayOffsetDp.dp),
                         )
                     }
 
@@ -952,7 +961,11 @@ fun ViewerScreen(
                                 .align(Alignment.TopStart)
                                 .padding(start = 8.dp, top = 6.dp),
                         )
-                        if (chromePolicy.showSplitToolbar) {
+                        if (splitToolbarVisible) {
+                            // Top-center floating strip: symmetric side padding
+                            // keeps it clear of the top-start back button and the
+                            // top-end search chip while staying centered. It is an
+                            // overlay and reserves no layout height.
                             SplitPdfToolbar(
                                 pageIndex = state.pageIndex,
                                 pageCount = state.pageCount,
@@ -974,8 +987,9 @@ fun ViewerScreen(
                                 onOpenTools = { showToolMore = true },
                                 onOpenHub = { showHub = true },
                                 modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 6.dp),
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = 6.dp, start = 48.dp, end = 48.dp),
+                                compact = pdfChromeDensity == SplitPdfChromeDensity.ESSENTIAL,
                             )
                         }
                         if (chromePolicy.showSplitSelectionBar) {
@@ -1038,51 +1052,20 @@ fun ViewerScreen(
                 }
 
                 if (studyPane != null) {
-                    // The visible boundary is the primary resize affordance:
-                    // drag it up for more note, down for more PDF. The floating
-                    // pane header still keeps its own drag handle.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(18.dp)
-                            .pointerInput(Unit) {
-                                detectVerticalDragGestures(
-                                    onDragStart = {
-                                        dividerDragStart = latestFraction.value
-                                        dividerDragY = 0f
-                                    },
-                                    onVerticalDrag = { change, dragAmount ->
-                                        change.consume()
-                                        dividerDragY += dragAmount
-                                        latestOnFraction.value(
-                                            studyPaneFractionAfterDrag(
-                                                startFraction = dividerDragStart,
-                                                dragY = dividerDragY,
-                                                totalHeightPx = latestHeight.value,
-                                            ),
-                                        )
-                                    },
-                                )
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                            tonalElevation = 2.dp,
-                            shadowElevation = 2.dp,
-                        ) {
-                            Icon(
-                                Icons.Outlined.DragIndicator,
-                                contentDescription = "PDF와 노트 높이 조절",
-                                modifier = Modifier
-                                    .width(48.dp)
-                                    .height(16.dp)
-                                    .padding(horizontal = 12.dp, vertical = 2.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    // The divider is the primary resize affordance: a 28dp row
+                    // with a centered grip/percentage pill and a PDF-tool chip.
+                    // The floating pane header keeps its own drag handle and owns
+                    // the dismiss overshoot, exactly as before.
+                    SplitDivider(
+                        paneFraction = paneFraction,
+                        totalHeightPx = splitAreaHeightPx,
+                        pdfToolsVisible = pdfToolsVisible,
+                        onFractionChange = onStudyPaneFractionChange,
+                        onPresetSelected = { fraction ->
+                            onStudyPaneFractionChange(clampStudyPaneFraction(fraction))
+                        },
+                        onTogglePdfTools = { pdfToolsVisible = !pdfToolsVisible },
+                    )
                     Box(
                         Modifier
                             .fillMaxWidth()

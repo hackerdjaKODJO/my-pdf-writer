@@ -122,4 +122,48 @@ class StudyPaneLayoutTest {
         assertFalse(isStudyPanePresetSelected(0.70f, 0.50f))
         assertFalse(isStudyPanePresetSelected(0.20f, 0.50f))
     }
+
+    @Test
+    fun dividerRowAndPresetTargetsUseTheDocumentedSizes() {
+        assertEquals(28, STUDY_PANE_DIVIDER_ROW_HEIGHT_DP)
+        // 18dp -> 28dp drag row; popup rows get full 44dp touch targets.
+        assertEquals(44, STUDY_PANE_PRESET_ROW_HEIGHT_DP)
+        assertTrue(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP > 18)
+    }
+
+    @Test
+    fun dividerLabelShowsTheKoreanNotePercent() {
+        assertEquals("노트 70%", studyPaneDividerLabel(0.70f))
+        assertEquals("노트 85%", studyPaneDividerLabel(STUDY_PANE_DEFAULT_FRACTION))
+        // In-between drag values are shown rounded, not snapped to a preset.
+        assertEquals("노트 62%", studyPaneDividerLabel(0.62f))
+        assertEquals("노트 85%", studyPaneDividerLabel(Float.NaN))
+    }
+
+    @Test
+    fun dividerAndPresetRowsHaveTalkBackDescriptions() {
+        assertEquals(
+            "노트 크기 조절 핸들, 현재 70%, 탭하면 크기 선택",
+            studyPaneDividerDescription(0.70f),
+        )
+        assertEquals("노트 크기 50%", studyPanePresetDescription(0.50f))
+        assertEquals("노트 크기 70%", studyPanePresetDescription(0.70f))
+        assertEquals("노트 크기 85%", studyPanePresetDescription(0.85f))
+    }
+
+    @Test
+    fun pdfToolsChipDescriptionTracksVisibility() {
+        assertEquals("PDF 도구 숨기기", splitPdfToolsChipDescription(true))
+        assertEquals("PDF 도구 표시", splitPdfToolsChipDescription(false))
+    }
+
+    @Test
+    fun doubleTapTogglesBetweenTheFiftyAndEightyFiveEndpoints() {
+        assertEquals(0.85f, studyPanePresetAfterDoubleTap(0.50f), 0.0001f)
+        assertEquals(0.50f, studyPanePresetAfterDoubleTap(0.85f), 0.0001f)
+        // An in-between value jumps to the farther documented endpoint.
+        assertEquals(0.50f, studyPanePresetAfterDoubleTap(0.70f), 0.0001f)
+        assertEquals(0.85f, studyPanePresetAfterDoubleTap(0.35f), 0.0001f)
+        assertTrue(studyPanePresetAfterDoubleTap(0.62f) in STUDY_PANE_PRESETS)
+    }
 }
