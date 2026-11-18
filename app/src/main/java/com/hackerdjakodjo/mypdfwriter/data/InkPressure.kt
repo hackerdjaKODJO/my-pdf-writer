@@ -125,3 +125,160 @@ fun pressureCurveRange(
         effectiveMax = maxOf(effectiveLow, effectiveHigh),
     )
 }
+
+/**
+ * Normalized, per-sample ink response. Every component is a multiplier that is
+ * safe to feed straight into rendering: [width] never drops below
+ * [MIN_PRESSURE_WIDTH_FACTOR], while [flow] (darkness/opacity) and [grain]
+ * (edge texture) stay in (0, 1].
+ *
+ * `InkResponse(1f, 1f, 1f)` is the neutral legacy response: a fully pressed
+ * sample, a finger/mouse sample and a pre-pressure document all map to it, so
+ * existing strokes render exactly as they did before response profiles.
+ */
+data class InkResponse(
+    val width: Float,
+    val flow: Float,
+    val grain: Float,
+)
+
+/**
+ * Immutable, device-neutral response profile for one tool.
+ *
+ * Each component is the multiplier at zero pressure; a component of 1f means
+ * "does not respond to pressure". The ramp is linear and reaches exactly 1f at
+ * full pressure. [legacyWidth] replays the original fountain/brush width curve
+ * verbatim so those strokes stay byte-for-byte compatible with old documents.
+ */
+private data class InkProfile(
+    val widthAtZero: Float,
+    val flowAtZero: Float,
+    val grainAtZero: Float,
+    val legacyWidth: Boolean = false,
+) {
+    companion object {
+        // A constant-width pen: only darkness responds to pressure.
+        val BALLPOINT = InkProfile(widthAtZero = 1f, flowAtZero = 0.45f, grainAtZero = 1f)
+
+        // Fountain/brush reuse the legacy nib width; brush also adds texture.
+        val FOUNTAIN = InkProfile(1f, 0.65f, 1f, legacyWidth = true)
+        val BRUSH = InkProfile(1f, 0.40f, 0.50f, legacyWidth = true)
+
+        // Pencil thins and lightens with pressure and gains a grainy edge.
+        val PENCIL = InkProfile(0.55f, 0.35f, 0.40f)
+
+        // Highlighter keeps a constant width; only its tint intensity varies.
+        val HIGHLIGHT = InkProfile(1f, 0.70f, 1f)
+    }
+}
+
+/** Highlight always wins over the underlying pen style of an annotation. */
+private fun inkProfileFor(penStyle: PenStyle, isHighlight: Boolean): InkProfile =
+    if (isHighlight) {
+        InkProfile.HIGHLIGHT
+    } else {
+        when (penStyle) {
+            PenStyle.BALLPOINT -> InkProfile.BALLPOINT
+            PenStyle.FOUNTAIN -> InkProfile.FOUNTAIN
+            PenStyle.BRUSH -> InkProfile.BRUSH
+            PenStyle.PENCIL -> InkProfile.PENCIL
+        }
+    }
+
+/**
+ * Linear ramp from [atZero] at zero pressure to exactly 1f at full pressure.
+ * The explicit endpoint keeps legacy strokes bit-identical even if a future
+ * constant would otherwise round the sum to 0.99999994f.
+ */
+private fun rampedFactor(atZero: Float, safePressure: Float): Float {
+    if (safePressure >= MAX_INK_PRESSURE) return 1f
+    return atZero + (1f - atZero) * safePressure
+}
+
+/** Width multiplier for one pressure sample; always finite and >= 0.35. */
+fun inkWidthFactor(penStyle: PenStyle, isHighlight: Boolean, pressure: Float): Float {
+    val safe = clampInkPressure(pressure)
+    val profile = inkProfileFor(penStyle, isHighlight)
+    return if (profile.legacyWidth) {
+        inkPressureWidthFactor(safe)
+    } else {
+        rampedFactor(profile.widthAtZero, safe)
+    }
+}
+
+/** Flow (darkness/opacity) multiplier, in (0, 1], for one pressure sample. */
+fun inkFlowFactor(penStyle: PenStyle, isHighlight: Boolean, pressure: Float): Float {
+    val safe = clampInkPressure(pressure)
+    return rampedFactor(inkProfileFor(penStyle, isHighlight).flowAtZero, safe)
+}
+
+/** Grain (texture) multiplier, in (0, 1], for one pressure sample. */
+fun inkGrainFactor(penStyle: PenStyle, isHighlight: Boolean, pressure: Float): Float {
+    val safe = clampInkPressure(pressure)
+    return rampedFactor(inkProfileFor(penStyle, isHighlight).grainAtZero, safe)
+}
+
+/** Complete response for one pressure sample. Non-finite input is neutral. */
+fun inkResponse(penStyle: PenStyle, isHighlight: Boolean, pressure: Float): InkResponse =
+    InkResponse(
+        width = inkWidthFactor(penStyle, isHighlight, pressure),
+        flow = inkFlowFactor(penStyle, isHighlight, pressure),
+        grain = inkGrainFactor(penStyle, isHighlight, pressure),
+    )
+
+/**
+ * Smooths one component series with the same 1:2:1 neighbourhood kernel used
+ * by the legacy width path in `AnnotationPainter`. Neighbour indices are
+ * clamped, so the first and last samples are kept (never wrapped or dropped)
+ * and a uniform neutral series stays exactly 1f end to end.
+ */
+private fun smoothResponseComponent(values: FloatArray): FloatArray {
+    val count = values.size
+    if (count < 3) return values
+    return FloatArray(count) { index ->
+        val previous = values[(index - 1).coerceAtLeast(0)]
+        val current = values[index]
+        val next = values[(index + 1).coerceAtMost(count - 1)]
+        (previous + current * 2f + next) * 0.25f
+    }
+}
+
+/**
+ * Per-point responses for a whole stroke. Each component is smoothed with the
+ * identical 1:2:1 kernel, so flow and grain cannot flicker between samples.
+ * Returns an empty list for an empty stroke and leaves 1-2 point strokes
+ * unsmoothed, matching the legacy width behaviour.
+ */
+fun inkResponseSeries(
+    points: List<NormalizedPoint>,
+    penStyle: PenStyle,
+    isHighlight: Boolean,
+): List<InkResponse> {
+    val count = points.size
+    if (count == 0) return emptyList()
+    val raw = points.map { point -> inkResponse(penStyle, isHighlight, point.pressure) }
+    if (count < 3) return raw
+
+    val widths = smoothResponseComponent(FloatArray(count) { raw[it].width })
+    val flows = smoothResponseComponent(FloatArray(count) { raw[it].flow })
+    val grains = smoothResponseComponent(FloatArray(count) { raw[it].grain })
+    return List(count) { index ->
+        InkResponse(widths[index], flows[index], grains[index])
+    }
+}
+
+/**
+ * Average smoothed flow of a stroke, useful as a stable per-stroke darkness.
+ * An empty stroke is neutral (1f); a uniform neutral stroke also averages 1f.
+ */
+fun meanInkFlow(
+    points: List<NormalizedPoint>,
+    penStyle: PenStyle,
+    isHighlight: Boolean,
+): Float {
+    val responses = inkResponseSeries(points, penStyle, isHighlight)
+    if (responses.isEmpty()) return 1f
+    var total = 0f
+    responses.forEach { total += it.flow }
+    return (total / responses.size).coerceIn(0f, 1f)
+}
