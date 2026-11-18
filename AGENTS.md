@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.27`** — `versionCode = 36`.
-- **Next version is `0.8.28` — `versionCode = 37`.**
+- Current delivered version: **`0.8.28`** — `versionCode = 37`.
+- **Next version is `0.8.29` — `versionCode = 38`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.28` | 37 | 2026-11-18 | `v0.8.28` | Split divider with visible percentage/presets, top PDF chrome with density policy, note toolbox hide/restore toggle |
 | `0.8.27` | 36 | 2026-11-18 | `v0.8.27` | Samsung Notes post-it memo cards with export; Flexcil-style favorite pen registry and one-tap slots in note/PDF |
 | `0.8.26` | 35 | 2026-11-18 | `v0.8.26` | Whole-app menu redesign: Home filter/settings sheets, grouped PDF menu, 6-slot reader dock, markup-first selection bar, note menu reduced to focused sub-sheets |
 | `0.8.25` | 34 | 2026-11-17 | `v0.8.25` | GoodReader iOS survey applied offline: persisted display prefs + brightness, page lock, internal PDF links, ACTION_SEND PDF import, Home sort menu |

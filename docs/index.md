@@ -26,6 +26,7 @@
 - [GoodReader iOS survey — 0.8.25](goodreader-survey-0825.md)
 - [Whole-app menu redesign — 0.8.26](ui-redesign-0826.md)
 - [Samsung post-it + favorite pens — 0.8.27](samsung-postit-favpens-0827.md)
+- [Split divider and chrome — 0.8.28](split-chrome-0828.md)
 
 ## 문의
 

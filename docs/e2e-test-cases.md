@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.27
+# E2E test cases — My PDF Writer 0.8.28
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator; the build machine has no adb device attached, so only JVM tests are
@@ -9,7 +9,7 @@ executed here. Instrumentation APKs are compiled with
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 570 | **Passing** on this phone |
+| JVM unit tests | 581 | **Passing** on this phone |
 | Instrumentation/E2E | 7 classes (see below) | **Compiled**; on-device run pending |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally) |
@@ -69,6 +69,9 @@ executed here. Instrumentation APKs are compiled with
 | MEMO-02 | Memo card screen rect, drag/resize helper and pointer gating | JVM `MemoCardOverlayTest` + `NoteCanvasStrokeE2ETest` | Compiled |
 | MEMO-03 | Memo card list/editor/delete and export painter | JVM `MemoCardsSheetTest`, `NoteCardPainterTest` | Passing |
 | PEN-01 | Favorite pen defaults, clear semantics, cap/prune/reorder | JVM `PenBoxTest`, `FavoritePenStripTest` | Passing |
+| SPLIT-01 | Divider percentage, presets and 28dp handle | JVM `StudyPaneLayoutTest` + E2E | Compiled |
+| SPLIT-02 | PDF chrome density and top toolbar callbacks | JVM `PdfSplitChromeTest` + E2E | Compiled |
+| SPLIT-03 | Note tools hide/restore pill and header drop target | JVM `NoteFloatingChromeTest` + E2E | Compiled |
 
 ## Run on a device
 
