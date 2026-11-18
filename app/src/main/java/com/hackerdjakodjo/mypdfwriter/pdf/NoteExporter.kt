@@ -65,6 +65,12 @@ object NoteExporter {
      *
      * [includeHiddenLayers] defaults to the editor's WYSIWYG visibility. Layer
      * opacity is applied in both cases; only the hidden-layer filter changes.
+     *
+     * Post-it [NotePage.memoCards] are note content (unlike the study-only checklist
+     * and masking overlays), so they are painted after the annotation layer by
+     * default for a WYSIWYG result. [includeMemoCards] is the opt-out for callers
+     * that want an ink-only raster; it defaults to true and is deliberately not a
+     * persisted export field, so older backups and their JSON stay byte-compatible.
      */
     fun renderPage(
         page: NotePage,
@@ -72,6 +78,7 @@ object NoteExporter {
         height: Int,
         includeHiddenLayers: Boolean = false,
         backgroundLoader: (String) -> Bitmap? = { null },
+        includeMemoCards: Boolean = true,
     ): Bitmap {
         val safeWidth = width.coerceIn(1, 8192)
         val safeHeight = height.coerceIn(1, 8192)
@@ -113,6 +120,14 @@ object NoteExporter {
             width = safeWidth.toFloat(),
             height = safeHeight.toFloat(),
         )
+        // Cards sit above ink in the editor, so paint them last. Redaction and every
+        // other annotation are still drawn by AnnotationPainter exactly as before.
+        NoteCardPainter.draw(
+            canvas = canvas,
+            cards = NoteCardPainter.visibleMemoCards(page, includeMemoCards),
+            width = safeWidth.toFloat(),
+            height = safeHeight.toFloat(),
+        )
         return bitmap
     }
 
@@ -121,7 +136,8 @@ object NoteExporter {
         notebook: Notebook,
         out: OutputStream,
         backgroundLoader: (String) -> Bitmap? = { null },
-    ) = export(notebook, out, NoteExportOptions(), backgroundLoader)
+        includeMemoCards: Boolean = true,
+    ) = export(notebook, out, NoteExportOptions(), backgroundLoader, includeMemoCards)
 
     /**
      * Exports the pages selected by [options]. When the requested range has no
@@ -129,13 +145,16 @@ object NoteExporter {
      *
      * [backgroundLoader] resolves a page's portable custom-template key to an
      * app-private bitmap. It is resolved once per page at export time; hidden-layer
-     * filtering and WYSIWYG annotation painting are unchanged.
+     * filtering and WYSIWYG annotation painting are unchanged. [includeMemoCards]
+     * is forwarded to [renderPage] so a caller can request an ink-only export;
+     * its default keeps post-its in both full exports and shared raster pages.
      */
     suspend fun export(
         notebook: Notebook,
         out: OutputStream,
         options: NoteExportOptions,
         backgroundLoader: (String) -> Bitmap? = { null },
+        includeMemoCards: Boolean = true,
     ) =
         withContext(Dispatchers.IO) {
             val allPages = notebook.pages.ifEmpty { listOf(NotePage(template = PaperTemplate.LINED)) }
@@ -155,6 +174,7 @@ object NoteExporter {
                         size.heightPx,
                         options.includeHiddenLayers,
                         backgroundLoader,
+                        includeMemoCards,
                     )
                     try {
                         val image = LosslessFactory.createFromImage(document, bitmap)
