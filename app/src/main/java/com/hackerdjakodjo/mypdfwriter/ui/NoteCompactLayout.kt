@@ -65,6 +65,53 @@ internal const val NOTE_COMPACT_DOCK_MAX_WIDTH_DP = 340
 internal const val NOTE_FULL_DOCK_TOOL_ROW_HEIGHT_DP = 50
 internal const val NOTE_FULL_DOCK_ACTION_ROW_HEIGHT_DP = 46
 
+/**
+ * Which piece of tool chrome the compact note pane shows. The study-pane header
+ * owns a `도구 표시/숨기기` toggle: while tools are visible the full dock floats on
+ * the bottom edge, and while hidden every control is replaced by one small pill in
+ * the bottom-end corner so the centred writing hotspot stays clear.
+ */
+internal enum class NoteCompactChromeMode {
+    DOCK,
+    RESTORE_PILL,
+}
+
+/** Pure policy behind the study-pane header toggle. */
+internal fun noteCompactChromeMode(showTools: Boolean): NoteCompactChromeMode =
+    if (showTools) NoteCompactChromeMode.DOCK else NoteCompactChromeMode.RESTORE_PILL
+
+/**
+ * Restore-pill metrics. The pill is a real touch target (44 dp, the accessibility
+ * minimum) even though the compact dock rows stay deliberately dense for the
+ * study pane. It is anchored to the bottom-end corner, never to the centre of the
+ * canvas where the user writes.
+ */
+internal const val NOTE_COMPACT_RESTORE_PILL_MIN_TARGET_DP = 44
+internal const val NOTE_COMPACT_RESTORE_PILL_HEIGHT_DP = 44
+internal const val NOTE_COMPACT_RESTORE_PILL_MIN_WIDTH_DP = 44
+internal const val NOTE_COMPACT_RESTORE_PILL_CORNER_DP = 22
+internal const val NOTE_COMPACT_RESTORE_PILL_END_MARGIN_DP = 8
+internal const val NOTE_COMPACT_RESTORE_PILL_BOTTOM_MARGIN_DP = 10
+internal const val NOTE_COMPACT_RESTORE_PILL_HORIZONTAL_PADDING_DP = 12
+
+/** Snackbar clearance depends on which chrome variant is currently shown. */
+internal fun noteCompactChromeObscuredHeightDp(
+    mode: NoteCompactChromeMode,
+    showContextTray: Boolean,
+): Int = when (mode) {
+    NoteCompactChromeMode.DOCK -> noteCompactDockObscuredHeightDp(showContextTray)
+    NoteCompactChromeMode.RESTORE_PILL ->
+        NOTE_COMPACT_RESTORE_PILL_HEIGHT_DP + NOTE_COMPACT_RESTORE_PILL_BOTTOM_MARGIN_DP
+}
+
+/**
+ * A 320 dp pane must still fit the pill plus both end margins. The dock keeps its
+ * own eight-dp side margins, so this check covers the smallest supported phone.
+ */
+internal fun noteCompactRestorePillFitsWidth(availableWidthDp: Int): Boolean =
+    availableWidthDp >= NOTE_COMPACT_RESTORE_PILL_MIN_WIDTH_DP +
+        NOTE_COMPACT_RESTORE_PILL_END_MARGIN_DP * 2
+
 /** Canvas breathing room around the paper; the compact pane keeps it minimal. */
 internal const val NOTE_COMPACT_CANVAS_PADDING_DP = 3
 

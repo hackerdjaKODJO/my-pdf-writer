@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,6 +65,8 @@ import kotlinx.coroutines.delay
  * grip resizes live or dismisses the pane, a tiny size popup exposes the 50/70/85%
  * presets, and the whole header is the drop target for PDF excerpts. The compact
  * note dock floats at the bottom, so the writing canvas uses the freed height. The
+ * header's `도구 표시/숨기기` toggle hides that dock and leaves a small `도구` pill
+ * in the bottom-end corner when the user wants an unobstructed writing area. The
  * link action opens the local To/From index built from
  * [com.hackerdjakodjo.mypdfwriter.data.NotePage.sourcePageIndex].
  */
@@ -84,6 +87,7 @@ fun StudyPaneSheet(
     onOpenHelp: () -> Unit = {},
 ) {
     var showLinks by remember(notebook.id) { mutableStateOf(false) }
+    var showNoteTools by remember(notebook.id) { mutableStateOf(true) }
     var captureMessage by remember(notebook.id) { mutableStateOf<String?>(null) }
     var paneHeightPx by remember { mutableFloatStateOf(0f) }
     val sourceName = notebook.sourceDocumentName.ifBlank { "원본 PDF" }
@@ -126,6 +130,8 @@ fun StudyPaneSheet(
                     onOpenSourcePdf = onOpenSourcePdf,
                     compact = true,
                     compactTopInsetDp = studyPaneFloatingHeaderInsetDp(),
+                    compactShowTools = showNoteTools,
+                    onCompactShowToolsChange = { showNoteTools = it },
                     onOpenHelp = onOpenHelp,
                 )
                 StudyPaneFloatingHeader(
@@ -135,6 +141,8 @@ fun StudyPaneSheet(
                     paneHeightPx = paneHeightPx,
                     captureMessage = captureMessage,
                     linkCount = linkCount,
+                    showNoteTools = showNoteTools,
+                    onToggleNoteTools = { showNoteTools = !showNoteTools },
                     onHeightFractionChange = onHeightFractionChange,
                     onOpenLinks = { showLinks = true },
                     onClose = onDismiss,
@@ -171,6 +179,8 @@ private fun StudyPaneFloatingHeader(
     paneHeightPx: Float,
     captureMessage: String?,
     linkCount: Int,
+    showNoteTools: Boolean,
+    onToggleNoteTools: () -> Unit,
     onHeightFractionChange: (Float) -> Unit,
     onOpenLinks: () -> Unit,
     onClose: () -> Unit,
@@ -359,6 +369,24 @@ private fun StudyPaneFloatingHeader(
                             )
                         }
                     }
+                }
+
+                // Show/hide the compact note dock. The header stays the single
+                // excerpt drop target; this button never starts a resize gesture.
+                IconButton(
+                    onClick = onToggleNoteTools,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        Icons.Outlined.Tune,
+                        contentDescription = "도구 표시/숨기기",
+                        modifier = Modifier.size(17.dp),
+                        tint = if (showNoteTools) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
                 }
 
                 IconButton(

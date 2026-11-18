@@ -1,13 +1,15 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * Pure checks for the floating compact study chrome: the note dock must be a
- * small inset pill with 32–40 dp targets, and the study header must be much
- * shorter than the old stacked full-width header.
+ * small inset pill with 32–40 dp targets, the header toggle must switch between
+ * that dock and a 44 dp restore pill, and the study header must be much shorter
+ * than the old stacked full-width header.
  */
 class NoteFloatingChromeTest {
 
@@ -65,6 +67,58 @@ class NoteFloatingChromeTest {
 
         assertTrue(floating < full)
         assertTrue(floating + NOTE_COMPACT_DOCK_BOTTOM_MARGIN_DP < full)
+    }
+
+    @Test
+    fun `header toggle selects the dock or the restore pill`() {
+        assertEquals(NoteCompactChromeMode.DOCK, noteCompactChromeMode(true))
+        assertEquals(NoteCompactChromeMode.RESTORE_PILL, noteCompactChromeMode(false))
+
+        assertEquals(
+            noteCompactDockObscuredHeightDp(false),
+            noteCompactChromeObscuredHeightDp(NoteCompactChromeMode.DOCK, false),
+        )
+        assertEquals(
+            noteCompactDockObscuredHeightDp(true),
+            noteCompactChromeObscuredHeightDp(NoteCompactChromeMode.DOCK, true),
+        )
+        assertEquals(
+            NOTE_COMPACT_RESTORE_PILL_HEIGHT_DP + NOTE_COMPACT_RESTORE_PILL_BOTTOM_MARGIN_DP,
+            noteCompactChromeObscuredHeightDp(NoteCompactChromeMode.RESTORE_PILL, true),
+        )
+        // Hidden tools never leave a taller snackbar gap than the visible dock.
+        assertTrue(
+            noteCompactChromeObscuredHeightDp(NoteCompactChromeMode.RESTORE_PILL, false) <
+                noteCompactChromeObscuredHeightDp(NoteCompactChromeMode.DOCK, false),
+        )
+    }
+
+    @Test
+    fun `restore pill is a 44 dp target clear of the writing hotspot`() {
+        assertEquals(44, NOTE_COMPACT_RESTORE_PILL_MIN_TARGET_DP)
+        assertEquals(
+            NOTE_COMPACT_RESTORE_PILL_MIN_TARGET_DP,
+            NOTE_COMPACT_RESTORE_PILL_HEIGHT_DP,
+        )
+        assertTrue(
+            NOTE_COMPACT_RESTORE_PILL_MIN_WIDTH_DP >= NOTE_COMPACT_RESTORE_PILL_MIN_TARGET_DP,
+        )
+        assertTrue(
+            NOTE_COMPACT_RESTORE_PILL_BOTTOM_MARGIN_DP >= NOTE_COMPACT_DOCK_BOTTOM_MARGIN_DP,
+        )
+        assertTrue(
+            "restore pill must be far smaller than the dock it replaces",
+            NOTE_COMPACT_RESTORE_PILL_HEIGHT_DP < noteCompactDockHeightDp(false),
+        )
+    }
+
+    @Test
+    fun `restore pill fits a 320 dp pane with both end margins`() {
+        assertTrue(noteCompactRestorePillFitsWidth(320))
+        assertTrue(noteCompactRestorePillFitsWidth(360))
+        assertTrue(noteCompactRestorePillFitsWidth(60))
+        assertFalse(noteCompactRestorePillFitsWidth(59))
+        assertFalse(noteCompactRestorePillFitsWidth(0))
     }
 
     @Test
