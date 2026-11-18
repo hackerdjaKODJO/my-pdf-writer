@@ -497,7 +497,7 @@ internal fun NoteInkSettingsSheet(
                     icon = Icons.Filled.Gesture,
                     title = "필압 잉크",
                     supporting = if (pressureInk) {
-                        "스타일러스 필압으로 붓·만년필 굵기 변화"
+                        "스타일러스 필압으로 굵기·잉크 농도·붓 번짐·연필 진하기 변화"
                     } else {
                         "모든 점을 압력 1로 기록"
                     },

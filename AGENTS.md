@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.28`** — `versionCode = 37`.
-- **Next version is `0.8.29` — `versionCode = 38`.**
+- Current delivered version: **`0.8.29`** — `versionCode = 38`.
+- **Next version is `0.8.30` — `versionCode = 39`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.29` | 38 | 2026-11-18 | `v0.8.29` | Per-style ink response profiles (flow/grain/width), full-stroke replay stability, active-stylus pressure sampling |
 | `0.8.28` | 37 | 2026-11-18 | `v0.8.28` | Split divider with visible percentage/presets, top PDF chrome with density policy, note toolbox hide/restore toggle |
 | `0.8.27` | 36 | 2026-11-18 | `v0.8.27` | Samsung Notes post-it memo cards with export; Flexcil-style favorite pen registry and one-tap slots in note/PDF |
 | `0.8.26` | 35 | 2026-11-18 | `v0.8.26` | Whole-app menu redesign: Home filter/settings sheets, grouped PDF menu, 6-slot reader dock, markup-first selection bar, note menu reduced to focused sub-sheets |
