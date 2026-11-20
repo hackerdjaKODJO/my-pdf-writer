@@ -1,5 +1,7 @@
 package com.hackerdjakodjo.mypdfwriter.data
 
+import com.hackerdjakodjo.mypdfwriter.ui.penBoxFavoriteToggleLabel
+import com.hackerdjakodjo.mypdfwriter.ui.penBoxReorderLabel
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -139,5 +141,25 @@ class PenBoxTest {
         assertFalse(samePenStyle(pen, otherColor))
         assertFalse(samePenStyle(pen, pen.copy(penStyle = PenStyle.BRUSH)))
         assertFalse(samePenStyle(pen, pen.copy(tool = Tool.HIGHLIGHT)))
+    }
+
+    @Test
+    fun reorderAndStarLabelsIncludeSlotPosition() {
+        assertEquals(
+            "내 펜 2번 앞으로 (1번으로 이동)",
+            penBoxReorderLabel("앞으로", 2, 1, "내 펜"),
+        )
+        assertEquals(
+            "내 펜 2번 뒤로 (3번으로 이동)",
+            penBoxReorderLabel("뒤로", 2, 3, "내 펜"),
+        )
+        assertEquals(
+            "내 펜 2번 즐겨찾기 해제",
+            penBoxFavoriteToggleLabel("내 펜", 2, favorite = true),
+        )
+        assertEquals(
+            "내 펜 3번 즐겨찾기에 추가",
+            penBoxFavoriteToggleLabel("내 펜", 3, favorite = false),
+        )
     }
 }

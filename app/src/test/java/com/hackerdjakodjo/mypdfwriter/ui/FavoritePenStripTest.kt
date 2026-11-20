@@ -39,6 +39,19 @@ class FavoritePenStripTest {
     }
 
     @Test
+    fun activeSlotDescriptionAppendsSelectedState() {
+        val brush = preset(PenStyle.BRUSH, name = "굵은 붓")
+        assertEquals(
+            "즐겨찾는 펜 굵은 붓, 붓",
+            favoriteSlotDescription(brush),
+        )
+        assertEquals(
+            "즐겨찾는 펜 굵은 붓, 붓, 선택됨",
+            favoriteSlotDescription(brush, selected = true),
+        )
+    }
+
+    @Test
     fun stripRendersAtMostSixFavoriteSlots() {
         val many = (0 until 10).map { index -> PenPreset(id = "p$index", name = "펜 $index") }
 

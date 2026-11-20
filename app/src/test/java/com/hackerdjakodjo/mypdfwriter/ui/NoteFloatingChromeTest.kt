@@ -14,12 +14,15 @@ import org.junit.Test
 class NoteFloatingChromeTest {
 
     @Test
-    fun `floating dock rows use dense 32 to 40 dp targets`() {
-        assertTrue(NOTE_COMPACT_TOOL_ROW_HEIGHT_DP in 32..40)
-        assertTrue(NOTE_COMPACT_ACTION_ROW_HEIGHT_DP in 32..40)
-        assertTrue(NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP in 32..40)
-        assertEquals(34, NOTE_COMPACT_TOOL_ROW_HEIGHT_DP)
-        assertEquals(32, NOTE_COMPACT_ACTION_ROW_HEIGHT_DP)
+    fun `floating dock rows meet the 48 dp minimum target`() {
+        assertEquals(MIN_TARGET_DP, NOTE_COMPACT_TOOL_ROW_HEIGHT_DP)
+        assertEquals(MIN_TARGET_DP, NOTE_COMPACT_ACTION_ROW_HEIGHT_DP)
+        assertEquals(MIN_TARGET_DP, NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP)
+        assertTrue(isAccessibleTarget(NOTE_COMPACT_TOOL_ROW_HEIGHT_DP))
+        assertTrue(isAccessibleTarget(NOTE_COMPACT_ACTION_ROW_HEIGHT_DP))
+        assertTrue(isAccessibleTarget(NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP))
+        assertTrue(isAccessibleTarget(NOTE_FULL_DOCK_TOOL_ROW_HEIGHT_DP))
+        assertTrue(isAccessibleTarget(NOTE_FULL_DOCK_ACTION_ROW_HEIGHT_DP))
     }
 
     @Test
@@ -31,12 +34,13 @@ class NoteFloatingChromeTest {
             NOTE_COMPACT_ACTION_ROW_HEIGHT_DP
 
         assertEquals(expected, closed)
-        assertTrue("floating dock should stay under 80 dp, was $closed", closed <= 80)
-        assertEquals(73, closed)
+        assertTrue("each dock row must be a full 48 dp target, was $closed", closed >= MIN_TARGET_DP * 2)
+        assertTrue("compact dock should stay under 120 dp, was $closed", closed <= 120)
+        assertEquals(103, closed)
 
         val tray = noteCompactDockHeightDp(showContextTray = true)
         assertEquals(closed + NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP, tray)
-        assertTrue("tray dock should stay under 120 dp, was $tray", tray <= 120)
+        assertTrue("tray dock should stay under 200 dp, was $tray", tray <= 200)
         assertEquals(closed + NOTE_COMPACT_DOCK_BOTTOM_MARGIN_DP, noteCompactDockObscuredHeightDp(false))
     }
 
@@ -95,7 +99,8 @@ class NoteFloatingChromeTest {
 
     @Test
     fun `restore pill is a 44 dp target clear of the writing hotspot`() {
-        assertEquals(44, NOTE_COMPACT_RESTORE_PILL_MIN_TARGET_DP)
+        assertEquals(MIN_TARGET_DP, NOTE_COMPACT_RESTORE_PILL_MIN_TARGET_DP)
+        assertTrue(isAccessibleTarget(NOTE_COMPACT_RESTORE_PILL_MIN_TARGET_DP))
         assertEquals(
             NOTE_COMPACT_RESTORE_PILL_MIN_TARGET_DP,
             NOTE_COMPACT_RESTORE_PILL_HEIGHT_DP,
@@ -116,8 +121,10 @@ class NoteFloatingChromeTest {
     fun `restore pill fits a 320 dp pane with both end margins`() {
         assertTrue(noteCompactRestorePillFitsWidth(320))
         assertTrue(noteCompactRestorePillFitsWidth(360))
-        assertTrue(noteCompactRestorePillFitsWidth(60))
-        assertFalse(noteCompactRestorePillFitsWidth(59))
+        val minimum = NOTE_COMPACT_RESTORE_PILL_MIN_WIDTH_DP +
+            NOTE_COMPACT_RESTORE_PILL_END_MARGIN_DP * 2
+        assertTrue(noteCompactRestorePillFitsWidth(minimum))
+        assertFalse(noteCompactRestorePillFitsWidth(minimum - 1))
         assertFalse(noteCompactRestorePillFitsWidth(0))
     }
 
@@ -152,5 +159,17 @@ class NoteFloatingChromeTest {
         assertTrue(STUDY_PANE_HEADER_SIDE_MARGIN_DP >= 4)
         assertTrue(STUDY_PANE_HEADER_TOP_MARGIN_DP >= 2)
         assertTrue(STUDY_PANE_HEADER_ROW_HEIGHT_DP <= 40)
+    }
+
+    @Test
+    fun `dock labels follow chrome scale but targets never shrink`() {
+        assertTrue(noteDockShowLabels(360, 1f))
+        assertTrue(noteDockShowLabels(412, 1.4f))
+        assertFalse(noteDockShowLabels(360, 1.5f))
+        assertFalse(noteDockShowLabels(320, 2f))
+
+        // Losing the label never buys a smaller hit target.
+        assertEquals(MIN_TARGET_DP, NOTE_COMPACT_TOOL_ROW_HEIGHT_DP)
+        assertEquals(MIN_TARGET_DP, NOTE_COMPACT_ACTION_ROW_HEIGHT_DP)
     }
 }

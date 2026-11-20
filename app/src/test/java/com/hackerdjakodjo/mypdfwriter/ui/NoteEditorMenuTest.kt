@@ -96,4 +96,22 @@ class NoteEditorMenuTest {
             )
         }
     }
+
+    @Test
+    fun `favorite and toggle labels announce both states`() {
+        assertEquals("즐겨찾기, 선택됨", noteStateAwareLabel("즐겨찾기", true))
+        assertEquals("즐겨찾기, 선택 안 됨", noteStateAwareLabel("즐겨찾기", false))
+        assertEquals("손가락 필기, 선택됨", noteStateAwareLabel("손가락 필기", true))
+        assertEquals("손가락 필기, 선택 안 됨", noteStateAwareLabel("손가락 필기", false))
+
+        assertEquals("선택됨", noteToggleStateDescription(true))
+        assertEquals("선택 안 됨", noteToggleStateDescription(false))
+    }
+
+    @Test
+    fun `menu rows are at least 56 dp tall`() {
+        assertTrue(isAccessibleTarget(NOTE_MENU_ROW_MIN_HEIGHT_DP))
+        assertEquals(56, NOTE_MENU_ROW_MIN_HEIGHT_DP)
+        assertTrue(NOTE_MENU_ROW_MIN_HEIGHT_DP >= MIN_TARGET_DP)
+    }
 }

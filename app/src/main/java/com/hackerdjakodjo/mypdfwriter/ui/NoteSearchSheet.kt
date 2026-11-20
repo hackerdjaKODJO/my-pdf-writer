@@ -96,7 +96,7 @@ fun NoteSearchSheet(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("검색어") },
+                label = { Text("노트 검색") },
                 placeholder = { Text("예: 시험 범위, 회의 메모") },
                 singleLine = true,
                 leadingIcon = {
