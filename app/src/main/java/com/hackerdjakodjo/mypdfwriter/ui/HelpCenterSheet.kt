@@ -1,25 +1,28 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+)
 
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
@@ -38,6 +41,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -235,31 +240,40 @@ fun HelpCenterSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("도움말", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "도움말",
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.semantics { heading() },
+                    )
                     Text(
                         "오프라인 사용 가이드 · 기기 안에서만 동작합니다",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TextButton(onClick = onDismiss) { Text("닫기") }
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("닫기") }
             }
 
             if (onReplayTutorial != null) {
                 TextButton(
                     onClick = { onReplayTutorial() },
-                    modifier = Modifier.padding(start = 14.dp, bottom = 6.dp),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .padding(start = 14.dp, bottom = 6.dp),
                 ) {
                     Text(REPLAY_TUTORIAL_LABEL)
                 }
             }
 
-            Row(
+            FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 topics.forEachIndexed { index, topic ->
                     FilterChip(
@@ -268,6 +282,7 @@ fun HelpCenterSheet(
                             selectedKey = topic.key
                             scope.launch { listState.animateScrollToItem(index) }
                         },
+                        modifier = Modifier.heightIn(min = 48.dp),
                         label = { Text(topic.chip) },
                     )
                 }
@@ -302,6 +317,7 @@ private fun HelpTopicSection(topic: HelpTopic) {
                 topic.title,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.semantics { heading() },
             )
             Spacer(Modifier.height(2.dp))
             Text(
@@ -365,8 +381,10 @@ private fun HelpCallout(text: String, caution: Boolean) {
         color = container,
     ) {
         Text(
-            text,
-            modifier = Modifier.padding(12.dp),
+            if (caution) "주의: $text" else text,
+            modifier = Modifier
+                .padding(12.dp)
+                .then(if (caution) Modifier.semantics { heading() } else Modifier),
             color = onContainer,
             style = MaterialTheme.typography.bodyMedium,
         )

@@ -1,6 +1,7 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ToolsScreenSectionsTest {
@@ -23,5 +24,19 @@ class ToolsScreenSectionsTest {
     @Test
     fun sectionTitlesAreUnique() {
         assertEquals(PdfToolSections.order.size, PdfToolSections.order.distinct().size)
+    }
+
+    @Test
+    fun filePickerButtonNamesItsAction() {
+        assertEquals("PDF 파일 선택", toolSourceButtonLabel(false))
+        assertEquals("PDF 파일 변경", toolSourceButtonLabel(true))
+    }
+
+    @Test
+    fun toolRowsMeetTheMinimumTouchTargetAtEveryFontScale() {
+        assertEquals(56, toolRowMinHeightDp(1f))
+        assertEquals(56, toolRowMinHeightDp(1.5f))
+        assertEquals(56, toolRowMinHeightDp(3f))
+        assertTrue(toolRowMinHeightDp(1.2f) >= 48)
     }
 }

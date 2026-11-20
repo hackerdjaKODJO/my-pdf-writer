@@ -12,7 +12,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 val InkBlue = Color(0xFF1F4E79)
-val StudyOrange = Color(0xFFB4693C)
+val StudyOrange = Color(0xFF9A562F)
 val Paper = Color(0xFFF7F5F0)
 
 private val LightColors = lightColorScheme(

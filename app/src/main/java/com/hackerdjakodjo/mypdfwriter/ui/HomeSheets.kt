@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -56,12 +57,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.BuildConfig
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
+
+/** Chip state is part of the spoken label, not only the visual selection. */
+internal fun homeFilterChipDescription(label: String, selected: Boolean): String =
+    stateLabel(label, selected)
 
 /**
  * Single sheet that owns every Home note filter. The sheet edits a draft and
@@ -102,7 +110,11 @@ internal fun HomeFilterSheet(
                 )
                 Spacer(Modifier.width(10.dp))
                 Column {
-                    Text("필터", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "필터",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.semantics { heading() },
+                    )
                     Text(
                         "보기·폴더·태그를 한곳에서 고릅니다.",
                         style = MaterialTheme.typography.labelMedium,
@@ -113,9 +125,15 @@ internal fun HomeFilterSheet(
 
             FilterSection(title = "보기") {
                 NoteScope.entries.forEach { option ->
+                    val active = scope == option
                     FilterChip(
-                        selected = scope == option,
+                        selected = active,
                         onClick = { scope = option },
+                        modifier = Modifier
+                            .heightIn(min = 56.dp)
+                            .semantics {
+                                contentDescription = homeFilterChipDescription(option.label, active)
+                            },
                         label = { Text(option.label) },
                     )
                 }
@@ -125,17 +143,33 @@ internal fun HomeFilterSheet(
                 FilterChip(
                     selected = folder == null,
                     onClick = { folder = null },
+                    modifier = Modifier
+                        .heightIn(min = 56.dp)
+                        .semantics {
+                            contentDescription = homeFilterChipDescription("모든 폴더", folder == null)
+                        },
                     label = { Text("모든 폴더") },
                 )
                 FilterChip(
                     selected = folder == "",
                     onClick = { folder = "" },
+                    modifier = Modifier
+                        .heightIn(min = 56.dp)
+                        .semantics {
+                            contentDescription = homeFilterChipDescription("미분류", folder == "")
+                        },
                     label = { Text("미분류") },
                 )
                 folders.forEach { name ->
+                    val active = folder == name
                     FilterChip(
-                        selected = folder == name,
+                        selected = active,
                         onClick = { folder = name },
+                        modifier = Modifier
+                            .heightIn(min = 56.dp)
+                            .semantics {
+                                contentDescription = homeFilterChipDescription(name, active)
+                            },
                         label = { Text(name) },
                     )
                 }
@@ -145,6 +179,11 @@ internal fun HomeFilterSheet(
                 FilterChip(
                     selected = tag == null,
                     onClick = { tag = null },
+                    modifier = Modifier
+                        .heightIn(min = 56.dp)
+                        .semantics {
+                            contentDescription = homeFilterChipDescription("모든 태그", tag == null)
+                        },
                     label = { Text("모든 태그") },
                 )
                 if (tagCounts.isEmpty()) {
@@ -156,10 +195,17 @@ internal fun HomeFilterSheet(
                     )
                 } else {
                     tagCounts.forEach { (name, count) ->
+                        val active = tag == name
+                        val chipLabel = "$name · $count"
                         FilterChip(
-                            selected = tag == name,
+                            selected = active,
                             onClick = { tag = name },
-                            label = { Text("$name · $count") },
+                            modifier = Modifier
+                                .heightIn(min = 56.dp)
+                                .semantics {
+                                    contentDescription = homeFilterChipDescription(chipLabel, active)
+                                },
+                            label = { Text(chipLabel) },
                         )
                     }
                 }
@@ -177,6 +223,9 @@ internal fun HomeFilterSheet(
                     FilterChip(
                         selected = true,
                         onClick = { query = "" },
+                        modifier = Modifier
+                            .heightIn(min = 56.dp)
+                            .semantics { contentDescription = "검색어 지우기: $query" },
                         label = { Text("검색 · “$query” 지우기") },
                     )
                 }
@@ -191,13 +240,13 @@ internal fun HomeFilterSheet(
                         tag = null
                         query = ""
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
                 ) {
                     Text("초기화")
                 }
                 Button(
                     onClick = { onApply(scope, folder, tag, query) },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
                 ) {
                     Text("적용")
                 }
@@ -216,6 +265,7 @@ private fun FilterSection(
             title,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(Modifier.height(6.dp))
         FlowRow(
@@ -260,7 +310,11 @@ internal fun HomeSettingsSheet(
                 )
                 Spacer(Modifier.width(10.dp))
                 Column {
-                    Text("설정", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "설정",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.semantics { heading() },
+                    )
                     Text(
                         "오프라인 · 파일은 기기 안에서만",
                         style = MaterialTheme.typography.labelMedium,
@@ -335,7 +389,7 @@ private fun SettingsRow(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -403,7 +457,10 @@ internal fun HomeInfoDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("닫기") }
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 56.dp),
+            ) { Text("닫기") }
         },
     )
 }
@@ -464,7 +521,7 @@ internal fun PdfRecentCardSheet(
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),

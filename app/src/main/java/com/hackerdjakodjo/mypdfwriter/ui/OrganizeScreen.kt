@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -61,12 +63,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hackerdjakodjo.mypdfwriter.data.PageOps
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
+import kotlin.math.roundToInt
 
 /**
  * Thumbnail grid for reordering and editing the working page list.
@@ -131,6 +139,7 @@ fun OrganizeScreen(
                             )
                         },
                         enabled = pages.isNotEmpty(),
+                        modifier = Modifier.heightIn(min = 48.dp),
                     ) {
                         Text(if (allSelected) "선택 해제" else "전체 선택")
                     }
@@ -241,7 +250,12 @@ private fun OrganizePageCard(
                 MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
             },
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = "페이지 ${index + 1}"
+                stateDescription = if (selected) "선택됨" else "선택되지 않음"
+            },
     ) {
         Column {
             Box(
@@ -272,7 +286,7 @@ private fun OrganizePageCard(
                     bitmap != null -> {
                         Image(
                             bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "페이지 ${index + 1} 미리보기",
+                            contentDescription = null,
                             contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize().padding(6.dp),
                         )
@@ -354,7 +368,11 @@ private fun RotationBadge(degrees: Int, modifier: Modifier = Modifier) {
 @Composable
 private fun SelectionBadge(selected: Boolean, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.size(22.dp),
+        modifier = modifier
+            .size(22.dp)
+            .semantics {
+                stateDescription = if (selected) "선택됨" else "선택되지 않음"
+            },
         shape = CircleShape,
         color = if (selected) {
             MaterialTheme.colorScheme.primary
@@ -370,7 +388,7 @@ private fun SelectionBadge(selected: Boolean, modifier: Modifier = Modifier) {
             if (selected) {
                 Icon(
                     Icons.Outlined.Check,
-                    contentDescription = "선택됨",
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(14.dp),
                 )
@@ -395,118 +413,111 @@ private fun OrganizeBottomBar(
 ) {
     val hasSelection = selection.isNotEmpty()
 
-    Surface(tonalElevation = 3.dp) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 6.dp, vertical = 6.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val scale = chromeScale(maxWidth.value.roundToInt(), LocalDensity.current.fontScale)
+        // Below 400dp six equal actions leave <48dp per target, so wrap to four.
+        val actionsPerRow = if (maxWidth < 400.dp) 4 else 6
+        val minActionHeight = scale.minRowHeightDp.dp
+
+        Surface(tonalElevation = 3.dp) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
             ) {
-                if (hasSelection) {
-                    Text(
-                        "${selection.size}쪽 선택됨",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                } else {
-                    Text(
-                        "페이지를 골라 정리하세요",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (hasSelection) {
+                        Text(
+                            "${selection.size}쪽 선택됨",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    } else {
+                        Text(
+                            "페이지를 골라 정리하세요",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
                 }
-                Spacer(Modifier.weight(1f))
-            }
 
-            Row(Modifier.fillMaxWidth()) {
-                OrganizeAction(
-                    icon = Icons.Outlined.RotateLeft,
-                    label = "왼쪽",
-                    enabled = hasSelection,
-                    modifier = Modifier.weight(1f),
-                ) { onRotate(selection, -90) }
-                OrganizeAction(
-                    icon = Icons.Outlined.RotateRight,
-                    label = "오른쪽",
-                    enabled = hasSelection,
-                    modifier = Modifier.weight(1f),
-                ) { onRotate(selection, 90) }
-                OrganizeAction(
-                    icon = Icons.Outlined.ContentCopy,
-                    label = "복제",
-                    enabled = hasSelection,
-                    modifier = Modifier.weight(1f),
-                ) { onDuplicate(selection) }
-                OrganizeAction(
-                    icon = Icons.Outlined.Delete,
-                    label = "삭제",
-                    enabled = hasSelection,
-                    modifier = Modifier.weight(1f),
-                ) { onDelete(selection) }
-                OrganizeAction(
-                    icon = Icons.Outlined.ArrowUpward,
-                    label = "앞으로",
-                    enabled = selection.any { it > 0 },
-                    modifier = Modifier.weight(1f),
-                ) { onMove(selection, -1) }
-                OrganizeAction(
-                    icon = Icons.Outlined.ArrowDownward,
-                    label = "뒤로",
-                    enabled = selection.any { it < pageCount - 1 },
-                    modifier = Modifier.weight(1f),
-                ) { onMove(selection, 1) }
-            }
+                val pageActions = listOf(
+                    OrganizeActionSpec(Icons.Outlined.RotateLeft, "왼쪽", hasSelection) {
+                        onRotate(selection, -90)
+                    },
+                    OrganizeActionSpec(Icons.Outlined.RotateRight, "오른쪽", hasSelection) {
+                        onRotate(selection, 90)
+                    },
+                    OrganizeActionSpec(Icons.Outlined.ContentCopy, "복제", hasSelection) {
+                        onDuplicate(selection)
+                    },
+                    OrganizeActionSpec(Icons.Outlined.Delete, "삭제", hasSelection) {
+                        onDelete(selection)
+                    },
+                    OrganizeActionSpec(Icons.Outlined.ArrowUpward, "앞으로", selection.any { it > 0 }) {
+                        onMove(selection, -1)
+                    },
+                    OrganizeActionSpec(
+                        Icons.Outlined.ArrowDownward,
+                        "뒤로",
+                        selection.any { it < pageCount - 1 },
+                    ) { onMove(selection, 1) },
+                )
+                val documentActions = listOf(
+                    OrganizeActionSpec(Icons.Outlined.Add, "빈 페이지", hasSelection) {
+                        selection.maxOrNull()?.let(onInsertBlank)
+                    },
+                    OrganizeActionSpec(Icons.Outlined.OpenInNew, "추출", hasSelection) {
+                        onExtract(selection)
+                    },
+                    OrganizeActionSpec(Icons.Outlined.CallMerge, "병합", pageCount > 0, onMerge),
+                    OrganizeActionSpec(Icons.Outlined.CallSplit, "분할", pageCount > 1, onSplit),
+                    OrganizeActionSpec(Icons.Outlined.FileDownload, "내보내기", pageCount > 0, onExport),
+                )
 
-            HorizontalDivider(Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
-
-            Row(Modifier.fillMaxWidth()) {
-                OrganizeAction(
-                    icon = Icons.Outlined.Add,
-                    label = "빈 페이지",
-                    enabled = hasSelection,
-                    modifier = Modifier.weight(1f),
-                ) { selection.maxOrNull()?.let(onInsertBlank) }
-                OrganizeAction(
-                    icon = Icons.Outlined.OpenInNew,
-                    label = "추출",
-                    enabled = hasSelection,
-                    modifier = Modifier.weight(1f),
-                ) { onExtract(selection) }
-                OrganizeAction(
-                    icon = Icons.Outlined.CallMerge,
-                    label = "병합",
-                    enabled = pageCount > 0,
-                    modifier = Modifier.weight(1f),
-                    onClick = onMerge,
-                )
-                OrganizeAction(
-                    icon = Icons.Outlined.CallSplit,
-                    label = "분할",
-                    enabled = pageCount > 1,
-                    modifier = Modifier.weight(1f),
-                    onClick = onSplit,
-                )
-                OrganizeAction(
-                    icon = Icons.Outlined.FileDownload,
-                    label = "내보내기",
-                    enabled = pageCount > 0,
-                    modifier = Modifier.weight(1f),
-                    onClick = onExport,
-                )
+                listOf(pageActions, documentActions).forEachIndexed { group, actions ->
+                    if (group > 0) {
+                        HorizontalDivider(Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                    }
+                    actions.chunked(actionsPerRow).forEach { row ->
+                        Row(Modifier.fillMaxWidth()) {
+                            row.forEach { action ->
+                                OrganizeAction(
+                                    icon = action.icon,
+                                    label = action.label,
+                                    enabled = action.enabled,
+                                    minHeight = minActionHeight,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = action.onClick,
+                                )
+                            }
+                            repeat(actionsPerRow - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
             }
         }
     }
 }
+
+private data class OrganizeActionSpec(
+    val icon: ImageVector,
+    val label: String,
+    val enabled: Boolean,
+    val onClick: () -> Unit,
+)
 
 @Composable
 private fun OrganizeAction(
     icon: ImageVector,
     label: String,
     enabled: Boolean,
+    minHeight: Dp,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -517,14 +528,16 @@ private fun OrganizeAction(
     }
     Column(
         modifier = modifier
+            .heightIn(min = minHeight)
             .clip(RoundedCornerShape(10.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
         Icon(
             icon,
-            contentDescription = label,
+            contentDescription = null,
             tint = tint,
             modifier = Modifier.size(21.dp),
         )
@@ -533,8 +546,8 @@ private fun OrganizeAction(
             label,
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
             color = tint,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
+            overflow = TextOverflow.Clip,
         )
     }
 }

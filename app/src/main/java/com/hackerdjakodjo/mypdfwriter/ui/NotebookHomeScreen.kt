@@ -105,6 +105,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -115,6 +119,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NotebookDraft
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
+import kotlin.math.roundToInt
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -134,6 +139,11 @@ private val CoverPalette: List<Int> = listOf(
     0xFFEDE6D2.toInt(),
     0xFFD7E7E4.toInt(),
     0xFFF3EBCF.toInt(),
+)
+
+/** Spoken colour names for the cover swatches, in [CoverPalette] order. */
+private val CoverColorNames = listOf(
+    "하늘색", "민트색", "살구색", "분홍색", "라벤더색", "모래색", "청록색", "연두색",
 )
 
 /**
@@ -282,6 +292,7 @@ fun NotebookHomeScreen(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val expanded = maxWidth >= 700.dp
         val horizontalPadding = if (expanded) 24.dp else 16.dp
+        val scale = chromeScale(maxWidth.value.roundToInt(), LocalDensity.current.fontScale)
         val subtitle = when (section) {
             LibrarySection.NOTES -> "노트 ${notebooks.count { !it.trashed }}개 · PDF ${pdfs.size}개"
             LibrarySection.PDF -> "최근 PDF ${pdfs.size}개"
@@ -310,12 +321,16 @@ fun NotebookHomeScreen(
                                             LibrarySection.TAGS -> "태그"
                                         },
                                         style = MaterialTheme.typography.titleLarge,
+                                        maxLines = scale.titleMaxLines,
+                                        modifier = Modifier.semantics { heading() },
                                     )
-                                    Text(
-                                        subtitle,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                                    if (scale.showSubtitle) {
+                                        Text(
+                                            subtitle,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                 }
                             },
                             actions = {
@@ -333,7 +348,7 @@ fun NotebookHomeScreen(
                                 IconButton(onClick = { showSettings = true }) {
                                     Icon(
                                         Icons.Outlined.Settings,
-                                        contentDescription = "설정",
+                                        contentDescription = "홈 설정",
                                     )
                                 }
                             },
@@ -345,7 +360,7 @@ fun NotebookHomeScreen(
                             HomeSearchField(
                                 query = query,
                                 onQueryChange = { query = it },
-                                placeholder = when (section) {
+                                label = when (section) {
                                     LibrarySection.PDF -> "PDF 이름 검색"
                                     LibrarySection.TAGS -> "태그 검색"
                                     LibrarySection.NOTES -> "노트 제목·태그 검색"
@@ -587,7 +602,10 @@ private fun HomeCreateFab(
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
-        FloatingActionButton(onClick = { open = true }) {
+        FloatingActionButton(
+            onClick = { open = true },
+            modifier = Modifier.size(56.dp),
+        ) {
             Icon(Icons.Outlined.Add, contentDescription = "새로 만들기")
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -627,7 +645,7 @@ private fun HomeCreateFab(
 private fun HomeSearchField(
     query: String,
     onQueryChange: (String) -> Unit,
-    placeholder: String,
+    label: String,
 ) {
     OutlinedTextField(
         value = query,
@@ -637,11 +655,14 @@ private fun HomeSearchField(
             .padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
         singleLine = true,
         shape = RoundedCornerShape(18.dp),
-        placeholder = { Text(placeholder) },
+        label = { Text(label) },
         leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
         trailingIcon = {
             if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
+                IconButton(
+                    onClick = { onQueryChange("") },
+                    modifier = Modifier.size(48.dp),
+                ) {
                     Icon(Icons.Outlined.Close, contentDescription = "검색어 지우기")
                 }
             }
@@ -867,6 +888,7 @@ private fun FilterButton(activeCount: Int, onClick: () -> Unit) {
         OutlinedButton(
             onClick = onClick,
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+            modifier = Modifier.heightIn(min = 48.dp),
         ) {
             Icon(Icons.Outlined.FilterList, contentDescription = null, modifier = Modifier.size(17.dp))
             Spacer(Modifier.width(4.dp))
@@ -886,6 +908,7 @@ private fun SortMenuButton(
         OutlinedButton(
             onClick = { open = true },
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+            modifier = Modifier.heightIn(min = 48.dp),
         ) {
             Icon(
                 Icons.AutoMirrored.Outlined.Sort,
@@ -919,6 +942,7 @@ private fun ViewModeButton(gridMode: Boolean, onToggleGrid: () -> Unit) {
     OutlinedButton(
         onClick = onToggleGrid,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+        modifier = Modifier.heightIn(min = 48.dp),
     ) {
         Icon(
             if (gridMode) Icons.AutoMirrored.Outlined.ViewList else Icons.Outlined.GridView,
@@ -953,26 +977,29 @@ private fun ActiveFilterRow(
             chips.forEach { chip ->
                 AssistChip(
                     onClick = { onRemove(chip.kind) },
+                    modifier = Modifier.heightIn(min = 48.dp),
                     label = {
                         Text(
                             chip.label,
                             style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 2,
                         )
                     },
                     trailingIcon = {
                         Icon(
                             Icons.Outlined.Close,
-                            contentDescription = "필터 제거",
+                            contentDescription = null,
                             modifier = Modifier.size(14.dp),
                         )
                     },
                 )
             }
         }
-        TextButton(onClick = onClearAll) {
-            Text("모두 지우기", maxLines = 1, style = MaterialTheme.typography.labelMedium)
+        TextButton(
+            onClick = onClearAll,
+            modifier = Modifier.heightIn(min = 48.dp),
+        ) {
+            Text("모두 지우기", maxLines = 2, style = MaterialTheme.typography.labelMedium)
         }
     }
 }
@@ -1006,14 +1033,14 @@ private fun NotebookGridCard(notebook: Notebook, actions: NotebookActions) {
                         onClick = { actions.toggleFavorite(notebook.id) },
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .size(34.dp)
+                            .padding(4.dp)
+                            .size(48.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)),
                     ) {
                         Icon(
                             if (notebook.favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder,
-                            contentDescription = if (notebook.favorite) "즐겨찾기 해제" else "즐겨찾기",
+                            contentDescription = favoriteToggleDescription(notebook.favorite),
                             tint = if (notebook.favorite) {
                                 MaterialTheme.colorScheme.secondary
                             } else {
@@ -1076,12 +1103,14 @@ private fun NotebookGridCard(notebook: Notebook, actions: NotebookActions) {
                         TextButton(
                             onClick = { actions.restore(notebook.id) },
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.heightIn(min = 48.dp),
                         ) {
                             Text("복원")
                         }
                         TextButton(
                             onClick = { actions.deleteForever(notebook.id) },
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.heightIn(min = 48.dp),
                         ) {
                             Text("영구 삭제", color = MaterialTheme.colorScheme.error)
                         }
@@ -1159,12 +1188,14 @@ private fun NotebookListRow(notebook: Notebook, actions: NotebookActions) {
                         TextButton(
                             onClick = { actions.restore(notebook.id) },
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.heightIn(min = 48.dp),
                         ) {
                             Text("복원")
                         }
                         TextButton(
                             onClick = { actions.deleteForever(notebook.id) },
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.heightIn(min = 48.dp),
                         ) {
                             Text("영구 삭제", color = MaterialTheme.colorScheme.error)
                         }
@@ -1172,10 +1203,13 @@ private fun NotebookListRow(notebook: Notebook, actions: NotebookActions) {
                 }
             }
             if (!notebook.trashed) {
-                IconButton(onClick = { actions.toggleFavorite(notebook.id) }) {
+                IconButton(
+                    onClick = { actions.toggleFavorite(notebook.id) },
+                    modifier = Modifier.size(48.dp),
+                ) {
                     Icon(
                         if (notebook.favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder,
-                        contentDescription = if (notebook.favorite) "즐겨찾기 해제" else "즐겨찾기",
+                        contentDescription = favoriteToggleDescription(notebook.favorite),
                         tint = if (notebook.favorite) {
                             MaterialTheme.colorScheme.secondary
                         } else {
@@ -1194,10 +1228,10 @@ private fun NotebookListRow(notebook: Notebook, actions: NotebookActions) {
 private fun NotebookMenuButton(notebook: Notebook, actions: NotebookActions) {
     var open by remember(notebook.id) { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = { open = true }, modifier = Modifier.size(48.dp)) {
             Icon(
                 Icons.Outlined.MoreVert,
-                contentDescription = "노트 메뉴",
+                contentDescription = menuLabel("노트 메뉴", notebook.title),
                 modifier = Modifier.size(19.dp),
             )
         }
@@ -1528,15 +1562,21 @@ private fun ImportPdfBanner(onImportPdf: () -> Unit, onCreatePdf: () -> Unit) {
             }
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onImportPdf, modifier = Modifier.weight(1f)) {
+                Button(
+                    onClick = onImportPdf,
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                ) {
                     Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("PDF 가져오기")
+                    Text("PDF 가져오기", maxLines = 2)
                 }
-                OutlinedButton(onClick = onCreatePdf, modifier = Modifier.weight(1f)) {
+                OutlinedButton(
+                    onClick = onCreatePdf,
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                ) {
                     Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("빈 PDF")
+                    Text("빈 PDF", maxLines = 2)
                 }
             }
         }
@@ -1558,7 +1598,11 @@ private fun PdfHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text("최근 PDF", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "최근 PDF",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.semantics { heading() },
+            )
             Text(
                 if (filtered) "검색 ${count}개" else "${count}개",
                 style = MaterialTheme.typography.labelMedium,
@@ -1566,7 +1610,7 @@ private fun PdfHeader(
             )
         }
         SortMenuButton(sort = sort, onSortChange = onSortChange)
-        IconButton(onClick = onOpenTools) {
+        IconButton(onClick = onOpenTools, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Outlined.Dashboard, contentDescription = "PDF 도구")
         }
         ViewModeButton(gridMode = gridMode, onToggleGrid = onToggleGrid)
@@ -1601,10 +1645,10 @@ private fun PdfGridCard(doc: RecentDoc, onClick: () -> Unit, onMenu: () -> Unit)
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = onMenu, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
                     Icon(
                         Icons.Outlined.MoreVert,
-                        contentDescription = "PDF 메뉴",
+                        contentDescription = menuLabel("PDF 메뉴", doc.name),
                         modifier = Modifier.size(19.dp),
                     )
                 }
@@ -1670,10 +1714,10 @@ private fun PdfListRow(doc: RecentDoc, onClick: () -> Unit, onMenu: () -> Unit) 
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            IconButton(onClick = onMenu, modifier = Modifier.size(36.dp)) {
+            IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
                 Icon(
                     Icons.Outlined.MoreVert,
-                    contentDescription = "PDF 메뉴",
+                    contentDescription = menuLabel("PDF 메뉴", doc.name),
                     modifier = Modifier.size(19.dp),
                 )
             }
@@ -1723,7 +1767,11 @@ private fun TagsSection(
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(Modifier.padding(top = 4.dp)) {
-                Text("태그", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "태그",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.semantics { heading() },
+                )
                 Text(
                     "노트에 붙인 태그를 한곳에서 찾아봅니다.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -1836,7 +1884,12 @@ private fun EmptyState(
                 )
             }
             Spacer(Modifier.height(12.dp))
-            Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() },
+            )
             Spacer(Modifier.height(4.dp))
             Text(
                 body,
@@ -1916,6 +1969,7 @@ private fun CreateNotebookDialog(
                         row.forEach { color ->
                             CoverSwatch(
                                 color = color,
+                                name = CoverColorNames[CoverPalette.indexOf(color)],
                                 selected = coverColor == color,
                                 onClick = { coverColor = color },
                             )
@@ -1933,6 +1987,7 @@ private fun CreateNotebookDialog(
                         FilterChip(
                             selected = coverStyle == style,
                             onClick = { coverStyle = style },
+                            modifier = Modifier.heightIn(min = 48.dp),
                             label = { Text(coverStyleLabel(style)) },
                         )
                     }
@@ -1948,6 +2003,7 @@ private fun CreateNotebookDialog(
                         FilterChip(
                             selected = template == paper,
                             onClick = { template = paper },
+                            modifier = Modifier.heightIn(min = 48.dp),
                             label = { Text(paper.label) },
                         )
                     }
@@ -2002,6 +2058,7 @@ private fun CreateNotebookDialog(
         },
         confirmButton = {
             TextButton(
+                modifier = Modifier.heightIn(min = 48.dp),
                 onClick = {
                     onCreate(
                         NotebookDraft(
@@ -2019,17 +2076,25 @@ private fun CreateNotebookDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("취소") }
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("취소") }
         },
     )
 }
 
 @Composable
-private fun CoverSwatch(color: Int, selected: Boolean, onClick: () -> Unit) {
+private fun CoverSwatch(
+    color: Int,
+    name: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
     val swatch = Color(color)
     Box(
         modifier = Modifier
-            .size(38.dp)
+            .size(48.dp)
             .clip(CircleShape)
             .background(swatch)
             .border(
@@ -2043,13 +2108,14 @@ private fun CoverSwatch(color: Int, selected: Boolean, onClick: () -> Unit) {
                 ),
                 CircleShape,
             )
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = colorChoiceLabel(name, selected) },
         contentAlignment = Alignment.Center,
     ) {
         if (selected) {
             Icon(
                 Icons.Outlined.Check,
-                contentDescription = "선택된 표지 색",
+                contentDescription = null,
                 tint = if (swatch.luminance() > 0.55f) Color(0xFF1B1C19) else Color.White,
                 modifier = Modifier.size(19.dp),
             )
@@ -2087,12 +2153,16 @@ private fun RenameNotebookDialog(
             TextButton(
                 onClick = { onConfirm(title.trim()) },
                 enabled = title.isNotBlank(),
+                modifier = Modifier.heightIn(min = 48.dp),
             ) {
                 Text("저장")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("취소") }
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("취소") }
         },
     )
 }
@@ -2167,10 +2237,16 @@ private fun MoveNotebookDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(folder.trim()) }) { Text("이동") }
+            TextButton(
+                onClick = { onConfirm(folder.trim()) },
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("이동") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("취소") }
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("취소") }
         },
     )
 }
@@ -2204,10 +2280,16 @@ private fun EditTagsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(parseTagInput(text)) }) { Text("저장") }
+            TextButton(
+                onClick = { onConfirm(parseTagInput(text)) },
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("저장") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("취소") }
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("취소") }
         },
     )
 }
@@ -2235,12 +2317,18 @@ private fun DeleteForeverDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            TextButton(
+                onClick = onConfirm,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
                 Text("영구 삭제", color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("취소") }
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("취소") }
         },
     )
 }

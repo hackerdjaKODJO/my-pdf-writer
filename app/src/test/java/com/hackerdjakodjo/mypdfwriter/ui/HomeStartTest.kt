@@ -91,4 +91,27 @@ class HomeStartTest {
         assertFalse(HomeFilterState(tag = "영어").showsHomeStart())
         assertFalse(HomeFilterState(query = "기말").showsHomeStart())
     }
+
+    @Test
+    fun quickActionsUseTwoColumnsWhenNarrowOrLarge() {
+        assertEquals(2, homeQuickActionColumns(320, 1f))
+        assertEquals(2, homeQuickActionColumns(359, 1f))
+        assertEquals(4, homeQuickActionColumns(400, 1f))
+        assertEquals(2, homeQuickActionColumns(400, 1.5f))
+        assertEquals(2, homeQuickActionColumns(720, 2f))
+    }
+
+    @Test
+    fun quickActionLabelsWrapToTwoLinesWithoutEllipsis() {
+        assertEquals(2, homeQuickActionLabelMaxLines(48, "백업/복원"))
+        assertEquals(1, homeQuickActionLabelMaxLines(96, "백업/복원"))
+        assertEquals(1, homeQuickActionLabelMaxLines(60, "새 노트"))
+        assertEquals(2, homeQuickActionLabelMaxLines(100, "백업/복원", 2f))
+    }
+
+    @Test
+    fun favoriteStarDescriptionCarriesSelectedState() {
+        assertEquals("즐겨찾기", favoriteToggleDescription(false))
+        assertEquals("즐겨찾기, 선택됨", favoriteToggleDescription(true))
+    }
 }
