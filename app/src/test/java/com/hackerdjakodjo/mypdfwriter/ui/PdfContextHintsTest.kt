@@ -144,6 +144,16 @@ class PdfContextHintsTest {
     }
 
     @Test
+    fun accessibilityLabelsExplainTheSearchFieldAndDisabledMarkup() {
+        assertEquals("검색어", PDF_SEARCH_FIELD_LABEL)
+        assertEquals(
+            "형광펜 표시 (선택한 텍스트 없음)",
+            disabledReasonLabel("형광펜 표시", PDF_SELECTION_REQUIRED_REASON),
+        )
+        assertEquals("굵기 4", sliderLabel("굵기", "4"))
+    }
+
+    @Test
     fun fullScreenShowsOnlyHintsNotAlreadyInTheActionBar() {
         fun visible(hint: PdfContextHint, selectionBar: Boolean, searchNav: Boolean = false) =
             pdfContextHintChipVisible(

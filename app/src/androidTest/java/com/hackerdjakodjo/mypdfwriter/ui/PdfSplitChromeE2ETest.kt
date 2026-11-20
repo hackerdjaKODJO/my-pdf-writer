@@ -154,6 +154,26 @@ class PdfSplitChromeE2ETest {
     }
 
     @Test
+    fun hiddenPdfToolsChipAnnouncesItsRestoreAction() {
+        var toggled = 0
+        composeRule.setContent {
+            MaterialTheme {
+                SplitDivider(
+                    paneFraction = 0.70f,
+                    totalHeightPx = 1000f,
+                    pdfToolsVisible = false,
+                    onFractionChange = {},
+                    onPresetSelected = {},
+                    onTogglePdfTools = { toggled += 1 },
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("PDF 도구 표시").performClick()
+        assertEquals(1, toggled)
+    }
+
+    @Test
     fun dividerTapOpensThePresetPopupAndAppliesAChoice() {
         var selected = -1f
         composeRule.setContent {

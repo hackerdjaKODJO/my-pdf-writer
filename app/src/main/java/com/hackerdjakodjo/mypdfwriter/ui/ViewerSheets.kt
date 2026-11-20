@@ -439,6 +439,7 @@ fun SearchSheet(
                 value = state.searchQuery,
                 onValueChange = vm::search,
                 modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                label = { Text(PDF_SEARCH_FIELD_LABEL) },
                 placeholder = { Text(stringResource(R.string.search_hint)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),

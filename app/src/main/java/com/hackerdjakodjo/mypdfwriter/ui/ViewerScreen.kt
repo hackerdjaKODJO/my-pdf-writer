@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -92,6 +93,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -675,6 +679,7 @@ fun ViewerScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.sectionHeading(),
                             )
                             Text(
                                 "${stringResource(R.string.page_of, state.pageIndex + 1, state.pageCount)} · 위치 $progressPercent%",
@@ -814,7 +819,12 @@ fun ViewerScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                // TalkBack announces the pane name instead of an unlabelled
+                // full-screen canvas when the viewer opens.
+                .semantics {
+                    paneTitle = if (splitMode) "PDF 분할 보기" else "PDF 보기"
+                },
         ) {
             // Split mode removes the app bar and bottom dock from layout, so the
             // PDF starts at the top safe edge and the pane gets the full rest of
@@ -1533,7 +1543,13 @@ private fun TextSelectionActionBar(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onDismiss) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.sizeIn(
+                        minWidth = MIN_TARGET_DP.dp,
+                        minHeight = MIN_TARGET_DP.dp,
+                    ),
+                ) {
                     Text("텍스트 선택 종료")
                 }
             }
@@ -1544,9 +1560,20 @@ private fun TextSelectionActionBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextSelectionPrimaryAction.entries.forEach { action ->
+                val enabled = action == TextSelectionPrimaryAction.MORE || hasSelection
                 SelectionAction(
                     action = action,
-                    enabled = action == TextSelectionPrimaryAction.MORE || hasSelection,
+                    enabled = enabled,
+                    // A disabled markup action still speaks what it is and why it
+                    // cannot be used, instead of being an unlabelled grey tile.
+                    description = if (enabled) {
+                        action.contentDescription
+                    } else {
+                        disabledReasonLabel(
+                            action.contentDescription,
+                            PDF_SELECTION_REQUIRED_REASON,
+                        )
+                    },
                     onClick = when (action) {
                         TextSelectionPrimaryAction.HIGHLIGHT -> onHighlight
                         TextSelectionPrimaryAction.UNDERLINE -> onUnderline
@@ -1567,6 +1594,7 @@ private fun TextSelectionActionBar(
 private fun SelectionAction(
     action: TextSelectionPrimaryAction,
     enabled: Boolean,
+    description: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1576,7 +1604,12 @@ private fun SelectionAction(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier,
+        modifier = modifier
+            .sizeIn(
+                minWidth = MIN_TARGET_DP.dp,
+                minHeight = MIN_TARGET_DP.dp,
+            )
+            .semantics { contentDescription = description },
     ) {
         Column(
             modifier = Modifier
@@ -1636,7 +1669,14 @@ private fun PageLockBadge(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
             Spacer(Modifier.width(6.dp))
             Text("페이지 잠금", style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.width(8.dp))
-            TextButton(onClick = onUnlock, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
+            TextButton(
+                onClick = onUnlock,
+                modifier = Modifier.sizeIn(
+                    minWidth = MIN_TARGET_DP.dp,
+                    minHeight = MIN_TARGET_DP.dp,
+                ),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+            ) {
                 Text("해제", style = MaterialTheme.typography.labelLarge)
             }
         }
@@ -1736,12 +1776,22 @@ private fun PdfContextHintChip(
                 Spacer(Modifier.width(4.dp))
                 TextButton(
                     onClick = onOcr,
+                    modifier = Modifier.sizeIn(
+                        minWidth = MIN_TARGET_DP.dp,
+                        minHeight = MIN_TARGET_DP.dp,
+                    ),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                 ) {
                     Text(PDF_HINT_OCR_ACTION, style = MaterialTheme.typography.labelLarge)
                 }
             }
-            IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.sizeIn(
+                    minWidth = MIN_TARGET_DP.dp,
+                    minHeight = MIN_TARGET_DP.dp,
+                ),
+            ) {
                 Icon(
                     Icons.Outlined.Close,
                     contentDescription = "힌트 닫기",

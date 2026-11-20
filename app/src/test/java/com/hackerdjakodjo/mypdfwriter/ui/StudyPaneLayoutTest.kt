@@ -126,8 +126,10 @@ class StudyPaneLayoutTest {
     @Test
     fun dividerRowAndPresetTargetsUseTheDocumentedSizes() {
         assertEquals(28, STUDY_PANE_DIVIDER_ROW_HEIGHT_DP)
-        // 18dp -> 28dp drag row; popup rows get full 44dp touch targets.
-        assertEquals(44, STUDY_PANE_PRESET_ROW_HEIGHT_DP)
+        // The visible pill stays in the 28dp row; TalkBack gets a 48dp target
+        // through sizeIn, and the popup rows are a full 48dp tall.
+        assertEquals(MIN_TARGET_DP, STUDY_PANE_PRESET_ROW_HEIGHT_DP)
+        assertTrue(isAccessibleTarget(STUDY_PANE_PRESET_ROW_HEIGHT_DP))
         assertTrue(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP > 18)
     }
 

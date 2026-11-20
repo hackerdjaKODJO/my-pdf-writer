@@ -108,8 +108,8 @@ internal fun isStudyPanePresetSelected(currentFraction: Float, presetFraction: F
 /** Height of the resize divider row between the PDF strip and the note pane. */
 internal const val STUDY_PANE_DIVIDER_ROW_HEIGHT_DP = 28
 
-/** 44dp target used by the size-popup rows; the inline pill fits the 28dp row. */
-internal const val STUDY_PANE_PRESET_ROW_HEIGHT_DP = 44
+/** Full 48dp TalkBack target for the size-popup rows; the inline pill fits the 28dp row. */
+internal const val STUDY_PANE_PRESET_ROW_HEIGHT_DP = MIN_TARGET_DP
 
 /** Midpoint between the 50% and 85% presets, used by divider double-tap. */
 private const val STUDY_PANE_DOUBLE_TAP_MIDPOINT_FRACTION = 0.675f
