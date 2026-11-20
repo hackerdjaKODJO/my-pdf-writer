@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -48,6 +48,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
@@ -69,6 +72,17 @@ internal fun penStyleLabel(style: PenStyle): String = when (style) {
     PenStyle.BRUSH -> "붓"
     PenStyle.PENCIL -> "연필"
 }
+
+/**
+ * Reorder slots look identical, so their spoken names carry the one-based
+ * position and the destination. TalkBack can then tell the two arrows apart.
+ */
+internal fun penBoxReorderLabel(direction: String, from: Int, to: Int, name: String): String =
+    "$name ${from}번 $direction (${to}번으로 이동)"
+
+/** Star label that names both the pen and its slot position. */
+internal fun penBoxFavoriteToggleLabel(name: String, position: Int, favorite: Boolean): String =
+    "$name ${position}번 " + if (favorite) "즐겨찾기 해제" else "즐겨찾기에 추가"
 
 /**
  * Bottom sheet for saved pens. Applying a preset updates the active tool, colour,
@@ -164,6 +178,7 @@ fun PenBoxSheet(
                     localFavorites.forEachIndexed { index, preset ->
                         FavoritePenChip(
                             preset = preset,
+                            position = index + 1,
                             active = samePenStyle(preset, current),
                             canMoveLeft = index > 0,
                             canMoveRight = index < localFavorites.lastIndex,
@@ -183,9 +198,10 @@ fun PenBoxSheet(
                     .heightIn(max = 340.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(presets, key = { it.id }) { preset ->
+                itemsIndexed(presets, key = { _, preset -> preset.id }) { index, preset ->
                     PenBoxRow(
                         preset = preset,
+                        position = index + 1,
                         active = samePenStyle(preset, current),
                         favorite = preset.id in localFavorites.map { it.id },
                         canDelete = presets.size > 1,
@@ -241,6 +257,7 @@ fun PenBoxSheet(
 @Composable
 private fun FavoritePenChip(
     preset: PenPreset,
+    position: Int,
     active: Boolean,
     canMoveLeft: Boolean,
     canMoveRight: Boolean,
@@ -261,9 +278,15 @@ private fun FavoritePenChip(
             if (active) 1.5.dp else 1.dp,
             if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
         ),
+        modifier = Modifier.semantics {
+            contentDescription = stateLabel(preset.name, active)
+            this.selected = active
+        },
     ) {
         Column(
-            modifier = Modifier.width(96.dp).padding(6.dp),
+            // Three 48 dp controls plus padding: the wide chip scrolls inside the
+            // registry row instead of clipping its move/star buttons.
+            modifier = Modifier.width(160.dp).padding(6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             PenBoxPreview(preset = preset, modifier = Modifier.fillMaxWidth().height(24.dp))
@@ -274,25 +297,42 @@ private fun FavoritePenChip(
                 overflow = TextOverflow.Ellipsis,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onMoveLeft, enabled = canMoveLeft, modifier = Modifier.size(28.dp)) {
+                IconButton(
+                    onClick = onMoveLeft,
+                    enabled = canMoveLeft,
+                    modifier = Modifier.size(MIN_TARGET_DP.dp),
+                ) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "앞으로 이동",
+                        contentDescription = penBoxReorderLabel(
+                            "앞으로", position, position - 1, preset.name,
+                        ),
                         modifier = Modifier.size(16.dp),
                     )
                 }
-                IconButton(onClick = onToggleFavorite, modifier = Modifier.size(28.dp)) {
+                IconButton(
+                    onClick = onToggleFavorite,
+                    modifier = Modifier.size(MIN_TARGET_DP.dp),
+                ) {
                     Icon(
                         Icons.Filled.Star,
-                        contentDescription = "즐겨찾기 해제",
+                        contentDescription = penBoxFavoriteToggleLabel(
+                            preset.name, position, favorite = true,
+                        ),
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
-                IconButton(onClick = onMoveRight, enabled = canMoveRight, modifier = Modifier.size(28.dp)) {
+                IconButton(
+                    onClick = onMoveRight,
+                    enabled = canMoveRight,
+                    modifier = Modifier.size(MIN_TARGET_DP.dp),
+                ) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = "뒤로 이동",
+                        contentDescription = penBoxReorderLabel(
+                            "뒤로", position, position + 1, preset.name,
+                        ),
                         modifier = Modifier.size(16.dp),
                     )
                 }
@@ -304,6 +344,7 @@ private fun FavoritePenChip(
 @Composable
 private fun PenBoxRow(
     preset: PenPreset,
+    position: Int,
     active: Boolean,
     favorite: Boolean,
     canDelete: Boolean,
@@ -324,6 +365,10 @@ private fun PenBoxRow(
             BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
         } else {
             BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        },
+        modifier = Modifier.semantics {
+            contentDescription = stateLabel(preset.name, active)
+            this.selected = active
         },
     ) {
         Row(
@@ -364,10 +409,15 @@ private fun PenBoxRow(
                 preset = preset,
                 modifier = Modifier.width(60.dp).height(30.dp),
             )
-            IconButton(onClick = onToggleFavorite, modifier = Modifier.size(34.dp)) {
+            IconButton(
+                onClick = onToggleFavorite,
+                modifier = Modifier.size(MIN_TARGET_DP.dp),
+            ) {
                 Icon(
                     if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                    contentDescription = if (favorite) "즐겨찾기 해제" else "즐겨찾기에 추가",
+                    contentDescription = penBoxFavoriteToggleLabel(
+                        preset.name, position, favorite,
+                    ),
                     modifier = Modifier.size(18.dp),
                     tint = if (favorite) {
                         MaterialTheme.colorScheme.primary
@@ -376,21 +426,21 @@ private fun PenBoxRow(
                     },
                 )
             }
-            IconButton(onClick = onRename, modifier = Modifier.size(34.dp)) {
+            IconButton(onClick = onRename, modifier = Modifier.size(MIN_TARGET_DP.dp)) {
                 Icon(
                     Icons.Filled.Edit,
-                    contentDescription = "이름 변경",
+                    contentDescription = menuLabel("이름 변경", "${position}번 ${preset.name}"),
                     modifier = Modifier.size(18.dp),
                 )
             }
             IconButton(
                 onClick = onDelete,
                 enabled = canDelete,
-                modifier = Modifier.size(34.dp),
+                modifier = Modifier.size(MIN_TARGET_DP.dp),
             ) {
                 Icon(
                     Icons.Filled.Delete,
-                    contentDescription = "펜 삭제",
+                    contentDescription = menuLabel("펜 삭제", "${position}번 ${preset.name}"),
                     modifier = Modifier.size(18.dp),
                 )
             }

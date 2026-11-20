@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,9 +40,12 @@ import com.hackerdjakodjo.mypdfwriter.data.samePenStyle
 internal fun favoritePenTypeLabel(preset: PenPreset): String =
     if (preset.tool == Tool.HIGHLIGHT) "형광펜" else penStyleLabel(preset.penStyle)
 
-/** Accessible name for one favorite slot. */
-internal fun favoriteSlotDescription(preset: PenPreset): String =
-    "즐겨찾는 펜 ${preset.name}, ${favoritePenTypeLabel(preset)}"
+/**
+ * Accessible name for one favorite slot. The selected variant appends
+ * ", 선택됨" so TalkBack can tell which preset is currently applied.
+ */
+internal fun favoriteSlotDescription(preset: PenPreset, selected: Boolean = false): String =
+    stateLabel("즐겨찾는 펜 ${preset.name}, ${favoritePenTypeLabel(preset)}", selected)
 
 /** The slot list actually rendered: never more than the registry cap. */
 internal fun favoriteSlots(favorites: List<PenPreset>): List<PenPreset> =
@@ -100,9 +104,15 @@ private fun FavoriteSlot(
             if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
         ),
         modifier = Modifier
-            .sizeIn(minWidth = 56.dp, minHeight = 56.dp)
+            .sizeIn(
+                minWidth = maxOf(MIN_TARGET_DP, 56).dp,
+                minHeight = maxOf(MIN_TARGET_DP, 56).dp,
+            )
             .combinedClickable(onClick = onApply, onLongClick = onOpenRegistry)
-            .semantics { contentDescription = favoriteSlotDescription(preset) },
+            .semantics {
+                contentDescription = favoriteSlotDescription(preset, active)
+                this.selected = active
+            },
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
@@ -128,7 +138,7 @@ private fun FavoriteAddSlot(onOpenRegistry: () -> Unit) {
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier
-            .sizeIn(minWidth = 56.dp, minHeight = 56.dp)
+            .sizeIn(minWidth = maxOf(MIN_TARGET_DP, 56).dp, minHeight = maxOf(MIN_TARGET_DP, 56).dp)
             .combinedClickable(onClick = onOpenRegistry, onLongClick = onOpenRegistry)
             .semantics { contentDescription = "즐겨찾는 펜 편집" },
     ) {

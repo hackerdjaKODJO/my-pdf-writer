@@ -137,7 +137,8 @@ class NoteEditorControlsTest {
         val full = noteFullDockHeightDp(showContextTray = false)
 
         assertTrue(compact < full)
-        assertTrue("compact dock should stay under 80 dp, was $compact", compact <= 80)
+        assertTrue("compact rows must meet 48 dp, was $compact", compact >= MIN_TARGET_DP * 2)
+        assertTrue("compact dock should stay under 120 dp, was $compact", compact <= 120)
         assertEquals(
             compact + NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP,
             noteCompactDockHeightDp(showContextTray = true),
@@ -177,5 +178,29 @@ class NoteEditorControlsTest {
         assertTrue(hint.contains("레이어 1"))
         assertTrue(hint.contains("잠김"))
         assertTrue(hint.contains("줌 잠금"))
+    }
+
+    @Test
+    fun `dock and page descriptions name the tool state and page`() {
+        assertEquals("펜", noteToolDescription("펜", false))
+        assertEquals("펜, 선택됨", noteToolDescription("펜", true))
+        assertEquals("형광펜, 선택됨", noteToolDescription("형광펜", true))
+
+        assertEquals("페이지 1 / 3", notePagePillDescription(0, 3))
+        assertEquals("페이지 3 / 3", notePagePillDescription(2, 3))
+        assertEquals("페이지 1", notePageThumbnailDescription(0))
+        assertEquals("페이지 3", notePageThumbnailDescription(2))
+        assertEquals("페이지 3, 선택됨", stateLabel(notePageThumbnailDescription(2), true))
+    }
+
+    @Test
+    fun `style controls describe colors and slider values`() {
+        assertEquals("검정", noteColorName(NOTE_PALETTE[0]))
+        assertEquals("노랑", noteColorName(NOTE_PALETTE.last()))
+        assertEquals("사용자 색상", noteColorName(0xFF123456.toInt()))
+
+        assertEquals("검정, 선택됨", colorChoiceLabel(noteColorName(NOTE_PALETTE[0]), true))
+        assertEquals("굵기 4", noteStyleSliderDescription("굵기", "4"))
+        assertEquals("투명도 80%", noteStyleSliderDescription("투명도", "80%"))
     }
 }

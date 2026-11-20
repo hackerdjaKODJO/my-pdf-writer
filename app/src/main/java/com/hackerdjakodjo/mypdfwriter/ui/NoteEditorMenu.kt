@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,6 +53,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
@@ -59,6 +65,21 @@ import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
 
 /** Shared label so the study-card sub-sheet and tests use one vocabulary. */
 internal const val NOTE_MEMO_CARD_LABEL = "메모 카드"
+
+/** Every menu row is tall enough for TalkBack and large fonts. */
+internal const val NOTE_MENU_ROW_MIN_HEIGHT_DP = 56
+
+/**
+ * Two-state Korean label used for favourites and toggle rows. [stateLabel]
+ * supplies the separator and ordering so the spoken strings stay consistent
+ * across the top bar, the note menu and the ink settings sheet.
+ */
+internal fun noteStateAwareLabel(label: String, selected: Boolean): String =
+    stateLabel(label, true, if (selected) "선택됨" else "선택 안 됨")
+
+/** State-only description for a switch row, kept separate from its name. */
+internal fun noteToggleStateDescription(checked: Boolean): String =
+    stateLabel("", true, if (checked) "선택됨" else "선택 안 됨")
 
 /**
  * The main note menu is a short index, not a junk drawer. Page operations live in
@@ -178,7 +199,7 @@ internal fun NoteMenuSheet(
                         IconButton(onClick = onToggleFavorite) {
                             Icon(
                                 if (favorite) Icons.Filled.Star else Icons.Outlined.Star,
-                                contentDescription = "즐겨찾기",
+                                contentDescription = noteStateAwareLabel("즐겨찾기", favorite),
                                 tint = if (favorite) {
                                     MaterialTheme.colorScheme.secondary
                                 } else {
@@ -542,7 +563,9 @@ internal fun NoteInkSettingsSheet(
 private fun NoteMenuSectionHeader(label: String) {
     Text(
         label,
-        modifier = Modifier.padding(start = 10.dp, top = 10.dp, bottom = 2.dp),
+        modifier = Modifier
+            .padding(start = 10.dp, top = 10.dp, bottom = 2.dp)
+            .semantics { heading() },
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
     )
@@ -567,7 +590,10 @@ private fun NoteMenuRow(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
         color = Color.Transparent,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = NOTE_MENU_ROW_MIN_HEIGHT_DP.dp)
+            .semantics { contentDescription = menuLabel(title, supporting.orEmpty()) },
     ) {
         Row(
             modifier = Modifier
@@ -589,7 +615,7 @@ private fun NoteMenuRow(
                         supporting,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
+                        maxLines = labelMaxLines(220, supporting.length * 7),
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -610,7 +636,16 @@ private fun NoteMenuToggleRow(
         onClick = { onCheckedChange(!checked) },
         shape = RoundedCornerShape(12.dp),
         color = Color.Transparent,
-        modifier = Modifier.fillMaxWidth(),
+        // One focus target only: the row owns the click, the name and the state.
+        // The child Switch stays tappable but clears its own semantics so
+        // TalkBack never offers a second, identical toggle.
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = NOTE_MENU_ROW_MIN_HEIGHT_DP.dp)
+            .semantics {
+                contentDescription = noteStateAwareLabel(title, checked)
+                stateDescription = noteToggleStateDescription(checked)
+            },
     ) {
         Row(
             modifier = Modifier
@@ -635,7 +670,11 @@ private fun NoteMenuToggleRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier.clearAndSetSemantics {},
+            )
         }
     }
 }
@@ -666,6 +705,7 @@ private fun NotePressureCurveRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = NOTE_MENU_ROW_MIN_HEIGHT_DP.dp)
             .padding(horizontal = 10.dp, vertical = 7.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -701,6 +741,7 @@ private fun NotePressureCurveRow(
                     onClick = { onCurve(option) },
                     enabled = enabled,
                     label = { Text(pressureCurveLabel(option)) },
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 )
             }
         }

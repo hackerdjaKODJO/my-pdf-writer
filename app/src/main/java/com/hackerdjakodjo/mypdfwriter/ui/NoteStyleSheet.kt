@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +36,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
@@ -52,6 +58,18 @@ internal val NOTE_PALETTE = listOf(
     0xFF2C7A7B.toInt(),
     0xFFF2C94C.toInt(),
 )
+
+/** Spoken names paired with [NOTE_PALETTE], so every swatch is identifiable. */
+internal val NOTE_PALETTE_LABELS = listOf(
+    "검정", "남색", "빨강", "주황", "초록", "보라", "청록", "노랑",
+)
+
+internal fun noteColorName(color: Int): String =
+    NOTE_PALETTE_LABELS.getOrNull(NOTE_PALETTE.indexOf(color)) ?: "사용자 색상"
+
+/** Spoken name of a style slider, including its current formatted value. */
+internal fun noteStyleSliderDescription(label: String, valueLabel: String): String =
+    sliderLabel(label, valueLabel)
 
 /** Shared note vocabulary; keep the study-card names unchanged. */
 internal const val NOTE_TEXT_TOOL_LABEL = "글상자"
@@ -220,6 +238,7 @@ internal fun NoteStyleSheet(
                             selected = penStyle == style,
                             onClick = { onPenStyle(style) },
                             label = { Text(penStyleLabel(style)) },
+                            modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                         )
                     }
                 }
@@ -280,7 +299,7 @@ internal fun NoteStyleSheet(
 private fun StyleSectionLabel(label: String) {
     Text(
         label,
-        modifier = Modifier.padding(bottom = 6.dp),
+        modifier = Modifier.padding(bottom = 6.dp).semantics { heading() },
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -315,7 +334,14 @@ private fun NoteStyleSlider(
             value = value,
             onValueChange = onValueChange,
             valueRange = range,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics {
+                    contentDescription = noteStyleSliderDescription(label, valueLabel)
+                    // This Compose version exposes the value as stateDescription
+                    // (there is no progressText key); Slider keeps its range info.
+                    stateDescription = valueLabel
+                },
         )
     }
 }
@@ -328,20 +354,32 @@ internal fun NoteColorDot(
     modifier: Modifier = Modifier,
     size: Dp = 30.dp,
 ) {
+    // The whole 48 dp box is the touch target; only the inner circle is drawn,
+    // so the visual dot stays compact while TalkBack gets a full-size control.
     Box(
         modifier = modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(Color(color))
-            .border(
-                width = if (selected) 2.5.dp else 1.dp,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.outlineVariant
-                },
-                shape = CircleShape,
-            )
-            .clickable(onClickLabel = "색상 선택", onClick = onClick),
-    )
+            .size(MIN_TARGET_DP.dp)
+            .clickable(onClickLabel = "색상 선택", onClick = onClick)
+            .semantics {
+                contentDescription = colorChoiceLabel(noteColorName(color), selected)
+                this.selected = selected
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(Color(color))
+                .border(
+                    width = if (selected) 2.5.dp else 1.dp,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant
+                    },
+                    shape = CircleShape,
+                ),
+        )
+    }
 }

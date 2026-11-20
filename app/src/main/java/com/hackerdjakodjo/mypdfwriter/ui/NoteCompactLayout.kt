@@ -8,8 +8,9 @@ import com.hackerdjakodjo.mypdfwriter.data.Tool
  * The compact editor no longer reserves a full-width bottom bar: the canvas fills
  * the whole pane and a small translucent dock floats over its lower edge. Keeping
  * the row sizes, margins and maximum width here makes the "smaller than the full
- * dock" contract unit-testable without Compose. Every target stays inside the
- * 32–40 dp range requested for the floating chrome.
+ * dock" contract unit-testable without Compose. The dock rows are deliberately
+ * dense in appearance, but every interactive slot is at least [MIN_TARGET_DP];
+ * the visuals stay small inside that hit target instead.
  */
 
 /** The six primary tools shown in the compact dock, in display order. */
@@ -48,9 +49,9 @@ internal val NOTE_FULL_DOCK_ACTION_SLOTS = listOf(
     NoteDockActionSlot.REDO,
 )
 
-internal const val NOTE_COMPACT_TOOL_ROW_HEIGHT_DP = 34
-internal const val NOTE_COMPACT_ACTION_ROW_HEIGHT_DP = 32
-internal const val NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP = 38
+internal const val NOTE_COMPACT_TOOL_ROW_HEIGHT_DP = MIN_TARGET_DP
+internal const val NOTE_COMPACT_ACTION_ROW_HEIGHT_DP = MIN_TARGET_DP
+internal const val NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP = MIN_TARGET_DP
 internal const val NOTE_COMPACT_DOCK_DIVIDER_DP = 1
 internal const val NOTE_COMPACT_DOCK_VERTICAL_PADDING_DP = 3
 internal const val NOTE_COMPACT_DOCK_HORIZONTAL_PADDING_DP = 3
@@ -61,9 +62,9 @@ internal const val NOTE_COMPACT_DOCK_CORNER_DP = 18
 /** The floating pill stays narrow on tablets instead of growing into a bar. */
 internal const val NOTE_COMPACT_DOCK_MAX_WIDTH_DP = 340
 
-/** Heights of the existing full-screen dock, used only for comparison tests. */
-internal const val NOTE_FULL_DOCK_TOOL_ROW_HEIGHT_DP = 50
-internal const val NOTE_FULL_DOCK_ACTION_ROW_HEIGHT_DP = 46
+/** Heights of the full-screen dock: taller than the compact pill's 48 dp rows. */
+internal const val NOTE_FULL_DOCK_TOOL_ROW_HEIGHT_DP = 56
+internal const val NOTE_FULL_DOCK_ACTION_ROW_HEIGHT_DP = 56
 
 /**
  * Which piece of tool chrome the compact note pane shows. The study-pane header
@@ -81,14 +82,14 @@ internal fun noteCompactChromeMode(showTools: Boolean): NoteCompactChromeMode =
     if (showTools) NoteCompactChromeMode.DOCK else NoteCompactChromeMode.RESTORE_PILL
 
 /**
- * Restore-pill metrics. The pill is a real touch target (44 dp, the accessibility
- * minimum) even though the compact dock rows stay deliberately dense for the
- * study pane. It is anchored to the bottom-end corner, never to the centre of the
- * canvas where the user writes.
+ * Restore-pill metrics. The pill is a real touch target ([MIN_TARGET_DP]) even
+ * though its visible chrome stays deliberately dense for the study pane. It is
+ * anchored to the bottom-end corner, never to the centre of the canvas where the
+ * user writes.
  */
-internal const val NOTE_COMPACT_RESTORE_PILL_MIN_TARGET_DP = 44
-internal const val NOTE_COMPACT_RESTORE_PILL_HEIGHT_DP = 44
-internal const val NOTE_COMPACT_RESTORE_PILL_MIN_WIDTH_DP = 44
+internal const val NOTE_COMPACT_RESTORE_PILL_MIN_TARGET_DP = MIN_TARGET_DP
+internal const val NOTE_COMPACT_RESTORE_PILL_HEIGHT_DP = MIN_TARGET_DP
+internal const val NOTE_COMPACT_RESTORE_PILL_MIN_WIDTH_DP = MIN_TARGET_DP
 internal const val NOTE_COMPACT_RESTORE_PILL_CORNER_DP = 22
 internal const val NOTE_COMPACT_RESTORE_PILL_END_MARGIN_DP = 8
 internal const val NOTE_COMPACT_RESTORE_PILL_BOTTOM_MARGIN_DP = 10
@@ -141,6 +142,26 @@ internal fun noteFullDockHeightDp(showContextTray: Boolean): Int =
         NOTE_COMPACT_DOCK_DIVIDER_DP +
         NOTE_FULL_DOCK_ACTION_ROW_HEIGHT_DP +
         if (showContextTray) NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP else 0
+
+/**
+ * Whether the dock slots may draw their short text labels. Large accessibility
+ * fonts trade those secondary labels for the same 48 dp hit targets, so the
+ * decision never changes the slot geometry.
+ */
+internal fun noteDockShowLabels(widthDp: Int, fontScale: Float): Boolean =
+    chromeScale(widthDp, fontScale).showDockLabels
+
+/** Spoken name of a dock slot, including the selected state when it is active. */
+internal fun noteToolDescription(label: String, selected: Boolean): String =
+    stateLabel(label, selected)
+
+/** Spoken name of the page pill. Always carries the one-based "페이지 n / N". */
+internal fun notePagePillDescription(pageIndex: Int, pageCount: Int): String =
+    "$NOTE_PAGE_MANAGER_LABEL ${pageIndex + 1} / $pageCount"
+
+/** Spoken name of one page thumbnail; [number] is the zero-based index. */
+internal fun notePageThumbnailDescription(number: Int): String =
+    "$NOTE_PAGE_MANAGER_LABEL ${number + 1}"
 
 /** One shared label helper so full and compact docks never drift. */
 internal fun noteToolLabel(tool: Tool): String = when (tool) {

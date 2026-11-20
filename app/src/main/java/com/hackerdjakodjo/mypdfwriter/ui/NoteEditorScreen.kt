@@ -97,8 +97,10 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -238,6 +240,9 @@ fun NoteEditorScreen(
     var gestureUndo by remember { mutableStateOf(NOTE_GESTURE_UNDO_DEFAULT) }
 
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    // Large fonts hide the secondary dock labels, but never shrink the slots.
+    val showDockLabels = noteDockShowLabels(configuration.screenWidthDp, configuration.fontScale)
     val penBoxStore = remember(context) { PenBoxStore(context) }
     val customTemplateStore = remember(context) { CustomTemplateStore(context) }
     var penPresets by remember(penBoxStore) { mutableStateOf(penBoxStore.load()) }
@@ -1223,7 +1228,9 @@ fun NoteEditorScreen(
                                 } else {
                                     Icons.Outlined.Star
                                 },
-                                contentDescription = "즐겨찾기",
+                                contentDescription = noteStateAwareLabel(
+                                    "즐겨찾기", workingNotebook.favorite,
+                                ),
                                 tint = if (workingNotebook.favorite) {
                                     MaterialTheme.colorScheme.secondary
                                 } else {
@@ -1274,6 +1281,7 @@ fun NoteEditorScreen(
                         tool = tool,
                         onTool = { tool = it },
                         color = color,
+                        showLabels = showDockLabels,
                         onOpenStyle = { showStyle = true },
                         canUndo = canUndo,
                         canRedo = canRedo,
@@ -1469,6 +1477,7 @@ fun NoteEditorScreen(
                             tool = tool,
                             onTool = { tool = it },
                             color = color,
+                            showLabels = showDockLabels,
                             onOpenStyle = { showStyle = true },
                             canUndo = canUndo,
                             canRedo = canRedo,
@@ -2180,6 +2189,7 @@ private fun NoteDock(
     tool: Tool,
     onTool: (Tool) -> Unit,
     color: Int,
+    showLabels: Boolean,
     onOpenStyle: () -> Unit,
     canUndo: Boolean,
     canRedo: Boolean,
@@ -2223,7 +2233,8 @@ private fun NoteDock(
                 Row(
                     modifier = Modifier
                         .widthIn(max = 480.dp)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .height(NOTE_FULL_DOCK_TOOL_ROW_HEIGHT_DP.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -2232,6 +2243,7 @@ private fun NoteDock(
                         label = noteToolLabel(Tool.PEN),
                         selected = tool == Tool.PEN,
                         onClick = { onTool(Tool.PEN) },
+                        showLabels = showLabels,
                         modifier = Modifier.weight(1f),
                     )
                     NoteDockTool(
@@ -2239,6 +2251,7 @@ private fun NoteDock(
                         label = noteToolLabel(Tool.HIGHLIGHT),
                         selected = tool == Tool.HIGHLIGHT,
                         onClick = { onTool(Tool.HIGHLIGHT) },
+                        showLabels = showLabels,
                         modifier = Modifier.weight(1f),
                     )
                     NoteDockTool(
@@ -2246,6 +2259,7 @@ private fun NoteDock(
                         label = noteToolLabel(Tool.ERASER),
                         selected = tool == Tool.ERASER,
                         onClick = { onTool(Tool.ERASER) },
+                        showLabels = showLabels,
                         modifier = Modifier.weight(1f),
                     )
                     NoteDockTool(
@@ -2255,6 +2269,7 @@ private fun NoteDock(
                         onClick = {
                             onTool(if (noteIsLassoTool(tool)) tool else Tool.LASSO)
                         },
+                        showLabels = showLabels,
                         modifier = Modifier.weight(1f),
                     )
                     NoteDockTool(
@@ -2262,6 +2277,7 @@ private fun NoteDock(
                         label = noteToolLabel(Tool.TEXT),
                         selected = tool == Tool.TEXT,
                         onClick = { onTool(Tool.TEXT) },
+                        showLabels = showLabels,
                         modifier = Modifier.weight(1f),
                     )
                     NoteDockTool(
@@ -2271,6 +2287,7 @@ private fun NoteDock(
                         onClick = {
                             onTool(if (noteIsShapeTool(tool)) tool else Tool.RECT)
                         },
+                        showLabels = showLabels,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -2281,6 +2298,7 @@ private fun NoteDock(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(NOTE_FULL_DOCK_ACTION_ROW_HEIGHT_DP.dp)
                     .padding(horizontal = 8.dp, vertical = 3.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -2289,22 +2307,30 @@ private fun NoteDock(
                 IconButton(
                     onClick = onUndo,
                     enabled = canUndo,
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(MIN_TARGET_DP.dp),
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = "실행 취소",
+                        contentDescription = if (canUndo) {
+                            "실행 취소"
+                        } else {
+                            disabledReasonLabel("실행 취소", "취소할 내용 없음")
+                        },
                         modifier = Modifier.size(20.dp),
                     )
                 }
                 IconButton(
                     onClick = onRedo,
                     enabled = canRedo,
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(MIN_TARGET_DP.dp),
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.Redo,
-                        contentDescription = "다시 실행",
+                        contentDescription = if (canRedo) {
+                            "다시 실행"
+                        } else {
+                            disabledReasonLabel("다시 실행", "다시 실행할 내용 없음")
+                        },
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -2381,6 +2407,7 @@ private fun NoteFloatingDock(
     tool: Tool,
     onTool: (Tool) -> Unit,
     color: Int,
+    showLabels: Boolean,
     onOpenStyle: () -> Unit,
     canUndo: Boolean,
     canRedo: Boolean,
@@ -2463,6 +2490,7 @@ private fun NoteFloatingDock(
                                 },
                             )
                         },
+                        showLabels = showLabels,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -2489,14 +2517,22 @@ private fun NoteFloatingDock(
 
                         NoteDockActionSlot.UNDO -> NoteCompactActionButton(
                             icon = Icons.AutoMirrored.Filled.Undo,
-                            contentDescription = "실행 취소",
+                            contentDescription = if (canUndo) {
+                                "실행 취소"
+                            } else {
+                                disabledReasonLabel("실행 취소", "취소할 내용 없음")
+                            },
                             onClick = onUndo,
                             enabled = canUndo,
                         )
 
                         NoteDockActionSlot.REDO -> NoteCompactActionButton(
                             icon = Icons.AutoMirrored.Filled.Redo,
-                            contentDescription = "다시 실행",
+                            contentDescription = if (canRedo) {
+                                "다시 실행"
+                            } else {
+                                disabledReasonLabel("다시 실행", "다시 실행할 내용 없음")
+                            },
                             onClick = onRedo,
                             enabled = canRedo,
                         )
@@ -2526,6 +2562,7 @@ private fun NoteFloatingDock(
 private fun NoteCompactDockTool(
     icon: ImageVector,
     label: String,
+    showLabels: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -2543,20 +2580,27 @@ private fun NoteCompactDockTool(
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
-        modifier = modifier,
+        modifier = modifier
+            .height(NOTE_COMPACT_TOOL_ROW_HEIGHT_DP.dp)
+            .semantics {
+                contentDescription = noteToolDescription(label, selected)
+                this.selected = selected
+            },
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 1.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-            )
+        // Visuals stay tiny; the 48 dp slot around them is the real target.
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (showLabels) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                    )
+                }
+            } else {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            }
         }
     }
 }
@@ -2572,7 +2616,7 @@ private fun NoteCompactActionButton(
     IconButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.size(32.dp),
+        modifier = Modifier.size(MIN_TARGET_DP.dp),
     ) {
         Icon(
             icon,
@@ -2595,7 +2639,7 @@ private fun NoteCompactStyleButton(color: Int, onClick: () -> Unit) {
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier
-            .size(32.dp)
+            .size(MIN_TARGET_DP.dp)
             .semantics { contentDescription = "스타일" },
     ) {
         Box(
@@ -2631,6 +2675,7 @@ private fun noteDockToolIcon(tool: Tool): ImageVector = when (tool) {
 private fun NoteDockTool(
     icon: ImageVector,
     label: String,
+    showLabels: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -2648,21 +2693,27 @@ private fun NoteDockTool(
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
-        modifier = modifier,
+        modifier = modifier
+            .height(NOTE_FULL_DOCK_TOOL_ROW_HEIGHT_DP.dp)
+            .semantics {
+                contentDescription = noteToolDescription(label, selected)
+                this.selected = selected
+            },
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 5.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(21.dp))
-            Spacer(Modifier.height(2.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-            )
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (showLabels) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(21.dp))
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                    )
+                }
+            } else {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(26.dp))
+            }
         }
     }
 }
@@ -2674,6 +2725,9 @@ private fun NoteDockStyleButton(color: Int, onClick: () -> Unit) {
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .heightIn(min = MIN_TARGET_DP.dp)
+            .semantics { contentDescription = "스타일" },
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
@@ -2703,31 +2757,36 @@ private fun NotePagePill(
     onOpenPages: () -> Unit,
     compact: Boolean = false,
 ) {
-    val rowHeight = if (compact) 30.dp else 36.dp
-    val buttonSize = if (compact) 26.dp else 30.dp
+    val buttonSize = MIN_TARGET_DP.dp
     val iconSize = if (compact) 16.dp else 18.dp
     val horizontalPadding = if (compact) 0.dp else 2.dp
-    val verticalPadding = if (compact) 4.dp else 8.dp
+    val verticalPadding = if (compact) 0.dp else 4.dp
+    val canPrevious = notePagePreviousEnabled(pageIndex)
+    val canNext = notePageNextEnabled(pageIndex, pageCount)
     Surface(
         onClick = onOpenPages,
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
         modifier = Modifier.semantics {
-            contentDescription = NOTE_PAGE_MANAGER_LABEL
+            contentDescription = notePagePillDescription(pageIndex, pageCount)
         },
     ) {
         Row(
-            modifier = Modifier.height(rowHeight),
+            modifier = Modifier.height(MIN_TARGET_DP.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(
                 onClick = onPrevious,
-                enabled = notePagePreviousEnabled(pageIndex),
+                enabled = canPrevious,
                 modifier = Modifier.size(buttonSize),
             ) {
                 Icon(
                     Icons.Filled.ChevronLeft,
-                    contentDescription = "이전 페이지",
+                    contentDescription = if (canPrevious) {
+                        "이전 페이지"
+                    } else {
+                        disabledReasonLabel("이전 페이지", "첫 페이지")
+                    },
                     modifier = Modifier.size(iconSize),
                 )
             }
@@ -2746,12 +2805,16 @@ private fun NotePagePill(
             )
             IconButton(
                 onClick = onNext,
-                enabled = notePageNextEnabled(pageIndex, pageCount),
+                enabled = canNext,
                 modifier = Modifier.size(buttonSize),
             ) {
                 Icon(
                     Icons.Filled.ChevronRight,
-                    contentDescription = "다음 페이지",
+                    contentDescription = if (canNext) {
+                        "다음 페이지"
+                    } else {
+                        disabledReasonLabel("다음 페이지", "마지막 페이지")
+                    },
                     modifier = Modifier.size(iconSize),
                 )
             }
@@ -2843,7 +2906,7 @@ private fun NoteSelectionBar(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
-            TextButton(onClick = onEdit) {
+            TextButton(onClick = onEdit, modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp)) {
                 Text("편집")
             }
             NOTE_PALETTE.forEach { swatch ->
@@ -2853,13 +2916,13 @@ private fun NoteSelectionBar(
                     onClick = { onColor(swatch) },
                 )
             }
-            TextButton(onClick = onDuplicate) {
+            TextButton(onClick = onDuplicate, modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp)) {
                 Text("복제")
             }
-            TextButton(onClick = onDelete) {
+            TextButton(onClick = onDelete, modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp)) {
                 Text("삭제")
             }
-            TextButton(onClick = onClear) {
+            TextButton(onClick = onClear, modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp)) {
                 Text("선택 해제")
             }
         }
@@ -2907,13 +2970,13 @@ private fun NoteClipboardBar(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
-            TextButton(onClick = onPaste) {
+            TextButton(onClick = onPaste, modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp)) {
                 Text("붙여넣기")
             }
-            TextButton(onClick = onEdit) {
+            TextButton(onClick = onEdit, modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp)) {
                 Text("편집")
             }
-            TextButton(onClick = onClear) {
+            TextButton(onClick = onClear, modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp)) {
                 Text("비우기")
             }
         }
@@ -2940,13 +3003,20 @@ private fun NoteToolChip(label: String, selected: Boolean, onClick: () -> Unit) 
         } else {
             BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         },
+        modifier = Modifier
+            .heightIn(min = MIN_TARGET_DP.dp)
+            .semantics {
+                contentDescription = noteToolDescription(label, selected)
+                this.selected = selected
+            },
     ) {
-        Text(
-            label,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 1,
-        )
+        Box(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), contentAlignment = Alignment.Center) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -3006,14 +3076,14 @@ private fun NotePageManagerSheet(
                 }
                 TextButton(
                     onClick = { selectMode = !selectMode },
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text(if (selectMode) "완료" else "선택")
                 }
                 if (onOpenOutline != null) {
                     IconButton(
                         onClick = onOpenOutline,
-                        modifier = Modifier.size(44.dp),
+                        modifier = Modifier.size(MIN_TARGET_DP.dp),
                     ) {
                         Icon(
                             Icons.Filled.Bookmarks,
@@ -3024,7 +3094,7 @@ private fun NotePageManagerSheet(
                 }
                 TextButton(
                     onClick = onDismiss,
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("닫기")
                 }
@@ -3040,13 +3110,13 @@ private fun NotePageManagerSheet(
                     selected = filter == NotePageFilter.ALL,
                     onClick = { filter = NotePageFilter.ALL },
                     label = { Text(NotePageFilter.ALL.label) },
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 )
                 FilterChip(
                     selected = filter == NotePageFilter.ANNOTATED,
                     onClick = { filter = NotePageFilter.ANNOTATED },
                     label = { Text(NotePageFilter.ANNOTATED.label) },
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 )
             }
             if (filter == NotePageFilter.ANNOTATED && entries.isEmpty()) {
@@ -3109,68 +3179,68 @@ private fun NotePageManagerSheet(
             ) {
                 TextButton(
                     onClick = onAdd,
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("페이지 추가")
                 }
                 TextButton(
                     onClick = onAddPhoto,
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("사진 페이지")
                 }
                 TextButton(
                     onClick = onPhotoBackground,
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("배경 사진")
                 }
                 TextButton(
                     onClick = onMovePageUp,
                     enabled = safeCurrent > 0,
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("위로")
                 }
                 TextButton(
                     onClick = onMovePageDown,
                     enabled = safeCurrent < pages.lastIndex,
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("아래로")
                 }
                 TextButton(
                     onClick = onRotateClockwise,
                     enabled = pages.isNotEmpty(),
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("↻ 시계 회전")
                 }
                 TextButton(
                     onClick = onRotateCounterClockwise,
                     enabled = pages.isNotEmpty(),
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("↺ 반시계 회전")
                 }
                 TextButton(
                     onClick = onDuplicate,
                     enabled = pages.isNotEmpty(),
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("복제")
                 }
                 TextButton(
                     onClick = onDelete,
                     enabled = canDelete,
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("삭제")
                 }
                 TextButton(
                     onClick = onClearSelection,
                     enabled = selectedPageIds.isNotEmpty(),
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("선택 해제")
                 }
@@ -3211,7 +3281,14 @@ private fun NoteManagerPageCard(
                 color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(NotePaper.aspect(page.orientation)),
+                    .heightIn(min = MIN_TARGET_DP.dp)
+                    .aspectRatio(NotePaper.aspect(page.orientation))
+                    .semantics {
+                        contentDescription = stateLabel(
+                            notePageThumbnailDescription(number), current,
+                        )
+                        this.selected = current
+                    },
             ) {
                 NotePagePreview(
                     page = page,
@@ -3231,7 +3308,7 @@ private fun NoteManagerPageCard(
                     Checkbox(
                         checked = checked,
                         onCheckedChange = { onCheckedChange() },
-                        modifier = Modifier.size(44.dp),
+                        modifier = Modifier.size(MIN_TARGET_DP.dp),
                     )
                 }
             }
@@ -3319,7 +3396,7 @@ private fun NoteExportOptionsSheet(
                 }
                 TextButton(
                     onClick = onDismiss,
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("닫기")
                 }
@@ -3337,20 +3414,20 @@ private fun NoteExportOptionsSheet(
                     selected = safeRange == NoteExportPageRange.ALL,
                     onClick = { range = NoteExportPageRange.ALL },
                     label = { Text("전체 ($pageCount)") },
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 )
                 FilterChip(
                     selected = safeRange == NoteExportPageRange.CURRENT,
                     onClick = { range = NoteExportPageRange.CURRENT },
                     label = { Text("현재 (${safeCurrent + 1})") },
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 )
                 FilterChip(
                     selected = safeRange == NoteExportPageRange.SELECTED,
                     onClick = { range = NoteExportPageRange.SELECTED },
                     enabled = selectedAvailable,
                     label = { Text("선택 (${selectedPageIds.size})") },
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 )
             }
             if (!selectedAvailable) {
@@ -3369,7 +3446,7 @@ private fun NoteExportOptionsSheet(
                 color = Color.Transparent,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 44.dp),
+                    .heightIn(min = MIN_TARGET_DP.dp),
             ) {
                 Row(
                     modifier = Modifier
@@ -3410,7 +3487,7 @@ private fun NoteExportOptionsSheet(
             ) {
                 TextButton(
                     onClick = onDismiss,
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("취소")
                 }
@@ -3427,7 +3504,7 @@ private fun NoteExportOptionsSheet(
                             ),
                         )
                     },
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("내보내기")
                 }
@@ -3461,7 +3538,7 @@ private fun NotePageRail(
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelLarge,
                 )
-                IconButton(onClick = onAdd, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = onAdd, modifier = Modifier.size(MIN_TARGET_DP.dp)) {
                     Icon(
                         Icons.Filled.Add,
                         contentDescription = "페이지 추가",
@@ -3522,7 +3599,14 @@ private fun NotePageThumbnail(
             color = MaterialTheme.colorScheme.surface,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(NotePaper.aspect(page.orientation)),
+                .heightIn(min = MIN_TARGET_DP.dp)
+                .aspectRatio(NotePaper.aspect(page.orientation))
+                .semantics {
+                    contentDescription = stateLabel(
+                        notePageThumbnailDescription(number), selected,
+                    )
+                    this.selected = selected
+                },
         ) {
             NotePagePreview(
                 page = page,
@@ -3561,12 +3645,14 @@ private fun NoteAddPageCard(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(NotePaper.aspect(orientation)),
+                .heightIn(min = MIN_TARGET_DP.dp)
+                .aspectRatio(NotePaper.aspect(orientation))
+                .semantics { contentDescription = "페이지 추가" },
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Icon(
                     Icons.Filled.Add,
-                    contentDescription = "페이지 추가",
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }
