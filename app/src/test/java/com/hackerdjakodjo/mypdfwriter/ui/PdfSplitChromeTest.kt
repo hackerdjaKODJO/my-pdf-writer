@@ -100,8 +100,12 @@ class PdfSplitChromeTest {
     }
 
     @Test
-    fun floatingTargetsStayInTheCompactRange() {
-        assertTrue(SPLIT_CHROME_TARGET_DP in 36..40)
+    fun floatingTargetsMeetTheMinimumTouchTarget() {
+        assertEquals(MIN_TARGET_DP, SPLIT_CHROME_TARGET_DP)
+        assertTrue(isAccessibleTarget(SPLIT_CHROME_TARGET_DP))
+        assertEquals(SPLIT_CHROME_TARGET_DP, accessibleTarget(SPLIT_CHROME_TARGET_DP))
+        // The drawn circle stays compact; only the hit target grows to 48 dp.
+        assertTrue(SPLIT_CHROME_VISUAL_DP < SPLIT_CHROME_TARGET_DP)
     }
 
     @Test

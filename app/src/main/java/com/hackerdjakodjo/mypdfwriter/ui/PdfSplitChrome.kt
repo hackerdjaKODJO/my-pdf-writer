@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -64,6 +65,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -179,8 +181,14 @@ internal fun textSelectionPrimaryIcon(action: TextSelectionPrimaryAction): Image
     TextSelectionPrimaryAction.MORE -> Icons.Outlined.MoreHoriz
 }
 
-/** All floating split-chrome targets stay in the 36-40 dp range. */
-internal const val SPLIT_CHROME_TARGET_DP = 36
+/**
+ * All floating split-chrome controls expose a full 48 dp TalkBack target. The
+ * drawn circle stays smaller so a short PDF strip is not swamped by chrome.
+ */
+internal const val SPLIT_CHROME_TARGET_DP = MIN_TARGET_DP
+
+/** Visual diameter of the compact circle drawn inside a 48 dp hit target. */
+internal const val SPLIT_CHROME_VISUAL_DP = 36
 
 /** Tiny translucent back target shown at the PDF-strip edge in split mode. */
 @Composable
@@ -188,23 +196,33 @@ internal fun SplitPdfBackButton(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        onClick = onBack,
+    Box(
         modifier = modifier
-            .size(SPLIT_CHROME_TARGET_DP.dp)
-            .semantics { contentDescription = "PDF 닫기" },
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        tonalElevation = 2.dp,
-        shadowElevation = 4.dp,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                Icons.AutoMirrored.Outlined.ArrowBack,
-                contentDescription = null,
-                modifier = Modifier.size(19.dp),
+            .sizeIn(
+                minWidth = SPLIT_CHROME_TARGET_DP.dp,
+                minHeight = SPLIT_CHROME_TARGET_DP.dp,
             )
+            .semantics { contentDescription = "PDF 닫기" }
+            .clickable(onClick = onBack),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            tonalElevation = 2.dp,
+            shadowElevation = 4.dp,
+        ) {
+            Box(
+                Modifier.size(SPLIT_CHROME_VISUAL_DP.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = null,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
         }
     }
 }
@@ -248,7 +266,9 @@ internal fun SplitPdfToolbar(
     ) {
         Row(
             modifier = Modifier
-                .height(40.dp)
+                // 2 dp padding above/below each 48 dp target keeps the drawn
+                // strip compact while every icon remains TalkBack-reachable.
+                .height((SPLIT_CHROME_TARGET_DP + 4).dp)
                 // The full strip can exceed a narrow screen; keep every tool
                 // reachable instead of clipping the trailing icons.
                 .horizontalScroll(rememberScrollState())
@@ -332,13 +352,17 @@ private fun SplitPagePill(
         )
         Surface(
             onClick = onOpenPages,
-            modifier = Modifier.semantics { contentDescription = "페이지 선택" },
+            modifier = Modifier
+                .sizeIn(
+                    minWidth = SPLIT_CHROME_TARGET_DP.dp,
+                    minHeight = SPLIT_CHROME_TARGET_DP.dp,
+                )
+                .semantics { contentDescription = "페이지 선택" },
             shape = RoundedCornerShape(50),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
         ) {
             Box(
                 modifier = Modifier
-                    .height(SPLIT_CHROME_TARGET_DP.dp)
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -408,71 +432,95 @@ internal fun SplitDivider(
             },
         contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            tonalElevation = 2.dp,
-            shadowElevation = 3.dp,
+        // The visible pill stays inside the thin divider row, but TalkBack sees
+        // a full 48 dp clickable node with an explicit "노트 크기 선택" action.
+        // Tap opens the presets and double-tap still jumps to an endpoint.
+        Box(
+            modifier = Modifier
+                .sizeIn(
+                    minWidth = SPLIT_CHROME_TARGET_DP.dp,
+                    minHeight = SPLIT_CHROME_TARGET_DP.dp,
+                )
+                .clickable(onClickLabel = "노트 크기 선택") { showSizePopup = true }
+                .semantics { contentDescription = studyPaneDividerDescription(paneFraction) }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { showSizePopup = true },
+                        onDoubleTap = {
+                            showSizePopup = false
+                            onPresetSelected(studyPanePresetAfterDoubleTap(paneFraction))
+                        },
+                    )
+                },
+            contentAlignment = Alignment.Center,
         ) {
-            Row(
-                modifier = Modifier
-                    .height(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP.dp)
-                    .clip(RoundedCornerShape(50))
-                    .semantics { contentDescription = studyPaneDividerDescription(paneFraction) }
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = { showSizePopup = true },
-                            onDoubleTap = {
-                                showSizePopup = false
-                                onPresetSelected(studyPanePresetAfterDoubleTap(paneFraction))
-                            },
-                        )
-                    },
-                verticalAlignment = Alignment.CenterVertically,
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                tonalElevation = 2.dp,
+                shadowElevation = 3.dp,
             ) {
-                Spacer(Modifier.width(12.dp))
-                Icon(
-                    Icons.Outlined.DragIndicator,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    studyPaneDividerLabel(paneFraction),
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
-                )
-                Spacer(Modifier.width(12.dp))
+                Row(
+                    modifier = Modifier
+                        .height(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP.dp)
+                        .clip(RoundedCornerShape(50)),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Spacer(Modifier.width(12.dp))
+                    Icon(
+                        Icons.Outlined.DragIndicator,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        studyPaneDividerLabel(paneFraction),
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                }
             }
         }
 
-        Surface(
-            onClick = onTogglePdfTools,
+        // Same pattern for the tool chip: the drawn chip stays small while the
+        // clickable node carries the state-aware label and a 48 dp target.
+        Box(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 8.dp)
-                .height(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP.dp)
-                .semantics { contentDescription = splitPdfToolsChipDescription(pdfToolsVisible) },
-            shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
-            contentColor = if (pdfToolsVisible) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    Icons.Outlined.Handyman,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
+                .sizeIn(
+                    minWidth = SPLIT_CHROME_TARGET_DP.dp,
+                    minHeight = SPLIT_CHROME_TARGET_DP.dp,
                 )
-                Spacer(Modifier.width(4.dp))
-                Text("PDF 도구", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                .clickable(onClick = onTogglePdfTools)
+                .semantics { contentDescription = splitPdfToolsChipDescription(pdfToolsVisible) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+                contentColor = if (pdfToolsVisible) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            ) {
+                Row(
+                    modifier = Modifier
+                        .height(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP.dp)
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Outlined.Handyman,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("PDF 도구", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                }
             }
         }
 
@@ -595,7 +643,7 @@ internal fun SplitSelectionActionBar(
     ) {
         Row(
             modifier = Modifier
-                .height(40.dp)
+                .height((SPLIT_CHROME_TARGET_DP + 4).dp)
                 // The compact bar can exceed the strip width once every action is
                 // present; keep the extra tools reachable instead of clipping them.
                 .horizontalScroll(rememberScrollState())
@@ -604,7 +652,10 @@ internal fun SplitSelectionActionBar(
         ) {
             Surface(
                 modifier = statusModifier
-                    .height(SPLIT_CHROME_TARGET_DP.dp)
+                    .sizeIn(
+                        minWidth = SPLIT_CHROME_TARGET_DP.dp,
+                        minHeight = SPLIT_CHROME_TARGET_DP.dp,
+                    )
                     .clip(RoundedCornerShape(50)),
                 shape = RoundedCornerShape(50),
                 color = if (empty) {
@@ -688,32 +739,44 @@ private fun SplitChromeButton(
     }
     Box(
         modifier = modifier
-            .size(SPLIT_CHROME_TARGET_DP.dp)
-            .clip(CircleShape)
-            .background(
-                if (selected) {
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
-                } else {
-                    Color.Transparent
-                },
+            .sizeIn(
+                minWidth = SPLIT_CHROME_TARGET_DP.dp,
+                minHeight = SPLIT_CHROME_TARGET_DP.dp,
             )
-            .semantics { this.contentDescription = contentDescription }
+            .semantics {
+                this.contentDescription = contentDescription
+                this.selected = selected
+            }
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        if (loading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(16.dp),
-                strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        } else {
-            Icon(
-                icon,
-                contentDescription = null,
-                modifier = Modifier.size(19.dp),
-                tint = contentColor,
-            )
+        Box(
+            modifier = Modifier
+                .size(SPLIT_CHROME_VISUAL_DP.dp)
+                .clip(CircleShape)
+                .background(
+                    if (selected) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                    } else {
+                        Color.Transparent
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            } else {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(19.dp),
+                    tint = contentColor,
+                )
+            }
         }
     }
 }
@@ -839,7 +902,9 @@ internal fun TextSelectionMoreSheet(
                     onDismiss()
                     onDismissSelection()
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .sizeIn(minHeight = SPLIT_CHROME_TARGET_DP.dp),
             ) {
                 Text(if (hasSelection) "선택 해제" else "텍스트 선택 종료")
             }
@@ -862,10 +927,11 @@ private fun SplitSheetAction(
         contentColor = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
+            .padding(vertical = 2.dp)
+            .sizeIn(minHeight = SPLIT_CHROME_TARGET_DP.dp),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {

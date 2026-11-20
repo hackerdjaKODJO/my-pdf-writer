@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -61,7 +62,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -81,6 +85,22 @@ val annotationPalette = listOf(
     0xFF00838F.toInt(),
     0xFFF9A825.toInt(),
 )
+
+/** Spoken names for the fixed annotation swatches; OCR and custom colours fall back. */
+internal fun annotationColorName(color: Int): String = when (color) {
+    annotationPalette[0] -> "검정"
+    annotationPalette[1] -> "빨강"
+    annotationPalette[2] -> "파랑"
+    annotationPalette[3] -> "초록"
+    annotationPalette[4] -> "주황"
+    annotationPalette[5] -> "보라"
+    annotationPalette[6] -> "청록"
+    annotationPalette[7] -> "노랑"
+    else -> "사용자 색상"
+}
+
+/** Marks a section title as a TalkBack heading without changing its appearance. */
+internal fun Modifier.sectionHeading(): Modifier = semantics { heading() }
 
 /** Tools that are drawn by dragging a two-point shape. */
 val viewerShapeTools = setOf(Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE)
@@ -276,8 +296,15 @@ private fun DockItem(
     }
     Column(
         modifier = modifier
+            .sizeIn(
+                minWidth = MIN_TARGET_DP.dp,
+                minHeight = MIN_TARGET_DP.dp,
+            )
             .clip(RoundedCornerShape(12.dp))
-            .semantics { contentDescription = entry.label }
+            .semantics {
+                contentDescription = entry.label
+                selected = entry.selected
+            }
             .clickable(onClick = entry.onClick)
             .padding(vertical = if (compact) 2.dp else 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -310,17 +337,25 @@ private fun DockItem(
                 lineHeight = if (compact) 11.sp else 12.sp,
             ),
             color = contentColor,
-            maxLines = 2,
             textAlign = TextAlign.Center,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
 @Composable
-private fun StylePill(color: Int, onStyle: () -> Unit) {
+private fun StylePill(
+    color: Int,
+    onStyle: () -> Unit,
+    colorName: String = annotationColorName(color),
+) {
     Surface(
         onClick = onStyle,
+        modifier = Modifier
+            .sizeIn(
+                minWidth = MIN_TARGET_DP.dp,
+                minHeight = MIN_TARGET_DP.dp,
+            )
+            .semantics { contentDescription = "스타일, 현재 색상 $colorName" },
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
     ) {
@@ -478,7 +513,11 @@ fun ViewerToolMoreSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
         ) {
-            Text("주석 도구", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "주석 도구",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.sectionHeading(),
+            )
             Text(
                 activeLabel,
                 style = MaterialTheme.typography.bodySmall,
@@ -592,6 +631,7 @@ private fun ToolOptionSection(
             title,
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.sectionHeading(),
         )
         Spacer(Modifier.width(10.dp))
         HorizontalDivider(
@@ -636,7 +676,12 @@ private fun ToolOptionTile(
         } else {
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
         },
-        modifier = modifier,
+        modifier = modifier
+            .sizeIn(minHeight = MIN_TARGET_DP.dp)
+            .semantics {
+                contentDescription = stateLabel(option.label, selected)
+                this.selected = selected
+            },
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
@@ -712,7 +757,7 @@ fun ViewerStyleSheet(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("스타일", style = MaterialTheme.typography.titleLarge)
+                    Text("스타일", style = MaterialTheme.typography.titleLarge, modifier = Modifier.sectionHeading())
                     Text(
                         "${styleToolLabel(state.tool)} 도구의 색상과 크기를 조정합니다.",
                         style = MaterialTheme.typography.bodySmall,
@@ -760,6 +805,7 @@ fun ViewerStyleSheet(
                     annotationPalette.forEach { swatch ->
                         ColorDot(
                             color = swatch,
+                            name = annotationColorName(swatch),
                             selected = state.color == swatch,
                             onClick = { onColor(swatch) },
                         )
@@ -770,14 +816,19 @@ fun ViewerStyleSheet(
             when (state.tool) {
                 Tool.TEXT -> {
                     Spacer(Modifier.height(16.dp))
+                    val fontSizeValue = "${(state.fontSize * 1000).roundToInt()}"
                     SettingHeader(
                         label = "글자 크기",
-                        value = "${(state.fontSize * 1000).roundToInt()}",
+                        value = fontSizeValue,
                     )
                     Slider(
                         value = state.fontSize,
                         onValueChange = onFontSize,
                         valueRange = 0.012f..0.05f,
+                        modifier = Modifier.semantics {
+                            contentDescription = sliderLabel("글자 크기", fontSizeValue)
+                            stateDescription = fontSizeValue
+                        },
                     )
                 }
 
@@ -790,14 +841,19 @@ fun ViewerStyleSheet(
                 Tool.STRIKEOUT,
                 -> {
                     Spacer(Modifier.height(16.dp))
+                    val strokeValue = "${(state.strokeWidth.coerceIn(0.001f, 0.012f) * 1000).roundToInt()}"
                     SettingHeader(
                         label = "굵기",
-                        value = "${(state.strokeWidth.coerceIn(0.001f, 0.012f) * 1000).roundToInt()}",
+                        value = strokeValue,
                     )
                     Slider(
                         value = state.strokeWidth.coerceIn(0.001f, 0.012f),
                         onValueChange = onStrokeWidth,
                         valueRange = 0.001f..0.012f,
+                        modifier = Modifier.semantics {
+                            contentDescription = sliderLabel("굵기", strokeValue)
+                            stateDescription = strokeValue
+                        },
                     )
                 }
 
@@ -822,14 +878,23 @@ fun ViewerStyleSheet(
 
             if (state.tool != Tool.HIGHLIGHT && state.tool != Tool.REDACT) {
                 Spacer(Modifier.height(16.dp))
+                val opacityLabel = stringResource(R.string.opacity)
+                val opacityValue = stringResource(
+                    R.string.opacity_percent,
+                    (state.opacity * 100).roundToInt(),
+                )
                 SettingHeader(
-                    label = stringResource(R.string.opacity),
-                    value = stringResource(R.string.opacity_percent, (state.opacity * 100).roundToInt()),
+                    label = opacityLabel,
+                    value = opacityValue,
                 )
                 Slider(
                     value = state.opacity,
                     onValueChange = onOpacity,
                     valueRange = 0.1f..1f,
+                    modifier = Modifier.semantics {
+                        contentDescription = sliderLabel(opacityLabel, opacityValue)
+                        stateDescription = opacityValue
+                    },
                 )
             }
 
@@ -875,20 +940,39 @@ private fun styleToolLabel(tool: Tool): String = when (tool) {
 }
 
 @Composable
-internal fun ColorDot(color: Int, selected: Boolean, onClick: () -> Unit) {
+internal fun ColorDot(
+    color: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    name: String = annotationColorName(color),
+) {
+    // The swatch stays visually compact; the surrounding node is a full target.
     Box(
         modifier = Modifier
-            .size(28.dp)
-            .background(Color(color), CircleShape)
-            .border(
-                width = if (selected) 2.5.dp else 1.dp,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.outlineVariant
-                },
-                shape = CircleShape,
+            .sizeIn(
+                minWidth = MIN_TARGET_DP.dp,
+                minHeight = MIN_TARGET_DP.dp,
             )
+            .semantics {
+                contentDescription = colorChoiceLabel(name, selected)
+                this.selected = selected
+            }
             .clickable(onClick = onClick),
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .background(Color(color), CircleShape)
+                .border(
+                    width = if (selected) 2.5.dp else 1.dp,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant
+                    },
+                    shape = CircleShape,
+                ),
+        )
+    }
 }

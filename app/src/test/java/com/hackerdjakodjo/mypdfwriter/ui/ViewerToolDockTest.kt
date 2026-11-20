@@ -68,6 +68,27 @@ class ViewerToolDockTest {
     }
 
     @Test
+    fun everyPaletteSwatchHasASpokenName() {
+        assertEquals("검정", annotationColorName(annotationPalette[0]))
+        assertEquals("빨강", annotationColorName(annotationPalette[1]))
+        assertEquals("파랑", annotationColorName(annotationPalette[2]))
+        assertEquals("초록", annotationColorName(annotationPalette[3]))
+        assertEquals("주황", annotationColorName(annotationPalette[4]))
+        assertEquals("보라", annotationColorName(annotationPalette[5]))
+        assertEquals("청록", annotationColorName(annotationPalette[6]))
+        assertEquals("노랑", annotationColorName(annotationPalette[7]))
+        assertEquals("사용자 색상", annotationColorName(0xFF123456.toInt()))
+    }
+
+    @Test
+    fun dockAndSwatchDescriptionsAnnounceState() {
+        assertEquals("펜", stateLabel("펜", selected = false))
+        assertEquals("펜, 선택됨", stateLabel("펜", selected = true))
+        assertEquals("빨강", colorChoiceLabel("빨강", selected = false))
+        assertEquals("빨강, 선택됨", colorChoiceLabel("빨강", selected = true))
+    }
+
+    @Test
     fun annotationToolsMatchTheAnnotationSheetEntries() {
         listOf(
             Tool.TEXT,

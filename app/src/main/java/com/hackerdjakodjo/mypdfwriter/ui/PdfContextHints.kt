@@ -66,6 +66,12 @@ internal const val PDF_HINT_SELECTED_TEXT = "단어를 탭하거나 드래그해
 internal const val PDF_HINT_OCR_ACTION = "OCR 도구"
 internal const val SEARCH_EMPTY_OCR_TIP = "검색어를 줄이거나 OCR로 텍스트를 추가하세요"
 
+/** Visible label for the PDF search field, not just its placeholder. */
+internal const val PDF_SEARCH_FIELD_LABEL = "검색어"
+
+/** Spoken reason for markup actions while no text is selected. */
+internal const val PDF_SELECTION_REQUIRED_REASON = "선택한 텍스트 없음"
+
 /** Local, offline strings; [toolHint] comes from the existing tool-hint resource. */
 internal fun pdfContextHintText(hint: PdfContextHint, toolHint: String = ""): String = when (hint) {
     PdfContextHint.TAP_DRAG_LONG_PRESS -> PDF_HINT_VIEW_TEXT
