@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -67,6 +68,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -116,6 +120,14 @@ internal object PdfToolSections {
 
     val order: List<String> = listOf(IMPORT, PAGES, OCR, SECURITY, FORMS, SHARE)
 }
+
+/** The primary file picker always says what it picks. */
+internal fun toolSourceButtonLabel(hasSource: Boolean): String =
+    if (hasSource) "PDF 파일 변경" else "PDF 파일 선택"
+
+/** Tool rows keep a generous 56dp floor even at the default font scale. */
+internal fun toolRowMinHeightDp(fontScale: Float): Int =
+    maxOf(56, chromeScale(320, fontScale).minRowHeightDp)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -580,7 +592,12 @@ private fun SourceCard(state: ToolsUiState, onPick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            OutlinedButton(onClick = onPick) { Text(if (state.sourceFile == null) "선택" else "변경") }
+            OutlinedButton(
+                onClick = onPick,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Text(toolSourceButtonLabel(state.sourceFile != null), maxLines = 2)
+            }
         }
     }
 }
@@ -588,7 +605,13 @@ private fun SourceCard(state: ToolsUiState, onPick: () -> Unit) {
 @Composable
 private fun ToolSection(title: String, items: List<ToolItem>) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .semantics { heading() },
+        )
         items.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { item ->
@@ -608,7 +631,9 @@ private fun ToolCard(item: ToolItem, modifier: Modifier = Modifier) {
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-        modifier = modifier,
+        modifier = modifier.heightIn(
+            min = toolRowMinHeightDp(LocalDensity.current.fontScale).dp,
+        ),
     ) {
         Column(Modifier.padding(14.dp)) {
             Icon(
@@ -641,6 +666,7 @@ private fun OcrLanguageRow(selected: OcrLanguage, onSelect: (OcrLanguage) -> Uni
             FilterChip(
                 selected = selected == language,
                 onClick = { onSelect(language) },
+                modifier = Modifier.heightIn(min = 48.dp),
                 label = { Text(language.label) },
             )
         }
