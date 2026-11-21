@@ -394,6 +394,32 @@ internal fun pdfMemoCardEntries(cards: List<MemoCard>): List<PdfMemoPageCard> =
     cards.sortedWith(compareBy({ it.page }, { it.createdAt }, { it.id }))
         .map { PdfMemoPageCard(it.page, it) }
 
+/** Resolution of a pending `editCardId` request when the memo sheet opens. */
+internal data class PdfMemoEditRequest(
+    val cardToEdit: MemoCard?,
+    val handled: Boolean,
+)
+
+/**
+ * Resolve a pending `editCardId` without swallowing it.
+ *
+ * `onEditHandled` clears the request in the host, so it must only fire when an
+ * editor actually opened. A stale id (card deleted, or sheet reopened for a
+ * different reason) leaves the request intact instead of silently disappearing.
+ */
+internal fun pdfMemoEditRequest(
+    editCardId: String?,
+    entries: List<PdfMemoPageCard>,
+    editorAlreadyOpen: Boolean,
+    pendingDelete: Boolean,
+): PdfMemoEditRequest {
+    if (editCardId == null || editorAlreadyOpen || pendingDelete) {
+        return PdfMemoEditRequest(cardToEdit = null, handled = false)
+    }
+    val card = entries.firstOrNull { it.card.id == editCardId }?.card
+    return PdfMemoEditRequest(cardToEdit = card, handled = card != null)
+}
+
 private data class PdfMemoEditorTarget(val card: MemoCard?)
 
 /**
@@ -420,14 +446,17 @@ fun PdfMemoCardsSheet(
     var editorTarget by remember { mutableStateOf<PdfMemoEditorTarget?>(null) }
     var pendingDelete by remember { mutableStateOf<PdfMemoPageCard?>(null) }
 
-    // Tapping a card on the canvas opens that card directly in the sheet.
+    // Tapping a card on the canvas opens that card directly in the sheet. Only a
+    // resolved request is acknowledged; a stale id stays pending for a retry.
     LaunchedEffect(editCardId, cards) {
-        if (editCardId != null && editorTarget == null && pendingDelete == null) {
-            entries.firstOrNull { it.card.id == editCardId }?.let { entry ->
-                editorTarget = PdfMemoEditorTarget(entry.card)
-            }
-            onEditHandled()
-        }
+        val request = pdfMemoEditRequest(
+            editCardId = editCardId,
+            entries = entries,
+            editorAlreadyOpen = editorTarget != null,
+            pendingDelete = pendingDelete != null,
+        )
+        request.cardToEdit?.let { editorTarget = PdfMemoEditorTarget(it) }
+        if (request.handled) onEditHandled()
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {

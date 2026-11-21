@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -407,6 +406,16 @@ fun NoteSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
     }
 }
 
+/**
+ * A search result row paired with a key that is unique even when several hits
+ * share a page. Keying the LazyColumn by `SearchHit.page` alone collides as soon
+ * as a page has more than one match; the row position is stable for a given list.
+ */
+internal data class KeyedSearchHit(val key: String, val index: Int, val hit: SearchHit)
+
+internal fun keyedSearchHits(hits: List<SearchHit>): List<KeyedSearchHit> =
+    hits.mapIndexed { index, hit -> KeyedSearchHit(key = "search-hit-$index", index = index, hit = hit) }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchSheet(
@@ -485,6 +494,7 @@ fun SearchSheet(
                 else -> {
                     val currentIndex =
                         SearchNavigation.clamp(state.currentSearchHit, state.searchHits.size).coerceAtLeast(0)
+                    val rows = remember(state.searchHits) { keyedSearchHits(state.searchHits) }
                     Text(
                         stringResource(R.string.search_results, state.searchHits.size),
                         style = MaterialTheme.typography.labelLarge,
@@ -507,9 +517,13 @@ fun SearchSheet(
                         Modifier.fillMaxWidth().heightIn(max = 380.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        itemsIndexed(state.searchHits, key = { _, hit -> hit.page }) { index, hit ->
-                            SearchHitRow(hit, state.searchQuery.trim(), active = index == currentIndex) {
-                                vm.goToSearchHit(index)
+                        items(rows, key = { it.key }) { row ->
+                            SearchHitRow(
+                                row.hit,
+                                state.searchQuery.trim(),
+                                active = row.index == currentIndex,
+                            ) {
+                                vm.goToSearchHit(row.index)
                                 onDismiss()
                             }
                         }
