@@ -13,10 +13,19 @@ class OnboardingContentTest {
     @Test
     fun cardsFollowTheCanonicalTopicOrder() {
         assertEquals(
-            onboardingTopicOrder(),
+            ONBOARDING_CARD_TOPICS,
             onboardingCards().map { it.key },
         )
-        assertEquals(5, onboardingCards().size)
+        assertEquals(ONBOARDING_CARD_TOPICS, onboardingTopicOrder().filter {
+            it in ONBOARDING_CARD_TOPICS
+        })
+    }
+
+    @Test
+    fun walkthroughIsCappedAtThreeCards() {
+        assertEquals(3, ONBOARDING_CARD_LIMIT)
+        assertEquals(3, onboardingCards().size)
+        assertTrue(onboardingCards().size <= ONBOARDING_CARD_LIMIT)
     }
 
     @Test
@@ -36,11 +45,9 @@ class OnboardingContentTest {
     @Test
     fun cardsCoverTheRequestedFeatureAreas() {
         val expectedKeywords = mapOf(
-            OnboardingTopicKey.HOME_QUICK_ACTIONS to listOf("홈", "빠른", "백업"),
-            OnboardingTopicKey.OPEN_READ_PDF to listOf("PDF", "확대", "메뉴"),
-            OnboardingTopicKey.SELECT_HIGHLIGHT to listOf("탭", "드래그", "길게", "형광펜"),
-            OnboardingTopicKey.NOTE_PANE to listOf("노트", "손잡이"),
-            OnboardingTopicKey.HELP_BACKUP to listOf("도움말", "백업"),
+            OnboardingTopicKey.HOME_QUICK_ACTIONS to listOf("홈", "이어서 읽기", "새 노트", "백업"),
+            OnboardingTopicKey.SELECT_HIGHLIGHT to listOf("PDF", "형광펜", "한 번에"),
+            OnboardingTopicKey.NOTE_PANE to listOf("노트", "링크"),
         )
         onboardingCards().forEach { card ->
             val keywords = expectedKeywords.getValue(card.key)

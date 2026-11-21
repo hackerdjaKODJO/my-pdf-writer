@@ -2348,6 +2348,7 @@ private fun NoteDock(
                             icon = noteDockToolIcon(dockTool),
                             label = noteToolLabel(dockTool),
                             selected = selected,
+                            primary = noteToolIsPrimary(dockTool),
                             onClick = {
                                 onTool(
                                     when (dockTool) {
@@ -2548,6 +2549,7 @@ private fun NoteFloatingDock(
                         icon = noteDockToolIcon(dockTool),
                         label = noteCompactToolLabel(dockTool),
                         selected = selected,
+                        primary = noteToolIsPrimary(dockTool),
                         onClick = {
                             onTool(
                                 when (dockTool) {
@@ -2631,6 +2633,7 @@ private fun NoteCompactDockTool(
     label: String,
     showLabels: Boolean,
     selected: Boolean,
+    primary: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2642,10 +2645,15 @@ private fun NoteCompactDockTool(
         } else {
             Color.Transparent
         },
-        contentColor = if (selected) {
-            MaterialTheme.colorScheme.onPrimaryContainer
+        border = if (primary && !selected) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
         } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
+            null
+        },
+        contentColor = when {
+            selected -> MaterialTheme.colorScheme.onPrimaryContainer
+            primary -> MaterialTheme.colorScheme.primary
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
         },
         modifier = modifier
             .height(NOTE_COMPACT_TOOL_ROW_HEIGHT_DP.dp)
@@ -2662,7 +2670,7 @@ private fun NoteCompactDockTool(
                     Text(
                         label,
                         style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
+                        maxLines = STUDENT_LABEL_MAX_LINES,
                     )
                 }
             } else {
@@ -2744,6 +2752,7 @@ private fun NoteDockTool(
     label: String,
     showLabels: Boolean,
     selected: Boolean,
+    primary: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2755,10 +2764,17 @@ private fun NoteDockTool(
         } else {
             Color.Transparent
         },
-        contentColor = if (selected) {
-            MaterialTheme.colorScheme.onPrimaryContainer
+        // Pen is the default tool: a thin primary outline marks it without
+        // changing selection semantics or the spoken description.
+        border = if (primary && !selected) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
         } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
+            null
+        },
+        contentColor = when {
+            selected -> MaterialTheme.colorScheme.onPrimaryContainer
+            primary -> MaterialTheme.colorScheme.primary
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
         },
         modifier = modifier
             .height(NOTE_FULL_DOCK_TOOL_ROW_HEIGHT_DP.dp)
@@ -2775,7 +2791,7 @@ private fun NoteDockTool(
                     Text(
                         label,
                         style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
+                        maxLines = STUDENT_LABEL_MAX_LINES,
                     )
                 }
             } else {
