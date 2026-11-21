@@ -1,7 +1,13 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import com.hackerdjakodjo.mypdfwriter.IntentCarrierSink
+import com.hackerdjakodjo.mypdfwriter.clearIntentCarriers
+import com.hackerdjakodjo.mypdfwriter.onBackupRestored
+import com.hackerdjakodjo.mypdfwriter.shouldAddToRecents
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class IntentImportPolicyTest {
@@ -89,5 +95,85 @@ class IntentImportPolicyTest {
                 ),
             ),
         )
+    }
+
+    private class FakeCarriers : IntentCarrierSink {
+        var data: String? = "content://data/file.pdf"
+        var stream: String? = "content://stream/file.pdf"
+        var clip: List<String> = listOf("content://clip/file.pdf")
+        var dataClears = 0
+        var streamClears = 0
+        var clipClears = 0
+
+        override fun clearData() {
+            dataClears++
+            data = null
+        }
+
+        override fun clearExtraStream() {
+            streamClears++
+            stream = null
+        }
+
+        override fun clearClipData() {
+            clipClears++
+            clip = emptyList()
+        }
+    }
+
+    @Test
+    fun clearingIntentCarriersRemovesEveryCarrierAndIsIdempotent() {
+        val carriers = FakeCarriers()
+        clearIntentCarriers(carriers)
+
+        assertNull(carriers.data)
+        assertNull(carriers.stream)
+        assertTrue(carriers.clip.isEmpty())
+        assertEquals(1, carriers.dataClears)
+        assertEquals(1, carriers.streamClears)
+        assertEquals(1, carriers.clipClears)
+
+        // A redelivered intent must not reopen the same PDF or mutate state again.
+        clearIntentCarriers(carriers)
+        assertNull(carriers.data)
+        assertNull(carriers.stream)
+        assertTrue(carriers.clip.isEmpty())
+        assertEquals(2, carriers.dataClears)
+        assertEquals(2, carriers.streamClears)
+        assertEquals(2, carriers.clipClears)
+    }
+
+    @Test
+    fun sendIntentJoinsRecentsAndViewIntentDoesNot() {
+        assertTrue(shouldAddToRecents(send))
+        assertFalse(shouldAddToRecents(view))
+        assertFalse(shouldAddToRecents(null))
+        assertFalse(shouldAddToRecents("android.intent.action.MAIN"))
+    }
+
+    @Test
+    fun restoreEventRefreshesListsClosesViewerAndConsumesEvent() {
+        val calls = mutableListOf<String>()
+        onBackupRestored(
+            restoredAt = 1_700_000_000_000L,
+            refreshNotebook = { calls += "notebook" },
+            reloadLibrary = { calls += "library" },
+            closeDocument = { calls += "close" },
+            consumeRestored = { calls += "consume" },
+        )
+        assertEquals(listOf("notebook", "library", "close", "consume"), calls)
+    }
+
+    @Test
+    fun missingRestoreEventDoesNothing() {
+        val calls = mutableListOf<String>()
+        onBackupRestored(
+            restoredAt = null,
+            refreshNotebook = { calls += "notebook" },
+            reloadLibrary = { calls += "library" },
+            closeDocument = { calls += "close" },
+            consumeRestored = { calls += "consume" },
+        )
+        assertTrue(calls.isEmpty())
     }
 }

@@ -83,26 +83,64 @@ object BackupManager {
     ): BackupSummary = withContext(Dispatchers.IO) {
         val workDir = File(context.cacheDir, "backup-restore-${UUID.randomUUID()}")
         if (!workDir.mkdirs()) throw BackupException("복원용 임시 폴더를 만들 수 없습니다.")
+        // A failed preference commit must not discard the on-disk rollback copy:
+        // the live directories are only final once preferences were applied.
+        var keepWorkDir = false
         try {
             val extracted = BackupArchive.extract(input, workDir, onProgress)
             // Parse preferences before touching live data, so malformed XML
             // cannot leave a half-restored app behind.
             val preferences = readPreferences(extracted.prefsDir)
-            BackupArchive.replaceDirectories(
+            installRestoredData(
                 filesDir = context.filesDir,
                 stagedFilesDir = extracted.dataDir,
                 directories = extracted.manifest.directories,
                 rollbackDir = File(workDir, "rollback"),
+                applyPreferences = { applyPreferences(context, preferences) },
+                onRollbackFailed = { keepWorkDir = true },
             )
-            applyPreferences(context, preferences)
             BackupSummary(
                 createdAt = extracted.manifest.createdAt,
                 includeSources = extracted.manifest.includeSources,
                 fileCount = extracted.manifest.fileCount,
             )
         } finally {
-            runCatching { workDir.deleteRecursively() }
+            if (!keepWorkDir) {
+                runCatching { workDir.deleteRecursively() }
+            }
         }
+    }
+}
+
+/**
+ * Installs staged directories into [filesDir] and then applies the restored
+ * preferences. Preference application happens *after* the data directories are
+ * replaced, so a failed commit must roll those directories back before the
+ * error is propagated; otherwise new user data would be left paired with a
+ * stale preference set and no rollback copy.
+ *
+ * [onRollbackFailed] tells the caller to keep the rollback directory when the
+ * originals could not be fully restored.
+ */
+internal fun installRestoredData(
+    filesDir: File,
+    stagedFilesDir: File,
+    directories: List<String>,
+    rollbackDir: File,
+    applyPreferences: () -> Unit,
+    onRollbackFailed: () -> Unit = {},
+) {
+    BackupArchive.replaceDirectories(filesDir, stagedFilesDir, directories, rollbackDir)
+    try {
+        applyPreferences()
+    } catch (prefsError: Throwable) {
+        try {
+            BackupArchive.rollbackDirectories(filesDir, directories, rollbackDir)
+        } catch (rollbackError: Throwable) {
+            onRollbackFailed()
+            prefsError.addSuppressed(rollbackError)
+        }
+        throw prefsError
     }
 }
 
@@ -434,6 +472,29 @@ internal object BackupArchive {
                 runCatching { movePath(File(rollbackDir, name), target) }
             }
             throw error
+        }
+    }
+
+    /**
+     * Undoes a successful [replaceDirectories]: removes the installed copies and
+     * moves the originals back from [rollbackDir]. Directories that did not exist
+     * before the replacement are simply removed. Kept separate from
+     * [replaceDirectories]'s internal rollback so a later failure (notably a
+     * preference commit) can reverse an already-installed restore.
+     */
+    fun rollbackDirectories(filesDir: File, directories: List<String>, rollbackDir: File) {
+        directories.forEach { name ->
+            if (name !in DATA_DIRECTORIES) {
+                throw BackupException("복원할 수 없는 데이터 폴더입니다: $name")
+            }
+            val target = File(filesDir, name)
+            if (target.exists() && !target.deleteRecursively()) {
+                throw BackupException("복원된 폴더를 정리하지 못했습니다: $name")
+            }
+            val backup = File(rollbackDir, name)
+            if (backup.exists()) {
+                movePath(backup, target)
+            }
         }
     }
 

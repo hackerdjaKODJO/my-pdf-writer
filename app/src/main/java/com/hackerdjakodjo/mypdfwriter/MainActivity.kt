@@ -121,11 +121,13 @@ class MainActivity : ComponentActivity() {
                     mutableFloatStateOf(STUDY_PANE_DEFAULT_FRACTION)
                 }
                 LaunchedEffect(backupState.restoredAt) {
-                    if (backupState.restoredAt != null) {
-                        notebookViewModel.refresh()
-                        viewModel.reloadLibrary()
-                        backupViewModel.consumeRestored()
-                    }
+                    onBackupRestored(
+                        restoredAt = backupState.restoredAt,
+                        refreshNotebook = { notebookViewModel.refresh() },
+                        reloadLibrary = { viewModel.reloadLibrary() },
+                        closeDocument = { viewModel.closeDocument() },
+                        consumeRestored = { backupViewModel.consumeRestored() },
+                    )
                 }
                 // First launch only: show the walkthrough after the home screen
                 // settles, then persist the one-time flag. Replay is driven by
@@ -409,17 +411,60 @@ class MainActivity : ComponentActivity() {
         val rawUri = resolveImportUri(snapshot) ?: return
         // Consume every URI carrier: a redelivered intent (onNewIntent or
         // recreation with the same Intent) must not open the same PDF twice.
-        intent?.data = null
-        intent?.removeExtra(Intent.EXTRA_STREAM)
-        intent?.clipData = null
+        clearIntentCarriers(object : IntentCarrierSink {
+            override fun clearData() {
+                intent?.data = null
+            }
+
+            override fun clearExtraStream() {
+                intent?.removeExtra(Intent.EXTRA_STREAM)
+            }
+
+            override fun clearClipData() {
+                intent?.clipData = null
+            }
+        })
         val uri = Uri.parse(rawUri)
         notebookViewModel.close()
-        if (intent?.action == Intent.ACTION_SEND) {
-            // Sharing a PDF into the app is an import: keep it in local recents.
-            viewModel.openDocument(uri)
-        } else {
-            // Preserve the existing ACTION_VIEW policy: open without adding to recents.
-            viewModel.openDocument(uri, addToRecents = false)
-        }
+        // ACTION_SEND is an import and joins recents; ACTION_VIEW opens without
+        // touching recents (unchanged policy).
+        viewModel.openDocument(uri, addToRecents = shouldAddToRecents(intent?.action))
     }
+}
+
+/** The three URI carriers a real Intent can hold, exposed without Android types. */
+internal interface IntentCarrierSink {
+    fun clearData()
+    fun clearExtraStream()
+    fun clearClipData()
+}
+
+/** Removes every URI carrier so a redelivered intent cannot re-import a PDF. Idempotent. */
+internal fun clearIntentCarriers(sink: IntentCarrierSink) {
+    sink.clearData()
+    sink.clearExtraStream()
+    sink.clearClipData()
+}
+
+/** ACTION_SEND imports a PDF into local recents; ACTION_VIEW does not. */
+internal fun shouldAddToRecents(action: String?): Boolean =
+    action == "android.intent.action.SEND"
+
+/**
+ * One-shot restore bookkeeping. Refresh the notebook/library lists, then drop
+ * the stale viewer so the next open reads the restored sidecars from disk.
+ * No forced navigation home is needed: closing the viewer returns to Home.
+ */
+internal fun onBackupRestored(
+    restoredAt: Long?,
+    refreshNotebook: () -> Unit,
+    reloadLibrary: () -> Unit,
+    closeDocument: () -> Unit,
+    consumeRestored: () -> Unit,
+) {
+    if (restoredAt == null) return
+    refreshNotebook()
+    reloadLibrary()
+    closeDocument()
+    consumeRestored()
 }
