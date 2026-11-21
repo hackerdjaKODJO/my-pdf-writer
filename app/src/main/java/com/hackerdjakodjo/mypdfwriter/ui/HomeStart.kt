@@ -17,10 +17,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.NoteAdd
-import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.School
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +61,16 @@ internal fun selectHomeContinuation(
         .maxByOrNull { it.updatedAt },
 )
 
+private const val ACTION_IMPORT_PDF = "PDF 가져오기"
+private const val ACTION_NEW_NOTE = "새 노트"
+internal const val HOME_CONTINUATION_TITLE = "이어서 학습"
+
+/** One student-first label for both PDF and notebook continuation cards. */
+internal fun continuationLabel(name: String): String = "$HOME_CONTINUATION_TITLE: $name"
+
+/** Only these two primary actions remain on Home; tools/backup live in 설정. */
+internal fun homeQuickActionLabels(): List<String> = listOf(ACTION_IMPORT_PDF, ACTION_NEW_NOTE)
+
 /** Quick actions collapse to two columns on narrow screens or with large text. */
 internal fun homeQuickActionColumns(widthDp: Int, fontScale: Float): Int =
     chromeScale(widthDp, fontScale).quickActionColumns
@@ -83,48 +93,51 @@ internal fun homeQuickActionLabelMaxLines(
 internal fun favoriteToggleDescription(favorite: Boolean): String =
     stateLabel("즐겨찾기", favorite)
 
-private data class QuickActionSpec(
-    val label: String,
-    val icon: ImageVector,
-    val onClick: () -> Unit,
-)
-
+/**
+ * The "이어서 학습" section: existing continuation cards are reused verbatim
+ * (callbacks unchanged) but now speak one shared student-first label.
+ */
 @Composable
-internal fun HomeStartContent(
+internal fun HomeContinuationCards(
     continuation: HomeContinuation,
     onOpenNotebook: (String) -> Unit,
     onOpenPdf: (RecentDoc) -> Unit,
+) {
+    if (!continuation.hasContent) return
+    Column(Modifier.fillMaxWidth()) {
+        HomeSectionLabel(HOME_CONTINUATION_TITLE)
+        continuation.lastPdf?.let { doc ->
+            ContinuePdfCard(doc = doc, onOpen = { onOpenPdf(doc) })
+        }
+        if (continuation.lastPdf != null && continuation.lastNotebook != null) {
+            Spacer(Modifier.height(8.dp))
+        }
+        continuation.lastNotebook?.let { notebook ->
+            ContinueNotebookCard(
+                notebook = notebook,
+                onOpen = { onOpenNotebook(notebook.id) },
+            )
+        }
+    }
+}
+
+/** Home start block: a quick-study entry point and the two primary actions. */
+@Composable
+internal fun HomeStartContent(
     onImportPdf: () -> Unit,
     onCreateNote: () -> Unit,
-    onOpenTools: () -> Unit,
-    onOpenBackup: () -> Unit,
+    onOpenQuickStudy: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth()) {
-        if (continuation.hasContent) {
-            HomeSectionLabel("이어서")
-            continuation.lastPdf?.let { doc ->
-                ContinuePdfCard(doc = doc, onOpen = { onOpenPdf(doc) })
-            }
-            if (continuation.lastPdf != null && continuation.lastNotebook != null) {
-                Spacer(Modifier.height(8.dp))
-            }
-            continuation.lastNotebook?.let { notebook ->
-                ContinueNotebookCard(
-                    notebook = notebook,
-                    onOpen = { onOpenNotebook(notebook.id) },
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-        }
+        QuickStudyLaunchCard(onClick = onOpenQuickStudy)
+        Spacer(Modifier.height(12.dp))
 
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val fontScale = LocalDensity.current.fontScale
             val columns = homeQuickActionColumns(maxWidth.value.roundToInt(), fontScale)
             val actions = listOf(
-                QuickActionSpec("PDF 가져오기", Icons.Outlined.PictureAsPdf, onImportPdf),
-                QuickActionSpec("새 노트", Icons.AutoMirrored.Outlined.NoteAdd, onCreateNote),
-                QuickActionSpec("PDF 도구", Icons.AutoMirrored.Outlined.MenuBook, onOpenTools),
-                QuickActionSpec("백업/복원", Icons.Outlined.Archive, onOpenBackup),
+                QuickActionSpec(ACTION_IMPORT_PDF, Icons.Outlined.PictureAsPdf, onImportPdf),
+                QuickActionSpec(ACTION_NEW_NOTE, Icons.AutoMirrored.Outlined.NoteAdd, onCreateNote),
             )
             val gap = 8.dp
             val cardWidth = (maxWidth - gap * (columns - 1)) / columns
@@ -150,6 +163,60 @@ internal fun HomeStartContent(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickStudyLaunchCard(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .semantics { contentDescription = "빠른 학습" },
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.64f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.School,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(21.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "빠른 학습",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Clip,
+                )
+                Text(
+                    "네 단계로 PDF 공부를 시작해 보세요.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Clip,
+                )
             }
         }
     }
@@ -219,7 +286,7 @@ private fun ContinuePdfCard(doc: RecentDoc, onOpen: () -> Unit) {
                     .fillMaxWidth()
                     .heightIn(min = 48.dp),
             ) {
-                Text("이어서 읽기: ${doc.name}", maxLines = 2)
+                Text(continuationLabel(doc.name), maxLines = 2)
             }
         }
     }
@@ -273,11 +340,17 @@ private fun ContinueNotebookCard(notebook: Notebook, onOpen: () -> Unit) {
                     .fillMaxWidth()
                     .heightIn(min = 48.dp),
             ) {
-                Text("이어서 쓰기: ${notebook.title}", maxLines = 2)
+                Text(continuationLabel(notebook.title), maxLines = 2)
             }
         }
     }
 }
+
+private data class QuickActionSpec(
+    val label: String,
+    val icon: ImageVector,
+    val onClick: () -> Unit,
+)
 
 @Composable
 private fun QuickAction(

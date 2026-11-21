@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,11 +34,11 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.NoteAdd
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.automirrored.outlined.ViewList
@@ -80,10 +79,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -124,11 +119,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class LibrarySection(val label: String) {
+internal enum class LibrarySection(val label: String) {
     NOTES("노트"),
     PDF("PDF"),
     TAGS("태그"),
 }
+
+/** Compact top control that replaces the old bottom tab bar / side rail. */
+internal fun homeSectionLabels(): List<String> = LibrarySection.entries.map { it.label }
 
 private val CoverPalette: List<Int> = listOf(
     0xFFD8E6F3.toInt(),
@@ -208,6 +206,7 @@ fun NotebookHomeScreen(
     var showCreate by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showQuickStudy by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<Notebook?>(null) }
     var moveTarget by remember { mutableStateOf<Notebook?>(null) }
@@ -356,6 +355,10 @@ fun NotebookHomeScreen(
                                 containerColor = MaterialTheme.colorScheme.background,
                             ),
                         )
+                        HomeSectionSegments(
+                            selected = section,
+                            onSelect = { section = it },
+                        )
                         if (searchOpen) {
                             HomeSearchField(
                                 query = query,
@@ -370,29 +373,22 @@ fun NotebookHomeScreen(
                     }
                 }
             },
-            bottomBar = {
-                if (!expanded) {
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                        LibrarySection.entries.forEach { item ->
-                            NavigationBarItem(
-                                selected = section == item,
-                                onClick = { section = item },
-                                icon = { Icon(sectionIcon(item), contentDescription = null) },
-                                label = { Text(item.label) },
-                            )
-                        }
+        ) { innerPadding ->
+            Column(Modifier.fillMaxSize().padding(innerPadding)) {
+                if (showStart && continuation.hasContent) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = horizontalPadding, end = horizontalPadding, top = 4.dp),
+                    ) {
+                        HomeContinuationCards(
+                            continuation = continuation,
+                            onOpenNotebook = onOpenNotebook,
+                            onOpenPdf = onOpenPdf,
+                        )
                     }
                 }
-            },
-        ) { innerPadding ->
-            Row(Modifier.fillMaxSize().padding(innerPadding)) {
-                if (expanded) {
-                    LibraryRail(
-                        selected = section,
-                        onSelect = { section = it },
-                    )
-                }
-                Box(Modifier.weight(1f).fillMaxHeight()) {
+                Box(Modifier.weight(1f).fillMaxWidth()) {
                     when (section) {
                         LibrarySection.NOTES -> NotesSection(
                             notebooks = notebooks,
@@ -418,11 +414,8 @@ fun NotebookHomeScreen(
                                 query = updated.query
                             },
                             showStart = showStart,
-                            continuation = continuation,
-                            onOpenPdf = onOpenPdf,
                             onImportPdf = onImportPdf,
-                            onOpenBackup = onOpenBackup,
-                            onOpenTools = onOpenTools,
+                            onOpenQuickStudy = { showQuickStudy = true },
                             horizontalPadding = horizontalPadding,
                             actions = actions,
                             onClearFilters = {
@@ -592,6 +585,15 @@ fun NotebookHomeScreen(
     if (showInfo) {
         HomeInfoDialog(onDismiss = { showInfo = false })
     }
+
+    if (showQuickStudy) {
+        QuickStudySheet(
+            onDismiss = { showQuickStudy = false },
+            onOpenPdf = { continuation.lastPdf?.let(onOpenPdf) ?: onImportPdf() },
+            onImportPdf = onImportPdf,
+            hasRecentPdf = continuation.lastPdf != null,
+        )
+    }
 }
 
 @Composable
@@ -670,39 +672,65 @@ private fun HomeSearchField(
     )
 }
 
+/**
+ * The former bottom tabs (and wide-screen rail) are now this compact top
+ * segmented control. Labels wrap to two lines and the row scrolls horizontally,
+ * so it stays usable at 320dp and with large fonts.
+ */
 @Composable
-private fun LibraryRail(
+private fun HomeSectionSegments(
     selected: LibrarySection,
     onSelect: (LibrarySection) -> Unit,
 ) {
-    NavigationRail(
-        modifier = Modifier.fillMaxHeight(),
-        containerColor = MaterialTheme.colorScheme.surface,
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = 2.dp),
     ) {
-        Spacer(Modifier.height(10.dp))
-        LibrarySection.entries.forEach { item ->
-            NavigationRailItem(
-                selected = selected == item,
-                onClick = { onSelect(item) },
-                icon = { Icon(sectionIcon(item), contentDescription = null) },
-                label = { Text(item.label) },
-                alwaysShowLabel = true,
-            )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LibrarySection.entries.forEach { item ->
+                val isSelected = selected == item
+                Box(
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                Color.Transparent
+                            },
+                        )
+                        .selectable(selected = isSelected, onClick = { onSelect(item) })
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        item.label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 2,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.semantics {
+                            contentDescription = "${item.label} 섹션"
+                        },
+                    )
+                }
+            }
         }
-        Spacer(Modifier.weight(1f))
-        Text(
-            "기기 저장",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 16.dp),
-        )
     }
-}
-
-private fun sectionIcon(section: LibrarySection): ImageVector = when (section) {
-    LibrarySection.NOTES -> Icons.AutoMirrored.Outlined.MenuBook
-    LibrarySection.PDF -> Icons.Outlined.PictureAsPdf
-    LibrarySection.TAGS -> Icons.Outlined.LocalOffer
 }
 
 @Composable
@@ -718,11 +746,8 @@ private fun NotesSection(
     onRemoveFilter: (HomeFilterKind) -> Unit,
     onClearAllFilters: () -> Unit,
     showStart: Boolean,
-    continuation: HomeContinuation,
-    onOpenPdf: (RecentDoc) -> Unit,
     onImportPdf: () -> Unit,
-    onOpenBackup: () -> Unit,
-    onOpenTools: () -> Unit,
+    onOpenQuickStudy: () -> Unit,
     horizontalPadding: Dp,
     actions: NotebookActions,
     onClearFilters: () -> Unit,
@@ -755,13 +780,9 @@ private fun NotesSection(
                 if (showStart) {
                     item {
                         HomeStartContent(
-                            continuation = continuation,
-                            onOpenNotebook = actions.open,
-                            onOpenPdf = onOpenPdf,
                             onImportPdf = onImportPdf,
                             onCreateNote = onCreate,
-                            onOpenTools = onOpenTools,
-                            onOpenBackup = onOpenBackup,
+                            onOpenQuickStudy = onOpenQuickStudy,
                         )
                     }
                 }
@@ -792,13 +813,9 @@ private fun NotesSection(
                 if (showStart) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         HomeStartContent(
-                            continuation = continuation,
-                            onOpenNotebook = actions.open,
-                            onOpenPdf = onOpenPdf,
                             onImportPdf = onImportPdf,
                             onCreateNote = onCreate,
-                            onOpenTools = onOpenTools,
-                            onOpenBackup = onOpenBackup,
+                            onOpenQuickStudy = onOpenQuickStudy,
                         )
                     }
                 }
@@ -821,13 +838,9 @@ private fun NotesSection(
                 if (showStart) {
                     item {
                         HomeStartContent(
-                            continuation = continuation,
-                            onOpenNotebook = actions.open,
-                            onOpenPdf = onOpenPdf,
                             onImportPdf = onImportPdf,
                             onCreateNote = onCreate,
-                            onOpenTools = onOpenTools,
-                            onOpenBackup = onOpenBackup,
+                            onOpenQuickStudy = onOpenQuickStudy,
                         )
                     }
                 }
