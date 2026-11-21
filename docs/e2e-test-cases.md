@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.31
+# E2E test cases — My PDF Writer 0.8.32
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator; the build machine has no adb device attached, so only JVM tests are
@@ -9,7 +9,7 @@ executed here. Instrumentation APKs are compiled with
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 656 | **Passing** on this phone |
+| JVM unit tests | 689 | **Passing** on this phone |
 | Instrumentation/E2E | 7 classes (see below) | **Compiled**; on-device run pending |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally) |
@@ -80,6 +80,8 @@ executed here. Instrumentation APKs are compiled with
 | A11Y-03 | Split divider accessible size control | JVM `StudyPaneLayoutTest` + E2E | Compiled |
 | A11Y-04 | Home/note/PDF labels and selected states | JVM + E2E smoke | Compiled |
 | PEN-02 | Ballpoint skip, fountain taper, pencil segment dynamics | JVM `PenStrokeGeometryTest`, `AnnotationPainterPolicyTest` | Passing |
+| PDF-OPEN | Single documentInfo, identity layout skip, source cache | JVM `PdfRepositoryTest` | Passing |
+| PDF-MEMO | PDF memo cards persist, render, move/resize and close | JVM `PdfMemoCardLayerTest`, `PdfViewModelMemoTest` | Passing |
 
 ## Run on a device
 
