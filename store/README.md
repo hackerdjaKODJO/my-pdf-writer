@@ -30,7 +30,7 @@ python tools/make-store-assets.py
 ## 앱 이름 (30자 이내)
 
 ```
-My PDF Writer – 전공 필기 PDF
+My PDF Writer – PDF 편집 / 노트
 ```
 
 ## 짧은 설명 (80자 이내)
