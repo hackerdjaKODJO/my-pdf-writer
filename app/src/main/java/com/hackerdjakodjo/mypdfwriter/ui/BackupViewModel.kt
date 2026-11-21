@@ -18,6 +18,7 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * UI state for a local ZIP backup or restore.
@@ -35,6 +36,24 @@ data class BackupUiState(
 )
 
 /**
+ * Single-entry gate for local backup/restore. The old `busy` check-then-set
+ * raced when a second SAF result arrived before the first job observed the
+ * state update, starting a second manager call. [tryStart] is atomic; callers
+ * must [finish] on every exit path (success, failure and cancellation).
+ */
+internal class BackupOperationGate {
+    private val active = AtomicBoolean(false)
+
+    val isActive: Boolean get() = active.get()
+
+    fun tryStart(): Boolean = active.compareAndSet(false, true)
+
+    fun finish() {
+        active.set(false)
+    }
+}
+
+/**
  * Runs SAF stream I/O and ZIP work off the main thread. It deliberately has no
  * reference to [NotebookViewModel] or [PdfViewModel]; restore completion is
  * exposed as the [BackupUiState.restoredAt] event for the integration layer to
@@ -43,6 +62,7 @@ data class BackupUiState(
 class BackupViewModel(application: Application) : AndroidViewModel(application) {
 
     private val resolver = application.contentResolver
+    private val operationGate = BackupOperationGate()
 
     private val _state = MutableStateFlow(BackupUiState())
     val state: StateFlow<BackupUiState> = _state.asStateFlow()
@@ -54,7 +74,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun backup(uri: Uri, includeSources: Boolean) {
-        if (_state.value.busy) return
+        if (!operationGate.tryStart()) return
         _state.update { it.copy(busy = true, progress = 0, message = null, restoredAt = null) }
         viewModelScope.launch {
             try {
@@ -97,12 +117,14 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                         message = "백업하지 못했습니다: ${error.readableMessage()}",
                     )
                 }
+            } finally {
+                operationGate.finish()
             }
         }
     }
 
     fun restore(uri: Uri) {
-        if (_state.value.busy) return
+        if (!operationGate.tryStart()) return
         _state.update { it.copy(busy = true, progress = 0, message = null, restoredAt = null) }
         viewModelScope.launch {
             try {
@@ -144,6 +166,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                         message = "복원하지 못했습니다: ${error.readableMessage()}",
                     )
                 }
+            } finally {
+                operationGate.finish()
             }
         }
     }

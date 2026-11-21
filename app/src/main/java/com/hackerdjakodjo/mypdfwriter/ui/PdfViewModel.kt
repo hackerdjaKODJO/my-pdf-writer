@@ -165,24 +165,25 @@ internal fun restoreSnapshotInto(
 }
 
 /**
- * Pure state of the coalescing doc-state writer. [pending] is the newest captured
- * state not yet written; [running] is true while the single IO drain loop owns it.
+ * Pure state of the coalescing doc-state writer. [pending] holds the newest
+ * captured state *per document*, keyed by docId; [running] is true while the
+ * single IO drain loop owns the queue. Keying by document means switching docs
+ * before a drain cannot drop the previous document's last state.
  */
 internal data class DocSaveQueue(
-    val pending: DocState? = null,
+    val pending: Map<String, DocState> = emptyMap(),
     val running: Boolean = false,
 ) {
     /** Returns the updated queue and whether a writer job must be started. */
     fun offer(state: DocState): Pair<DocSaveQueue, Boolean> =
-        copy(pending = state, running = true) to !running
+        copy(pending = pending + (state.docId to state), running = true) to !running
 
-    /** Returns the updated queue and the state to write, or null when drained. */
-    fun take(): Pair<DocSaveQueue, DocState?> =
-        if (pending == null) {
-            copy(running = false) to null
-        } else {
-            copy(pending = null, running = true) to pending
-        }
+    /** Returns the updated queue and one state to write, or null when drained. */
+    fun take(): Pair<DocSaveQueue, DocState?> {
+        if (pending.isEmpty()) return copy(running = false) to null
+        val entry = pending.entries.first()
+        return copy(pending = pending - entry.key, running = true) to entry.value
+    }
 }
 
 /** Cancellation is control flow, not a failure: never let it become a UI error. */
@@ -196,6 +197,60 @@ internal fun mayPublishViewerResult(
     currentDocId: String?,
     docId: String,
 ): Boolean = isActive && currentDocId == docId
+
+/**
+ * Monotonic token for document opens. Each [begin] supersedes every earlier
+ * open; [invalidate] drops all in-flight opens (used by close/discard). Pure so
+ * the rapid-double-open policy is JVM-testable without an Android ViewModel.
+ */
+internal class OpenGenerationGate {
+    private var generation: Int = 0
+
+    val current: Int get() = generation
+
+    fun begin(): Int = ++generation
+
+    fun invalidate() {
+        generation++
+    }
+
+    fun isCurrent(token: Int): Boolean = token == generation
+}
+
+/** True only while work tagged with [token] is still the active document open. */
+internal fun mayPublishOpenResult(
+    isActive: Boolean,
+    token: Int?,
+    currentToken: Int,
+): Boolean = isActive && (token == null || token == currentToken)
+
+/** Immutable export payload captured at SAF-launch time, bound to one document. */
+data class PdfExportSnapshot(
+    val docId: String,
+    val docName: String,
+    val source: File,
+    val state: DocState,
+    val style: DocumentStyle,
+)
+
+/** Captures the whole DocState on the Main thread before handing it to a writer. */
+internal fun viewerDocState(state: ViewerUiState): DocState = DocState(
+    docId = state.docId,
+    displayName = state.docName,
+    pages = state.pages,
+    annotations = state.annotations,
+    notes = state.notes,
+    displayPrefs = DisplayPrefs(
+        nightMode = state.nightMode,
+        brightness = state.brightness,
+        cropLeft = state.cropInsets.left,
+        cropTop = state.cropInsets.top,
+        cropRight = state.cropInsets.right,
+        cropBottom = state.cropInsets.bottom,
+        cropOddEven = state.cropOddEven,
+    ),
+    memoCards = state.memoCards,
+)
 
 /** Drops annotations on pages that were not extracted before remapping indexes. */
 internal fun remapExtractedAnnotations(
@@ -257,6 +312,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private var sourceSizes: List<PageSize> = emptyList()
     private var pageTexts: List<String>? = null
     private var renderJob: Job? = null
+    private var openJob: Job? = null
+    private val openGate = OpenGenerationGate()
     private var searchJob: Job? = null
     private var readingSaveJob: Job? = null
     private var textLayoutJob: Job? = null
@@ -276,9 +333,16 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     // ---------------------------------------------------------------- opening
 
     fun openDocument(uri: Uri, addToRecents: Boolean = true) {
+        // Capture the page request synchronously so a stale open cannot clear a
+        // newer one, then cancel and invalidate every earlier open.
+        val requestedPage = pendingInitialPage
+        pendingInitialPage = null
         saveReadingNow()
         searchJob?.cancel()
-        viewModelScope.launch {
+        openJob?.cancel()
+        val token = openGate.begin()
+        openJob = viewModelScope.launch {
+            if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
             _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.rendering_page)) }
             runCatching {
                 runCatching {
@@ -311,6 +375,9 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     repo.assemble(source, pages, working)
                 }
 
+                // Every shared write below is guarded: a superseded open must not
+                // overwrite sourceFile/workingFile/currentUriString/_viewer.
+                if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
                 sourceFile = source
                 workingFile = working
                 currentUriString = uri.toString()
@@ -326,8 +393,6 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 redoStack.clear()
 
                 val displayName = saved?.displayName?.takeIf { it.isNotBlank() } ?: name
-                val requestedPage = pendingInitialPage
-                pendingInitialPage = null
                 val restoredPage = (requestedPage ?: reading.lastPage)
                     .coerceIn(0, (pages.size - 1).coerceAtLeast(0))
                 _pageBitmap.value = null
@@ -359,8 +424,9 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                         RecentDoc(uri.toString(), displayName, pages.size, System.currentTimeMillis()),
                     )
                 }
-                renderPage(restoredPage)
+                renderPage(restoredPage, token)
             }.onFailure { error ->
+                if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
                 // A bad/truncated copy must not poison later opens in this session.
                 repo.invalidateSource(uri.toString())
                 _viewer.value = null
@@ -369,7 +435,6 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 _excerpts.value = emptyList()
                 _bookmarks.value = emptyList()
                 currentUriString = null
-                pendingInitialPage = null
                 _libraryMessage.value = text(R.string.error_generic, error.message ?: text(R.string.unsupported_pdf))
             }
         }
@@ -399,6 +464,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closeDocument() {
+        openJob?.cancel()
+        openGate.invalidate()
         renderJob?.cancel()
         searchJob?.cancel()
         linkLoadJob?.cancel()
@@ -427,6 +494,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
      * stale viewer here would immediately overwrite the restored annotations.
      */
     fun discardDocument() {
+        openJob?.cancel()
+        openGate.invalidate()
         renderJob?.cancel()
         searchJob?.cancel()
         linkLoadJob?.cancel()
@@ -454,10 +523,11 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------------------------------------------------------------- rendering
 
-    private fun renderPage(index: Int) {
+    private fun renderPage(index: Int, openToken: Int? = null) {
         val file = workingFile ?: return
         renderJob?.cancel()
         renderJob = viewModelScope.launch {
+            if (!mayPublishOpenResult(isActive, openToken, openGate.current)) return@launch
             val docId = _viewer.value?.docId ?: return@launch
             _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.rendering_page)) }
             val rendered = try {
@@ -466,8 +536,9 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 rethrowIfCancelled(error)
                 null
             }
-            // A superseded render (page flip or document swap) must not publish.
+            // A superseded render (page flip, document swap or a newer open) must not publish.
             if (!mayPublishViewerResult(isActive, _viewer.value?.docId, docId)) return@launch
+            if (!mayPublishOpenResult(isActive, openToken, openGate.current)) return@launch
             if (rendered == null) {
                 _viewer.update {
                     it?.copy(busy = false, busyLabel = null, message = text(R.string.unsupported_pdf))
@@ -670,9 +741,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     fun shareCurrent() {
         val state = _viewer.value ?: return
+        val token = openGate.current
         viewModelScope.launch {
+            if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
             _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.preparing_export)) }
             val file = buildExportFile()
+            if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
             _viewer.update { it?.copy(busy = false, busyLabel = null) }
             if (file != null) {
                 PdfShare.sharePdf(getApplication(), file, state.docName)
@@ -684,9 +758,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     fun printCurrent() {
         val state = _viewer.value ?: return
+        val token = openGate.current
         viewModelScope.launch {
+            if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
             _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.preparing_export)) }
             val file = buildExportFile()
+            if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
             _viewer.update { it?.copy(busy = false, busyLabel = null) }
             if (file != null) {
                 PdfShare.printPdf(getApplication(), file, state.docName.substringBeforeLast('.'))
@@ -1204,7 +1281,9 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val source = sourceFile ?: return
         val ordered = indices.filter { it in state.pages.indices }.sorted()
         if (ordered.isEmpty()) return
+        val token = openGate.current
         viewModelScope.launch {
+            if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
             _viewer.update { it?.copy(busy = true, busyLabel = "페이지를 추출하는 중…") }
             runCatching {
                 val specs = ordered.map { state.pages[it] }
@@ -1222,8 +1301,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     } ?: error("출력 파일을 열 수 없습니다.")
                 }
             }.onSuccess {
+                if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
                 _viewer.update { it?.copy(busy = false, busyLabel = null, message = "페이지 ${ordered.size}장을 추출했습니다.") }
             }.onFailure { error ->
+                if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
                 _viewer.update { it?.copy(busy = false, busyLabel = null, message = "추출하지 못했습니다: ${error.message}") }
             }
         }
@@ -1818,29 +1899,49 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         return "${safe}_주석.pdf"
     }
 
-    fun exportTo(uri: Uri) {
-        val state = _viewer.value ?: return
-        val source = sourceFile ?: return
+    /**
+     * Captures the active document at SAF-launch time. The picker can stay open
+     * while the user switches documents, so the export must carry its own payload
+     * instead of reading the active viewer when the result arrives.
+     */
+    fun captureExportSnapshot(): PdfExportSnapshot? {
+        val state = _viewer.value ?: return null
+        val source = sourceFile ?: return null
+        return PdfExportSnapshot(
+            docId = state.docId,
+            docName = state.docName,
+            source = source,
+            state = viewerDocState(state),
+            style = state.documentStyle,
+        )
+    }
+
+    fun exportTo(snapshot: PdfExportSnapshot, uri: Uri) {
         viewModelScope.launch {
+            // A document switch while the picker was open must not move the busy
+            // indicator or success/failure message onto the newly active document.
+            if (!mayPublishViewerResult(isActive, _viewer.value?.docId, snapshot.docId)) return@launch
             _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.preparing_export)) }
             runCatching {
                 withContext(Dispatchers.IO) {
                     resolver.openOutputStream(uri, "wt")?.use { output ->
                         PdfExporter.export(
-                            source = source,
-                            specs = state.pages,
-                            annotations = state.annotations,
+                            source = snapshot.source,
+                            specs = snapshot.state.pages,
+                            annotations = snapshot.state.annotations,
                             out = output,
-                            style = state.documentStyle,
-                            pageCount = state.pageCount,
+                            style = snapshot.style,
+                            pageCount = snapshot.state.pages.size,
                         )
                     } ?: error("출력 파일을 열 수 없습니다.")
                 }
             }.onSuccess {
+                if (!mayPublishViewerResult(isActive, _viewer.value?.docId, snapshot.docId)) return@launch
                 _viewer.update {
                     it?.copy(busy = false, busyLabel = null, message = text(R.string.export_done))
                 }
             }.onFailure { error ->
+                if (!mayPublishViewerResult(isActive, _viewer.value?.docId, snapshot.docId)) return@launch
                 _viewer.update {
                     it?.copy(
                         busy = false,
@@ -1886,23 +1987,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private fun persistNow() {
         val state = _viewer.value ?: return
         // Capture the whole DocState on the Main thread before handing it to the writer.
-        val doc = DocState(
-            docId = state.docId,
-            displayName = state.docName,
-            pages = state.pages,
-            annotations = state.annotations,
-            notes = state.notes,
-            displayPrefs = DisplayPrefs(
-                nightMode = state.nightMode,
-                brightness = state.brightness,
-                cropLeft = state.cropInsets.left,
-                cropTop = state.cropInsets.top,
-                cropRight = state.cropInsets.right,
-                cropBottom = state.cropInsets.bottom,
-                cropOddEven = state.cropOddEven,
-            ),
-            memoCards = state.memoCards,
-        )
+        val doc = viewerDocState(state)
         val startWriter: Boolean
         synchronized(docSaveLock) {
             val (updated, shouldStart) = docSaveQueue.offer(doc)

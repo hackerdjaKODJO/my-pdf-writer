@@ -38,8 +38,8 @@ class PdfViewModelTest {
         tint = MemoTint.YELLOW,
     )
 
-    private fun doc(name: String) = DocState(
-        docId = "doc",
+    private fun doc(name: String, docId: String = "doc") = DocState(
+        docId = docId,
         displayName = "$name.pdf",
         pages = listOf(PageSpec(0)),
         annotations = emptyList(),
@@ -100,7 +100,7 @@ class PdfViewModelTest {
     fun coalescingWriterSkipsIntermediateStatesButAlwaysWritesTheNewest() {
         var queue = DocSaveQueue()
         assertFalse(queue.running)
-        assertNull(queue.pending)
+        assertTrue(queue.pending.isEmpty())
 
         val (afterA, startA) = queue.offer(doc("a"))
         assertTrue(startA)
@@ -125,6 +125,69 @@ class PdfViewModelTest {
         assertTrue(restart)
         val (_, lastWrite) = again.take()
         assertEquals("d", lastWrite?.notes?.get(0))
+    }
+
+    @Test
+    fun offerKeepsPendingStatesForDistinctDocIds() {
+        var queue = DocSaveQueue()
+        val (afterA, startA) = queue.offer(doc("a", docId = "A"))
+        assertTrue(startA)
+        queue = afterA
+        val (afterB, startB) = queue.offer(doc("b", docId = "B"))
+        assertFalse(startB)
+        queue = afterB
+        // A later edit to A overwrites only A's entry, never B's.
+        val (afterA2, startA2) = queue.offer(doc("a2", docId = "A"))
+        assertFalse(startA2)
+        queue = afterA2
+        assertEquals(2, queue.pending.size)
+
+        // The drain loop takes exactly one document per iteration.
+        val (afterFirst, first) = queue.take()
+        assertEquals("A", first?.docId)
+        assertEquals("a2", first?.notes?.get(0))
+        assertEquals(1, afterFirst.pending.size)
+        queue = afterFirst
+
+        val (afterSecond, second) = queue.take()
+        assertEquals("B", second?.docId)
+        assertEquals("b", second?.notes?.get(0))
+        assertTrue(afterSecond.pending.isEmpty())
+        queue = afterSecond
+
+        val (idle, nothing) = queue.take()
+        assertNull(nothing)
+        assertFalse(idle.running)
+    }
+
+    // ---------------------------------------------------------------- open generation
+
+    @Test
+    fun rapidDoubleOpenPublishesOnlyLastDocument() {
+        val gate = OpenGenerationGate()
+        val published = mutableListOf<String>()
+
+        fun finishOpen(docId: String, token: Int, isActive: Boolean = true) {
+            if (mayPublishOpenResult(isActive, token, gate.current)) published += docId
+        }
+
+        val first = gate.begin()
+        val second = gate.begin()
+        // The first (slow) open finishes after the second one started.
+        finishOpen("first.pdf", first)
+        finishOpen("second.pdf", second)
+        assertEquals(listOf("second.pdf"), published)
+
+        // close/discard invalidates everything still in flight.
+        gate.invalidate()
+        val third = gate.begin()
+        finishOpen("second.pdf", second)
+        finishOpen("third.pdf", third)
+        assertEquals(listOf("second.pdf", "third.pdf"), published)
+
+        // A cancelled scope never publishes, even with the newest token.
+        finishOpen("cancelled.pdf", third, isActive = false)
+        assertEquals(listOf("second.pdf", "third.pdf"), published)
     }
 
     // ---------------------------------------------------------------- cancellation + doc guard
