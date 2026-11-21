@@ -46,6 +46,16 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
 
     private var saveJob: Job? = null
 
+    /**
+     * Guards every notebook JSON write. The debounced writer holds this on IO;
+     * [saveNow] takes it on the calling thread so a close/backup flush can never
+     * interleave with a cancelled in-flight write of the same file.
+     */
+    private val saveLock = Any()
+
+    /** Monotonic id of the newest scheduled write; older jobs may not publish. */
+    private var saveGeneration = 0L
+
     fun open(id: String) {
         val notebook = store.load(id)
             ?: _notebooks.value.firstOrNull { it.id == id }
@@ -198,6 +208,8 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         }
 
         saveJob?.cancel()
+        val generation = nextSaveGeneration(saveGeneration)
+        saveGeneration = generation
         NoteTrace.event(
             "NOTE_VM",
             "save_scheduled",
@@ -205,22 +217,51 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             "pages" to updated.pages.size,
             "total" to noteAnnotationTotal(updated),
             "updatedAt" to updated.updatedAt,
+            "generation" to generation,
         )
         saveJob = viewModelScope.launch {
             delay(350)
-            val startedAt = System.currentTimeMillis()
-            store.save(updated)
-            NoteTrace.event(
-                "NOTE_VM",
-                "save_done",
-                "id" to updated.id,
-                "pages" to updated.pages.size,
-                "total" to noteAnnotationTotal(updated),
-                "updatedAt" to updated.updatedAt,
-                "ms" to (System.currentTimeMillis() - startedAt),
-            )
-            refresh()
+            if (!isLatestSaveGeneration(generation, saveGeneration)) return@launch
+            // Serialization + disk IO + library scan all leave Main. Only the
+            // StateFlow publish below runs on the Main dispatcher.
+            val loaded = withContext(Dispatchers.IO) {
+                persistSnapshot(updated)
+            }
+            // A newer stroke (or saveNow) may have superseded this job while it
+            // was writing; its stale library must never hide that newer state.
+            if (isLatestSaveGeneration(generation, saveGeneration)) {
+                _notebooks.value = loaded
+            } else {
+                NoteTrace.event(
+                    "NOTE_VM",
+                    "save_superseded",
+                    "id" to updated.id,
+                    "generation" to generation,
+                    "latest" to saveGeneration,
+                )
+            }
         }
+    }
+
+    /**
+     * Writes one snapshot and rescans the library under [saveLock]. Called on IO
+     * by the debounced writer and on the caller thread by [saveNow]; the lock
+     * keeps a cancelled older write from clobbering a newer one on disk.
+     */
+    private fun persistSnapshot(notebook: Notebook): List<Notebook> = synchronized(saveLock) {
+        val startedAt = System.currentTimeMillis()
+        store.save(notebook)
+        val loaded = store.loadAll()
+        NoteTrace.event(
+            "NOTE_VM",
+            "save_done",
+            "id" to notebook.id,
+            "pages" to notebook.pages.size,
+            "total" to noteAnnotationTotal(notebook),
+            "updatedAt" to notebook.updatedAt,
+            "ms" to (System.currentTimeMillis() - startedAt),
+        )
+        loaded
     }
 
     fun setPageIndex(index: Int) {
@@ -328,6 +369,9 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
 
     fun saveNow() {
         saveJob?.cancel()
+        // Invalidate any debounced job that already finished its IO and is about
+        // to publish, so its older library cannot overwrite this flush.
+        saveGeneration = nextSaveGeneration(saveGeneration)
         val notebook = _current.value
         if (notebook == null) {
             NoteTrace.event("NOTE_VM", "save_now_skip", "reason" to "no_current")
@@ -342,7 +386,14 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             "updatedAt" to notebook.updatedAt,
         )
         val startedAt = System.currentTimeMillis()
-        store.save(notebook)
+        // Close/back/backup callers are synchronous and cannot await a job, so the
+        // flush completes on the caller thread under the same lock the IO writer
+        // uses. This is runBlocking-free and still guarantees the bytes are on
+        // disk before the screen closes.
+        val loaded = synchronized(saveLock) {
+            store.save(notebook)
+            store.loadAll()
+        }
         NoteTrace.event(
             "NOTE_VM",
             "save_now_done",
@@ -352,7 +403,7 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             "updatedAt" to notebook.updatedAt,
             "ms" to (System.currentTimeMillis() - startedAt),
         )
-        refresh()
+        _notebooks.value = loaded
     }
 
     private fun findStudyNotebook(source: StudySource): Notebook? =
@@ -377,6 +428,17 @@ private fun noteAnnotationCounts(notebook: Notebook): String =
 
 private fun noteAnnotationTotal(notebook: Notebook): Int =
     notebook.pages.sumOf { it.annotations.size }
+
+/**
+ * Pure save-ordering policy behind [NotebookViewModel.updateCurrent] and
+ * [NotebookViewModel.saveNow]. Every new update supersedes the pending debounced
+ * write; a job whose generation is no longer the newest must neither write after
+ * nor publish over a newer snapshot. Keeping this JVM-pure lets the ordering that
+ * protects multi-stroke edits be tested without an Android application.
+ */
+internal fun nextSaveGeneration(current: Long): Long = current + 1L
+
+internal fun isLatestSaveGeneration(candidate: Long, latest: Long): Boolean = candidate == latest
 
 /**
  * Pure page duplication behind [NotebookViewModel.duplicatePage]. Kept free of

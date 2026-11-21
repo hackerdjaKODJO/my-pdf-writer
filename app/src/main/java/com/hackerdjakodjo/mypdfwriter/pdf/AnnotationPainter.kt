@@ -12,7 +12,6 @@ import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.InkResponse
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.inkResponseSeries
-import com.hackerdjakodjo.mypdfwriter.data.meanInkFlow
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -206,7 +205,7 @@ object AnnotationPainter {
      * Replay truncates only [series]; the mean, neutral flag and pressure variation
      * stay those of the complete stroke, so ink density never shifts while revealing.
      */
-    private data class InkContext(
+    internal data class InkContext(
         val mean: InkResponse,
         val series: List<InkResponse>,
         val neutral: Boolean,
@@ -215,12 +214,31 @@ object AnnotationPainter {
         val totalSamples: Int,
     )
 
-    private fun inkContextFor(annotation: Annotation): InkContext = InkContext(
-        mean = annotationInkResponse(annotation),
-        series = annotationInkSeries(annotation),
-        neutral = PenStrokeGeometry.isNeutralPressureStroke(annotation.points),
-        variation = PenStrokeGeometry.pressureVariation(annotation.points),
-        totalSamples = annotation.points.size,
+    /**
+     * Derives the whole pen context from one [inkResponseSeries] pass. The mean
+     * (width/grain/flow), neutral flag and variation all describe the full stroke
+     * before replay truncates [series], so ink density never shifts while a stroke
+     * is revealed and a legacy uniform stroke stays byte-identical.
+     */
+    internal fun inkContext(
+        points: List<NormalizedPoint>,
+        penStyle: PenStyle,
+        isHighlight: Boolean = false,
+    ): InkContext {
+        val series = inkResponseSeries(points, penStyle, isHighlight)
+        return InkContext(
+            mean = meanInkResponse(series),
+            series = series,
+            neutral = PenStrokeGeometry.isNeutralPressureStroke(points),
+            variation = PenStrokeGeometry.pressureVariation(points),
+            totalSamples = points.size,
+        )
+    }
+
+    private fun inkContextFor(annotation: Annotation): InkContext = inkContext(
+        points = annotation.points,
+        penStyle = annotation.penStyle,
+        isHighlight = annotation.type == AnnotationType.HIGHLIGHT,
     )
 
     /** Per-point response from the full annotation, shared by drawing and replay. */
@@ -263,27 +281,36 @@ object AnnotationPainter {
     /**
      * Stroke-wide response derived from the **full** annotation points. Drawing and
      * replay both call this before any truncation so revealing a stroke cannot change
-     * its ink density. The flow component is exactly [meanInkFlow] of those points;
-     * width and grain are averaged from the same smoothed series.
+     * its ink density. Flow, width and grain are all averaged from the one smoothed
+     * response series, matching `meanInkFlow` without a second O(N) pass.
      *
      * `InkResponse(1f, 1f, 1f)` is returned for empty strokes and for every uniform
      * full-pressure stroke, which keeps legacy/finger ink byte-identical. Highlight
      * annotations use the highlight profile regardless of their underlying pen style.
      */
-    internal fun annotationInkResponse(annotation: Annotation): InkResponse {
-        val highlight = annotation.type == AnnotationType.HIGHLIGHT
-        val series = inkResponseSeries(annotation.points, annotation.penStyle, highlight)
+    internal fun annotationInkResponse(annotation: Annotation): InkResponse =
+        meanInkResponse(annotationInkSeries(annotation))
+
+    /**
+     * Stroke-wide mean from a single already-computed [series]. Width and grain are
+     * averaged in sample order; flow reproduces `meanInkFlow` exactly (including
+     * its 0..1 clamp) so neutral and legacy rendering stay bit-identical. This is
+     * the only place that folds a series into a per-stroke response.
+     */
+    internal fun meanInkResponse(series: List<InkResponse>): InkResponse {
         if (series.isEmpty()) return InkResponse(1f, 1f, 1f)
         var width = 0f
         var grain = 0f
+        var flow = 0f
         series.forEach {
             width += it.width
             grain += it.grain
+            flow += it.flow
         }
         val count = series.size.toFloat()
         return InkResponse(
             width = width / count,
-            flow = meanInkFlow(annotation.points, annotation.penStyle, highlight),
+            flow = (flow / count).coerceIn(0f, 1f),
             grain = grain / count,
         )
     }

@@ -1,5 +1,7 @@
 package com.hackerdjakodjo.mypdfwriter.data
 
+import com.hackerdjakodjo.mypdfwriter.ui.isLatestSaveGeneration
+import com.hackerdjakodjo.mypdfwriter.ui.nextSaveGeneration
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -199,5 +201,60 @@ class NotebookTest {
         }
         assertEquals("tpl-ok.png", notebook.pages[3].customBackground)
         assertEquals(CustomTemplatePaths.DEFAULT_NAME, notebook.pages[3].customBackgroundName)
+    }
+
+    @Test
+    fun `debounced save generations reject stale writes`() {
+        var latest = 0L
+        val first = nextSaveGeneration(latest)
+        latest = first
+        val second = nextSaveGeneration(latest)
+        latest = second
+
+        assertEquals(1L, first)
+        assertEquals(2L, second)
+        assertTrue(isLatestSaveGeneration(second, latest))
+        assertFalse(isLatestSaveGeneration(first, latest))
+        assertFalse(isLatestSaveGeneration(0L, latest))
+    }
+
+    @Test
+    fun `legacy notebook reload keeps newest two-stroke save snapshot`() {
+        val legacy = Notebook.fromJson(JSONObject("""{"id":"legacy","title":"","pages":[{"id":"p"}]}"""))
+        val firstStroke = Annotation(
+            id = "s1",
+            type = AnnotationType.PEN,
+            page = 0,
+            color = 0xFF111111.toInt(),
+            width = 0.004f,
+            points = listOf(NormalizedPoint(0.1f, 0.2f), NormalizedPoint(0.2f, 0.3f)),
+        )
+        val secondStroke = firstStroke.copy(
+            id = "s2",
+            points = listOf(NormalizedPoint(0.5f, 0.2f), NormalizedPoint(0.6f, 0.3f)),
+        )
+        val afterFirst = legacy.copy(
+            pages = listOf(legacy.pages[0].copy(annotations = listOf(firstStroke))),
+        )
+        val afterSecond = afterFirst.copy(
+            pages = listOf(afterFirst.pages[0].copy(annotations = listOf(firstStroke, secondStroke))),
+        )
+
+        var latest = 0L
+        val firstGen = nextSaveGeneration(latest).also { latest = it }
+        val secondGen = nextSaveGeneration(latest).also { latest = it }
+        assertTrue(isLatestSaveGeneration(secondGen, latest))
+        assertFalse(isLatestSaveGeneration(firstGen, latest))
+        assertEquals(listOf("s1"), afterFirst.pages[0].annotations.map { it.id })
+
+        // The debounced writer normalizes before serializing; only the newest
+        // snapshot (both strokes) may reach disk and publish the library.
+        val saved = JSONObject(afterSecond.normalized().toJson().toString())
+        val restored = Notebook.fromJson(saved)
+        assertEquals("새 노트", restored.title)
+        assertEquals(PaperTemplate.LINED, restored.pages[0].template)
+        assertEquals(listOf("s1", "s2"), restored.pages[0].annotations.map { it.id })
+        assertEquals(1, restored.pages[0].layers.size)
+        assertEquals(restored.pages[0].layers[0].id, restored.pages[0].annotations[0].layerId)
     }
 }

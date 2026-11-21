@@ -267,6 +267,41 @@ class AnnotationPainterPolicyTest {
     }
 
     @Test
+    fun `combined ink context derives mean from the single computed series`() {
+        val pressures = listOf(1f, 0.82f, 0.46f, 0.1f, 0f, 0.31f, 1f)
+        PenStyle.values().forEach { style ->
+            val annotation = stroke(style, pressures)
+            val context = AnnotationPainter.inkContext(annotation.points, style)
+
+            assertEquals("sample count", annotation.points.size, context.series.size)
+            assertEquals("one series shared", AnnotationPainter.annotationInkSeries(annotation), context.series)
+            assertEquals("mean folded from that series", AnnotationPainter.meanInkResponse(context.series), context.mean)
+
+            // Byte-identical to the old two-pass derivation, including flow.
+            assertEquals("old response", AnnotationPainter.annotationInkResponse(annotation), context.mean)
+            assertEquals("meanInkFlow parity", meanInkFlow(annotation.points, style, false), context.mean.flow, 0f)
+
+            // Replay-relevant fields describe the full stroke, never a prefix.
+            assertEquals(annotation.points.size, context.totalSamples)
+            assertEquals(PenStrokeGeometry.isNeutralPressureStroke(annotation.points), context.neutral)
+            assertEquals(PenStrokeGeometry.pressureVariation(annotation.points), context.variation, 0f)
+            assertTrue("varied stroke", !context.neutral && context.variation > 0f)
+        }
+    }
+
+    @Test
+    fun `combined ink context keeps neutral legacy response byte identical`() {
+        val points = List(9) { NormalizedPoint(0.1f * it, 0.2f, 1f) }
+        val context = AnnotationPainter.inkContext(points, PenStyle.FOUNTAIN, isHighlight = false)
+
+        assertEquals(InkResponse(1f, 1f, 1f), context.mean)
+        assertTrue(context.neutral)
+        assertEquals(0f, context.variation, 0f)
+        context.series.forEach { assertEquals(InkResponse(1f, 1f, 1f), it) }
+        assertEquals(InkResponse(1f, 1f, 1f), AnnotationPainter.meanInkResponse(emptyList()))
+    }
+
+    @Test
     fun `varied strokes expose local flow width and grain for segment rendering`() {
         val pencil = stroke(PenStyle.PENCIL, listOf(1f, 0.85f, 0.6f, 0.3f, 0f, 0.4f))
         val pencilSeries = AnnotationPainter.annotationInkSeries(pencil)
