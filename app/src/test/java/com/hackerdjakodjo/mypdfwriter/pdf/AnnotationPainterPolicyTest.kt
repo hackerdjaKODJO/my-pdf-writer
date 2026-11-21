@@ -322,4 +322,51 @@ class AnnotationPainterPolicyTest {
             (1..32).any { PenStrokeGeometry.ballpointSkip(it, lightFlow) },
         )
     }
+
+    @Test
+    fun `ink context precomputes outline widths and replay slices the full array`() {
+        val annotation = stroke(PenStyle.FOUNTAIN, listOf(1f, 1f, 0.3f, 0f, 0.7f, 1f))
+        val context = AnnotationPainter.inkContext(annotation.points, annotation.penStyle)
+        assertEquals(annotation.points.size, context.outlineWidths.size)
+        assertTrue("full stroke enables the outline", context.variableOutline)
+        assertTrue("full stroke varies", context.variation > 0f)
+
+        val prefix = 2
+        val sliced = context.outlineWidths.copyOf(prefix)
+        assertEquals("slice equals prefix of precomputed widths", context.outlineWidths.take(prefix), sliced.toList())
+
+        // A freshly derived prefix loses the right neighbour and the end envelope,
+        // so it cannot stand in for the sliced full-stroke widths.
+        val recomputed = AnnotationPainter.inkContext(annotation.points.take(prefix), annotation.penStyle)
+        assertFalse("neutral prefix cannot enable the outline", recomputed.variableOutline)
+        assertTrue("replaying must not recompute widths", abs(sliced[1] - recomputed.outlineWidths[1]) > 0.001f)
+
+        val neutral = AnnotationPainter.inkContext(List(5) { NormalizedPoint(0.1f * it, 0.2f, 1f) }, PenStyle.PENCIL)
+        assertFalse("neutral stroke keeps its per-style path", neutral.variableOutline)
+        neutral.outlineWidths.forEach { assertEquals("neutral half width", 0.5f, it, 0f) }
+    }
+
+    @Test
+    fun `graphite policies keep the legacy pencil constants at neutral grain`() {
+        val neutral = InkResponse(1f, 1f, 1f)
+        assertEquals(-0.55f, PenStrokeGeometry.graphitePassOffset(0, neutral.grain), 0f)
+        assertEquals(0f, PenStrokeGeometry.graphitePassOffset(1, neutral.grain), 0f)
+        assertEquals(0.55f, PenStrokeGeometry.graphitePassOffset(2, neutral.grain), 0f)
+        val phase = 2 * 1.7 + 0 * 4.3
+        assertEquals(
+            AnnotationPainter.PENCIL_SIDE_GRAIN * kotlin.math.sin(phase).toFloat(),
+            AnnotationPainter.PENCIL_SIDE_GRAIN *
+                PenStrokeGeometry.graphiteJitterByArc(2, 40f, 0, neutral.grain, phase),
+            0f,
+        )
+        val light = InkResponse(1f, 1f, 0.4f)
+        assertTrue(
+            "light grain tightens the side passes",
+            PenStrokeGeometry.graphitePassOffset(0, light.grain) > -0.55f,
+        )
+        assertTrue(
+            "light grain reseeds the side wobble",
+            PenStrokeGeometry.graphiteJitterByArc(2, 40f, 0, light.grain, phase) != kotlin.math.sin(phase).toFloat(),
+        )
+    }
 }
