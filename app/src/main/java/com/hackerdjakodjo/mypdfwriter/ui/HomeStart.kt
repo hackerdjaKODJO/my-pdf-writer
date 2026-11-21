@@ -63,13 +63,13 @@ internal fun selectHomeContinuation(
 
 private const val ACTION_IMPORT_PDF = "PDF 가져오기"
 private const val ACTION_NEW_NOTE = "새 노트"
-internal const val HOME_CONTINUATION_TITLE = "이어서 학습"
+internal const val HOME_CONTINUATION_TITLE = "이어서 읽기"
 
 /** One student-first label for both PDF and notebook continuation cards. */
 internal fun continuationLabel(name: String): String = "$HOME_CONTINUATION_TITLE: $name"
 
 /** Only these two primary actions remain on Home; tools/backup live in 설정. */
-internal fun homeQuickActionLabels(): List<String> = listOf(ACTION_IMPORT_PDF, ACTION_NEW_NOTE)
+internal fun homeQuickActionLabels(): List<String> = homeQuickActionLabels(hasContent = true)
 
 /** Quick actions collapse to two columns on narrow screens or with large text. */
 internal fun homeQuickActionColumns(widthDp: Int, fontScale: Float): Int =
@@ -94,7 +94,7 @@ internal fun favoriteToggleDescription(favorite: Boolean): String =
     stateLabel("즐겨찾기", favorite)
 
 /**
- * The "이어서 학습" section: existing continuation cards are reused verbatim
+ * The "이어서 읽기" section: existing continuation cards are reused verbatim
  * (callbacks unchanged) but now speak one shared student-first label.
  */
 @Composable

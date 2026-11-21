@@ -140,11 +140,11 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
     ),
     HelpTopic(
         key = HelpTopicKey.STUDY_NOTE,
-        chip = "스터디 노트 + 높이",
-        title = "PDF 위 스터디 노트 + 높이 드래그",
+        chip = "노트에 담기 + 높이",
+        title = "PDF 위 노트에 담기 + 높이 드래그",
         subtitle = "PDF를 닫지 않고 노트를 펼치고 두 영역의 높이를 조절하기",
         steps = listOf(
-            "PDF 상단의 노트를 누르면 아래에 스터디 노트가 열리고 위에는 PDF가 남습니다.",
+            "PDF 상단의 노트를 누르면 아래에 노트가 열리고 위에는 PDF가 남습니다.",
             "기본 높이는 85%입니다. 두 영역 사이의 가운데 손잡이를 위아래로 드래그하세요.",
             "위로 드래그하면 노트가 커지고(최대 85%), 아래로 드래그하면 PDF가 커집니다(노트 최소 35%).",
             "노트 헤더의 크기 팝업에서 50/70/85%를 고를 수도 있습니다.",

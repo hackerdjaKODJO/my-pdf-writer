@@ -111,14 +111,14 @@ class HomeStartTest {
 
     @Test
     fun homeHasOnlyTwoPrimaryQuickActions() {
-        assertEquals(listOf("PDF 가져오기", "새 노트"), homeQuickActionLabels())
+        assertEquals(listOf("이어서 읽기", "새 노트"), homeQuickActionLabels())
     }
 
     @Test
     fun continuationCardsShareOneStudentFirstLabel() {
-        assertEquals("이어서 학습", HOME_CONTINUATION_TITLE)
-        assertEquals("이어서 학습: lecture.pdf", continuationLabel("lecture.pdf"))
-        assertEquals("이어서 학습: 시험 노트", continuationLabel("시험 노트"))
+        assertEquals("이어서 읽기", HOME_CONTINUATION_TITLE)
+        assertEquals("이어서 읽기: lecture.pdf", continuationLabel("lecture.pdf"))
+        assertEquals("이어서 읽기: 시험 노트", continuationLabel("시험 노트"))
     }
 
     @Test

@@ -75,7 +75,7 @@ fun ExcerptSheet(
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    "발췌·번역",
+                    "노트에 담기",
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f),
                 )
@@ -86,7 +86,7 @@ fun ExcerptSheet(
                 )
             }
             Text(
-                "현재 ${currentPage + 1}쪽에서 텍스트를 발췌하고, 발췌를 Google 번역으로 바로 열 수 있습니다.",
+                "현재 ${currentPage + 1}쪽의 텍스트를 노트에 담고, 다른 앱에서 바로 열 수 있습니다.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -105,12 +105,12 @@ fun ExcerptSheet(
             Button(onClick = { showTitleDialog = true }, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("현재 페이지 발췌 추가")
+                Text("현재 페이지 담기")
             }
             if (onStudyNote != null) {
                 Spacer(Modifier.size(8.dp))
                 OutlinedButton(onClick = onStudyNote, modifier = Modifier.fillMaxWidth()) {
-                    Text("PDF → 스터디 노트")
+                    Text("PDF → 노트에 담기")
                 }
             }
             val dropHandler = onDropExcerpt
@@ -132,7 +132,7 @@ fun ExcerptSheet(
 
             if (excerpts.isEmpty()) {
                 Text(
-                    "아직 발췌가 없습니다. 현재 페이지의 텍스트를 발췌로 저장해 보세요.",
+                    "아직 담은 내용이 없습니다. 현재 페이지의 텍스트를 노트에 담아 보세요.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 24.dp),
@@ -309,7 +309,7 @@ private fun ExcerptTitleDialog(
         text = {
             Column(Modifier.fillMaxWidth()) {
                 Text(
-                    "${currentPage + 1}쪽의 텍스트를 발췌로 저장합니다.",
+                    "${currentPage + 1}쪽의 텍스트를 노트에 담습니다.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -1681,7 +1681,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val updated = (listOf(excerpt) + _excerpts.value).sortedByDescending { it.createdAt }
         _excerpts.value = updated
         viewModelScope.launch(Dispatchers.IO) { excerptStore.save(state.docId, updated) }
-        _viewer.update { it?.copy(message = "선택한 텍스트를 발췌로 저장했습니다.") }
+        _viewer.update { it?.copy(message = "선택한 텍스트를 노트에 담았습니다.") }
     }
 
     // ---------------------------------------------------------------- reading

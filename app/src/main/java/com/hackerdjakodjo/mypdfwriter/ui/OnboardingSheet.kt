@@ -108,7 +108,7 @@ private fun onboardingCardsByKey(): Map<OnboardingTopicKey, OnboardingCard> = ma
     OnboardingTopicKey.NOTE_PANE to OnboardingCard(
         key = OnboardingTopicKey.NOTE_PANE,
         title = "노트에 담기",
-        body = "노트 버튼으로 아래에 노트를 펼치고, 담은 내용은 원본 페이지 링크와 함께 저장돼요.",
+        body = "노트 버튼으로 펼쳐 담은 내용을 원본 링크와 함께 저장하고, 도움말의 4단계 빠른 시작으로 다시 볼 수 있어요.",
     ),
     OnboardingTopicKey.HELP_BACKUP to OnboardingCard(
         key = OnboardingTopicKey.HELP_BACKUP,

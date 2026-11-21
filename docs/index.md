@@ -35,6 +35,7 @@
 - [Latent bug and performance pass — 0.8.34](bugfix-perf-0834.md)
 - [Open-source ink refinement — 0.8.35](ink-refinement-0835.md)
 - [GoodReader patterns applied — 0.8.36](goodreader-parity-0836.md)
+- [Multi-app review and simpler menus — 0.8.37](app-feature-review-0837.md)
 
 ## 문의
 

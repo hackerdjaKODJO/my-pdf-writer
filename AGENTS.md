@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.36`** — `versionCode = 45`.
-- **Next version is `0.8.37` — `versionCode = 46`.**
+- Current delivered version: **`0.8.37`** — `versionCode = 46`.
+- **Next version is `0.8.38` — `versionCode = 47`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.37` | 46 | 2026-11-22 | `v0.8.37` | Multi-app review: 4-group PDF hub, unified 위치, 4-button chrome, coach card, one primary home action, 60-second help |
 | `0.8.36` | 45 | 2026-11-21 | `v0.8.36` | GoodReader parity: Locations panel, annotation summary export, document tabs/recents, auto-hide chrome, view-only crop margins |
 | `0.8.35` | 44 | 2026-11-21 | `v0.8.35` | Original Kotlin ink refinement: variable-width outline, lazy brush/RDP/Chaikin, arc graphite, pressure range calibration |
 | `0.8.34` | 43 | 2026-11-21 | `v0.8.34` | Latent bug/performance pass: undo/save/search races, split search, back handling, backup rollback, IO offloading, ink dedupe |
