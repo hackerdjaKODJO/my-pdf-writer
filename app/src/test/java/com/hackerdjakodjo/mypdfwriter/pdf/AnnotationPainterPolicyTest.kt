@@ -9,8 +9,10 @@ import com.hackerdjakodjo.mypdfwriter.data.inkPressureWidthFactor
 import com.hackerdjakodjo.mypdfwriter.data.inkResponseSeries
 import com.hackerdjakodjo.mypdfwriter.data.meanInkFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -189,5 +191,100 @@ class AnnotationPainterPolicyTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun `painter constants share the geometry helper source of truth`() {
+        assertEquals(PenStrokeGeometry.PENCIL_WIDTH_FACTOR, AnnotationPainter.PENCIL_WIDTH_FACTOR, 0f)
+        assertEquals(PenStrokeGeometry.PENCIL_CENTER_ALPHA, AnnotationPainter.PENCIL_CENTER_ALPHA, 0f)
+        assertEquals(PenStrokeGeometry.PENCIL_SIDE_ALPHA, AnnotationPainter.PENCIL_SIDE_ALPHA, 0f)
+        assertEquals(PenStrokeGeometry.PENCIL_CENTER_GRAIN, AnnotationPainter.PENCIL_CENTER_GRAIN, 0f)
+        assertEquals(PenStrokeGeometry.PENCIL_SIDE_GRAIN, AnnotationPainter.PENCIL_SIDE_GRAIN, 0f)
+    }
+
+    @Test
+    fun `neutral pen strokes switch off every dynamic pen effect`() {
+        PenStyle.values().forEach { style ->
+            val annotation = stroke(style, List(8) { 1f })
+            val variation = PenStrokeGeometry.pressureVariation(annotation.points)
+            assertEquals("$style neutral variation", 0f, variation, 0f)
+            assertTrue("$style neutral detection", PenStrokeGeometry.isNeutralPressureStroke(annotation.points))
+            assertEquals("$style neutral mean", InkResponse(1f, 1f, 1f), AnnotationPainter.annotationInkResponse(annotation))
+            AnnotationPainter.annotationInkSeries(annotation).forEach { response ->
+                assertEquals("$style neutral sample", InkResponse(1f, 1f, 1f), response)
+                assertFalse("$style neutral ballpoint skip", PenStrokeGeometry.ballpointSkip(4, response.flow))
+                assertEquals("$style neutral dot alpha", 255, PenStrokeGeometry.ballpointDotAlpha(response.flow))
+                assertEquals("$style neutral taper", 1f, PenStrokeGeometry.fountainTaper(0f, variation), 0f)
+            }
+            assertEquals(
+                "$style neutral centre alpha",
+                AnnotationPainter.PENCIL_CENTER_ALPHA,
+                PenStrokeGeometry.pencilSegmentAlpha(1, 1f),
+                0f,
+            )
+            assertEquals(
+                "$style neutral side alpha",
+                AnnotationPainter.PENCIL_SIDE_ALPHA,
+                PenStrokeGeometry.pencilSegmentAlpha(0, 1f),
+                0f,
+            )
+            assertEquals(
+                "$style neutral pencil width",
+                10f * AnnotationPainter.PENCIL_WIDTH_FACTOR,
+                AnnotationPainter.pencilStrokeWidth(10f, 1f),
+                0f,
+            )
+        }
+    }
+
+    @Test
+    fun `full-stroke series keeps visible prefix samples stable during replay`() {
+        // The last sample of a truncated series loses its right neighbour, which is
+        // why the painter derives factors from the full stroke before revealing.
+        val full = stroke(PenStyle.BALLPOINT, listOf(1f, 1f, 1f, 0f, 0f, 0f))
+        val prefix = stroke(PenStyle.BALLPOINT, listOf(1f, 1f, 1f))
+        val fullSeries = AnnotationPainter.annotationInkSeries(full)
+        val recomputed = AnnotationPainter.annotationInkSeries(prefix)
+
+        assertEquals(6, fullSeries.size)
+        assertEquals(3, recomputed.size)
+        assertEquals(fullSeries[0].flow, recomputed[0].flow, 0f)
+        assertEquals(fullSeries[1].flow, recomputed[1].flow, 0f)
+        assertTrue(
+            "truncation changes the boundary sample",
+            abs(fullSeries[2].flow - recomputed[2].flow) > 0.01f,
+        )
+        assertTrue(
+            "full response is fainter than a recomputed prefix",
+            AnnotationPainter.annotationInkResponse(full).flow <
+                AnnotationPainter.annotationInkResponse(prefix).flow,
+        )
+        assertEquals(
+            "replay slices the full series, never a recomputed one",
+            fullSeries.take(3),
+            AnnotationPainter.annotationInkSeries(full).take(3),
+        )
+    }
+
+    @Test
+    fun `varied strokes expose local flow width and grain for segment rendering`() {
+        val pencil = stroke(PenStyle.PENCIL, listOf(1f, 0.85f, 0.6f, 0.3f, 0f, 0.4f))
+        val pencilSeries = AnnotationPainter.annotationInkSeries(pencil)
+        assertTrue("local flow varies", pencilSeries.map { it.flow }.toSet().size > 1)
+        assertTrue("local width varies", pencilSeries.map { it.width }.toSet().size > 1)
+        assertTrue("local grain varies", pencilSeries.map { it.grain }.toSet().size > 1)
+        assertTrue("variation detected", PenStrokeGeometry.pressureVariation(pencil.points) > 0f)
+        assertTrue(
+            "pencil segment alphas vary",
+            pencilSeries.map { PenStrokeGeometry.pencilSegmentAlpha(0, it.flow) }.toSet().size > 1,
+        )
+
+        val ballpoint = stroke(PenStyle.BALLPOINT, listOf(1f, 0.9f, 0.3f, 0f, 0.2f, 1f))
+        val lightFlow = AnnotationPainter.annotationInkSeries(ballpoint).minOf { it.flow }
+        assertTrue("light ballpoint flow is genuinely light", lightFlow < PenStrokeGeometry.BALLPOINT_LIGHT_FLOW)
+        assertTrue(
+            "light ballpoint can skip contact",
+            (1..32).any { PenStrokeGeometry.ballpointSkip(it, lightFlow) },
+        )
     }
 }
