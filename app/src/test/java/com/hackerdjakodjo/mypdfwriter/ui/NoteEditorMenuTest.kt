@@ -34,6 +34,36 @@ class NoteEditorMenuTest {
     }
 
     @Test
+    fun `quick actions are three slots above the indexed rows`() {
+        assertEquals(
+            listOf(
+                NoteMenuQuickAction.UNDO,
+                NoteMenuQuickAction.REDO,
+                NoteMenuQuickAction.STYLE,
+            ),
+            NOTE_MENU_QUICK_ACTIONS,
+        )
+        assertEquals(3, NOTE_MENU_QUICK_ACTIONS.toSet().size)
+        assertEquals(
+            listOf("실행 취소", "다시 실행", "스타일"),
+            NOTE_MENU_QUICK_ACTIONS.map(::noteMenuQuickActionLabel),
+        )
+        // Quick actions are pinned outside the sectioned index: they must not
+        // inflate the eleven-row / four-section contract.
+        assertEquals(11, noteMenuEntries(hasRename = true, hasSourcePdf = true).size)
+        assertEquals(4, NoteMenuSection.entries.size)
+    }
+
+    @Test
+    fun `student facing menu terms replace legacy study labels`() {
+        assertEquals("복습 카드", NOTE_REVIEW_CARDS_LABEL)
+        assertEquals("가리기 카드", NOTE_MASKING_REVIEW_CARD_LABEL)
+        assertEquals("필기 설정", NOTE_INK_SETTINGS_LABEL)
+        assertFalse(NOTE_REVIEW_CARDS_LABEL.contains("학습"))
+        assertFalse(NOTE_MASKING_REVIEW_CARD_LABEL.contains("가림"))
+    }
+
+    @Test
     fun `rename and source pdf rows are conditional`() {
         assertFalse(noteMenuEntries(false, true).contains(NoteMenuEntry.RENAME))
         assertTrue(noteMenuEntries(true, true).contains(NoteMenuEntry.RENAME))

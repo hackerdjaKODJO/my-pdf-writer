@@ -80,14 +80,14 @@ class StudyPaneE2ETest {
         composeRule.onNodeWithText("페이지").assertExists()
 
         val menu = composeRule.onNode(hasScrollToIndexAction())
-        menu.performScrollToNode(hasText("학습 카드"))
-        composeRule.onNodeWithText("학습 카드").performClick()
+        menu.performScrollToNode(hasText("복습 카드"))
+        composeRule.onNodeWithText("복습 카드").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithText("가림 카드").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithText("가리기 카드").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("가림 카드").assertExists()
+        composeRule.onNodeWithText("가리기 카드").assertExists()
         composeRule.onNodeWithText("체크리스트").assertExists()
     }
 

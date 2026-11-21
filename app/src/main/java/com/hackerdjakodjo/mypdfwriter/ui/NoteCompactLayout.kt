@@ -13,8 +13,13 @@ import com.hackerdjakodjo.mypdfwriter.data.Tool
  * the visuals stay small inside that hit target instead.
  */
 
-/** The six primary tools shown in the compact dock, in display order. */
-internal val NOTE_COMPACT_DOCK_TOOLS = listOf(
+/**
+ * The one-row dock's six primary tools, in display order. Both the full editor
+ * and the compact study pane read this single list, so their labels and ordering
+ * can never drift. `LASSO` keeps its identifier and lasso behaviour; only the
+ * student-facing label is `선택`.
+ */
+internal val NOTE_DOCK_TOOLS = listOf(
     Tool.PEN,
     Tool.HIGHLIGHT,
     Tool.ERASER,
@@ -23,10 +28,17 @@ internal val NOTE_COMPACT_DOCK_TOOLS = listOf(
     Tool.RECT,
 )
 
+/** Kept as an explicit alias so both docks name the same six slots. */
+internal val NOTE_FULL_DOCK_TOOLS: List<Tool> = NOTE_DOCK_TOOLS
+internal val NOTE_COMPACT_DOCK_TOOLS: List<Tool> = NOTE_DOCK_TOOLS
+
 /**
- * Action slots beside the page pill. The colour dot and the style button are one
- * slot now, the compact dock drops the duplicate favourite (the note menu owns
- * it), and undo/redo stay available in both docks.
+ * Action slots. The colour dot and the style button are one slot, and the note
+ * menu owns favourite/export so neither dock duplicates them.
+ *
+ * The compact pane has no app bar, so its dock keeps a small action row with
+ * undo/redo/menu plus the style pill. The full editor is a single tool row: undo,
+ * redo and the menu live in the top bar and style is the row's trailing pill.
  */
 internal enum class NoteDockActionSlot {
     STYLE,
@@ -42,12 +54,36 @@ internal val NOTE_COMPACT_ACTION_SLOTS = listOf(
     NoteDockActionSlot.MENU,
 )
 
-/** The full-screen dock has no menu action: the top bar owns the single ⋮. */
-internal val NOTE_FULL_DOCK_ACTION_SLOTS = listOf(
-    NoteDockActionSlot.STYLE,
-    NoteDockActionSlot.UNDO,
-    NoteDockActionSlot.REDO,
+/** The full dock's only trailing slot is the style colour pill. */
+internal val NOTE_FULL_DOCK_ACTION_SLOTS = listOf(NoteDockActionSlot.STYLE)
+
+/**
+ * Full editor top-bar actions, after the back arrow and the rename title.
+ * Favourite and export are deliberately absent: both stay in the 노트 메뉴, so
+ * the top bar never offers a second copy of either action.
+ */
+internal enum class NoteTopBarAction {
+    UNDO,
+    REDO,
+    MENU,
+    // Represented here only so the no-duplicate policy can be asserted in tests.
+    FAVORITE,
+    EXPORT,
+}
+
+internal val NOTE_TOP_BAR_ACTIONS = listOf(
+    NoteTopBarAction.UNDO,
+    NoteTopBarAction.REDO,
+    NoteTopBarAction.MENU,
 )
+
+internal fun noteTopBarActionLabel(action: NoteTopBarAction): String = when (action) {
+    NoteTopBarAction.UNDO -> "실행 취소"
+    NoteTopBarAction.REDO -> "다시 실행"
+    NoteTopBarAction.MENU -> "노트 메뉴"
+    NoteTopBarAction.FAVORITE -> "즐겨찾기"
+    NoteTopBarAction.EXPORT -> "PDF로 내보내기"
+}
 
 internal const val NOTE_COMPACT_TOOL_ROW_HEIGHT_DP = MIN_TARGET_DP
 internal const val NOTE_COMPACT_ACTION_ROW_HEIGHT_DP = MIN_TARGET_DP
@@ -62,9 +98,8 @@ internal const val NOTE_COMPACT_DOCK_CORNER_DP = 18
 /** The floating pill stays narrow on tablets instead of growing into a bar. */
 internal const val NOTE_COMPACT_DOCK_MAX_WIDTH_DP = 340
 
-/** Heights of the full-screen dock: taller than the compact pill's 48 dp rows. */
+/** Height of the full-screen dock's single tool row (contextual tray excluded). */
 internal const val NOTE_FULL_DOCK_TOOL_ROW_HEIGHT_DP = 56
-internal const val NOTE_FULL_DOCK_ACTION_ROW_HEIGHT_DP = 56
 
 /**
  * Which piece of tool chrome the compact note pane shows. The study-pane header
@@ -137,10 +172,9 @@ internal fun noteFloatingDockWidthDp(availableWidthDp: Int): Int {
         .coerceIn(0, NOTE_COMPACT_DOCK_MAX_WIDTH_DP)
 }
 
+/** The full dock is one tool row; undo/redo moved to the top bar and the page pill floats. */
 internal fun noteFullDockHeightDp(showContextTray: Boolean): Int =
     NOTE_FULL_DOCK_TOOL_ROW_HEIGHT_DP +
-        NOTE_COMPACT_DOCK_DIVIDER_DP +
-        NOTE_FULL_DOCK_ACTION_ROW_HEIGHT_DP +
         if (showContextTray) NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP else 0
 
 /**
@@ -168,7 +202,7 @@ internal fun noteToolLabel(tool: Tool): String = when (tool) {
     Tool.PEN -> "펜"
     Tool.HIGHLIGHT -> "형광펜"
     Tool.ERASER -> "지우개"
-    Tool.LASSO, Tool.LASSO_RECT -> "올가미"
+    Tool.LASSO, Tool.LASSO_RECT -> "선택"
     Tool.TEXT -> NOTE_TEXT_TOOL_LABEL
     Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> "도형"
     else -> "도구"

@@ -22,7 +22,6 @@ class NoteFloatingChromeTest {
         assertTrue(isAccessibleTarget(NOTE_COMPACT_ACTION_ROW_HEIGHT_DP))
         assertTrue(isAccessibleTarget(NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP))
         assertTrue(isAccessibleTarget(NOTE_FULL_DOCK_TOOL_ROW_HEIGHT_DP))
-        assertTrue(isAccessibleTarget(NOTE_FULL_DOCK_ACTION_ROW_HEIGHT_DP))
     }
 
     @Test
@@ -65,12 +64,22 @@ class NoteFloatingChromeTest {
     }
 
     @Test
-    fun `floating dock is shorter than the full-screen dock`() {
+    fun `full-screen dock is a single row and the floating dock owns its action row`() {
         val floating = noteCompactDockHeightDp(showContextTray = false)
         val full = noteFullDockHeightDp(showContextTray = false)
 
-        assertTrue(floating < full)
-        assertTrue(floating + NOTE_COMPACT_DOCK_BOTTOM_MARGIN_DP < full)
+        // The full editor has a top bar for undo/redo/menu and a floating page
+        // pill, so its dock stops at the single 56 dp tool row.
+        assertEquals(NOTE_FULL_DOCK_TOOL_ROW_HEIGHT_DP, full)
+        // The compact pane has no top bar: its action row is part of the pill.
+        assertEquals(
+            NOTE_COMPACT_DOCK_VERTICAL_PADDING_DP * 2 +
+                NOTE_COMPACT_TOOL_ROW_HEIGHT_DP +
+                NOTE_COMPACT_DOCK_DIVIDER_DP +
+                NOTE_COMPACT_ACTION_ROW_HEIGHT_DP,
+            floating,
+        )
+        assertTrue(full < floating)
     }
 
     @Test
