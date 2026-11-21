@@ -63,13 +63,78 @@ class HomeStartE2ETest {
         }
         composeRule.waitForIdle()
 
-        listOf("내 노트", "PDF 가져오기", "새 노트", "PDF 도구", "백업/복원").forEach { label ->
+        listOf("내 노트", "PDF 가져오기", "새 노트").forEach { label ->
             val matches = composeRule.onAllNodesWithText(label).fetchSemanticsNodes()
             assertTrue("home must expose '$label'", matches.isNotEmpty())
+        }
+        composeRule.onNodeWithContentDescription("빠른 학습").assertExists()
+        // Tools and backup are demoted to 설정, not shown as home quick actions.
+        listOf("PDF 도구", "백업/복원").forEach { label ->
+            val matches = composeRule.onAllNodesWithText(label).fetchSemanticsNodes()
+            assertTrue("home must not expose '$label' as a quick action", matches.isEmpty())
         }
         composeRule.onNodeWithContentDescription("새로 만들기").assertExists()
         composeRule.onNodeWithContentDescription("검색").assertExists()
         composeRule.onNodeWithContentDescription("홈 설정").assertExists()
+        listOf("노트 섹션", "PDF 섹션", "태그 섹션").forEach { label ->
+            composeRule.onNodeWithContentDescription(label).assertExists()
+        }
+    }
+
+    @Test
+    fun topSegmentControlSwitchesSections() {
+        composeRule.setContent {
+            MyPdfWriterTheme { home() }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("PDF 섹션").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("내 PDF").assertExists()
+
+        composeRule.onNodeWithContentDescription("태그 섹션").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("노트에 붙인 태그를 한곳에서 찾아봅니다.").assertExists()
+
+        composeRule.onNodeWithContentDescription("노트 섹션").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("내 노트").assertExists()
+    }
+
+    @Test
+    fun quickStudySheetStepsThroughProgressAndIsReplayable() {
+        composeRule.setContent {
+            MyPdfWriterTheme { home() }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("빠른 학습").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("1/4").assertExists()
+        composeRule.onNodeWithText("1. PDF 열기").assertExists()
+        composeRule.onNodeWithText("다음").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("2/4").assertExists()
+        composeRule.onNodeWithText("2. 형광펜으로 표시").assertExists()
+        composeRule.onNodeWithText("다음").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("3/4").assertExists()
+        composeRule.onNodeWithText("3. 노트에 담기").assertExists()
+        composeRule.onNodeWithText("다음").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("4/4").assertExists()
+        composeRule.onNodeWithText("4. 복습하기").assertExists()
+        composeRule.onNodeWithText("완료").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("1/4").assertDoesNotExist()
+
+        // Reopening restarts at step 1/4 instead of remembering the old step.
+        composeRule.onNodeWithContentDescription("빠른 학습").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("1/4").assertExists()
+        composeRule.onNodeWithText("건너뛰기").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("1/4").assertDoesNotExist()
     }
 
     @Test
@@ -179,7 +244,7 @@ class HomeStartE2ETest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("PDF").performClick()
+        composeRule.onNodeWithContentDescription("PDF 섹션").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("PDF 메뉴: lecture.pdf").performClick()
         composeRule.waitForIdle()
@@ -203,7 +268,7 @@ class HomeStartE2ETest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("PDF").performClick()
+        composeRule.onNodeWithContentDescription("PDF 섹션").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("내 PDF").assertExists()
 

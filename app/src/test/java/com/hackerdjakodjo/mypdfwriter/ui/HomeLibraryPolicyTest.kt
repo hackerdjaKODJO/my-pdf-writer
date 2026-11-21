@@ -273,4 +273,9 @@ class HomeLibraryPolicyTest {
         assertEquals("즐겨찾기, 선택됨", homeFilterChipDescription("즐겨찾기", true))
         assertEquals("영어 · 4, 선택됨", homeFilterChipDescription("영어 · 4", true))
     }
+
+    @Test
+    fun homeSectionsAreThreeCompactTopSegments() {
+        assertEquals(listOf("노트", "PDF", "태그"), homeSectionLabels())
+    }
 }
