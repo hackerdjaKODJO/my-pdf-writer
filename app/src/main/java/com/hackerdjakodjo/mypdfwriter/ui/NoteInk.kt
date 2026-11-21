@@ -4,6 +4,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.clampInkPressure
+import java.util.ArrayDeque
 import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.abs
@@ -21,6 +22,15 @@ const val NOTE_ERASE_RADIUS = 0.03f
 
 /** Gentle default stabilization strength used by "필기 보정". */
 const val NOTE_STABILIZE_STRENGTH = 0.25f
+
+/** Trailing radius (normalized page units) used by "부드러운 필기". */
+const val NOTE_LAZY_BRUSH_RADIUS = 0.004f
+
+/** Perpendicular tolerance (normalized page units) used by "점 간소화". */
+const val NOTE_SIMPLIFY_TOLERANCE = 0.0008f
+
+/** Guard rail so a pathological stroke cannot explode into millions of samples. */
+private const val NOTE_MAX_CHAIKIN_ITERATIONS = 4
 
 /** Minimum sample count before automatic shape recognition is attempted. */
 const val NOTE_MIN_SHAPE_POINTS = 8
@@ -98,6 +108,179 @@ object NoteInk {
     /** Explicitly named alias for callers that prefer the verb "stabilizeStroke". */
     fun stabilizeStroke(points: List<NormalizedPoint>, strength: Float): List<NormalizedPoint> =
         stabilize(points, strength)
+
+    /**
+     * Lazy-brush trailing filter for raw pointer samples.
+     *
+     * The brush is a second point that follows the finger/stylus at a bounded
+     * distance [radius]. While the pointer stays inside that radius the brush does
+     * not move at all; once the pointer leaves it, the brush is projected back onto
+     * the pointer's radius. When the old-brush and new-pointer circles overlap,
+     * that projection is their intersection nearest the previous pointer sample,
+     * which bounds the per-sample step and keeps direction changes continuous.
+     * The result has the same number of samples as the input with the same
+     * index-aligned pressure, and the first and last positions are returned exact.
+     */
+    fun lazyBrush(points: List<NormalizedPoint>, radius: Float): List<NormalizedPoint> {
+        if (points.isEmpty()) return points
+        val safeRadius = if (radius.isFinite()) radius.coerceAtLeast(0f) else 0f
+        if (safeRadius <= 0f) return points
+        val samples = sanitizeStroke(points)
+        if (samples.size < 2) return samples
+
+        val output = ArrayList<NormalizedPoint>(samples.size)
+        val first = samples.first()
+        output.add(first)
+        var brushX = first.x
+        var brushY = first.y
+        var previousPointerX = first.x
+        var previousPointerY = first.y
+
+        for (index in 1 until samples.lastIndex) {
+            val pointer = samples[index]
+            val dx = pointer.x - brushX
+            val dy = pointer.y - brushY
+            val distance = hypot(dx, dy)
+            if (distance > safeRadius) {
+                if (distance >= 2f * safeRadius) {
+                    // Circles do not overlap (fast/sparse input): keep the brush on
+                    // the pointer's radius so it never trails far behind a long jump.
+                    brushX = pointer.x - dx / distance * safeRadius
+                    brushY = pointer.y - dy / distance * safeRadius
+                } else {
+                    // Two-circle intersection; keep the branch closer to the last
+                    // pointer sample so a turning stroke never jumps to the far side.
+                    val half = distance * 0.5f
+                    val height = sqrt(max(0f, safeRadius * safeRadius - half * half))
+                    val midX = (brushX + pointer.x) * 0.5f
+                    val midY = (brushY + pointer.y) * 0.5f
+                    val normalX = -dy / distance
+                    val normalY = dx / distance
+                    val candidateAX = midX + normalX * height
+                    val candidateAY = midY + normalY * height
+                    val candidateBX = midX - normalX * height
+                    val candidateBY = midY - normalY * height
+                    val distanceA = hypot(
+                        candidateAX - previousPointerX,
+                        candidateAY - previousPointerY,
+                    )
+                    val distanceB = hypot(
+                        candidateBX - previousPointerX,
+                        candidateBY - previousPointerY,
+                    )
+                    if (distanceA <= distanceB) {
+                        brushX = candidateAX
+                        brushY = candidateAY
+                    } else {
+                        brushX = candidateBX
+                        brushY = candidateBY
+                    }
+                }
+            }
+            brushX = brushX.coerceIn(0f, 1f)
+            brushY = brushY.coerceIn(0f, 1f)
+            output.add(pointer.copy(x = brushX, y = brushY))
+            previousPointerX = pointer.x
+            previousPointerY = pointer.y
+        }
+        output.add(samples.last())
+        return output
+    }
+
+    /**
+     * Ramer-Douglas-Peucker simplification. Points farther than [tolerance]
+     * from the chord of their segment are kept; the rest are dropped. Endpoints
+     * are always kept and the surviving samples retain their original pressure.
+     * An iterative stack keeps long strokes safe from recursion overflow.
+     */
+    fun simplifyRdp(
+        points: List<NormalizedPoint>,
+        tolerance: Float,
+    ): List<NormalizedPoint> {
+        if (points.size < 3) return points
+        val safeTolerance = if (tolerance.isFinite()) tolerance.coerceAtLeast(0f) else 0f
+        if (safeTolerance <= 0f) return points
+        val samples = sanitizeStroke(points)
+        val keep = BooleanArray(samples.size)
+        keep[0] = true
+        keep[samples.lastIndex] = true
+        val pending = ArrayDeque<IntArray>()
+        pending.addLast(intArrayOf(0, samples.lastIndex))
+        while (!pending.isEmpty()) {
+            val range = pending.removeLast()
+            val start = range[0]
+            val end = range[1]
+            if (end <= start + 1) continue
+            var farthest = -1
+            var farthestDistance = -1f
+            for (index in start + 1 until end) {
+                val candidate = distanceToSegment(samples[index], samples[start], samples[end])
+                if (candidate > farthestDistance) {
+                    farthestDistance = candidate
+                    farthest = index
+                }
+            }
+            if (farthest > 0 && farthestDistance > safeTolerance) {
+                keep[farthest] = true
+                pending.addLast(intArrayOf(start, farthest))
+                pending.addLast(intArrayOf(farthest, end))
+            }
+        }
+        return samples.filterIndexed { index, _ -> keep[index] }
+    }
+
+    /**
+     * Chaikin corner cutting: each segment contributes points at 1/4 and 3/4,
+     * with the original endpoints retained. Pressure is interpolated from its
+     * neighbours and stays inside 0..1. Iterations are bounded to protect memory.
+     */
+    fun chaikin(
+        points: List<NormalizedPoint>,
+        iterations: Int = 1,
+    ): List<NormalizedPoint> {
+        if (points.size < 2) return points
+        val count = iterations.coerceIn(0, NOTE_MAX_CHAIKIN_ITERATIONS)
+        if (count == 0) return points
+        var current = sanitizeStroke(points)
+        repeat(count) {
+            val cut = ArrayList<NormalizedPoint>(current.size * 2)
+            cut.add(current.first())
+            for (index in 0 until current.lastIndex) {
+                val a = current[index]
+                val b = current[index + 1]
+                cut.add(interpolateStrokePoint(a, b, 0.25f))
+                cut.add(interpolateStrokePoint(a, b, 0.75f))
+            }
+            cut.add(current.last())
+            current = cut
+        }
+        return current
+    }
+
+    /**
+     * One refinement pass: trailing filter, then point reduction, then corner
+     * rounding. Every stage is optional; with all three arguments neutral the
+     * input list is returned unchanged. Nothing here mutates stored annotations.
+     */
+    fun refineStroke(
+        points: List<NormalizedPoint>,
+        brushRadius: Float = NOTE_LAZY_BRUSH_RADIUS,
+        simplifyTolerance: Float = NOTE_SIMPLIFY_TOLERANCE,
+        chaikinIterations: Int = 1,
+    ): List<NormalizedPoint> {
+        if (points.size < 2) return points
+        var result = points
+        if (brushRadius.isFinite() && brushRadius > 0f) {
+            result = lazyBrush(result, brushRadius)
+        }
+        if (simplifyTolerance.isFinite() && simplifyTolerance > 0f) {
+            result = simplifyRdp(result, simplifyTolerance)
+        }
+        if (chaikinIterations > 0) {
+            result = chaikin(result, chaikinIterations)
+        }
+        return result
+    }
 
     /**
      * Recognizes a rough LINE, RECT or ELLIPSE drawn in one PEN stroke.
@@ -475,9 +658,67 @@ object NoteInk {
 fun stabilizeStroke(points: List<NormalizedPoint>, strength: Float): List<NormalizedPoint> =
     NoteInk.stabilize(points, strength)
 
+/** Top-level alias for the lazy-brush trailing filter. */
+fun lazyBrush(points: List<NormalizedPoint>, radius: Float): List<NormalizedPoint> =
+    NoteInk.lazyBrush(points, radius)
+
+/** Top-level alias for Ramer-Douglas-Peucker simplification. */
+fun simplifyRdp(points: List<NormalizedPoint>, tolerance: Float): List<NormalizedPoint> =
+    NoteInk.simplifyRdp(points, tolerance)
+
+/** Top-level alias for Chaikin corner cutting. */
+fun chaikin(points: List<NormalizedPoint>, iterations: Int = 1): List<NormalizedPoint> =
+    NoteInk.chaikin(points, iterations)
+
+/** Top-level alias for the one-pass stroke refinement pipeline. */
+fun refineStroke(
+    points: List<NormalizedPoint>,
+    brushRadius: Float = NOTE_LAZY_BRUSH_RADIUS,
+    simplifyTolerance: Float = NOTE_SIMPLIFY_TOLERANCE,
+    chaikinIterations: Int = 1,
+): List<NormalizedPoint> = NoteInk.refineStroke(
+    points = points,
+    brushRadius = brushRadius,
+    simplifyTolerance = simplifyTolerance,
+    chaikinIterations = chaikinIterations,
+)
+
 /** Top-level alias for shape recognition. */
 fun recognizeShape(points: List<NormalizedPoint>): RecognizedShape? =
     NoteInk.recognizeShape(points)
+
+/**
+ * Makes a stroke finite and normalized before geometry is derived from it. A
+ * non-finite coordinate inherits the last valid coordinate (or the origin), so
+ * one corrupt sample cannot poison a whole refined stroke. Pressure is already
+ * clamped by [NormalizedPoint], but clampInkPressure documents the invariant.
+ */
+private fun sanitizeStroke(points: List<NormalizedPoint>): List<NormalizedPoint> {
+    var lastX = 0f
+    var lastY = 0f
+    return points.map { point ->
+        val x = if (point.x.isFinite()) point.x.coerceIn(0f, 1f) else lastX
+        val y = if (point.y.isFinite()) point.y.coerceIn(0f, 1f) else lastY
+        lastX = x
+        lastY = y
+        if (x == point.x && y == point.y) {
+            point.copy(pressure = clampInkPressure(point.pressure))
+        } else {
+            NormalizedPoint(x, y, clampInkPressure(point.pressure))
+        }
+    }
+}
+
+/** Linear interpolation for refinement; endpoints and pressure stay finite. */
+private fun interpolateStrokePoint(
+    a: NormalizedPoint,
+    b: NormalizedPoint,
+    fraction: Float,
+): NormalizedPoint = a.copy(
+    x = a.x + (b.x - a.x) * fraction,
+    y = a.y + (b.y - a.y) * fraction,
+    pressure = clampInkPressure(a.pressure + (b.pressure - a.pressure) * fraction),
+)
 
 private fun dedupeConsecutive(points: List<NormalizedPoint>): List<NormalizedPoint> {
     if (points.size < 2) return points

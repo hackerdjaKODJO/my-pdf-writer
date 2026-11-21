@@ -78,6 +78,12 @@ internal const val NOTE_REVIEW_CARDS_LABEL = "복습 카드"
 internal const val NOTE_MASKING_REVIEW_CARD_LABEL = "가리기 카드"
 internal const val NOTE_INK_SETTINGS_LABEL = "필기 설정"
 
+/** Session-only refinement labels and defaults (never written to a notebook). */
+internal const val NOTE_SMOOTH_HANDWRITING_LABEL = "부드러운 필기"
+internal const val NOTE_SIMPLIFY_POINTS_LABEL = "점 간소화"
+internal const val NOTE_SMOOTH_HANDWRITING_DEFAULT = true
+internal const val NOTE_SIMPLIFY_POINTS_DEFAULT = false
+
 /** Quick actions pinned above the eleven indexed rows of 노트 메뉴. */
 internal enum class NoteMenuQuickAction {
     UNDO,
@@ -114,7 +120,7 @@ internal fun noteToggleStateDescription(checked: Boolean): String =
 
 /**
  * The main note menu is a short index, not a junk drawer. Page operations live in
- * the page manager, card overlays live in the study-card sheets, and the eight ink
+ * the page manager, card overlays live in the study-card sheets, and the ten ink
  * switches live in the ink-settings sub-sheet.
  */
 internal enum class NoteMenuSection(val label: String) {
@@ -157,14 +163,17 @@ internal fun noteMenuEntries(
 }
 
 /**
- * Every ink option the editor already owned. Pressure curve is a choice row rather
- * than a switch, but it belongs to the same settings group and is listed with the
- * seven toggles so none can silently disappear.
+ * Every ink option the editor owns. Pressure curve is a choice row rather than a
+ * switch, but it belongs to the same settings group and is listed with the other
+ * options so none can silently disappear. The two refinement toggles are
+ * session-only: they live in Compose state and are never persisted to a notebook.
  */
 internal enum class NoteInkSetting {
     FINGER_WRITING,
     ZOOM_LOCK,
     STROKE_STABILIZATION,
+    SMOOTH_HANDWRITING,
+    SIMPLIFY_POINTS,
     SHAPE_RECOGNITION,
     PARTIAL_ERASER,
     PRESSURE_INK,
@@ -547,13 +556,15 @@ internal fun NoteAudioMenuSheet(
     }
 }
 
-/** All eight existing ink options, grouped in one predictable sub-sheet. */
+/** All ten ink options, grouped in one predictable sub-sheet. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun NoteInkSettingsSheet(
     fingerWriting: Boolean,
     zoomLock: Boolean,
     strokeStabilization: Boolean,
+    smoothHandwriting: Boolean,
+    simplifyPoints: Boolean,
     shapeRecognition: Boolean,
     partialEraser: Boolean,
     pressureInk: Boolean,
@@ -562,6 +573,8 @@ internal fun NoteInkSettingsSheet(
     onFingerWriting: (Boolean) -> Unit,
     onZoomLock: (Boolean) -> Unit,
     onStrokeStabilization: (Boolean) -> Unit,
+    onSmoothHandwriting: (Boolean) -> Unit,
+    onSimplifyPoints: (Boolean) -> Unit,
     onShapeRecognition: (Boolean) -> Unit,
     onPartialEraser: (Boolean) -> Unit,
     onPressureInk: (Boolean) -> Unit,
@@ -603,6 +616,30 @@ internal fun NoteInkSettingsSheet(
                     supporting = "획의 미세한 떨림을 부드럽게 정리 (강도 25%)",
                     checked = strokeStabilization,
                     onCheckedChange = onStrokeStabilization,
+                )
+
+                NoteInkSetting.SMOOTH_HANDWRITING -> NoteMenuToggleRow(
+                    icon = Icons.Filled.Gesture,
+                    title = NOTE_SMOOTH_HANDWRITING_LABEL,
+                    supporting = if (smoothHandwriting) {
+                        "레이지 브러시와 차이킨 보정으로 획을 매끄럽게 저장"
+                    } else {
+                        "획을 추가로 매끄럽게 하지 않고 그대로 저장"
+                    },
+                    checked = smoothHandwriting,
+                    onCheckedChange = onSmoothHandwriting,
+                )
+
+                NoteInkSetting.SIMPLIFY_POINTS -> NoteMenuToggleRow(
+                    icon = Icons.Filled.AutoFixNormal,
+                    title = NOTE_SIMPLIFY_POINTS_LABEL,
+                    supporting = if (simplifyPoints) {
+                        "RDP로 불필요한 점을 줄여 획과 내보내기 파일을 가볍게"
+                    } else {
+                        "모든 샘플 점을 유지"
+                    },
+                    checked = simplifyPoints,
+                    onCheckedChange = onSimplifyPoints,
                 )
 
                 NoteInkSetting.SHAPE_RECOGNITION -> NoteMenuToggleRow(

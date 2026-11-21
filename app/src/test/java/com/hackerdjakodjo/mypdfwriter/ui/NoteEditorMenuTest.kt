@@ -72,14 +72,16 @@ class NoteEditorMenuTest {
     }
 
     @Test
-    fun `ink settings keep all eight existing options`() {
-        assertEquals(8, NOTE_INK_SETTINGS.size)
-        assertEquals(8, NOTE_INK_SETTINGS.toSet().size)
+    fun `ink settings keep all ten options`() {
+        assertEquals(10, NOTE_INK_SETTINGS.size)
+        assertEquals(10, NOTE_INK_SETTINGS.toSet().size)
         assertEquals(
             listOf(
                 NoteInkSetting.FINGER_WRITING,
                 NoteInkSetting.ZOOM_LOCK,
                 NoteInkSetting.STROKE_STABILIZATION,
+                NoteInkSetting.SMOOTH_HANDWRITING,
+                NoteInkSetting.SIMPLIFY_POINTS,
                 NoteInkSetting.SHAPE_RECOGNITION,
                 NoteInkSetting.PARTIAL_ERASER,
                 NoteInkSetting.PRESSURE_INK,
@@ -87,6 +89,21 @@ class NoteEditorMenuTest {
                 NoteInkSetting.GESTURE_UNDO,
             ),
             NOTE_INK_SETTINGS,
+        )
+    }
+
+    @Test
+    fun `refinement toggles are labelled in Korean with session defaults`() {
+        assertEquals("부드러운 필기", NOTE_SMOOTH_HANDWRITING_LABEL)
+        assertEquals("점 간소화", NOTE_SIMPLIFY_POINTS_LABEL)
+        // Smooth handwriting is on by default; RDP simplification stays opt-in.
+        assertTrue(NOTE_SMOOTH_HANDWRITING_DEFAULT)
+        assertFalse(NOTE_SIMPLIFY_POINTS_DEFAULT)
+        assertTrue(NoteInkSetting.SMOOTH_HANDWRITING in NOTE_INK_SETTINGS)
+        assertTrue(NoteInkSetting.SIMPLIFY_POINTS in NOTE_INK_SETTINGS)
+        assertEquals(
+            noteStateAwareLabel(NOTE_SMOOTH_HANDWRITING_LABEL, true),
+            noteStateAwareLabel("부드러운 필기", NOTE_SMOOTH_HANDWRITING_DEFAULT),
         )
     }
 
