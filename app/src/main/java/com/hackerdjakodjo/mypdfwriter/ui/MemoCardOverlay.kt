@@ -1,10 +1,12 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,20 +14,25 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +51,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -55,6 +64,27 @@ import kotlin.math.roundToInt
 private val MemoTint.bg: Color get() = Color(background)
 private val MemoTint.line: Color get() = Color(edge)
 private val MemoTint.inkColor: Color get() = Color(ink)
+
+/** Label of the large, unmistakable close affordance in a card header. */
+internal const val MEMO_CARD_CLOSE_LABEL = "닫기"
+
+/** Spoken description: closing a card only hides the overlay, it never deletes it. */
+internal const val MEMO_CARD_CLOSE_DESCRIPTION = "메모 카드 닫기"
+
+/** Per-card test tag prefix; the full tag is [memoCardCloseTag]. */
+internal const val MEMO_CARD_CLOSE_TAG_PREFIX = "memo_card_close_"
+
+internal fun memoCardCloseTag(id: String): String = "$MEMO_CARD_CLOSE_TAG_PREFIX$id"
+
+/** Header must fit a real 48 dp touch target plus its label. */
+internal const val MEMO_CARD_HEADER_MIN_HEIGHT_DP: Int = MIN_TARGET_DP
+
+/** Card-local destructive action stays inside the ⋮ menu and always confirms. */
+internal const val MEMO_CARD_DELETE_MENU_LABEL = "카드 삭제"
+internal const val MEMO_DELETE_TITLE = "메모 카드 삭제"
+internal const val MEMO_DELETE_MESSAGE = "이 카드의 메모를 삭제합니다. 실행 취소로 되돌릴 수 있습니다."
+internal const val MEMO_DELETE_CONFIRM = "삭제"
+internal const val MEMO_DELETE_CANCEL = "취소"
 
 /**
  * Screen-space rectangle of one memo card, using the exact same page transform as
@@ -196,6 +226,7 @@ private fun MemoCardView(
     val heightDp = (rect.height / density.density).dp
     val shape = RoundedCornerShape(10.dp)
     var menuOpen by remember(card.id) { mutableStateOf(false) }
+    var pendingDelete by remember(card.id) { mutableStateOf(false) }
 
     // Keep the drag callbacks current without restarting the pointer coroutine on
     // every parent recomposition.
@@ -234,48 +265,67 @@ private fun MemoCardView(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(20.dp)
+                    .heightIn(min = MEMO_CARD_HEADER_MIN_HEIGHT_DP.dp)
                     .background(card.tint.line.copy(alpha = 0.14f))
-                    .then(moveModifier)
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "•••",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = card.tint.line,
-                    modifier = Modifier.padding(start = 2.dp),
-                )
-                Spacer(Modifier.weight(1f))
+                // Drag stays on the header grip. Close and ⋮ are siblings of the
+                // grip, so a press on either button can never move the card.
                 Box(
                     modifier = Modifier
-                        .size(18.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable(onClick = onHide)
-                        .testTag("memo_card_hide_${card.id}"),
-                    contentAlignment = Alignment.Center,
+                        .weight(1f)
+                        .height(MEMO_CARD_HEADER_MIN_HEIGHT_DP.dp)
+                        .then(moveModifier),
+                    contentAlignment = Alignment.CenterStart,
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.VisibilityOff,
-                        contentDescription = "모든 메모 카드 숨기기",
-                        tint = card.tint.line,
-                        modifier = Modifier.size(12.dp),
+                    Text(
+                        text = "•••",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = card.tint.line,
+                        modifier = Modifier.padding(start = 2.dp),
                     )
+                }
+                Surface(
+                    onClick = onHide,
+                    modifier = Modifier
+                        .height(MEMO_CARD_HEADER_MIN_HEIGHT_DP.dp)
+                        .widthIn(min = MEMO_CARD_HEADER_MIN_HEIGHT_DP.dp)
+                        .semantics { contentDescription = MEMO_CARD_CLOSE_DESCRIPTION }
+                        .testTag(memoCardCloseTag(card.id)),
+                    shape = RoundedCornerShape(8.dp),
+                    color = card.tint.line.copy(alpha = 0.22f),
+                    contentColor = card.tint.inkColor,
+                    border = BorderStroke(1.dp, card.tint.line.copy(alpha = 0.6f)),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(MEMO_CARD_CLOSE_LABEL, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
                 Box {
                     Box(
                         modifier = Modifier
-                            .size(18.dp)
+                            .size(MEMO_CARD_HEADER_MIN_HEIGHT_DP.dp)
                             .clip(RoundedCornerShape(4.dp))
                             .clickable { menuOpen = true }
-                            .testTag("memo_card_more_${card.id}"),
+                            .testTag("memo_card_more_${card.id}")
+                            .semantics { contentDescription = "메모 카드 메뉴" },
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Filled.MoreVert,
-                            contentDescription = "메모 카드 메뉴",
+                            contentDescription = null,
                             tint = card.tint.line,
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
@@ -311,13 +361,13 @@ private fun MemoCardView(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("카드 삭제") },
+                            text = { Text(MEMO_CARD_DELETE_MENU_LABEL) },
                             leadingIcon = {
                                 Icon(Icons.Filled.Delete, contentDescription = null)
                             },
                             onClick = {
                                 menuOpen = false
-                                onDelete(card.id)
+                                pendingDelete = true
                             },
                         )
                     }
@@ -382,6 +432,31 @@ private fun MemoCardView(
                 )
             }
         }
+    }
+
+    // Destructive action: the ⋮ menu only asks for confirmation here, so the
+    // header close button can never delete a card's JSON by accident.
+    if (pendingDelete) {
+        AlertDialog(
+            onDismissRequest = { pendingDelete = false },
+            title = { Text(MEMO_DELETE_TITLE) },
+            text = { Text(MEMO_DELETE_MESSAGE) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDelete = false
+                        onDelete(card.id)
+                    },
+                ) {
+                    Text(MEMO_DELETE_CONFIRM)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = false }) {
+                    Text(MEMO_DELETE_CANCEL)
+                }
+            },
+        )
     }
 }
 

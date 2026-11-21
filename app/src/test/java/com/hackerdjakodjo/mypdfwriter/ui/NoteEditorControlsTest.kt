@@ -203,4 +203,17 @@ class NoteEditorControlsTest {
         assertEquals("굵기 4", noteStyleSliderDescription("굵기", "4"))
         assertEquals("투명도 80%", noteStyleSliderDescription("투명도", "80%"))
     }
+
+    @Test
+    fun `memo close hide and restore stay distinct and accessible`() {
+        assertEquals("닫기", MEMO_CARD_CLOSE_LABEL)
+        assertEquals("메모 카드 닫기", MEMO_CARD_CLOSE_DESCRIPTION)
+        assertEquals("memo_card_close_m1", memoCardCloseTag("m1"))
+        assertEquals("메모 카드 숨기기", MEMO_HIDE_CARDS_LABEL)
+        assertEquals("메모 카드 표시", MEMO_SHOW_CARDS_LABEL)
+        assertEquals("memo_cards_restore_pill", MEMO_CARDS_RESTORE_PILL_TAG)
+        assertTrue(MEMO_CARD_HEADER_MIN_HEIGHT_DP >= MIN_TARGET_DP)
+        assertFalse(MEMO_CARD_CLOSE_DESCRIPTION.contains("삭제"))
+        assertFalse(MEMO_HIDE_CARDS_LABEL.contains("삭제"))
+    }
 }

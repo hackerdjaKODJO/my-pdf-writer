@@ -146,4 +146,32 @@ class MemoCardOverlayTest {
         assertEquals(0f, oversized.x, 0.0001f)
         assertEquals(0f, oversized.y, 0.0001f)
     }
+
+    @Test
+    fun closeButtonUsesAnObviousNonDestructiveLabelAndPerCardTag() {
+        assertEquals("memo_card_close_m1", memoCardCloseTag("m1"))
+        assertEquals("memo_card_close_a", memoCardCloseTag("a"))
+        assertEquals("memo_card_close_b", memoCardCloseTag("b"))
+        assertEquals("memo_card_close_", MEMO_CARD_CLOSE_TAG_PREFIX)
+        assertEquals("닫기", MEMO_CARD_CLOSE_LABEL)
+        assertEquals("메모 카드 닫기", MEMO_CARD_CLOSE_DESCRIPTION)
+        assertTrue(MEMO_CARD_CLOSE_DESCRIPTION.contains("닫기"))
+        assertFalse("close must not imply deletion", MEMO_CARD_CLOSE_DESCRIPTION.contains("삭제"))
+    }
+
+    @Test
+    fun headerFitsTheFullSizeCloseTarget() {
+        assertEquals(48, MIN_TARGET_DP)
+        assertEquals(MIN_TARGET_DP, MEMO_CARD_HEADER_MIN_HEIGHT_DP)
+        assertTrue(MEMO_CARD_HEADER_MIN_HEIGHT_DP >= 48)
+    }
+
+    @Test
+    fun cardDeleteLivesInTheMenuAndStillAsksForConfirmation() {
+        assertEquals("카드 삭제", MEMO_CARD_DELETE_MENU_LABEL)
+        assertEquals("메모 카드 삭제", MEMO_DELETE_TITLE)
+        assertEquals("이 카드의 메모를 삭제합니다. 실행 취소로 되돌릴 수 있습니다.", MEMO_DELETE_MESSAGE)
+        assertEquals("삭제", MEMO_DELETE_CONFIRM)
+        assertEquals("취소", MEMO_DELETE_CANCEL)
+    }
 }
