@@ -33,6 +33,7 @@
 - [Faster PDF open + PDF post-its — 0.8.32](pdf-open-and-memo-0832.md)
 - [Student-first UX redesign — 0.8.33](student-ux-0833.md)
 - [Latent bug and performance pass — 0.8.34](bugfix-perf-0834.md)
+- [Open-source ink refinement — 0.8.35](ink-refinement-0835.md)
 
 ## 문의
 
