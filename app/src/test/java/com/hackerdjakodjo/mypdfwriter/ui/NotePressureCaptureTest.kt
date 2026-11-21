@@ -2,8 +2,10 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.compose.ui.input.pointer.PointerType
 import com.hackerdjakodjo.mypdfwriter.data.DEFAULT_INK_PRESSURE
+import com.hackerdjakodjo.mypdfwriter.data.PressureCalibrator
 import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -93,5 +95,86 @@ class NotePressureCaptureTest {
                 1e-6f,
             )
         }
+    }
+
+    @Test
+    fun `calibration is applied to stylus raw pressure before the curve`() {
+        val calibrator = PressureCalibrator(alpha = 1f, deadZone = 0f)
+        calibrator.map(0.2f)
+        calibrator.map(0.7f)
+
+        // 0.45 is the midpoint of the learned 0.2..0.7 range, so the curve sees
+        // 0.5 rather than the uncalibrated 0.45.
+        val sampled = effectiveInkPressure(
+            PointerType.Stylus, 0.45f, true, PressureCurve.LINEAR, calibrator,
+        )
+        assertEquals(0.5f, sampled, 1e-6f)
+
+        val uncalibrated = effectiveInkPressure(
+            PointerType.Stylus, 0.45f, true, PressureCurve.LINEAR,
+        )
+        assertEquals(0.45f, uncalibrated, 1e-6f)
+        assertTrue(abs(sampled - uncalibrated) > 1e-3f)
+    }
+
+    @Test
+    fun `calibrators never make neutral pointers or disabled pressure non neutral`() {
+        val calibrator = PressureCalibrator(alpha = 1f, deadZone = 0f)
+        calibrator.map(0.2f)
+        calibrator.map(0.7f)
+
+        val neutralTypes = listOf(
+            PointerType.Touch,
+            PointerType.Mouse,
+            PointerType.Eraser,
+            PointerType.Unknown,
+        )
+        neutralTypes.forEach { type ->
+            assertEquals(
+                "$type must stay neutral with a calibrator",
+                DEFAULT_INK_PRESSURE,
+                effectiveInkPressure(type, 0.4f, true, PressureCurve.SOFT, calibrator),
+                0f,
+            )
+        }
+        assertEquals(
+            DEFAULT_INK_PRESSURE,
+            effectiveInkPressure(PointerType.Stylus, 0.4f, false, PressureCurve.FIRM, calibrator),
+            0f,
+        )
+        listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY).forEach { value ->
+            assertEquals(
+                "non-finite $value must stay neutral with a calibrator",
+                DEFAULT_INK_PRESSURE,
+                effectiveInkPressure(PointerType.Stylus, value, true, PressureCurve.FIRM, calibrator),
+                0f,
+            )
+        }
+        PressureCurve.entries.forEach { curve ->
+            assertEquals(
+                "$curve must preserve full pressure with a calibrator",
+                1f,
+                effectiveInkPressure(PointerType.Stylus, 1f, true, curve, calibrator),
+                1e-6f,
+            )
+        }
+    }
+
+    @Test
+    fun `neutral pointer samples do not feed the calibrator range`() {
+        // The caller only forwards stylus samples to the calibrator, so finger
+        // and mouse input must leave its learned range completely untouched.
+        val calibrator = PressureCalibrator(alpha = 1f, deadZone = 0f)
+        assertFalse(calibrator.hasRange)
+        listOf(PointerType.Touch, PointerType.Mouse, PointerType.Eraser, PointerType.Unknown)
+            .forEach { type ->
+                effectiveInkPressure(type, 0.1f, true, PressureCurve.LINEAR, calibrator)
+                effectiveInkPressure(type, 0.9f, true, PressureCurve.LINEAR, calibrator)
+            }
+        assertFalse(calibrator.hasRange)
+
+        effectiveInkPressure(PointerType.Stylus, 0.3f, true, PressureCurve.LINEAR, calibrator)
+        assertEquals(0.3f, calibrator.observedMin, 0f)
+        assertEquals(0.3f, calibrator.observedMax, 0f)
     }
 }

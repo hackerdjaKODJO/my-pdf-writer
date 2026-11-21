@@ -43,6 +43,7 @@ import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import com.hackerdjakodjo.mypdfwriter.data.PressureCalibrator
 import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.data.clampInkPressure
@@ -219,6 +220,11 @@ fun NoteCanvas(
             val widthPx = size.width.toFloat().coerceAtLeast(1f)
             val heightPx = size.height.toFloat().coerceAtLeast(1f)
 
+            // One calibrator per input session (this coroutine is recreated when
+            // the page/tool/pressure keys above change). It adapts to the pen's
+            // reported range across strokes and is never persisted to JSON.
+            val pressureCalibrator = PressureCalibrator()
+
             fun normalize(position: Offset, pressure: Float = 1f): NormalizedPoint {
                 val scale = (fit * zoom).coerceAtLeast(0.0001f)
                 val x = (position.x - widthPx / 2f - pan.x) / scale + pageWidth / 2f
@@ -274,7 +280,7 @@ fun NoteCanvas(
                 val gestureStartZoom = zoom
 
                 // Raw pressure is tracked only for the concise trace below. The
-                // stored point always receives the selected curve's effective value.
+                // stored point receives the calibrated, curved effective value.
                 // Each sample reads the change's own current pointer type instead of
                 // the type latched at pointer-down, so a stylus that starts writing
                 // part-way through a finger stroke is sampled too.
@@ -286,6 +292,7 @@ fun NoteCanvas(
                         rawPressure = change.pressure,
                         pressureEnabled = pressureEnabled,
                         pressureCurve = pressureCurve,
+                        calibrator = pressureCalibrator,
                     )
                     if (pressureEnabled && change.type == PointerType.Stylus && change.pressed) {
                         val raw = clampInkPressure(change.pressure)
@@ -827,20 +834,26 @@ private fun drawLassoPreview(
  * Effective ink pressure for one captured pointer sample.
  *
  * Only a stylus carries pressure: fingers, mice, erasers and unknown pointers
- * always store the neutral [DEFAULT_INK_PRESSURE]. The enable gate and the
- * [pressureCurve] are both applied here, once, at capture time; the renderer
- * never re-applies the curve. Reading [pointerType] from the current sample (not
- * from a type latched at pointer-down) keeps a stylus that joins an already
- * started finger stroke pressure-aware.
+ * always store the neutral [DEFAULT_INK_PRESSURE]. The enable gate, the optional
+ * [calibrator] (which learns this stylus's reported range) and the
+ * [pressureCurve] are all applied here, once, at capture time; the renderer
+ * never re-applies either step. Calibration is applied to the raw sample before
+ * the curve so a pen reporting only 0.2..0.7 can still reach full response.
+ * Passing a null calibrator keeps the original clamped-curve behaviour.
+ * Reading [pointerType] from the current sample (not from a type latched at
+ * pointer-down) keeps a stylus that joins an already started finger stroke
+ * pressure-aware.
  */
 internal fun effectiveInkPressure(
     pointerType: PointerType,
     rawPressure: Float,
     pressureEnabled: Boolean,
     pressureCurve: PressureCurve,
+    calibrator: PressureCalibrator? = null,
 ): Float {
     if (!pressureEnabled || pointerType != PointerType.Stylus) return DEFAULT_INK_PRESSURE
-    return pressureCurve.applyTo(clampInkPressure(rawPressure))
+    val calibrated = calibrator?.map(rawPressure) ?: clampInkPressure(rawPressure)
+    return pressureCurve.applyTo(calibrated)
 }
 
 internal fun noteStrokeWidth(type: AnnotationType, strokeWidth: Float): Float =

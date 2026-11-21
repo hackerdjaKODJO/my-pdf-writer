@@ -1,6 +1,7 @@
 package com.hackerdjakodjo.mypdfwriter.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -129,5 +130,119 @@ class InkPressureTest {
         val nonFinite = pressureCurveRange(PressureCurve.FIRM, Float.NaN, 0.5f)
         assertTrue(nonFinite.rawMin.isFinite() && nonFinite.rawMax.isFinite())
         assertTrue(nonFinite.effectiveMin.isFinite() && nonFinite.effectiveMax.isFinite())
+    }
+
+    @Test
+    fun `calibrator maps a narrow stylus range across the full response`() {
+        val calibrator = PressureCalibrator(alpha = 0.5f, deadZone = 0f)
+        // A pen that only ever reports 0.2 at rest and 0.7 at full press.
+        repeat(24) {
+            calibrator.map(0.2f)
+            calibrator.map(0.7f)
+        }
+
+        assertTrue(calibrator.hasRange)
+        assertEquals(0.2f, calibrator.observedMin, 0.01f)
+        assertEquals(0.7f, calibrator.observedMax, 0.01f)
+        assertEquals(0f, calibrator.map(0.2f), 0.01f)
+        assertEquals(1f, calibrator.map(0.7f), 0.01f)
+        assertEquals(0.5f, calibrator.map(0.45f), 0.01f)
+    }
+
+    @Test
+    fun `calibrator tracks extremes with an ewma and ignores in range samples`() {
+        val calibrator = PressureCalibrator(alpha = 0.5f, deadZone = 0f)
+        assertFalse(calibrator.hasRange)
+        assertEquals(Float.POSITIVE_INFINITY, calibrator.observedMin, 0f)
+        assertEquals(Float.NEGATIVE_INFINITY, calibrator.observedMax, 0f)
+
+        calibrator.map(0.4f)
+        assertTrue(calibrator.hasRange)
+        assertEquals(0.4f, calibrator.observedMin, 0f)
+        assertEquals(0.4f, calibrator.observedMax, 0f)
+
+        // A new low moves only the minimum, by alpha of the distance.
+        calibrator.map(0.2f)
+        assertEquals(0.3f, calibrator.observedMin, 1e-6f)
+        assertEquals(0.4f, calibrator.observedMax, 0f)
+
+        // A new high moves only the maximum, by the same alpha.
+        calibrator.map(0.8f)
+        assertEquals(0.3f, calibrator.observedMin, 0f)
+        assertEquals(0.6f, calibrator.observedMax, 1e-6f)
+
+        // Samples inside the learned range leave both bounds untouched.
+        calibrator.map(0.45f)
+        assertEquals(0.3f, calibrator.observedMin, 0f)
+        assertEquals(0.6f, calibrator.observedMax, 0f)
+    }
+
+    @Test
+    fun `calibrator flattens the faintest band but keeps full pressure exact`() {
+        val calibrator = PressureCalibrator(alpha = 1f, deadZone = 0.1f)
+        calibrator.map(0.3f)
+        calibrator.map(0.7f)
+
+        // Range 0.3..0.7; the bottom 10% is dead zone, the rest is rescaled.
+        assertEquals(0f, calibrator.map(0.30f), 1e-6f)
+        assertEquals(0f, calibrator.map(0.32f), 1e-6f)
+        assertEquals(0f, calibrator.map(0.34f), 1e-6f)
+        assertEquals(0.5f, calibrator.map(0.52f), 1e-6f)
+        assertEquals(1f, calibrator.map(0.70f), 1e-6f)
+        assertEquals(1f, calibrator.map(1f), 0f)
+    }
+
+    @Test
+    fun `calibrator is identity for narrow ranges full presses and non finite samples`() {
+        val narrow = PressureCalibrator(alpha = 1f, deadZone = 0f)
+        repeat(10) {
+            narrow.map(0.50f)
+            narrow.map(0.52f)
+        }
+        assertTrue(narrow.hasRange)
+        assertTrue(narrow.observedMax - narrow.observedMin <= 0.05f)
+        assertEquals(0.50f, narrow.map(0.50f), 0f)
+        assertEquals(0.51f, narrow.map(0.51f), 0f)
+        assertEquals(0.52f, narrow.map(0.52f), 0f)
+
+        val calibrator = PressureCalibrator()
+        listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, 1f, 2f).forEach {
+            assertEquals("neutral for $it", 1f, calibrator.map(it), 0f)
+        }
+        // Neutral samples never seed or pollute the learned range.
+        assertFalse(calibrator.hasRange)
+    }
+
+    @Test
+    fun `calibrator reset forgets the learned range`() {
+        val calibrator = PressureCalibrator(alpha = 1f, deadZone = 0f)
+        calibrator.map(0.2f)
+        calibrator.map(0.6f)
+        assertEquals(0.2f, calibrator.observedMin, 0f)
+        assertEquals(0.6f, calibrator.observedMax, 0f)
+        assertTrue(calibrator.hasRange)
+
+        calibrator.reset()
+        assertEquals(Float.POSITIVE_INFINITY, calibrator.observedMin, 0f)
+        assertEquals(Float.NEGATIVE_INFINITY, calibrator.observedMax, 0f)
+        assertFalse(calibrator.hasRange)
+
+        calibrator.map(0.8f)
+        assertEquals(0.8f, calibrator.observedMin, 0f)
+        assertEquals(0.8f, calibrator.observedMax, 0f)
+    }
+
+    @Test
+    fun `calibrator output stays finite and bounded for wild input`() {
+        val calibrator = PressureCalibrator(alpha = 0.3f, deadZone = 0.02f)
+        val wild = listOf(
+            -2f, 0f, 0.1f, 0.5f, 0.9f, 1f, 4f,
+            Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY,
+        )
+        wild.forEach { value ->
+            val mapped = calibrator.map(value)
+            assertTrue("finite for $value", mapped.isFinite())
+            assertTrue("bounded for $value: $mapped", mapped in 0f..1f)
+        }
     }
 }
