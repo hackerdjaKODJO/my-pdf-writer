@@ -79,16 +79,26 @@ class NoteEditorControlsTest {
             NOTE_COMPACT_DOCK_TOOLS,
         )
         assertEquals(6, NOTE_COMPACT_DOCK_TOOLS.toSet().size)
+        assertEquals(NOTE_DOCK_TOOLS, NOTE_COMPACT_DOCK_TOOLS)
+        assertEquals(NOTE_DOCK_TOOLS, NOTE_FULL_DOCK_TOOLS)
+        assertEquals(
+            listOf("펜", "형광펜", "지우개", "선택", NOTE_TEXT_TOOL_LABEL, "도형"),
+            NOTE_DOCK_TOOLS.map(::noteToolLabel),
+        )
         val labels = NOTE_COMPACT_DOCK_TOOLS.map(::noteCompactToolLabel)
         assertEquals(6, labels.toSet().size)
         assertTrue(labels.all { it.isNotBlank() })
         assertEquals("펜", noteCompactToolLabel(Tool.PEN))
         assertEquals("형광펜", noteCompactToolLabel(Tool.HIGHLIGHT))
+        assertEquals("지우개", noteCompactToolLabel(Tool.ERASER))
+        assertEquals("선택", noteCompactToolLabel(Tool.LASSO))
+        assertEquals("선택", noteToolLabel(Tool.LASSO_RECT))
         assertEquals(NOTE_TEXT_TOOL_LABEL, noteCompactToolLabel(Tool.TEXT))
         assertEquals(NOTE_TEXT_TOOL_LABEL, noteToolLabel(Tool.TEXT))
+        assertEquals("도형", noteCompactToolLabel(Tool.RECT))
         assertEquals(
             "the compact and full docks must share one label source",
-            NOTE_COMPACT_DOCK_TOOLS.map(::noteToolLabel),
+            NOTE_FULL_DOCK_TOOLS.map(::noteToolLabel),
             labels,
         )
     }
@@ -108,15 +118,26 @@ class NoteEditorControlsTest {
         assertFalse(NoteDockActionSlot.entries.any { it.name == "FAVORITE" })
         assertEquals(NoteDockActionSlot.entries.toSet(), NOTE_COMPACT_ACTION_SLOTS.toSet())
 
-        assertEquals(
-            listOf(
-                NoteDockActionSlot.STYLE,
-                NoteDockActionSlot.UNDO,
-                NoteDockActionSlot.REDO,
-            ),
-            NOTE_FULL_DOCK_ACTION_SLOTS,
-        )
+        // The full dock is one row: only the trailing style pill remains here.
+        assertEquals(listOf(NoteDockActionSlot.STYLE), NOTE_FULL_DOCK_ACTION_SLOTS)
         assertEquals(1, NOTE_FULL_DOCK_ACTION_SLOTS.count { it == NoteDockActionSlot.STYLE })
+        assertFalse(NoteDockActionSlot.UNDO in NOTE_FULL_DOCK_ACTION_SLOTS)
+        assertFalse(NoteDockActionSlot.REDO in NOTE_FULL_DOCK_ACTION_SLOTS)
+    }
+
+    @Test
+    fun `top bar has undo redo menu and no duplicate favourite or export`() {
+        assertEquals(
+            listOf(NoteTopBarAction.UNDO, NoteTopBarAction.REDO, NoteTopBarAction.MENU),
+            NOTE_TOP_BAR_ACTIONS,
+        )
+        assertEquals(3, NOTE_TOP_BAR_ACTIONS.toSet().size)
+        assertTrue(NoteTopBarAction.FAVORITE !in NOTE_TOP_BAR_ACTIONS)
+        assertTrue(NoteTopBarAction.EXPORT !in NOTE_TOP_BAR_ACTIONS)
+        val labels = NOTE_TOP_BAR_ACTIONS.map(::noteTopBarActionLabel)
+        assertEquals(listOf("실행 취소", "다시 실행", "노트 메뉴"), labels)
+        assertFalse("즐겨찾기" in labels)
+        assertFalse("PDF로 내보내기" in labels)
     }
 
     @Test
@@ -124,7 +145,11 @@ class NoteEditorControlsTest {
         assertEquals("글상자", NOTE_TEXT_TOOL_LABEL)
         assertEquals("페이지", NOTE_PAGE_MANAGER_LABEL)
         assertEquals("내 펜", NOTE_PEN_PRESETS_LABEL)
+        // The legacy card constants are untouched; the menu uses student-facing aliases.
         assertEquals("가림 카드", NOTE_MASKING_CARD_LABEL)
+        assertEquals("복습 카드", NOTE_REVIEW_CARDS_LABEL)
+        assertEquals("가리기 카드", NOTE_MASKING_REVIEW_CARD_LABEL)
+        assertEquals("필기 설정", NOTE_INK_SETTINGS_LABEL)
         assertEquals("체크리스트", NOTE_CHECKLIST_LABEL)
         assertEquals("메모 카드", NOTE_MEMO_CARD_LABEL)
         assertTrue(noteStyleTitle(Tool.TEXT).contains(NOTE_TEXT_TOOL_LABEL))
@@ -132,21 +157,24 @@ class NoteEditorControlsTest {
     }
 
     @Test
-    fun `compact dock is shorter than the full dock`() {
+    fun `full dock is one tool row while compact dock keeps its action row`() {
         val compact = noteCompactDockHeightDp(showContextTray = false)
         val full = noteFullDockHeightDp(showContextTray = false)
 
-        assertTrue(compact < full)
+        // Full screen moved undo/redo to the top bar and floats the page pill.
+        assertEquals(NOTE_FULL_DOCK_TOOL_ROW_HEIGHT_DP, full)
+        assertEquals(
+            full + NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP,
+            noteFullDockHeightDp(showContextTray = true),
+        )
+        // The compact pane has no top bar, so its dock keeps a 48 dp action row.
         assertTrue("compact rows must meet 48 dp, was $compact", compact >= MIN_TARGET_DP * 2)
         assertTrue("compact dock should stay under 120 dp, was $compact", compact <= 120)
         assertEquals(
             compact + NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP,
             noteCompactDockHeightDp(showContextTray = true),
         )
-        assertEquals(
-            full + NOTE_COMPACT_TOOL_TRAY_HEIGHT_DP,
-            noteFullDockHeightDp(showContextTray = true),
-        )
+        assertTrue(full < compact)
     }
 
     @Test

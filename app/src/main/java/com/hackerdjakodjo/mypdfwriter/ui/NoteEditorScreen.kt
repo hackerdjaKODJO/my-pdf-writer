@@ -47,14 +47,11 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -1211,7 +1208,7 @@ fun NoteEditorScreen(
                             workingNotebook.title,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .clickable(onClickLabel = "제목 편집") { showRename = true }
+                                .clickable(onClickLabel = "이름 변경") { showRename = true }
                                 .padding(horizontal = 2.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = accessibilityScale.titleMaxLines,
@@ -1224,31 +1221,55 @@ fun NoteEditorScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { toggleFavorite() }) {
-                            Icon(
-                                if (workingNotebook.favorite) {
-                                    Icons.Filled.Star
-                                } else {
-                                    Icons.Outlined.Star
-                                },
-                                contentDescription = noteStateAwareLabel(
-                                    "즐겨찾기", workingNotebook.favorite,
-                                ),
-                                tint = if (workingNotebook.favorite) {
-                                    MaterialTheme.colorScheme.secondary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            )
-                        }
-                        IconButton(onClick = { showExportOptions = true }) {
-                            Icon(
-                                Icons.Filled.FileDownload,
-                                contentDescription = "PDF로 내보내기",
-                            )
-                        }
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "노트 메뉴")
+                        // One history/menu set. Favourite and export are owned by
+                        // 노트 메뉴 only, so the top bar never duplicates them.
+                        NOTE_TOP_BAR_ACTIONS.forEach { action ->
+                            when (action) {
+                                NoteTopBarAction.UNDO -> IconButton(
+                                    onClick = { undo() },
+                                    enabled = canUndo,
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Undo,
+                                        contentDescription = if (canUndo) {
+                                            noteTopBarActionLabel(action)
+                                        } else {
+                                            disabledReasonLabel(
+                                                noteTopBarActionLabel(action),
+                                                "취소할 내용 없음",
+                                            )
+                                        },
+                                    )
+                                }
+
+                                NoteTopBarAction.REDO -> IconButton(
+                                    onClick = { redo() },
+                                    enabled = canRedo,
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Redo,
+                                        contentDescription = if (canRedo) {
+                                            noteTopBarActionLabel(action)
+                                        } else {
+                                            disabledReasonLabel(
+                                                noteTopBarActionLabel(action),
+                                                "다시 실행할 내용 없음",
+                                            )
+                                        },
+                                    )
+                                }
+
+                                NoteTopBarAction.MENU -> IconButton(
+                                    onClick = { showMenu = true },
+                                ) {
+                                    Icon(
+                                        Icons.Filled.MoreVert,
+                                        contentDescription = noteTopBarActionLabel(action),
+                                    )
+                                }
+
+                                NoteTopBarAction.FAVORITE, NoteTopBarAction.EXPORT -> Unit
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -1286,19 +1307,6 @@ fun NoteEditorScreen(
                         color = color,
                         showLabels = showDockLabels,
                         onOpenStyle = { showStyle = true },
-                        canUndo = canUndo,
-                        canRedo = canRedo,
-                        onUndo = { undo() },
-                        onRedo = { redo() },
-                        pageIndex = safeIndex,
-                        pageCount = pages.size,
-                        onPreviousPage = {
-                            if (notePagePreviousEnabled(safeIndex)) onPageIndexChange(safeIndex - 1)
-                        },
-                        onNextPage = {
-                            if (notePageNextEnabled(safeIndex, pages.size)) onPageIndexChange(safeIndex + 1)
-                        },
-                        onOpenPages = { showPageSheet = true },
                     )
                 }
             }
@@ -1435,6 +1443,28 @@ fun NoteEditorScreen(
                     onGestureUndo = { undo() },
                     onGestureRedo = { redo() },
                     modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            // The full dock is a single tool row, so the page pill floats above
+            // its start edge: prev/next and the page manager stay one tap away
+            // without reintroducing a second bottom bar.
+            if (!compact) {
+                NotePagePill(
+                    pageIndex = safeIndex,
+                    pageCount = pages.size,
+                    onPrevious = {
+                        if (notePagePreviousEnabled(safeIndex)) onPageIndexChange(safeIndex - 1)
+                    },
+                    onNext = {
+                        if (notePageNextEnabled(safeIndex, pages.size)) {
+                            onPageIndexChange(safeIndex + 1)
+                        }
+                    },
+                    onOpenPages = { showPageSheet = true },
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 12.dp, bottom = 12.dp),
                 )
             }
 
@@ -1936,11 +1966,21 @@ fun NoteEditorScreen(
             templateLabel = page.template.label,
             layerName = activeLayer?.name ?: "레이어",
             layerCount = page.layers.size,
-            favorite = if (compact) workingNotebook.favorite else null,
-            onToggleFavorite = if (compact) {
-                { toggleFavorite() }
-            } else {
-                null
+            favorite = workingNotebook.favorite,
+            onToggleFavorite = { toggleFavorite() },
+            canUndo = canUndo,
+            canRedo = canRedo,
+            onUndo = {
+                showMenu = false
+                undo()
+            },
+            onRedo = {
+                showMenu = false
+                redo()
+            },
+            onOpenStyle = {
+                showMenu = false
+                showStyle = true
             },
             onRename = {
                 showMenu = false
@@ -2198,6 +2238,11 @@ private fun NoteCanvasPane(
     }
 }
 
+/**
+ * Full editor dock: one row of the six shared tools plus the trailing style pill.
+ * Undo/redo/menu are in the top bar and the page pill floats over the canvas, so
+ * this no longer reserves a second action row at the bottom of the screen.
+ */
 @Composable
 private fun NoteDock(
     tool: Tool,
@@ -2205,15 +2250,6 @@ private fun NoteDock(
     color: Int,
     showLabels: Boolean,
     onOpenStyle: () -> Unit,
-    canUndo: Boolean,
-    canRedo: Boolean,
-    onUndo: () -> Unit,
-    onRedo: () -> Unit,
-    pageIndex: Int,
-    pageCount: Int,
-    onPreviousPage: () -> Unit,
-    onNextPage: () -> Unit,
-    onOpenPages: () -> Unit,
 ) {
     Surface(tonalElevation = 3.dp) {
         Column(
@@ -2252,110 +2288,39 @@ private fun NoteDock(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    NoteDockTool(
-                        icon = Icons.Filled.Edit,
-                        label = noteToolLabel(Tool.PEN),
-                        selected = tool == Tool.PEN,
-                        onClick = { onTool(Tool.PEN) },
-                        showLabels = showLabels,
-                        modifier = Modifier.weight(1f),
-                    )
-                    NoteDockTool(
-                        icon = Icons.Filled.Highlight,
-                        label = noteToolLabel(Tool.HIGHLIGHT),
-                        selected = tool == Tool.HIGHLIGHT,
-                        onClick = { onTool(Tool.HIGHLIGHT) },
-                        showLabels = showLabels,
-                        modifier = Modifier.weight(1f),
-                    )
-                    NoteDockTool(
-                        icon = Icons.Filled.AutoFixNormal,
-                        label = noteToolLabel(Tool.ERASER),
-                        selected = tool == Tool.ERASER,
-                        onClick = { onTool(Tool.ERASER) },
-                        showLabels = showLabels,
-                        modifier = Modifier.weight(1f),
-                    )
-                    NoteDockTool(
-                        icon = Icons.Filled.Gesture,
-                        label = noteToolLabel(Tool.LASSO),
-                        selected = noteIsLassoTool(tool),
-                        onClick = {
-                            onTool(if (noteIsLassoTool(tool)) tool else Tool.LASSO)
-                        },
-                        showLabels = showLabels,
-                        modifier = Modifier.weight(1f),
-                    )
-                    NoteDockTool(
-                        icon = Icons.Filled.TextFields,
-                        label = noteToolLabel(Tool.TEXT),
-                        selected = tool == Tool.TEXT,
-                        onClick = { onTool(Tool.TEXT) },
-                        showLabels = showLabels,
-                        modifier = Modifier.weight(1f),
-                    )
-                    NoteDockTool(
-                        icon = Icons.Filled.Category,
-                        label = noteToolLabel(Tool.RECT),
-                        selected = noteIsShapeTool(tool),
-                        onClick = {
-                            onTool(if (noteIsShapeTool(tool)) tool else Tool.RECT)
-                        },
-                        showLabels = showLabels,
-                        modifier = Modifier.weight(1f),
-                    )
+                    NOTE_FULL_DOCK_TOOLS.forEach { dockTool ->
+                        val selected = when (dockTool) {
+                            Tool.LASSO -> noteIsLassoTool(tool)
+                            Tool.RECT -> noteIsShapeTool(tool)
+                            else -> tool == dockTool
+                        }
+                        NoteDockTool(
+                            icon = noteDockToolIcon(dockTool),
+                            label = noteToolLabel(dockTool),
+                            selected = selected,
+                            onClick = {
+                                onTool(
+                                    when (dockTool) {
+                                        Tool.LASSO -> {
+                                            if (noteIsLassoTool(tool)) tool else Tool.LASSO
+                                        }
+                                        Tool.RECT -> {
+                                            if (noteIsShapeTool(tool)) tool else Tool.RECT
+                                        }
+                                        else -> dockTool
+                                    },
+                                )
+                            },
+                            showLabels = showLabels,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    NOTE_FULL_DOCK_ACTION_SLOTS.forEach { slot ->
+                        if (slot == NoteDockActionSlot.STYLE) {
+                            NoteDockStyleButton(color = color, onClick = onOpenStyle)
+                        }
+                    }
                 }
-            }
-
-            HorizontalDivider()
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(NOTE_FULL_DOCK_ACTION_ROW_HEIGHT_DP.dp)
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                NoteDockStyleButton(color = color, onClick = onOpenStyle)
-                IconButton(
-                    onClick = onUndo,
-                    enabled = canUndo,
-                    modifier = Modifier.size(MIN_TARGET_DP.dp),
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = if (canUndo) {
-                            "실행 취소"
-                        } else {
-                            disabledReasonLabel("실행 취소", "취소할 내용 없음")
-                        },
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                IconButton(
-                    onClick = onRedo,
-                    enabled = canRedo,
-                    modifier = Modifier.size(MIN_TARGET_DP.dp),
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Redo,
-                        contentDescription = if (canRedo) {
-                            "다시 실행"
-                        } else {
-                            disabledReasonLabel("다시 실행", "다시 실행할 내용 없음")
-                        },
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                NotePagePill(
-                    pageIndex = pageIndex,
-                    pageCount = pageCount,
-                    onPrevious = onPreviousPage,
-                    onNext = onNextPage,
-                    onOpenPages = onOpenPages,
-                )
             }
         }
     }
@@ -2808,6 +2773,7 @@ private fun NotePagePill(
     onNext: () -> Unit,
     onOpenPages: () -> Unit,
     compact: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     val buttonSize = MIN_TARGET_DP.dp
     val iconSize = if (compact) 16.dp else 18.dp
@@ -2819,7 +2785,7 @@ private fun NotePagePill(
         onClick = onOpenPages,
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        modifier = Modifier.semantics {
+        modifier = modifier.semantics {
             contentDescription = notePagePillDescription(pageIndex, pageCount)
         },
     ) {
@@ -2919,7 +2885,7 @@ private fun noteShapeLabel(tool: Tool): String = when (tool) {
 }
 
 private fun noteLassoLabel(tool: Tool): String =
-    if (tool == Tool.LASSO_RECT) "사각 올가미" else "자유 올가미"
+    if (tool == Tool.LASSO_RECT) "사각 선택" else "자유 선택"
 
 @Composable
 private fun NoteSelectionBar(

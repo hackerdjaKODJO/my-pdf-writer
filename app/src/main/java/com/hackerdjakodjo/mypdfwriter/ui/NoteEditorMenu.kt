@@ -16,6 +16,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.AutoFixNormal
 import androidx.compose.material.icons.filled.Bookmarks
@@ -65,6 +67,35 @@ import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
 
 /** Shared label so the study-card sub-sheet and tests use one vocabulary. */
 internal const val NOTE_MEMO_CARD_LABEL = "메모 카드"
+
+/**
+ * Student-facing menu vocabulary. The legacy terms were `학습 카드`/`가림 카드`;
+ * the menu now says `복습 카드`/`가리기 카드` while the underlying cards, sheets
+ * and identifiers stay exactly the same. `필기 설정` is already student-friendly
+ * and keeps its name.
+ */
+internal const val NOTE_REVIEW_CARDS_LABEL = "복습 카드"
+internal const val NOTE_MASKING_REVIEW_CARD_LABEL = "가리기 카드"
+internal const val NOTE_INK_SETTINGS_LABEL = "필기 설정"
+
+/** Quick actions pinned above the eleven indexed rows of 노트 메뉴. */
+internal enum class NoteMenuQuickAction {
+    UNDO,
+    REDO,
+    STYLE,
+}
+
+internal val NOTE_MENU_QUICK_ACTIONS = listOf(
+    NoteMenuQuickAction.UNDO,
+    NoteMenuQuickAction.REDO,
+    NoteMenuQuickAction.STYLE,
+)
+
+internal fun noteMenuQuickActionLabel(action: NoteMenuQuickAction): String = when (action) {
+    NoteMenuQuickAction.UNDO -> "실행 취소"
+    NoteMenuQuickAction.REDO -> "다시 실행"
+    NoteMenuQuickAction.STYLE -> "스타일"
+}
 
 /** Every menu row is tall enough for TalkBack and large fonts. */
 internal const val NOTE_MENU_ROW_MIN_HEIGHT_DP = 56
@@ -152,8 +183,13 @@ internal fun NoteMenuSheet(
     templateLabel: String,
     layerName: String,
     layerCount: Int,
-    favorite: Boolean? = null,
-    onToggleFavorite: (() -> Unit)? = null,
+    favorite: Boolean,
+    onToggleFavorite: () -> Unit,
+    canUndo: Boolean,
+    canRedo: Boolean,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onOpenStyle: () -> Unit,
     onRename: (() -> Unit)?,
     onPages: () -> Unit,
     onTemplates: () -> Unit,
@@ -193,23 +229,33 @@ internal fun NoteMenuSheet(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    // Compact panes have no app bar, so the menu owns the one
-                    // favourite action there. Full-screen keeps it in the top bar.
-                    if (favorite != null && onToggleFavorite != null) {
-                        IconButton(onClick = onToggleFavorite) {
-                            Icon(
-                                if (favorite) Icons.Filled.Star else Icons.Outlined.Star,
-                                contentDescription = noteStateAwareLabel("즐겨찾기", favorite),
-                                tint = if (favorite) {
-                                    MaterialTheme.colorScheme.secondary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            )
-                        }
+                    // One favourite action, owned by the menu in both the full
+                    // editor and the compact study pane (neither top bar has it).
+                    IconButton(onClick = onToggleFavorite) {
+                        Icon(
+                            if (favorite) Icons.Filled.Star else Icons.Outlined.Star,
+                            contentDescription = noteStateAwareLabel("즐겨찾기", favorite),
+                            tint = if (favorite) {
+                                MaterialTheme.colorScheme.secondary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
                     }
                     TextButton(onClick = onDismiss) { Text("닫기") }
                 }
+            }
+
+            // Student quick actions sit above the indexed rows. Undo/redo are the
+            // only path back to history in the compact pane, which has no app bar.
+            item {
+                NoteMenuQuickActions(
+                    canUndo = canUndo,
+                    canRedo = canRedo,
+                    onUndo = onUndo,
+                    onRedo = onRedo,
+                    onOpenStyle = onOpenStyle,
+                )
             }
 
             var previousSection: NoteMenuSection? = null
@@ -258,8 +304,8 @@ internal fun NoteMenuSheet(
 
                         NoteMenuEntry.STUDY_CARDS -> NoteMenuRow(
                             icon = Icons.Filled.Checklist,
-                            title = "학습 카드",
-                            supporting = "메모 카드 · 가림 카드 · 체크리스트",
+                            title = NOTE_REVIEW_CARDS_LABEL,
+                            supporting = "$NOTE_MEMO_CARD_LABEL · $NOTE_MASKING_REVIEW_CARD_LABEL · $NOTE_CHECKLIST_LABEL",
                             onClick = onStudyCards,
                         )
 
@@ -272,7 +318,7 @@ internal fun NoteMenuSheet(
 
                         NoteMenuEntry.INK_SETTINGS -> NoteMenuRow(
                             icon = Icons.Filled.Draw,
-                            title = "필기 설정",
+                            title = NOTE_INK_SETTINGS_LABEL,
                             supporting = "손가락 필기·보정·필압 등 8가지",
                             onClick = onInkSettings,
                         )
@@ -298,6 +344,71 @@ internal fun NoteMenuSheet(
                             onClick = onOpenHelp,
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+/** Three one-tap actions pinned to the top of the note menu. */
+@Composable
+private fun NoteMenuQuickActions(
+    canUndo: Boolean,
+    canRedo: Boolean,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onOpenStyle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = MIN_TARGET_DP.dp)
+            .padding(bottom = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        NOTE_MENU_QUICK_ACTIONS.forEach { action ->
+            val label = noteMenuQuickActionLabel(action)
+            val enabled = when (action) {
+                NoteMenuQuickAction.UNDO -> canUndo
+                NoteMenuQuickAction.REDO -> canRedo
+                NoteMenuQuickAction.STYLE -> true
+            }
+            val icon = when (action) {
+                NoteMenuQuickAction.UNDO -> Icons.AutoMirrored.Filled.Undo
+                NoteMenuQuickAction.REDO -> Icons.AutoMirrored.Filled.Redo
+                NoteMenuQuickAction.STYLE -> Icons.Filled.Palette
+            }
+            val description = when (action) {
+                NoteMenuQuickAction.UNDO ->
+                    if (canUndo) label else disabledReasonLabel(label, "취소할 내용 없음")
+                NoteMenuQuickAction.REDO ->
+                    if (canRedo) label else disabledReasonLabel(label, "다시 실행할 내용 없음")
+                NoteMenuQuickAction.STYLE -> label
+            }
+            val onClick = when (action) {
+                NoteMenuQuickAction.UNDO -> onUndo
+                NoteMenuQuickAction.REDO -> onRedo
+                NoteMenuQuickAction.STYLE -> onOpenStyle
+            }
+            Surface(
+                onClick = onClick,
+                enabled = enabled,
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = MIN_TARGET_DP.dp)
+                    .semantics { contentDescription = description },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
                 }
             }
         }
@@ -381,7 +492,7 @@ internal fun NoteStudyCardMenuSheet(
     onDismiss: () -> Unit,
 ) {
     NoteMenuSubSheet(
-        title = "학습 카드",
+        title = NOTE_REVIEW_CARDS_LABEL,
         subtitle = "오프라인 복습 · 페이지에 표시 여부는 각 카드 화면에서",
         onDismiss = onDismiss,
     ) {
@@ -394,7 +505,7 @@ internal fun NoteStudyCardMenuSheet(
         NoteMenuDivider()
         NoteMenuRow(
             icon = Icons.Filled.AutoFixNormal,
-            title = NOTE_MASKING_CARD_LABEL,
+            title = NOTE_MASKING_REVIEW_CARD_LABEL,
             supporting = "질문을 가리고 정답을 확인하는 복습 카드",
             onClick = onMaskingCards,
         )
@@ -460,7 +571,7 @@ internal fun NoteInkSettingsSheet(
     onDismiss: () -> Unit,
 ) {
     NoteMenuSubSheet(
-        title = "필기 설정",
+        title = NOTE_INK_SETTINGS_LABEL,
         subtitle = "모든 변경은 이 기기에서 즉시 적용됩니다",
         onDismiss = onDismiss,
     ) {
