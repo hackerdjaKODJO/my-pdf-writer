@@ -4,6 +4,7 @@ import com.hackerdjakodjo.mypdfwriter.IntentCarrierSink
 import com.hackerdjakodjo.mypdfwriter.clearIntentCarriers
 import com.hackerdjakodjo.mypdfwriter.onBackupRestored
 import com.hackerdjakodjo.mypdfwriter.shouldAddToRecents
+import com.hackerdjakodjo.mypdfwriter.shouldCloseAfterRestore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -175,5 +176,36 @@ class IntentImportPolicyTest {
             consumeRestored = { calls += "consume" },
         )
         assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun restoreCompletionKeepsAPdfOpenedDuringRestore() {
+        // A different PDF was opened while the restore was running: it must survive.
+        val calls = mutableListOf<String>()
+        onBackupRestored(
+            restoredAt = 1_700_000_000_000L,
+            refreshNotebook = { calls += "notebook" },
+            reloadLibrary = { calls += "library" },
+            closeDocument = { calls += "close" },
+            consumeRestored = { calls += "consume" },
+            shouldCloseDocument = { shouldCloseAfterRestore("old.pdf", "new.pdf") },
+        )
+        assertEquals(listOf("notebook", "library", "consume"), calls)
+
+        // The original document is still active: it is stale and must be discarded.
+        val sameDocCalls = mutableListOf<String>()
+        onBackupRestored(
+            restoredAt = 1_700_000_000_001L,
+            refreshNotebook = { sameDocCalls += "notebook" },
+            reloadLibrary = { sameDocCalls += "library" },
+            closeDocument = { sameDocCalls += "close" },
+            consumeRestored = { sameDocCalls += "consume" },
+            shouldCloseDocument = { shouldCloseAfterRestore("old.pdf", "old.pdf") },
+        )
+        assertEquals(listOf("notebook", "library", "close", "consume"), sameDocCalls)
+
+        // Restore launched from Home: no document to close even if one opens later.
+        assertFalse(shouldCloseAfterRestore(null, "new.pdf"))
+        assertTrue(shouldCloseAfterRestore("old.pdf", "old.pdf"))
     }
 }

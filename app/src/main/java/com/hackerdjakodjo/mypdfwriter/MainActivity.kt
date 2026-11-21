@@ -35,6 +35,7 @@ import com.hackerdjakodjo.mypdfwriter.ui.NoteTraceSheet
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookHomeScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.OnboardingSheet
+import com.hackerdjakodjo.mypdfwriter.ui.PdfExportSnapshot
 import com.hackerdjakodjo.mypdfwriter.ui.PdfViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.STUDY_PANE_DEFAULT_FRACTION
 import com.hackerdjakodjo.mypdfwriter.ui.StudyNoteBuilder
@@ -58,6 +59,10 @@ class MainActivity : ComponentActivity() {
     private var pendingNoteExport: Notebook? = null
     /** Page-range/layer choices paired with [pendingNoteExport] or the current editor. */
     private var pendingNoteExportOptions: NoteExportOptions = NoteExportOptions()
+    /** Captured when the SAF export picker opens, so a doc switch cannot redirect it. */
+    private var pendingPdfExport: PdfExportSnapshot? = null
+    /** Document showing when restore began; only that doc may be discarded on completion. */
+    private var restoreStartDocId: String? = null
 
     private val openPdf = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.openDocument(it) }
@@ -68,7 +73,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private val exportPdf = registerForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        uri?.let { viewModel.exportTo(it) }
+        val snapshot = pendingPdfExport
+        pendingPdfExport = null
+        if (uri != null && snapshot != null) viewModel.exportTo(snapshot, uri)
     }
 
     private val exportNote = registerForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
@@ -126,7 +133,13 @@ class MainActivity : ComponentActivity() {
                         refreshNotebook = { notebookViewModel.refresh() },
                         reloadLibrary = { viewModel.reloadLibrary() },
                         closeDocument = { viewModel.discardDocument() },
-                        consumeRestored = { backupViewModel.consumeRestored() },
+                        shouldCloseDocument = {
+                            shouldCloseAfterRestore(restoreStartDocId, viewer?.docId)
+                        },
+                        consumeRestored = {
+                            backupViewModel.consumeRestored()
+                            restoreStartDocId = null
+                        },
                     )
                 }
                 // First launch only: show the walkthrough after the home screen
@@ -257,7 +270,10 @@ class MainActivity : ComponentActivity() {
                             val paneNotebook = studyPaneNotebook
                             ViewerScreen(
                                 vm = viewModel,
-                                onExportRequest = { suggestedName -> exportPdf.launch(suggestedName) },
+                                onExportRequest = { suggestedName ->
+                                    pendingPdfExport = viewModel.captureExportSnapshot()
+                                    exportPdf.launch(suggestedName)
+                                },
                                 onOpenTools = { showTools = true },
                                 onCreateStudyNote = { notebook ->
                                     // Keep the PDF open: the captured note opens in
@@ -359,6 +375,7 @@ class MainActivity : ComponentActivity() {
                             saveBackup.launch(backupViewModel.suggestedBackupName())
                         },
                         onRestore = {
+                            restoreStartDocId = viewer?.docId
                             openBackup.launch(arrayOf("application/zip", "application/octet-stream"))
                         },
                         busy = backupState.busy,
@@ -451,6 +468,14 @@ internal fun shouldAddToRecents(action: String?): Boolean =
     action == "android.intent.action.SEND"
 
 /**
+ * A PDF opened *during* a restore must survive its completion. Only discard the
+ * viewer when it still shows the document that was active when restore started;
+ * a null start document (Home) means there is nothing to discard.
+ */
+internal fun shouldCloseAfterRestore(docIdAtStart: String?, activeDocId: String?): Boolean =
+    docIdAtStart != null && docIdAtStart == activeDocId
+
+/**
  * One-shot restore bookkeeping. Refresh the notebook/library lists, then drop
  * the stale viewer so the next open reads the restored sidecars from disk.
  * No forced navigation home is needed: closing the viewer returns to Home.
@@ -461,10 +486,11 @@ internal fun onBackupRestored(
     reloadLibrary: () -> Unit,
     closeDocument: () -> Unit,
     consumeRestored: () -> Unit,
+    shouldCloseDocument: () -> Boolean = { true },
 ) {
     if (restoredAt == null) return
     refreshNotebook()
     reloadLibrary()
-    closeDocument()
+    if (shouldCloseDocument()) closeDocument()
     consumeRestored()
 }
