@@ -148,4 +148,111 @@ class PdfSplitChromeTest {
         assertEquals(SplitPdfChromeDensity.ESSENTIAL, splitPdfChromeDensity(Float.NaN))
         assertEquals(SplitPdfChromeDensity.ESSENTIAL, splitPdfChromeDensity(2f))
     }
+
+    @Test
+    fun autoHideDefaultsOnForPhonesAndOffForLargeScreens() {
+        assertEquals(ChromeAutoHideMode.ON, defaultChromeAutoHideMode(360))
+        assertEquals(ChromeAutoHideMode.ON, defaultChromeAutoHideMode(599))
+        assertEquals(ChromeAutoHideMode.OFF, defaultChromeAutoHideMode(600))
+        assertEquals(ChromeAutoHideMode.OFF, defaultChromeAutoHideMode(840))
+        assertEquals(600, CHROME_AUTO_HIDE_PHONE_WIDTH_DP)
+        assertEquals(ChromeAutoHideMode.OFF, toggleChromeAutoHideMode(ChromeAutoHideMode.ON))
+        assertEquals(
+            ChromeAutoHideMode.ON,
+            toggleChromeAutoHideMode(toggleChromeAutoHideMode(ChromeAutoHideMode.ON)),
+        )
+    }
+
+    @Test
+    fun canvasTapToggleIsRestrictedToTheSafeFullScreenViewState() {
+        val safe = chromeTapToggleAllowed(
+            mode = ChromeAutoHideMode.ON,
+            studyPaneOpen = false,
+            sheetOpen = false,
+            textSelectMode = false,
+            hasSelection = false,
+            toolIsView = true,
+            busy = false,
+        )
+        assertTrue(safe)
+        assertFalse("hide mode must not hijack taps", chromeTapToggleAllowed(
+            ChromeAutoHideMode.OFF, false, false, false, false, true, false,
+        ))
+        assertFalse("split chrome floats already", chromeTapToggleAllowed(
+            ChromeAutoHideMode.ON, true, false, false, false, true, false,
+        ))
+        assertFalse("sheets own Back/taps", chromeTapToggleAllowed(
+            ChromeAutoHideMode.ON, false, true, false, false, true, false,
+        ))
+        assertFalse("selection gesture wins", chromeTapToggleAllowed(
+            ChromeAutoHideMode.ON, false, false, true, false, true, false,
+        ))
+        assertFalse("selected words win", chromeTapToggleAllowed(
+            ChromeAutoHideMode.ON, false, false, false, true, true, false,
+        ))
+        assertFalse("drawing tool wins", chromeTapToggleAllowed(
+            ChromeAutoHideMode.ON, false, false, false, false, false, false,
+        ))
+        assertFalse("busy render wins", chromeTapToggleAllowed(
+            ChromeAutoHideMode.ON, false, false, false, false, true, true,
+        ))
+    }
+
+    @Test
+    fun hidingChromeIsANoopWhenTheToggleIsNotAllowed() {
+        assertTrue(nextChromeHidden(hidden = false, toggleAllowed = true))
+        assertFalse(nextChromeHidden(hidden = true, toggleAllowed = true))
+        assertFalse(nextChromeHidden(hidden = false, toggleAllowed = false))
+        assertTrue(nextChromeHidden(hidden = true, toggleAllowed = false))
+    }
+
+    @Test
+    fun onlyTheCentreBandOfTheCanvasTogglesChrome() {
+        assertTrue(isChromeToggleTap(200f, 300f, 400, 600))
+        assertTrue(isChromeToggleTap(100f, 150f, 400, 600))
+        assertTrue(isChromeToggleTap(300f, 450f, 400, 600))
+        assertFalse(isChromeToggleTap(10f, 300f, 400, 600))
+        assertFalse(isChromeToggleTap(390f, 300f, 400, 600))
+        assertFalse(isChromeToggleTap(200f, 10f, 400, 600))
+        assertFalse(isChromeToggleTap(200f, 590f, 400, 600))
+        assertFalse(isChromeToggleTap(0f, 0f, 0, 0))
+        assertFalse(isChromeToggleTap(0f, 0f, -2, 10))
+    }
+
+    @Test
+    fun immersiveChromeDropsBarsWithoutChangingSplitOrDefaultPolicy() {
+        val immersive = pdfChromePolicy(
+            studyPaneOpen = false,
+            textSelectMode = true,
+            hasSelection = true,
+            chromeHidden = true,
+            autoHideMode = ChromeAutoHideMode.ON,
+        )
+        assertFalse(immersive.showTopAppBar)
+        assertFalse(immersive.showBottomBar)
+        assertFalse(immersive.showHintPill)
+        assertFalse(immersive.showPageDropTarget)
+        assertFalse(immersive.showSplitToolbar)
+        assertFalse(immersive.showSplitSelectionBar)
+        assertTrue(isChromeImmersive(false, ChromeAutoHideMode.ON, true))
+
+        // Hidden state never applies to split mode or to the OFF mode.
+        assertFalse(isChromeImmersive(true, ChromeAutoHideMode.ON, true))
+        assertFalse(isChromeImmersive(false, ChromeAutoHideMode.OFF, true))
+        val split = pdfChromePolicy(
+            studyPaneOpen = true,
+            textSelectMode = false,
+            hasSelection = false,
+            chromeHidden = true,
+            autoHideMode = ChromeAutoHideMode.ON,
+        )
+        assertTrue(split.showSplitToolbar)
+        assertFalse(split.showTopAppBar)
+
+        // Default arguments keep the pre-existing full-screen behaviour.
+        val full = pdfChromePolicy(false, false, false)
+        assertTrue(full.showTopAppBar)
+        assertTrue(full.showBottomBar)
+        assertTrue(full.showHintPill)
+    }
 }

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -352,5 +353,123 @@ class PdfSplitChromeE2ETest {
         assertEquals(1, share)
         assertEquals(1, clear)
         assertEquals(7, dismiss)
+    }
+
+    @Test
+    fun documentTabStripRoutesSwitchCloseOverflowAndHide() {
+        var selected = ""
+        var closed = ""
+        var menu = 0
+        var hidden = 0
+        val tabs = (1..4).map { OpenDocumentTab("doc$it", "content://docs/$it", "$it.pdf") }
+
+        composeRule.setContent {
+            MaterialTheme {
+                DocumentTabStrip(
+                    state = DocumentTabsState(tabs = tabs, activeDocId = "doc1"),
+                    onSelectTab = { selected = it.docId },
+                    onCloseTab = { closed = it.docId },
+                    onOpenMenu = { menu += 1 },
+                    onHideStrip = { hidden += 1 },
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("1.pdf, 선택됨").assertExists().performClick()
+        composeRule.onNodeWithContentDescription("탭 닫기: 1.pdf").performClick()
+        composeRule.onNodeWithContentDescription("숨겨진 탭 1개").assertExists().performClick()
+        composeRule.onNodeWithContentDescription("탭 메뉴").performClick()
+        composeRule.onNodeWithContentDescription("탭 숨기기").performClick()
+
+        assertEquals("doc1", selected)
+        assertEquals("doc1", closed)
+        assertEquals(2, menu)
+        assertEquals(1, hidden)
+    }
+
+    @Test
+    fun tabOverflowSheetKeepsEverySwitchAndManagementAction() {
+        var switched = ""
+        var others = 0
+        var all = 0
+        var bar = 0
+        var autoHide = 0
+        var recents = 0
+        var dismissed = 0
+        val tabs = (1..4).map { OpenDocumentTab("doc$it", "content://docs/$it", "$it.pdf") }
+
+        composeRule.setContent {
+            MaterialTheme {
+                DocumentTabOverflowSheet(
+                    tabs = tabs,
+                    activeDocId = "doc1",
+                    tabBarVisible = true,
+                    autoHideMode = ChromeAutoHideMode.ON,
+                    onSelectTab = { switched = it.docId },
+                    onCloseOthers = { others += 1 },
+                    onCloseAll = { all += 1 },
+                    onToggleBar = { bar += 1 },
+                    onToggleAutoHide = { autoHide += 1 },
+                    onOpenRecents = { recents += 1 },
+                    onDismiss = { dismissed += 1 },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("문서 탭").assertExists()
+        listOf("다른 탭 닫기", "모든 탭 닫기", "탭 표시/숨기기", "메뉴 자동 숨김", "최근 문서")
+            .forEach { composeRule.onNodeWithText(it).assertExists() }
+        composeRule.onNodeWithContentDescription("문서 탭 열기: 4.pdf").performClick()
+        composeRule.onNodeWithText("다른 탭 닫기").performClick()
+        composeRule.onNodeWithText("모든 탭 닫기").performClick()
+        composeRule.onNodeWithText("탭 표시/숨기기").performClick()
+        composeRule.onNodeWithText("메뉴 자동 숨김").performClick()
+        composeRule.onNodeWithText("최근 문서").performClick()
+
+        assertEquals("doc4", switched)
+        assertEquals(1, others)
+        assertEquals(1, all)
+        assertEquals(1, bar)
+        assertEquals(1, autoHide)
+        assertEquals(1, recents)
+        assertEquals(0, dismissed)
+    }
+
+    @Test
+    fun recentDocumentsSheetRoutesOpenAndBothChromeToggles() {
+        var opened = ""
+        var bar = 0
+        var autoHide = 0
+        var dismissed = 0
+        val docs = listOf(
+            RecentDoc("content://docs/1", "강의.pdf", 22, 300L),
+            RecentDoc("content://docs/2", "참고.pdf", 9, 200L),
+        )
+
+        composeRule.setContent {
+            MaterialTheme {
+                RecentDocumentsSheet(
+                    documents = recentDocumentsForSwitcher(docs),
+                    activeUri = "content://docs/2",
+                    tabBarVisible = false,
+                    autoHideMode = ChromeAutoHideMode.OFF,
+                    onOpenDocument = { opened = it.name },
+                    onToggleTabBar = { bar += 1 },
+                    onToggleAutoHide = { autoHide += 1 },
+                    onDismiss = { dismissed += 1 },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("최근 문서").assertExists()
+        composeRule.onNodeWithContentDescription("최근 문서 열기: 강의.pdf").performClick()
+        composeRule.onNodeWithContentDescription("최근 문서 열기: 참고.pdf").assertExists()
+        composeRule.onNodeWithText("탭 표시/숨기기").performClick()
+        composeRule.onNodeWithText("메뉴 자동 숨김").performClick()
+
+        assertEquals("강의.pdf", opened)
+        assertEquals(1, bar)
+        assertEquals(1, autoHide)
+        assertEquals(0, dismissed)
     }
 }
