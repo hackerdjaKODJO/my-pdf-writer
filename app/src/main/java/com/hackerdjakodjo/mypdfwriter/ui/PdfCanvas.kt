@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -28,9 +29,12 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.DocumentStyle
+import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
@@ -87,6 +91,13 @@ fun PdfCanvas(
     selectedWords: List<PdfTextWord> = emptyList(),
     searchHighlights: List<SearchMatchRect> = emptyList(),
     annotationProgress: (Annotation) -> Float = { 1f },
+    /** Post-it cards pinned to this page. Defaults keep every other caller unchanged. */
+    memoCards: List<MemoCard> = emptyList(),
+    showMemoCardsOnPage: Boolean = false,
+    onOpenMemoCard: (String) -> Unit = {},
+    onMemoCardChange: (MemoCard) -> Unit = {},
+    onHideMemoCardOverlay: () -> Unit = {},
+    onDeleteMemoCard: (String) -> Unit = {},
     onZoomChange: (Float) -> Unit,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
     onEraseStroke: (List<NormalizedPoint>) -> Unit,
@@ -106,6 +117,13 @@ fun PdfCanvas(
 ) {
     val pageW = (bitmap?.width?.toFloat() ?: (displayWidthPt * 2f)).coerceAtLeast(1f)
     val pageH = (bitmap?.height?.toFloat() ?: (displayHeightPt * 2f)).coerceAtLeast(1f)
+    // Shared by the hit-test gate and the drawn card so they agree on every rectangle.
+    val memoDensity = LocalDensity.current
+    val minMemoWidthPx = with(memoDensity) { 92.dp.toPx() }
+    val minMemoHeightPx = with(memoDensity) { 56.dp.toPx() }
+    // Set by the overlay while a card strip/handle is being dragged, so a VIEW-mode
+    // pan/zoom gesture cannot also move the page under the user's finger.
+    val memoGestureActive = remember { mutableStateOf(false) }
 
     var pan by remember(pageIndex) { mutableStateOf(Offset.Zero) }
     val livePoints = remember { mutableStateListOf<NormalizedPoint>() }
@@ -124,6 +142,7 @@ fun PdfCanvas(
     val currentOnLinkTapped by rememberUpdatedState(onLinkTapped)
 
     LaunchedEffect(pageIndex) {
+        memoGestureActive.value = false
         livePoints.clear()
         eraserTrail.clear()
         shapeStart = null
@@ -145,6 +164,25 @@ fun PdfCanvas(
         val viewH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
         val fit = min(viewW / pageW, viewH / pageH)
         val total = fit * zoom
+
+        // A touch on a visible card belongs to that card: no stroke, erase, shape
+        // or text selection may start underneath it.
+        val currentMemoHitTest by rememberUpdatedState { position: Offset ->
+            showMemoCardsOnPage && memoCards.isNotEmpty() && fit > 0f &&
+                memoCards.any { card ->
+                    pdfMemoScreenRect(
+                        card = card,
+                        fit = total,
+                        pan = pan,
+                        viewWidth = viewW,
+                        viewHeight = viewH,
+                        pageWidth = pageW,
+                        pageHeight = pageH,
+                        minWidthPx = minMemoWidthPx,
+                        minHeightPx = minMemoHeightPx,
+                    ).contains(position)
+                }
+        }
 
         LaunchedEffect(total, viewW, viewH, pageW, pageH) {
             val limitX = ((pageW * total - viewW) / 2f).coerceAtLeast(0f)
@@ -185,6 +223,10 @@ fun PdfCanvas(
             Modifier.pointerInput(pageIndex, textWords) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+                    if (currentMemoHitTest(down.position)) {
+                        down.consume()
+                        return@awaitEachGesture
+                    }
                     down.consume()
                     val start = transform.normalize(down.position)
                     selectionStart = start
@@ -213,6 +255,7 @@ fun PdfCanvas(
             Modifier
                 .pointerInput(Unit) {
                     detectTransformGestures { centroid, panChange, zoomChange, _ ->
+                        if (memoGestureActive.value) return@detectTransformGestures
                         val oldTotal = transform.total
                         val newZoom = (transform.zoom * zoomChange).coerceIn(1f, 6f)
                         val newTotal = transform.fit * newZoom
@@ -236,17 +279,21 @@ fun PdfCanvas(
                     detectTapGestures(
                         onTap = { position ->
                             // Links are checked only for short taps in VIEW mode;
-                            // long-press selection and drawing are untouched.
-                            val point = transform.normalize(position)
-                            val link = PdfLinks.linkAt(currentLinks, point.x, point.y)
-                            if (link != null) currentOnLinkTapped(link)
+                            // a card consumes its own taps before this handler.
+                            if (!currentMemoHitTest(position)) {
+                                val point = transform.normalize(position)
+                                val link = PdfLinks.linkAt(currentLinks, point.x, point.y)
+                                if (link != null) currentOnLinkTapped(link)
+                            }
                         },
                         onDoubleTap = {
                             pan = Offset.Zero
                             onZoomChange(1f)
                         },
                         onLongPress = { position ->
-                            currentRequestSelectionAt(transform.normalize(position))
+                            if (!currentMemoHitTest(position)) {
+                                currentRequestSelectionAt(transform.normalize(position))
+                            }
                         },
                     )
                 }
@@ -254,19 +301,23 @@ fun PdfCanvas(
             Modifier.pointerInput(tool) {
                 when (tool) {
                     Tool.TEXT -> detectTapGestures { position ->
-                        onRequestText(transform.normalize(position))
+                        if (!currentMemoHitTest(position)) onRequestText(transform.normalize(position))
                     }
 
                     Tool.STAMP -> detectTapGestures { position ->
-                        onRequestStamp(transform.normalize(position))
+                        if (!currentMemoHitTest(position)) onRequestStamp(transform.normalize(position))
                     }
 
                     Tool.SIGNATURE -> detectTapGestures { position ->
-                        onRequestSignature(transform.normalize(position))
+                        if (!currentMemoHitTest(position)) onRequestSignature(transform.normalize(position))
                     }
 
                     Tool.ERASER -> awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        if (currentMemoHitTest(down.position)) {
+                            down.consume()
+                            return@awaitEachGesture
+                        }
                         down.consume()
                         eraserTrail.clear()
                         val start = transform.normalize(down.position)
@@ -299,6 +350,10 @@ fun PdfCanvas(
                     Tool.STRIKEOUT,
                     Tool.REDACT -> awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        if (currentMemoHitTest(down.position)) {
+                            down.consume()
+                            return@awaitEachGesture
+                        }
                         down.consume()
                         val start = transform.normalize(down.position)
                         shapeStart = start
@@ -330,6 +385,10 @@ fun PdfCanvas(
 
                     else -> awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        if (currentMemoHitTest(down.position)) {
+                            down.consume()
+                            return@awaitEachGesture
+                        }
                         down.consume()
                         val strokeStartMs = SystemClock.elapsedRealtime()
                         livePoints.clear()
@@ -556,6 +615,28 @@ fun PdfCanvas(
                 native.restore()
                 native.restore()
             }
+        }
+
+        // Post-it cards share the canvas transform and sit above all ink. The layer's
+        // full-size parent has no pointer input, so strokes outside a card still reach
+        // the canvas below; only the card's own small box consumes touches.
+        if (showMemoCardsOnPage && memoCards.isNotEmpty()) {
+            PdfMemoCardLayer(
+                cards = memoCards,
+                fit = total,
+                pan = pan,
+                viewWidth = viewW,
+                viewHeight = viewH,
+                pageWidth = pageW,
+                pageHeight = pageH,
+                minWidthPx = minMemoWidthPx,
+                minHeightPx = minMemoHeightPx,
+                onOpen = onOpenMemoCard,
+                onCardChange = onMemoCardChange,
+                onHide = onHideMemoCardOverlay,
+                onDelete = onDeleteMemoCard,
+                onDragActiveChange = { memoGestureActive.value = it },
+            )
         }
     }
 }

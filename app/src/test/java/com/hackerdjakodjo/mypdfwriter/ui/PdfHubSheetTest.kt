@@ -25,9 +25,17 @@ class PdfHubSheetTest {
     @Test
     fun readingGroupKeepsSearchAndEveryReadingAction() {
         assertEquals(
-            listOf("검색", "목차", "북마크 목록", "페이지 메모", "발췌·번역", "텍스트 선택", "스터디 노트"),
+            listOf("검색", "목차", "북마크 목록", "페이지 메모", "메모 카드", "발췌·번역", "텍스트 선택", "스터디 노트"),
             pdfMenuActions(PdfMenuGroup.READING).map { it.label },
         )
+    }
+
+    @Test
+    fun memoCardManagerIsReachableFromTheReadingGroup() {
+        assertTrue(PdfMenuAction.MEMO_CARDS.group == PdfMenuGroup.READING)
+        assertEquals("메모 카드", PdfMenuAction.MEMO_CARDS.label)
+        val reading = pdfMenuTopLevelGroups.flatMap { pdfMenuActions(it) }
+        assertTrue(PdfMenuAction.MEMO_CARDS in reading)
     }
 
     @Test

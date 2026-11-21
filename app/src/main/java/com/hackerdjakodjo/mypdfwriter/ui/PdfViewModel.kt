@@ -19,6 +19,7 @@ import com.hackerdjakodjo.mypdfwriter.data.DocumentStyleStore
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.ExcerptStore
 import com.hackerdjakodjo.mypdfwriter.data.LibraryStore
+import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PageEdit
 import com.hackerdjakodjo.mypdfwriter.data.PageOps
@@ -56,6 +57,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
+import java.util.UUID
 
 data class ViewerUiState(
     val docId: String = "",
@@ -68,6 +70,8 @@ data class ViewerUiState(
     val sourcePageCount: Int = 0,
     val annotations: List<Annotation> = emptyList(),
     val notes: Map<Int, String> = emptyMap(),
+    /** Post-it cards pinned to pages; [MemoCard.page] is the zero-based page index. */
+    val memoCards: List<MemoCard> = emptyList(),
     val tool: Tool = Tool.VIEW,
     val color: Int = 0xFF1F4E79.toInt(),
     val strokeWidth: Float = 0.0035f,
@@ -100,6 +104,23 @@ data class ViewerUiState(
      */
     val selectedWords: List<PdfTextWord> = emptyList(),
 )
+
+/** Pure memo-card list transitions; JVM-tested without an Android ViewModel. */
+internal fun memoCardsOnPage(cards: List<MemoCard>, page: Int): List<MemoCard> =
+    if (page < 0) emptyList() else cards.filter { it.page == page }
+
+internal fun upsertMemoCardIn(cards: List<MemoCard>, card: MemoCard): List<MemoCard> {
+    val safe = card.normalized()
+    val replaced = cards.any { it.id == safe.id }
+    return if (replaced) {
+        cards.map { if (it.id == safe.id) safe else it }
+    } else {
+        cards + safe
+    }
+}
+
+internal fun deleteMemoCardFrom(cards: List<MemoCard>, id: String): List<MemoCard> =
+    cards.filterNot { it.id == id }
 
 class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -166,6 +187,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val pages: List<PageSpec>,
         val annotations: List<Annotation>,
         val notes: Map<Int, String>,
+        val memoCards: List<MemoCard>,
         val pageIndex: Int,
     )
 
@@ -195,6 +217,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 val pages = saved?.pages ?: List(sourceCount) { PageSpec(it) }
                 val annotations = saved?.annotations ?: emptyList()
                 val notes = saved?.notes ?: emptyMap()
+                val memoCards = saved?.memoCards ?: emptyList()
                 val displayPrefs = saved?.displayPrefs ?: DisplayPrefs()
                 val reading = (readingStore.load(docId) ?: PdfReadingState()).normalized(pages.size)
                 // An unchanged layout needs no load+save pass: render the source directly.
@@ -238,6 +261,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     sourcePageCount = sourceCount,
                     annotations = annotations,
                     notes = notes,
+                    memoCards = memoCards,
                     canUndo = false,
                     canRedo = false,
                     busy = true,
@@ -485,6 +509,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Builds the flattened annotated PDF. Memo cards are viewer/document data and are
+     * intentionally not drawn here yet: `PdfExporter` owns the overlay painter and is
+     * outside this feature's file ownership, so PDF card export is deferred rather
+     * than risking a regression in the existing annotation export path.
+     */
     suspend fun buildExportFile(): File? {
         val state = _viewer.value ?: return null
         val source = sourceFile ?: return null
@@ -834,6 +864,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         pages = state.pages,
         annotations = state.annotations,
         notes = state.notes,
+        memoCards = state.memoCards,
         pageIndex = state.pageIndex,
     )
 
@@ -850,6 +881,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             pages = snapshot.pages,
             annotations = snapshot.annotations,
             notes = snapshot.notes,
+            memoCards = snapshot.memoCards,
             pageIndex = snapshot.pageIndex.coerceIn(0, (snapshot.pages.size - 1).coerceAtLeast(0)),
             pageCount = snapshot.pages.size,
             canUndo = undoStack.isNotEmpty(),
@@ -875,6 +907,39 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         persistNow()
     }
 
+    // ---------------------------------------------------------------- memo cards
+
+    /**
+     * One memo edit is one undo step: snapshot the current document, publish the new
+     * card list and flush the sidecar immediately, exactly like ink mutations.
+     */
+    private fun mutateMemoCards(block: (List<MemoCard>) -> List<MemoCard>) {
+        val state = _viewer.value ?: return
+        pushHistory(state)
+        _viewer.value = state.copy(
+            memoCards = block(state.memoCards),
+            canUndo = true,
+            canRedo = false,
+        )
+        persistNow()
+    }
+
+    /** Adds or replaces a card by id. Geometry/text are normalized before storage. */
+    fun upsertMemoCard(card: MemoCard) {
+        val safe = card.normalized()
+        mutateMemoCards { cards -> upsertMemoCardIn(cards, safe) }
+    }
+
+    /** Deletes a card by id; unknown ids are a no-op (no undo step, no write). */
+    fun deleteMemoCard(id: String) {
+        val state = _viewer.value ?: return
+        if (state.memoCards.none { it.id == id }) return
+        mutateMemoCards { cards -> deleteMemoCardFrom(cards, id) }
+    }
+
+    /** Cards pinned to one document page, in insertion order. */
+    fun memoCardsForPage(page: Int): List<MemoCard> = memoCardsOnPage(_viewer.value?.memoCards.orEmpty(), page)
+
     fun undo() {
         val state = _viewer.value ?: return
         val previous = undoStack.removeLastOrNull() ?: return
@@ -891,6 +956,53 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------------------------------------------------------------- page layout
 
+    /**
+     * Runs a [PageOps] operation with temporary marker annotations, then reads the
+     * markers back to remap memo cards with the *same* page permutation PageOps used
+     * for ink. This keeps delete/move/duplicate/insert in sync without copying their
+     * index rules, and duplicated cards get fresh ids just like duplicated strokes.
+     */
+    private fun pageEditWithMemos(
+        state: ViewerUiState,
+        block: (PageEdit) -> PageEdit,
+    ): Pair<PageEdit, List<MemoCard>> {
+        if (state.memoCards.isEmpty()) {
+            return block(PageEdit(state.pages, state.annotations, state.notes, state.pageIndex)) to emptyList()
+        }
+        // A per-call marker makes a collision with real user text impossible.
+        val marker = "$MEMO_SENTINEL_MARKER${UUID.randomUUID()}:"
+        val markerId = "$MEMO_SENTINEL_ID${UUID.randomUUID()}-"
+        val markers = state.pages.indices.map { page ->
+            Annotation(
+                id = "$markerId$page",
+                type = AnnotationType.PEN,
+                page = page,
+                color = 0,
+                width = 0f,
+                text = "$marker$page",
+            )
+        }
+        val edit = block(
+            PageEdit(state.pages, state.annotations + markers, state.notes, state.pageIndex),
+        )
+        val cleanAnnotations = edit.annotations.filterNot { it.text.startsWith(marker) }
+        val mapped = ArrayList<MemoCard>()
+        edit.annotations.forEach { sentinel ->
+            if (!sentinel.text.startsWith(marker)) return@forEach
+            val oldPage = sentinel.text.removePrefix(marker).toIntOrNull() ?: return@forEach
+            val copied = !sentinel.id.startsWith(markerId)
+            state.memoCards.filter { it.page == oldPage }.forEach { card ->
+                mapped.add(
+                    card.copy(
+                        id = if (copied) UUID.randomUUID().toString() else card.id,
+                        page = sentinel.page,
+                    ).normalized(),
+                )
+            }
+        }
+        return edit.copy(annotations = cleanAnnotations) to mapped
+    }
+
     fun rotatePage(clockwise: Boolean) {
         val state = _viewer.value ?: return
         rotatePages(setOf(state.pageIndex), if (clockwise) 90 else 270)
@@ -899,13 +1011,15 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun rotatePages(indices: Set<Int>, delta: Int) {
         val state = _viewer.value ?: return
         if (state.busy || state.pages.isEmpty()) return
-        val edit = PageOps.rotate(
-            edit = PageEdit(state.pages, state.annotations, state.notes, state.pageIndex),
-            indices = indices,
-            delta = delta,
-            aspectForPage = ::aspectForPage,
-        )
-        applyPageEdit(state, edit, "페이지를 회전하는 중…")
+        val (edit, memos) = pageEditWithMemos(state) { base ->
+            PageOps.rotate(
+                edit = base,
+                indices = indices,
+                delta = delta,
+                aspectForPage = ::aspectForPage,
+            )
+        }
+        applyPageEdit(state, edit, "페이지를 회전하는 중…", memos)
     }
 
     fun movePage(index: Int, direction: Int) {
@@ -915,12 +1029,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun movePages(indices: Set<Int>, direction: Int) {
         val state = _viewer.value ?: return
         if (state.busy) return
-        val edit = PageOps.move(
-            PageEdit(state.pages, state.annotations, state.notes, state.pageIndex),
-            indices,
-            direction,
-        )
-        applyPageEdit(state, edit, "페이지를 이동하는 중…")
+        val (edit, memos) = pageEditWithMemos(state) { base ->
+            PageOps.move(base, indices, direction)
+        }
+        applyPageEdit(state, edit, "페이지를 이동하는 중…", memos)
     }
 
     fun deletePage(index: Int) {
@@ -930,21 +1042,19 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun deletePages(indices: Set<Int>) {
         val state = _viewer.value ?: return
         if (state.busy || state.pages.size <= 1) return
-        val edit = PageOps.delete(
-            PageEdit(state.pages, state.annotations, state.notes, state.pageIndex),
-            indices,
-        )
-        applyPageEdit(state, edit, "페이지를 삭제하는 중…")
+        val (edit, memos) = pageEditWithMemos(state) { base ->
+            PageOps.delete(base, indices)
+        }
+        applyPageEdit(state, edit, "페이지를 삭제하는 중…", memos)
     }
 
     fun duplicatePages(indices: Set<Int>) {
         val state = _viewer.value ?: return
         if (state.busy || state.pages.isEmpty()) return
-        val edit = PageOps.duplicate(
-            PageEdit(state.pages, state.annotations, state.notes, state.pageIndex),
-            indices,
-        )
-        applyPageEdit(state, edit, "페이지를 복제하는 중…")
+        val (edit, memos) = pageEditWithMemos(state) { base ->
+            PageOps.duplicate(base, indices)
+        }
+        applyPageEdit(state, edit, "페이지를 복제하는 중…", memos)
     }
 
     fun insertBlankPage(afterIndex: Int) {
@@ -954,12 +1064,15 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun insertBlankPages(afterIndex: Int, count: Int = 1) {
         val state = _viewer.value ?: return
         if (state.busy) return
-        val edit = PageOps.insertBlank(
-            PageEdit(state.pages, state.annotations, state.notes, state.pageIndex),
-            afterIndex,
-            count,
-        ).copy(currentPage = (afterIndex + 1).coerceIn(0, state.pages.size + count - 1))
-        applyPageEdit(state, edit, "빈 페이지를 추가하는 중…")
+        val (edit, memos) = pageEditWithMemos(state) { base ->
+            PageOps.insertBlank(base, afterIndex, count)
+        }
+        applyPageEdit(
+            state,
+            edit.copy(currentPage = (afterIndex + 1).coerceIn(0, state.pages.size + count - 1)),
+            "빈 페이지를 추가하는 중…",
+            memos,
+        )
     }
 
     fun extractPages(indices: Set<Int>, uri: Uri) {
@@ -994,10 +1107,16 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun applyPageEdit(state: ViewerUiState, edit: PageEdit, label: String) {
+    private fun applyPageEdit(
+        state: ViewerUiState,
+        edit: PageEdit,
+        label: String,
+        memoCards: List<MemoCard> = state.memoCards,
+    ) {
         if (edit.pages == state.pages &&
             edit.annotations == state.annotations &&
             edit.notes == state.notes &&
+            memoCards == state.memoCards &&
             edit.currentPage == state.pageIndex
         ) {
             return
@@ -1008,6 +1127,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 pages = edit.pages,
                 annotations = edit.annotations,
                 notes = edit.notes,
+                memoCards = memoCards,
                 pageIndex = edit.currentPage,
                 pageCount = edit.pages.size,
                 busyLabel = label,
@@ -1051,12 +1171,18 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     if (sourcePage in specs.indices) put(sourcePage, value)
                 }
             }
+            val memoCards = state.memoCards.mapNotNull { card ->
+                val sourcePage = state.pages.getOrNull(card.page)?.sourcePage ?: return@mapNotNull null
+                if (sourcePage !in specs.indices) return@mapNotNull null
+                card.copy(page = sourcePage).normalized()
+            }
             pushHistory(state)
             rebuild(
                 state.copy(
                     pages = specs,
                     annotations = annotations,
                     notes = notes,
+                    memoCards = memoCards,
                     pageIndex = state.pageIndex.coerceIn(0, (specs.size - 1).coerceAtLeast(0)),
                     pageCount = specs.size,
                 ),
@@ -1638,6 +1764,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 nightMode = state.nightMode,
                 brightness = state.brightness,
             ),
+            memoCards = state.memoCards,
         )
         viewModelScope.launch(Dispatchers.IO) { docStore.save(doc) }
     }
@@ -1680,5 +1807,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         const val READING_SAVE_DELAY_MS = 450L
         /** Opaque paper-like cover for visual text replacement. */
         const val COVER_PAPER_COLOR = -1 // 0xFFFFFFFF, opaque white
+        /** Temporary markers used to reuse PageOps' page mapping for memo cards. */
+        const val MEMO_SENTINEL_MARKER = "pdfmemo-page:"
+        const val MEMO_SENTINEL_ID = "pdfmemo-sentinel-"
     }
 }

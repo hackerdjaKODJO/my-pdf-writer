@@ -275,6 +275,12 @@ data class DocState(
     val annotations: List<Annotation>,
     val notes: Map<Int, String>,
     val displayPrefs: DisplayPrefs = DisplayPrefs(),
+    /**
+     * Post-it cards pinned to PDF pages. Each card carries its own zero-based [MemoCard.page].
+     * A flat list keeps the sidecar compact, and a legacy document without the key loads
+     * with an empty list, so older files never change shape on read.
+     */
+    val memoCards: List<MemoCard> = emptyList(),
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("version", 1)
@@ -284,6 +290,9 @@ data class DocState(
         put("notes", JSONObject().apply { notes.forEach { (k, v) -> put(k.toString(), v) } })
         // Omit the default so legacy/default documents keep the exact old JSON shape.
         if (displayPrefs != DisplayPrefs()) put("display", displayPrefs.toJson())
+        if (memoCards.isNotEmpty()) {
+            put("memoCards", JSONArray().apply { memoCards.forEach { put(it.toJson()) } })
+        }
     }
 
     /** Drops references that no longer exist after the source file changed. */
@@ -297,7 +306,12 @@ data class DocState(
         }
         if (valid.isEmpty()) {
             val fresh = List(sourcePageCount) { PageSpec(it) }.ifEmpty { listOf(PageSpec(null)) }
-            return copy(pages = fresh, annotations = emptyList(), notes = emptyMap())
+            return copy(
+                pages = fresh,
+                annotations = emptyList(),
+                notes = emptyMap(),
+                memoCards = emptyList(),
+            )
         }
         val indexMap = HashMap<Int, Int>(valid.size)
         valid.forEachIndexed { newIndex, (oldIndex, _) -> indexMap[oldIndex] = newIndex }
@@ -309,7 +323,13 @@ data class DocState(
         val notes = buildMap {
             notes.forEach { (oldPage, value) -> indexMap[oldPage]?.let { put(it, value) } }
         }
-        return copy(pages = specs, annotations = annotations, notes = notes)
+        // Memo cards live on document pages, so remap them exactly like notes and drop
+        // cards whose page disappeared when the source PDF changed.
+        val memoCards = memoCards.mapNotNull { card ->
+            val mapped = indexMap[card.page] ?: return@mapNotNull null
+            card.copy(page = mapped).normalized()
+        }
+        return copy(pages = specs, annotations = annotations, notes = notes, memoCards = memoCards)
     }
 
     companion object {
@@ -331,6 +351,11 @@ data class DocState(
                 val value = notesJson.optString(key)
                 if (value.isNotBlank()) notes[idx] = value
             }
+            val memosJson = o.optJSONArray("memoCards") ?: JSONArray()
+            val memoCards = ArrayList<MemoCard>(memosJson.length())
+            for (i in 0 until memosJson.length()) {
+                memosJson.optJSONObject(i)?.let { memoCards.add(MemoCard.fromJson(it)) }
+            }
             return DocState(
                 docId = docId,
                 displayName = o.optString("name"),
@@ -338,6 +363,7 @@ data class DocState(
                 annotations = anns,
                 notes = notes,
                 displayPrefs = DisplayPrefs.fromJson(o.optJSONObject("display")),
+                memoCards = memoCards,
             )
         }
     }

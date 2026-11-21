@@ -73,6 +73,7 @@ internal enum class PdfMenuAction(val group: PdfMenuGroup, val label: String) {
     OUTLINE(PdfMenuGroup.READING, "목차"),
     BOOKMARKS(PdfMenuGroup.READING, "북마크 목록"),
     PAGE_NOTES(PdfMenuGroup.READING, "페이지 메모"),
+    MEMO_CARDS(PdfMenuGroup.READING, "메모 카드"),
     EXCERPTS(PdfMenuGroup.READING, "발췌·번역"),
     TEXT_SELECT(PdfMenuGroup.READING, "텍스트 선택"),
     STUDY_NOTE(PdfMenuGroup.READING, "스터디 노트"),
