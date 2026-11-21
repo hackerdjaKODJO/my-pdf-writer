@@ -2,6 +2,7 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,5 +31,15 @@ class ViewerSheetsTest {
     @Test
     fun emptyResultsProduceNoRows() {
         assertTrue(keyedSearchHits(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun displaySettingsStartWithTheScreenRowAndCollapseCropMargins() {
+        assertFalse("여백 자르기 starts collapsed", PDF_DISPLAY_CROP_DEFAULT_EXPANDED)
+        assertFalse(displayCropSectionVisible(PDF_DISPLAY_CROP_DEFAULT_EXPANDED))
+        assertTrue(displayCropSectionVisible(true))
+        // The primary row owns both day/night and brightness; crop is separate.
+        assertEquals(listOf("주간", "야간", "밝기"), DISPLAY_PRIMARY_CONTROLS)
+        assertTrue("홀수·짝수 and 초기화 live inside crop", CROP_SECTION_CONTROLS.containsAll(listOf("홀수·짝수", "여백 초기화")))
     }
 }

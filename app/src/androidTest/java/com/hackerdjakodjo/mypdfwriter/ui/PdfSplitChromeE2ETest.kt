@@ -334,13 +334,14 @@ class PdfSplitChromeE2ETest {
             }
         }
 
-        listOf("번역", "사전", "노트에 담기", "발췌로 저장", "텍스트 편집", "공유", "선택 해제")
+        listOf("번역", "사전", "노트에 담기", "텍스트 편집", "공유", "선택 해제")
             .forEach { composeRule.onNodeWithText(it).assertExists() }
+        composeRule.onNodeWithText("발췌로 저장").assertIsNotDisplayed()
 
         composeRule.onNodeWithText("번역").performClick()
         composeRule.onNodeWithText("사전").performClick()
+        // One capture row: with a study pane open it captures into the note.
         composeRule.onNodeWithText("노트에 담기").performClick()
-        composeRule.onNodeWithText("발췌로 저장").performClick()
         composeRule.onNodeWithText("텍스트 편집").performClick()
         composeRule.onNodeWithText("공유").performClick()
         composeRule.onNodeWithText("선택 해제").performClick()
@@ -348,11 +349,11 @@ class PdfSplitChromeE2ETest {
         assertEquals(1, translate)
         assertEquals(1, dictionary)
         assertEquals(1, addToPane)
-        assertEquals(1, excerpt)
+        assertEquals(0, excerpt)
         assertEquals(1, edit)
         assertEquals(1, share)
         assertEquals(1, clear)
-        assertEquals(7, dismiss)
+        assertEquals(6, dismiss)
     }
 
     @Test
@@ -419,7 +420,7 @@ class PdfSplitChromeE2ETest {
         }
 
         composeRule.onNodeWithText("문서 탭").assertExists()
-        listOf("다른 탭 닫기", "모든 탭 닫기", "탭 표시/숨기기", "메뉴 자동 숨김", "최근 문서", "위치 · 북마크/목차/주석")
+        listOf("다른 탭 닫기", "모든 탭 닫기", "탭 표시/숨기기", "메뉴 자동 숨김", "최근 문서", "위치")
             .forEach { composeRule.onNodeWithText(it).assertExists() }
         composeRule.onNodeWithContentDescription("문서 탭 열기: 4.pdf").performClick()
         composeRule.onNodeWithText("다른 탭 닫기").performClick()
@@ -427,7 +428,7 @@ class PdfSplitChromeE2ETest {
         composeRule.onNodeWithText("탭 표시/숨기기").performClick()
         composeRule.onNodeWithText("메뉴 자동 숨김").performClick()
         composeRule.onNodeWithText("최근 문서").performClick()
-        composeRule.onNodeWithText("위치 · 북마크/목차/주석").performClick()
+        composeRule.onNodeWithText("위치").performClick()
 
         assertEquals("doc4", switched)
         assertEquals(1, others)

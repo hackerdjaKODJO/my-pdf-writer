@@ -1,19 +1,26 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * System Back must dismiss the topmost viewer layer. Closing the document while a
- * sheet is open is the regression covered here, with special attention to the two
- * sheets that were originally missing from the predicate.
+ * System Back must dismiss the topmost viewer layer. Closing the document while
+ * a sheet is open is the regression covered here, with special attention to the
+ * sheets introduced by the simplified student menus.
  */
 class ViewerScreenTest {
 
     @Test
     fun idleViewerLetsBackCloseTheDocument() {
         assertFalse(ViewerSheetFlags().anyOpen)
+    }
+
+    @Test
+    fun unifiedLocationAndFileToolsSheetInterceptBack() {
+        assertTrue(ViewerSheetFlags(showLocations = true).anyOpen)
+        assertTrue(ViewerSheetFlags(showFileTools = true).anyOpen)
     }
 
     @Test
@@ -37,6 +44,33 @@ class ViewerScreenTest {
     }
 
     @Test
+    fun topChromeHasExactlyFourControls() {
+        assertEquals(PDF_TOP_CHROME_MAX_CONTROLS, 4)
+        assertEquals(
+            listOf("뒤로", "문서 이름", "검색", "학습 메뉴"),
+            pdfTopChromeControls.map { it.label },
+        )
+        val labels = pdfTopChromeControls.map { it.label }.toSet()
+        assertFalse("북마크 이동", "북마크" in labels)
+        assertFalse("노트 바로가기 이동", "노트" in labels)
+        assertFalse("자동 숨김 이동", "메뉴 자동 숨김" in labels)
+    }
+
+    @Test
+    fun coachShowsOnceThenStaysDismissedForTheSession() {
+        val firstOpen = PdfCoachState()
+        assertTrue(shouldShowPdfCoach(firstOpen))
+
+        val dismissed = dismissPdfCoach(firstOpen)
+        assertFalse(shouldShowPdfCoach(dismissed))
+        // Opening another document in the same visit starts from the session flag.
+        assertFalse(shouldShowPdfCoach(PdfCoachState(shownThisSession = true)))
+        // A brand-new visit gets the card again.
+        assertTrue(shouldShowPdfCoach(PdfCoachState(shownThisSession = false)))
+        assertEquals(PdfCoachState(true, true), dismissed)
+    }
+
+    @Test
     fun everyViewerLayerInterceptsBack() {
         val idle = ViewerSheetFlags()
         val layers = listOf(
@@ -55,13 +89,13 @@ class ViewerScreenTest {
             idle.copy(showStudyNote = true),
             idle.copy(showReflow = true),
             idle.copy(showReadAloud = true),
-            idle.copy(showOutline = true),
             idle.copy(showProperties = true),
             idle.copy(showStyle = true),
             idle.copy(showDisplaySettings = true),
             idle.copy(showHub = true),
             idle.copy(showReadModes = true),
             idle.copy(showAudioMenu = true),
+            idle.copy(showFileTools = true),
             idle.copy(showToolMore = true),
             idle.copy(showToolStyle = true),
             idle.copy(showSelectionMore = true),
@@ -70,6 +104,7 @@ class ViewerScreenTest {
             idle.copy(showViewerPenBox = true),
             idle.copy(showRecentDocs = true),
             idle.copy(showTabOverflow = true),
+            idle.copy(showLocations = true),
             idle.copy(textTargetOpen = true),
             idle.copy(stampTargetOpen = true),
             idle.copy(signatureTargetOpen = true),

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,6 +34,8 @@ import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.CropSquare
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Draw
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FormatStrikethrough
 import androidx.compose.material.icons.outlined.FormatUnderlined
@@ -104,14 +107,29 @@ import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**
- * Material3 screen-settings sheet: day/night mode and an offline brightness
- * dimmer. Both values live in the document's display prefs and are saved on
- * change, so they survive closing and reopening the document.
+ * The crop controls are advanced and rarely needed, so they start collapsed.
+ * Keeping the default in one pure constant makes the "calm first screen"
+ * contract testable without a Compose test.
+ */
+internal const val PDF_DISPLAY_CROP_DEFAULT_EXPANDED = false
+
+/** Primary 화면 row controls vs. the advanced crop section, for layout audits. */
+internal val DISPLAY_PRIMARY_CONTROLS = listOf("주간", "야간", "밝기")
+internal val CROP_SECTION_CONTROLS = listOf("여백 자르기", "홀수·짝수", "여백 초기화")
+
+internal fun displayCropSectionVisible(expanded: Boolean): Boolean = expanded
+
+/**
+ * Material3 screen-settings sheet. The primary 화면 row pairs 주간/야간 with 밝기;
+ * the advanced 여백 자르기 controls (including 홀수·짝수 and 초기화) live behind a
+ * collapsed section. Both display values are saved in the document's display
+ * prefs on change, so they survive closing and reopening the document.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DisplaySettingsSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var cropExpanded by remember { mutableStateOf(PDF_DISPLAY_CROP_DEFAULT_EXPANDED) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
             Modifier
@@ -129,90 +147,133 @@ fun DisplaySettingsSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -
             )
             Spacer(Modifier.size(18.dp))
 
-            Text("화면 모드", style = MaterialTheme.typography.labelLarge)
+            // Primary row: day/night and brightness are the two decisions a
+            // student actually makes when a page is too dark or too bright.
+            Text("화면", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.size(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = !state.nightMode,
-                    onClick = { if (state.nightMode) vm.toggleNightMode() },
-                    label = { Text("주간") },
-                )
-                FilterChip(
-                    selected = state.nightMode,
-                    onClick = { if (!state.nightMode) vm.toggleNightMode() },
-                    label = { Text("야간") },
-                )
-            }
-            Spacer(Modifier.size(20.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("밝기", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-                Text(
-                    "${(state.brightness * 100).roundToInt()}%",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            Spacer(Modifier.size(4.dp))
-            Slider(
-                value = state.brightness,
-                valueRange = DisplayPrefs.MIN_BRIGHTNESS..DisplayPrefs.MAX_BRIGHTNESS,
-                onValueChange = vm::setBrightness,
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
                 modifier = Modifier.fillMaxWidth(),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(
-                    "어둡게",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton(onClick = { vm.setBrightness(DisplayPrefs.DEFAULT_BRIGHTNESS) }) {
-                    Text("기본값")
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = !state.nightMode,
+                            onClick = { if (state.nightMode) vm.toggleNightMode() },
+                            label = { Text("주간") },
+                            modifier = Modifier.sizeIn(minHeight = MIN_TARGET_DP.dp),
+                        )
+                        FilterChip(
+                            selected = state.nightMode,
+                            onClick = { if (!state.nightMode) vm.toggleNightMode() },
+                            label = { Text("야간") },
+                            modifier = Modifier.sizeIn(minHeight = MIN_TARGET_DP.dp),
+                        )
+                    }
+                    Spacer(Modifier.size(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("밝기", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                        Text(
+                            "${(state.brightness * 100).roundToInt()}%",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    Slider(
+                        value = state.brightness,
+                        valueRange = DisplayPrefs.MIN_BRIGHTNESS..DisplayPrefs.MAX_BRIGHTNESS,
+                        onValueChange = vm::setBrightness,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            "어둡게",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(
+                            onClick = { vm.setBrightness(DisplayPrefs.DEFAULT_BRIGHTNESS) },
+                            modifier = Modifier.sizeIn(minHeight = MIN_TARGET_DP.dp),
+                        ) { Text("기본값") }
+                    }
                 }
             }
+            Spacer(Modifier.size(14.dp))
 
-            HorizontalDivider(Modifier.padding(vertical = 10.dp))
-            Text("여백 자르기", style = MaterialTheme.typography.labelLarge)
-            Spacer(Modifier.size(4.dp))
-            Text(
-                "보기에서만 여백을 숨깁니다. 원본 PDF와 내보내기는 그대로입니다.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            val crop = state.cropInsets
-            val cropMax = 0.3f
-            listOf<Triple<String, Float, (Float) -> Unit>>(
-                Triple("왼쪽", crop.left) { v -> vm.setCrop(crop.copy(left = v), state.cropOddEven) },
-                Triple("위", crop.top) { v -> vm.setCrop(crop.copy(top = v), state.cropOddEven) },
-                Triple("오른쪽", crop.right) { v -> vm.setCrop(crop.copy(right = v), state.cropOddEven) },
-                Triple("아래", crop.bottom) { v -> vm.setCrop(crop.copy(bottom = v), state.cropOddEven) },
-            ).forEach { (label, value, update) ->
-                Spacer(Modifier.size(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+            // Secondary section: one full-width 48dp header, everything inside
+            // (odd/even, reset) only exists when the student expands it.
+            Surface(
+                onClick = { cropExpanded = !cropExpanded },
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .sizeIn(minHeight = MIN_TARGET_DP.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("여백 자르기", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
                     Text(
-                        "${(value * 100).roundToInt()}%",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
+                        if (cropExpanded) "접기" else "펼치기",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        if (cropExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                        contentDescription = if (cropExpanded) "여백 자르기 접기" else "여백 자르기 펼치기",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                 }
-                Slider(
-                    value = value.coerceIn(0f, cropMax),
-                    valueRange = 0f..cropMax,
-                    onValueChange = update,
-                    modifier = Modifier.fillMaxWidth(),
-                )
             }
-            FilterChip(
-                selected = state.cropOddEven,
-                onClick = { vm.setCrop(crop, !state.cropOddEven) },
-                label = { Text("홀수·짝수 페이지 다르게") },
-            )
-            TextButton(onClick = { vm.setCrop(CropInsets.NONE, false) }) {
-                Text("여백 초기화")
+            if (displayCropSectionVisible(cropExpanded)) {
+                Spacer(Modifier.size(4.dp))
+                Text(
+                    "보기에서만 여백을 숨깁니다. 원본 PDF와 내보내기는 그대로입니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val crop = state.cropInsets
+                val cropMax = 0.3f
+                listOf<Triple<String, Float, (Float) -> Unit>>(
+                    Triple("왼쪽", crop.left) { v -> vm.setCrop(crop.copy(left = v), state.cropOddEven) },
+                    Triple("위", crop.top) { v -> vm.setCrop(crop.copy(top = v), state.cropOddEven) },
+                    Triple("오른쪽", crop.right) { v -> vm.setCrop(crop.copy(right = v), state.cropOddEven) },
+                    Triple("아래", crop.bottom) { v -> vm.setCrop(crop.copy(bottom = v), state.cropOddEven) },
+                ).forEach { (label, value, update) ->
+                    Spacer(Modifier.size(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                        Text(
+                            "${(value * 100).roundToInt()}%",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    Slider(
+                        value = value.coerceIn(0f, cropMax),
+                        valueRange = 0f..cropMax,
+                        onValueChange = update,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                FilterChip(
+                    selected = state.cropOddEven,
+                    onClick = { vm.setCrop(crop, !state.cropOddEven) },
+                    label = { Text("홀수·짝수 페이지 다르게") },
+                    modifier = Modifier.sizeIn(minHeight = MIN_TARGET_DP.dp),
+                )
+                TextButton(
+                    onClick = { vm.setCrop(CropInsets.NONE, false) },
+                    modifier = Modifier.sizeIn(minHeight = MIN_TARGET_DP.dp),
+                ) { Text("여백 초기화") }
             }
         }
     }
@@ -228,9 +289,9 @@ fun PageSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                // Renamed from 페이지 편집: this sheet is for jumping, rotating
-                // and deleting pages, not a text editor.
-                Text("페이지", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                // Student-facing name is 쪽 편집: jumping, rotating and deleting
+                // pages, not a text editor. The hub entry uses the same label.
+                Text("쪽 편집", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 TextButton(onClick = { confirmReset = true }) { Text(stringResource(R.string.reset_pages_short)) }
             }
             Text(
@@ -1290,6 +1351,9 @@ fun LocationsSheet(
     onJumpToPage: (Int) -> Unit,
     onExportSummary: (String) -> Unit,
     onDismiss: () -> Unit,
+    /** Optional full managers; the unified panel stays read-only without them. */
+    onManageBookmarks: (() -> Unit)? = null,
+    onManageAnnotations: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedTab by remember { mutableStateOf(LocationsTab.BOOKMARKS) }
@@ -1350,6 +1414,7 @@ fun LocationsSheet(
                     bookmarks = sortedBookmarks,
                     currentPage = currentPage,
                     onJump = actions::jump,
+                    onManage = onManageBookmarks,
                 )
 
                 LocationsTab.OUTLINE -> LocationsOutlineTab(
@@ -1365,6 +1430,7 @@ fun LocationsSheet(
                     groups = groups,
                     summary = summary,
                     onExport = actions::export,
+                    onManage = onManageAnnotations,
                     onJump = actions::jump,
                 )
             }
@@ -1378,7 +1444,17 @@ private fun LocationsBookmarksTab(
     bookmarks: List<PdfBookmark>,
     currentPage: Int,
     onJump: (Int) -> Unit,
+    onManage: (() -> Unit)?,
 ) {
+    if (onManage != null) {
+        TextButton(
+            onClick = onManage,
+            modifier = Modifier
+                .fillMaxWidth()
+                .sizeIn(minHeight = MIN_TARGET_DP.dp),
+        ) { Text("북마크 추가·이름 변경·삭제") }
+        Spacer(Modifier.size(4.dp))
+    }
     if (bookmarks.isEmpty()) {
         Text(
             "아직 북마크가 없습니다. 학습 메뉴에서 현재 쪽을 북마크해 두면 여기에서 바로 찾을 수 있습니다.",
@@ -1488,6 +1564,7 @@ private fun LocationsAnnotationsTab(
     groups: Map<Int, List<Annotation>>,
     summary: String,
     onExport: (String) -> Unit,
+    onManage: (() -> Unit)?,
     onJump: (Int) -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -1524,6 +1601,15 @@ private fun LocationsAnnotationsTab(
         )
         Spacer(Modifier.width(6.dp))
         Text("주석 요약 내보내기")
+    }
+    if (onManage != null) {
+        Spacer(Modifier.size(4.dp))
+        TextButton(
+            onClick = onManage,
+            modifier = Modifier
+                .fillMaxWidth()
+                .sizeIn(minHeight = MIN_TARGET_DP.dp),
+        ) { Text("주석 목록·삭제") }
     }
     Spacer(Modifier.size(10.dp))
 

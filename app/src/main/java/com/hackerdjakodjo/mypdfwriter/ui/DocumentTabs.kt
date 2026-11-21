@@ -3,6 +3,7 @@ package com.hackerdjakodjo.mypdfwriter.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -191,7 +193,7 @@ internal fun DocumentTabStrip(
                         MaterialTheme.colorScheme.surfaceVariant
                     },
                     modifier = Modifier
-                        .widthIn(max = 132.dp)
+                        .widthIn(max = 148.dp)
                         .clickable { onSelectTab(tab) }
                         .semantics { contentDescription = stateLabel(tab.name, active) },
                 ) {
@@ -207,13 +209,22 @@ internal fun DocumentTabStrip(
                             modifier = Modifier.weight(1f, fill = false),
                         )
                         Spacer(Modifier.size(4.dp))
-                        Icon(
-                            Icons.Outlined.Close,
-                            contentDescription = "탭 닫기: ${tab.name}",
+                        Box(
                             modifier = Modifier
-                                .size(20.dp)
-                                .clickable { onCloseTab(tab) },
-                        )
+                                .sizeIn(
+                                    minWidth = MIN_TARGET_DP.dp,
+                                    minHeight = MIN_TARGET_DP.dp,
+                                )
+                                .clickable { onCloseTab(tab) }
+                                .semantics { contentDescription = "탭 닫기: ${tab.name}" },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Outlined.Close,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -226,23 +237,28 @@ internal fun DocumentTabStrip(
                     modifier = Modifier
                         .clickable { onOpenMenu() }
                         .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .sizeIn(minHeight = MIN_TARGET_DP.dp)
                         .semantics { contentDescription = "숨겨진 탭 ${overflow}개" },
                 )
             }
-            Icon(
-                Icons.Outlined.MoreHoriz,
-                contentDescription = "탭 메뉴",
+            Box(
                 modifier = Modifier
-                    .size(28.dp)
-                    .clickable { onOpenMenu() },
-            )
-            Icon(
-                Icons.Outlined.VisibilityOff,
-                contentDescription = "탭 숨기기",
+                    .sizeIn(minWidth = MIN_TARGET_DP.dp, minHeight = MIN_TARGET_DP.dp)
+                    .clickable { onOpenMenu() }
+                    .semantics { contentDescription = "탭 메뉴" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.MoreHoriz, contentDescription = null, modifier = Modifier.size(24.dp))
+            }
+            Box(
                 modifier = Modifier
-                    .size(28.dp)
-                    .clickable { onHideStrip() },
-            )
+                    .sizeIn(minWidth = MIN_TARGET_DP.dp, minHeight = MIN_TARGET_DP.dp)
+                    .clickable { onHideStrip() }
+                    .semantics { contentDescription = "탭 숨기기" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.VisibilityOff, contentDescription = null, modifier = Modifier.size(22.dp))
+            }
         }
     }
 }
@@ -262,6 +278,7 @@ private fun TabPanelRow(
             .fillMaxWidth()
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 12.dp)
+            .sizeIn(minHeight = MIN_TARGET_DP.dp)
             .then(
                 if (contentDescription != null) {
                     Modifier.semantics { this.contentDescription = contentDescription }
@@ -283,7 +300,7 @@ private fun TabPanelRow(
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
@@ -357,7 +374,7 @@ internal fun DocumentTabOverflowSheet(
                 trailing = autoHideMode.label,
             ) { onToggleAutoHide() }
             TabPanelRow(label = "최근 문서") { onOpenRecents() }
-            TabPanelRow(label = "위치 · 북마크/목차/주석") { onOpenLocations() }
+            TabPanelRow(label = "위치") { onOpenLocations() }
         }
     }
 }

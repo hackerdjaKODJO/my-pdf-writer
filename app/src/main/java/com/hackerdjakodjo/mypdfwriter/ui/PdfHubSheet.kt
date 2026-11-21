@@ -1,6 +1,5 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,21 +9,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Redo
-import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -41,86 +35,105 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.hackerdjakodjo.mypdfwriter.R
 
 /**
- * Stable grouping for the single 학습 메뉴. The order of [pdfMenuTopLevelGroups]
- * is the visible order; every [PdfMenuAction] belongs to exactly one surface, so
- * adding an action cannot silently drop it from the sheet. 읽기 모드/오디오 are
- * small sub-sheets and 상단바-owned actions are rendered by the viewer top bar.
+ * Stable grouping for the single 학습 메뉴. Students see only four first-level
+ * groups, in this order: 읽기 → 필기 → 담기 → 설정. Everything that used to be a
+ * top-level group (내보내기, 기타, 보기·페이지) now lives inside 읽기/설정 or in a
+ * small sub-sheet, so the menu stays one calm screen. The order of
+ * [pdfMenuTopLevelGroups] is the visible order; every [PdfMenuAction] belongs to
+ * exactly one surface, so adding an action cannot silently drop it from the sheet.
  */
 internal enum class PdfMenuGroup(val title: String, val expandable: Boolean = false) {
-    STUDY("학습"),
-    TOOLS("도구"),
-    VIEW_PAGES("보기·페이지"),
-    EXPORT("내보내기"),
-    OTHER("기타", expandable = true),
+    READ("읽기"),
+    WRITE("필기"),
+    CAPTURE("담기"),
+    SETTINGS("설정"),
+    // Sub-sheets, never first-level groups.
     READ_MODE("읽기 모드"),
     AUDIO("오디오"),
+    FILE_TOOLS("파일 도구"),
 }
 
 internal val pdfMenuTopLevelGroups = listOf(
-    PdfMenuGroup.STUDY,
-    PdfMenuGroup.TOOLS,
-    PdfMenuGroup.VIEW_PAGES,
-    PdfMenuGroup.EXPORT,
-    PdfMenuGroup.OTHER,
+    PdfMenuGroup.READ,
+    PdfMenuGroup.WRITE,
+    PdfMenuGroup.CAPTURE,
+    PdfMenuGroup.SETTINGS,
 )
 
-/** The 기타 group is collapsed on open so the menu stays one calm screen. */
-internal const val PDF_HUB_OTHER_DEFAULT_EXPANDED = false
+/** Hard cap for the first-level hub; enforced by unit tests. */
+internal const val PDF_HUB_MAX_TOP_LEVEL_GROUPS = 4
+
+/** One capture label everywhere in the PDF UI (hub, selection bar, 더보기). */
+internal const val PDF_HUB_CAPTURE_LABEL = "노트에 담기"
+
+/** The unified 읽기 → 위치 entry point; the host opens the one Locations panel. */
+internal const val PDF_HUB_READ_GROUP_TITLE = "읽기"
+internal const val PDF_HUB_LOCATIONS_LABEL = "위치"
 
 /**
- * Every action reachable from the 학습 메뉴 surface. Actions in
- * [PdfMenuGroup.READ_MODE] and [PdfMenuGroup.AUDIO] use a small sub-sheet, and
- * [pdfTopBarOwnedActions] stay in the viewer top bar instead of the menu.
+ * Every action reachable from the 학습 메뉴 surface. Actions in the three
+ * sub-sheet groups ([PdfMenuGroup.READ_MODE], [PdfMenuGroup.AUDIO],
+ * [PdfMenuGroup.FILE_TOOLS]) use a small sub-sheet; [pdfTopBarOwnedActions] stay
+ * in the viewer top chrome instead of the menu. 목차/북마크/주석 목록 are folded
+ * into the single [LOCATIONS] action because they are three views of one task:
+ * "where am I / where do I want to go".
  */
 internal enum class PdfMenuAction(val group: PdfMenuGroup, val label: String) {
-    SEARCH(PdfMenuGroup.STUDY, "검색"),
-    OUTLINE(PdfMenuGroup.STUDY, "목차"),
-    BOOKMARKS(PdfMenuGroup.STUDY, "북마크 목록"),
-    PAGE_NOTES(PdfMenuGroup.STUDY, "페이지 메모"),
-    EXCERPTS(PdfMenuGroup.STUDY, "발췌·번역"),
-    TEXT_SELECT(PdfMenuGroup.STUDY, "텍스트 선택"),
-    STUDY_NOTE(PdfMenuGroup.STUDY, "스터디 노트"),
+    // 읽기
+    SEARCH(PdfMenuGroup.READ, "검색"),
+    LOCATIONS(PdfMenuGroup.READ, PDF_HUB_LOCATIONS_LABEL),
+    BOOKMARK_TOGGLE(PdfMenuGroup.READ, "현재 쪽 북마크"),
+    READ_MODE(PdfMenuGroup.READ, "읽기 모드"),
+    AUDIO(PdfMenuGroup.READ, "오디오"),
+    DISPLAY_SETTINGS(PdfMenuGroup.READ, "화면 설정"),
+    FIT_SCREEN(PdfMenuGroup.READ, "화면에 맞추기"),
 
-    MEMO_CARDS(PdfMenuGroup.TOOLS, "포스트잇"),
-    TOOL_MORE(PdfMenuGroup.TOOLS, "주석 도구"),
-    ANNOTATION_LIST(PdfMenuGroup.TOOLS, "주석 목록"),
-    TOGGLE_ANNOTATIONS(PdfMenuGroup.TOOLS, "주석 숨기기/표시"),
-    AUDIO(PdfMenuGroup.TOOLS, "오디오"),
-    PDF_TOOLS(PdfMenuGroup.TOOLS, "PDF 도구"),
+    // 필기
+    TOOL_MORE(PdfMenuGroup.WRITE, "주석 도구"),
+    MEMO_CARDS(PdfMenuGroup.WRITE, "포스트잇"),
+    TOGGLE_ANNOTATIONS(PdfMenuGroup.WRITE, "주석 숨기기/표시"),
+    PAGE_NOTES(PdfMenuGroup.WRITE, "페이지 메모"),
+    TEXT_SELECT(PdfMenuGroup.WRITE, "텍스트 선택"),
+    DECORATE(PdfMenuGroup.WRITE, "문서 꾸미기"),
 
-    DISPLAY_SETTINGS(PdfMenuGroup.VIEW_PAGES, "화면 설정"),
-    READ_MODE(PdfMenuGroup.VIEW_PAGES, "읽기 모드"),
-    PAGE_MANAGE(PdfMenuGroup.VIEW_PAGES, "페이지 관리"),
-    PAGE_EDIT(PdfMenuGroup.VIEW_PAGES, "페이지"),
-    FIT_SCREEN(PdfMenuGroup.VIEW_PAGES, "화면에 맞추기"),
+    // 담기
+    CAPTURE(PdfMenuGroup.CAPTURE, PDF_HUB_CAPTURE_LABEL),
+    EXCERPTS(PdfMenuGroup.CAPTURE, "담은 목록"),
+    COPY_TEXT(PdfMenuGroup.CAPTURE, "텍스트 복사"),
 
-    EXPORT(PdfMenuGroup.EXPORT, "PDF 내보내기"),
-    PRINT(PdfMenuGroup.EXPORT, "인쇄"),
-    SHARE(PdfMenuGroup.EXPORT, "공유"),
+    // 설정
+    FILE_TOOLS(PdfMenuGroup.SETTINGS, "파일 도구"),
+    AUTO_HIDE(PdfMenuGroup.SETTINGS, "메뉴 자동 숨김"),
+    HELP(PdfMenuGroup.SETTINGS, "도움말"),
 
-    PAGE_LOCK(PdfMenuGroup.OTHER, "페이지 잠금"),
-    COPY_TEXT(PdfMenuGroup.OTHER, "텍스트 복사"),
-    DOCUMENT_INFO(PdfMenuGroup.OTHER, "문서 정보"),
-    DECORATE(PdfMenuGroup.OTHER, "문서 꾸미기"),
-    HELP(PdfMenuGroup.OTHER, "도움말"),
+    // 설정 → 파일 도구 (advanced file operations)
+    PAGE_EDIT(PdfMenuGroup.FILE_TOOLS, "쪽 편집"),
+    PAGE_MANAGE(PdfMenuGroup.FILE_TOOLS, "쪽 관리"),
+    PDF_TOOLS(PdfMenuGroup.FILE_TOOLS, "PDF 도구"),
+    EXPORT(PdfMenuGroup.FILE_TOOLS, "PDF 내보내기"),
+    PRINT(PdfMenuGroup.FILE_TOOLS, "인쇄"),
+    SHARE(PdfMenuGroup.FILE_TOOLS, "공유"),
+    DOCUMENT_INFO(PdfMenuGroup.FILE_TOOLS, "문서 정보"),
+    PAGE_LOCK(PdfMenuGroup.FILE_TOOLS, "페이지 잠금"),
 
+    // 읽기 → 읽기 모드
     READ_TEXT_MODE(PdfMenuGroup.READ_MODE, "텍스트 모드"),
     READ_CONTINUOUS(PdfMenuGroup.READ_MODE, "연속 보기"),
     READ_SPREAD(PdfMenuGroup.READ_MODE, "스프레드 보기"),
     READ_POPUP(PdfMenuGroup.READ_MODE, "팝업 보기"),
     READ_ALOUD(PdfMenuGroup.READ_MODE, "소리 내어 읽기"),
 
+    // 읽기 → 오디오
     AUDIO_NOTES(PdfMenuGroup.AUDIO, "오디오 노트"),
     AUDIO_REPLAY(PdfMenuGroup.AUDIO, "오디오 재생"),
 }
 
-/** Actions the viewer owns outside the sheet; SEARCH lives in the top bar. */
+/** Search is the only menu action owned by the top chrome. */
 internal val pdfTopBarOwnedActions = setOf(PdfMenuAction.SEARCH)
 
 internal val pdfReadModeActions = listOf(
@@ -136,20 +149,35 @@ internal val pdfAudioActions = listOf(
     PdfMenuAction.AUDIO_REPLAY,
 )
 
+internal val pdfFileToolsActions = listOf(
+    PdfMenuAction.PAGE_EDIT,
+    PdfMenuAction.PAGE_MANAGE,
+    PdfMenuAction.PDF_TOOLS,
+    PdfMenuAction.EXPORT,
+    PdfMenuAction.PRINT,
+    PdfMenuAction.SHARE,
+    PdfMenuAction.DOCUMENT_INFO,
+    PdfMenuAction.PAGE_LOCK,
+)
+
 internal fun pdfMenuActions(group: PdfMenuGroup): List<PdfMenuAction> =
     PdfMenuAction.entries.filter { it.group == group && it !in pdfTopBarOwnedActions }
 
 /**
- * Two rows have state-dependent wording. Keeping this pure makes the label
- * policy testable without composing the sheet.
+ * Two rows have state-dependent wording and one chrome toggle reports its state.
+ * Keeping this pure makes the label policy testable without composing the sheet.
  */
 internal fun pdfMenuActionLabel(
     action: PdfMenuAction,
     pageLocked: Boolean = false,
     annotationsHidden: Boolean = false,
+    autoHideEnabled: Boolean = false,
+    bookmarked: Boolean = false,
 ): String = when (action) {
     PdfMenuAction.PAGE_LOCK -> if (pageLocked) "페이지 잠금 해제" else "페이지 잠금"
     PdfMenuAction.TOGGLE_ANNOTATIONS -> if (annotationsHidden) "주석 표시" else "주석 숨기기"
+    PdfMenuAction.AUTO_HIDE -> if (autoHideEnabled) "메뉴 자동 숨김 끄기" else "메뉴 자동 숨김 켜기"
+    PdfMenuAction.BOOKMARK_TOGGLE -> if (bookmarked) "현재 쪽 북마크 해제" else "현재 쪽 북마크"
     else -> action.label
 }
 
@@ -162,12 +190,12 @@ data class PdfHubAction(
     val onClick: () -> Unit,
 )
 
-/** A labelled group of PDF menu actions. Expandable groups start collapsed. */
+/** A labelled group of PDF menu actions. */
 data class PdfHubSection(
     val title: String,
     val actions: List<PdfHubAction>,
     val expandable: Boolean = false,
-    val initiallyExpanded: Boolean = PDF_HUB_OTHER_DEFAULT_EXPANDED,
+    val initiallyExpanded: Boolean = false,
 )
 
 /** Every action, including groups the user has not expanded yet. */
@@ -182,10 +210,6 @@ internal fun hubVisibleActions(
     .filter { !it.expandable || it.title in expandedTitles }
     .flatMap { it.actions }
 
-/** The 읽기 group in the 학습 메뉴 that hosts the unified 위치 entry point. */
-internal const val PDF_HUB_READ_GROUP_TITLE = "읽기"
-internal const val PDF_HUB_LOCATIONS_LABEL = "위치"
-
 /** The unified Locations action; the host decides what sheet it opens. */
 internal fun pdfLocationsAction(onOpen: () -> Unit): PdfHubAction = PdfHubAction(
     label = PDF_HUB_LOCATIONS_LABEL,
@@ -193,32 +217,27 @@ internal fun pdfLocationsAction(onOpen: () -> Unit): PdfHubAction = PdfHubAction
     onClick = onOpen,
 )
 
-/**
- * Inserts the 읽기 group just after 학습 so the unified 위치 entry point is
- * always visible without expanding 기타. The host passes no callback until it is
- * ready to wire the sheet, in which case the menu stays byte-for-byte unchanged
- * and every older action keeps its place.
- */
-internal fun pdfHubSectionsWithLocations(
-    sections: List<PdfHubSection>,
-    onOpen: () -> Unit,
-): List<PdfHubSection> {
-    val readSection = PdfHubSection(
-        title = PDF_HUB_READ_GROUP_TITLE,
-        actions = listOf(pdfLocationsAction(onOpen)),
+internal const val PDF_HUB_NARROW_WIDTH_DP = 320
+internal const val PDF_HUB_LARGE_FONT_SCALE = 1.5f
+
+/** Narrow screens and large fonts get two-line rows; every target stays ≥48dp. */
+internal data class PdfHubRowLayout(val minHeightDp: Int, val labelMaxLines: Int)
+
+internal fun pdfHubRowLayout(widthDp: Int, fontScale: Float): PdfHubRowLayout {
+    val scale = chromeScale(widthDp = widthDp, fontScale = fontScale)
+    val twoLines = widthDp <= PDF_HUB_NARROW_WIDTH_DP || fontScale >= PDF_HUB_LARGE_FONT_SCALE
+    return PdfHubRowLayout(
+        minHeightDp = accessibleTarget(scale.minRowHeightDp),
+        labelMaxLines = if (twoLines) 2 else 1,
     )
-    if (sections.isEmpty()) return listOf(readSection)
-    val insertAt = 1.coerceAtMost(sections.size)
-    return sections.take(insertAt) + readSection + sections.drop(insertAt)
 }
 
 /**
- * The single 학습 메뉴: always grouped, with 기타 collapsed by default instead
- * of a separate simple/expanded mode. Undo/redo/style live here as quick chips
- * now that the viewer dock is one focused six-slot row.
- *
- * Every row dismisses the menu before running its callback, so a target sheet,
- * reader mode or sub-menu appears without stacking a second modal on the menu.
+ * The single 학습 메뉴: four fixed first-level groups, no quick-action row and
+ * no duplicate navigation entries. Undo/redo/style live in 필기 → 주석 도구, and
+ * advanced file operations live in 설정 → 파일 도구, so the first screen stays
+ * short enough to read at a glance. Every row dismisses the menu before running
+ * its callback so the target sheet appears without stacking a second modal.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -228,31 +247,22 @@ fun PdfHubSheet(
     pageCount: Int,
     sections: List<PdfHubSection>,
     onDismiss: () -> Unit,
-    canUndo: Boolean = false,
-    canRedo: Boolean = false,
-    onUndo: (() -> Unit)? = null,
-    onRedo: (() -> Unit)? = null,
-    styleEnabled: Boolean = false,
-    onStyle: (() -> Unit)? = null,
-    /** Wired by the integrator; until then the 기존 메뉴 is rendered unchanged. */
-    onLocations: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val effectiveSections = remember(sections, onLocations) {
-        if (onLocations == null) sections else pdfHubSectionsWithLocations(sections, onLocations)
-    }
+    val configuration = LocalConfiguration.current
+    val rowLayout = pdfHubRowLayout(
+        widthDp = configuration.smallestScreenWidthDp,
+        fontScale = configuration.fontScale,
+    )
     var expandedTitles by remember {
         mutableStateOf(
-            effectiveSections
+            sections
                 .filter { it.expandable && it.initiallyExpanded }
                 .map { it.title }
                 .toSet(),
         )
     }
-    val visibleSections = effectiveSections.filter {
-        !it.expandable || it.title in expandedTitles
-    }
-    val activeSections = visibleSections.filter { it.actions.isNotEmpty() }
+    val activeSections = sections.filter { it.actions.isNotEmpty() }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         LazyColumn(
@@ -267,71 +277,7 @@ fun PdfHubSheet(
                 )
             }
 
-            // The dock's old undo/redo/style row moved here so the study dock
-            // stays one row of six slots. Same AssistChip pattern as 주석 도구.
-            if (onUndo != null || onRedo != null || (onStyle != null && styleEnabled)) {
-                item(key = "hub_quick_actions") {
-                    Column(Modifier.padding(horizontal = 20.dp)) {
-                        Text(
-                            "빠른 작업",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.size(6.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            onUndo?.let { undo ->
-                                AssistChip(
-                                    onClick = { onDismiss(); undo() },
-                                    enabled = canUndo,
-                                    label = { Text(stringResource(R.string.undo)) },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.AutoMirrored.Outlined.Undo,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    },
-                                )
-                            }
-                            onRedo?.let { redo ->
-                                AssistChip(
-                                    onClick = { onDismiss(); redo() },
-                                    enabled = canRedo,
-                                    label = { Text(stringResource(R.string.redo)) },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.AutoMirrored.Outlined.Redo,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    },
-                                )
-                            }
-                            if (onStyle != null && styleEnabled) {
-                                AssistChip(
-                                    onClick = { onDismiss(); onStyle() },
-                                    label = { Text("스타일") },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Outlined.Tune,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    },
-                                )
-                            }
-                        }
-                        Spacer(Modifier.size(6.dp))
-                    }
-                }
-            }
-
-            effectiveSections.filter { it.actions.isNotEmpty() || it.expandable }.forEach { section ->
+            sections.filter { it.actions.isNotEmpty() || it.expandable }.forEach { section ->
                 val expanded = section.title in expandedTitles
                 item(key = "header_${section.title}") {
                     HubSectionHeader(
@@ -348,7 +294,12 @@ fun PdfHubSheet(
                 }
                 if (!section.expandable || expanded) {
                     items(section.actions, key = { "${section.title}_${it.label}" }) { action ->
-                        HubActionRow(action = action, onDismiss = onDismiss)
+                        HubActionRow(
+                            action = action,
+                            minHeightDp = rowLayout.minHeightDp,
+                            labelMaxLines = rowLayout.labelMaxLines,
+                            onDismiss = onDismiss,
+                        )
                     }
                 }
             }
@@ -367,7 +318,7 @@ fun PdfHubSheet(
     }
 }
 
-/** Small sub-sheet for 읽기 모드 and 오디오, without duplicating the main menu. */
+/** Small sub-sheet for 읽기 모드, 오디오 and 파일 도구, without duplicating the main menu. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PdfHubSubSheet(
@@ -377,24 +328,34 @@ fun PdfHubSubSheet(
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val configuration = LocalConfiguration.current
+    val rowLayout = pdfHubRowLayout(
+        widthDp = configuration.smallestScreenWidthDp,
+        fontScale = configuration.fontScale,
+    )
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 24.dp),
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(bottom = 24.dp),
         ) {
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Text(title, style = MaterialTheme.typography.titleLarge)
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.size(10.dp))
+            item(key = "sub_header") {
+                Column(Modifier.padding(horizontal = 20.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.size(10.dp))
+                }
             }
-            actions.forEach { action ->
-                HubActionRow(action = action, onDismiss = onDismiss)
+            items(actions, key = { it.label }) { action ->
+                HubActionRow(
+                    action = action,
+                    minHeightDp = rowLayout.minHeightDp,
+                    labelMaxLines = rowLayout.labelMaxLines,
+                    onDismiss = onDismiss,
+                )
             }
         }
     }
@@ -417,9 +378,10 @@ private fun HubHeader(
         )
         Spacer(Modifier.size(4.dp))
         Text(
-            "학습·도구·보기·페이지·내보내기로 묶었습니다. 자주 쓰지 않는 도구는 기타에서 펼치세요.",
+            "읽기·필기·담기·설정 네 묶음입니다. 목차·북마크·주석은 위치에서 한 번에 찾으세요.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
         )
         Spacer(Modifier.size(6.dp))
     }
@@ -438,7 +400,8 @@ private fun HubSectionHeader(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .sizeIn(minHeight = MIN_TARGET_DP.dp),
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
@@ -492,7 +455,12 @@ private fun HubSectionHeader(
 }
 
 @Composable
-private fun HubActionRow(action: PdfHubAction, onDismiss: () -> Unit) {
+private fun HubActionRow(
+    action: PdfHubAction,
+    minHeightDp: Int,
+    labelMaxLines: Int,
+    onDismiss: () -> Unit,
+) {
     Surface(
         onClick = {
             onDismiss()
@@ -503,7 +471,8 @@ private fun HubActionRow(action: PdfHubAction, onDismiss: () -> Unit) {
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 2.dp),
+            .padding(horizontal = 16.dp, vertical = 2.dp)
+            .sizeIn(minHeight = minHeightDp.dp),
     ) {
         Row(
             modifier = Modifier.padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
@@ -532,7 +501,7 @@ private fun HubActionRow(action: PdfHubAction, onDismiss: () -> Unit) {
                 action.label,
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f),
-                maxLines = 1,
+                maxLines = labelMaxLines,
                 overflow = TextOverflow.Ellipsis,
             )
             action.trailing?.let { trailing ->
@@ -540,7 +509,8 @@ private fun HubActionRow(action: PdfHubAction, onDismiss: () -> Unit) {
                     trailing,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    maxLines = labelMaxLines,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Icon(

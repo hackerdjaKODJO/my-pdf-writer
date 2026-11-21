@@ -115,6 +115,36 @@ class PdfSplitChromeTest {
     }
 
     @Test
+    fun captureHasOneLabelAndHandoffsStaySecondary() {
+        assertEquals(PDF_HUB_CAPTURE_LABEL, "노트에 담기")
+        assertEquals(
+            PDF_HUB_CAPTURE_LABEL,
+            TextSelectionPrimaryAction.EXCERPT.label,
+        )
+        assertEquals(
+            listOf(PDF_HUB_CAPTURE_LABEL, "텍스트 편집", "공유", "선택 해제"),
+            TextSelectionSecondaryAction.entries.map { it.label },
+        )
+        assertEquals(1, TextSelectionSecondaryAction.entries.count { it.label == PDF_HUB_CAPTURE_LABEL })
+        assertEquals(listOf("번역", "사전"), PDF_TEXT_HANDOFF_LABELS)
+        assertFalse("발췌로 저장 duplicate is gone", "발췌로 저장" in TextSelectionSecondaryAction.entries.map { it.label })
+    }
+
+    @Test
+    fun compactSplitStripKeepsNavigationAndSearchOnly() {
+        assertEquals(
+            listOf("이전 페이지", "페이지 선택", "다음 페이지", "검색"),
+            splitPdfToolbarControls(compact = true),
+        )
+        assertEquals(8, splitPdfToolbarControls(compact = false).size)
+        listOf("텍스트 선택", "현재 페이지 북마크", "주석", "학습 메뉴").forEach {
+            assertTrue(it in splitPdfToolbarControls(compact = false))
+            assertFalse("compact strip hides $it", it in splitPdfToolbarControls(compact = true))
+        }
+        assertTrue("검색 survives the default 85% pane", "검색" in splitPdfToolbarControls(compact = true))
+    }
+
+    @Test
     fun floatingTargetsMeetTheMinimumTouchTarget() {
         assertEquals(MIN_TARGET_DP, SPLIT_CHROME_TARGET_DP)
         assertTrue(isAccessibleTarget(SPLIT_CHROME_TARGET_DP))
