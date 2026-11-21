@@ -225,6 +225,10 @@ fun ViewerScreen(
     var showTextEditDialog by remember { mutableStateOf(false) }
     // Display-only: annotations stay stored and exported; this only hides the canvas layer.
     var annotationsHidden by remember(state.docId) { mutableStateOf(false) }
+    // PDF post-it cards persist in DocState; visibility is a view-only toggle.
+    var showMemoCardsOnPage by remember(state.docId) { mutableStateOf(true) }
+    var showMemoCardsSheet by remember { mutableStateOf(false) }
+    var memoEditCardId by remember { mutableStateOf<String?>(null) }
     var selectedPages by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var textTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
     var stampTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
@@ -490,6 +494,15 @@ fun ViewerScreen(
             Icons.AutoMirrored.Outlined.StickyNote2,
             trailing = if (state.notes.isEmpty()) null else "${state.notes.size}개",
         ) { showNotes = true }
+
+        PdfMenuAction.MEMO_CARDS -> PdfHubAction(
+            action.label,
+            Icons.AutoMirrored.Outlined.StickyNote2,
+            trailing = if (state.memoCards.isEmpty()) null else "${state.memoCards.size}개",
+        ) {
+            memoEditCardId = null
+            showMemoCardsSheet = true
+        }
 
         PdfMenuAction.EXCERPTS -> PdfHubAction(
             action.label,
@@ -888,6 +901,15 @@ fun ViewerScreen(
                             if (replayNote != null && replayNote?.pageIndex != state.pageIndex) 1f
                             else annotationRevealFraction(annotation, replayNote, replayPositionMs)
                         },
+                        memoCards = pdfMemoCardsForPage(state.memoCards, state.pageIndex),
+                        showMemoCardsOnPage = showMemoCardsOnPage,
+                        onOpenMemoCard = { id ->
+                            memoEditCardId = id
+                            showMemoCardsSheet = true
+                        },
+                        onMemoCardChange = vm::upsertMemoCard,
+                        onHideMemoCardOverlay = { showMemoCardsOnPage = false },
+                        onDeleteMemoCard = vm::deleteMemoCard,
                         onZoomChange = vm::setZoom,
                         onAddStroke = vm::addStroke,
                         onEraseStroke = vm::eraseStroke,
@@ -1095,6 +1117,27 @@ fun ViewerScreen(
     }
     if (showNotes) {
         NoteSheet(state, vm) { showNotes = false }
+    }
+    if (showMemoCardsSheet) {
+        PdfMemoCardsSheet(
+            cards = state.memoCards,
+            currentPage = state.pageIndex,
+            pageCount = state.pageCount,
+            showOnPage = showMemoCardsOnPage,
+            onToggleShowOnPage = { showMemoCardsOnPage = it },
+            onCardChange = vm::upsertMemoCard,
+            onDeleteCard = vm::deleteMemoCard,
+            onJump = { page ->
+                vm.goToPage(page)
+                showMemoCardsSheet = false
+            },
+            editCardId = memoEditCardId,
+            onEditHandled = { memoEditCardId = null },
+            onDismiss = {
+                memoEditCardId = null
+                showMemoCardsSheet = false
+            },
+        )
     }
     if (showReadAloud) {
         vm.currentWorkingFile()?.let { working ->

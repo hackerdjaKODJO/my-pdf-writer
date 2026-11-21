@@ -50,6 +50,13 @@ data class MemoCard(
     val tilt: Float = 0f,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
+    /**
+     * Zero-based document page this card is pinned to. Note pages keep their cards in
+     * [NotePage.memoCards] and leave this at the default; the PDF viewer stores all of
+     * its cards in one flat `DocState.memoCards` list and uses [page] to place them.
+     * Older JSON has no key and loads as page 0.
+     */
+    val page: Int = 0,
 ) {
     /**
      * Repairs hand-edited or legacy JSON: drops excess text, replaces non-finite
@@ -69,6 +76,7 @@ data class MemoCard(
             tilt = finite(tilt, 0f).coerceIn(-MEMO_MAX_TILT, MEMO_MAX_TILT),
             createdAt = safeCreated,
             updatedAt = if (updatedAt > 0L) updatedAt else safeCreated,
+            page = page.coerceAtLeast(0),
         )
     }
 
@@ -83,6 +91,8 @@ data class MemoCard(
         put("tilt", tilt.toDouble())
         put("createdAt", createdAt)
         put("updatedAt", updatedAt)
+        // Omitted for note-page cards (page 0) so their JSON shape is unchanged.
+        if (page > 0) put("page", page)
     }
 
     companion object {
@@ -109,6 +119,7 @@ data class MemoCard(
             tilt = o.optDouble("tilt", 0.0).toFloat(),
             createdAt = o.optLong("createdAt", System.currentTimeMillis()),
             updatedAt = o.optLong("updatedAt", o.optLong("createdAt", System.currentTimeMillis())),
+            page = o.optInt("page", 0),
         ).normalized()
 
         private fun finite(value: Float, fallback: Float): Float =
