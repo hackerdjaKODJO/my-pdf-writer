@@ -170,7 +170,9 @@ fun PageSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.page_actions), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                // Renamed from 페이지 편집: this sheet is for jumping, rotating
+                // and deleting pages, not a text editor.
+                Text("페이지", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 TextButton(onClick = { confirmReset = true }) { Text(stringResource(R.string.reset_pages_short)) }
             }
             Text(

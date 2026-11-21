@@ -10,63 +10,67 @@ import org.junit.Test
 class PdfHubSheetTest {
 
     @Test
-    fun menuGroupsKeepTheRequestedOrderAndOnlyAdvancedCollapses() {
+    fun menuGroupsKeepTheStudyFirstOrderAndOnlyOtherCollapses() {
         assertEquals(
-            listOf("읽기", "페이지", "보기", "내보내기", "고급"),
+            listOf("학습", "도구", "보기·페이지", "내보내기", "기타"),
             pdfMenuTopLevelGroups.map { it.title },
         )
         assertEquals(
             listOf(false, false, false, false, true),
             pdfMenuTopLevelGroups.map { it.expandable },
         )
-        assertFalse(PDF_HUB_ADVANCED_DEFAULT_EXPANDED)
+        assertFalse(PDF_HUB_OTHER_DEFAULT_EXPANDED)
     }
 
     @Test
-    fun readingGroupKeepsSearchAndEveryReadingAction() {
+    fun studyGroupKeepsEveryStudyAction() {
         assertEquals(
-            listOf("검색", "목차", "북마크 목록", "페이지 메모", "메모 카드", "발췌·번역", "텍스트 선택", "스터디 노트"),
-            pdfMenuActions(PdfMenuGroup.READING).map { it.label },
+            listOf("검색", "목차", "북마크 목록", "페이지 메모", "발췌·번역", "텍스트 선택", "스터디 노트"),
+            PdfMenuAction.entries.filter { it.group == PdfMenuGroup.STUDY }.map { it.label },
+        )
+        // SEARCH is still an action, but the viewer top bar owns it.
+        assertEquals(
+            listOf("목차", "북마크 목록", "페이지 메모", "발췌·번역", "텍스트 선택", "스터디 노트"),
+            pdfMenuActions(PdfMenuGroup.STUDY).map { it.label },
         )
     }
 
     @Test
-    fun memoCardManagerIsReachableFromTheReadingGroup() {
-        assertTrue(PdfMenuAction.MEMO_CARDS.group == PdfMenuGroup.READING)
-        assertEquals("메모 카드", PdfMenuAction.MEMO_CARDS.label)
-        val reading = pdfMenuTopLevelGroups.flatMap { pdfMenuActions(it) }
-        assertTrue(PdfMenuAction.MEMO_CARDS in reading)
+    fun postItsLiveUnderToolsAndKeepTheirAction() {
+        assertEquals(PdfMenuGroup.TOOLS, PdfMenuAction.MEMO_CARDS.group)
+        assertEquals("포스트잇", PdfMenuAction.MEMO_CARDS.label)
+        assertTrue(PdfMenuAction.MEMO_CARDS in pdfMenuActions(PdfMenuGroup.TOOLS))
+        // The dock's annotation slot was replaced by 노트; 주석 도구 is the entry
+        // point for 글상자, shapes, markup, stamps and favorite pens.
+        assertEquals(PdfMenuGroup.TOOLS, PdfMenuAction.TOOL_MORE.group)
+        assertEquals("주석 도구", PdfMenuAction.TOOL_MORE.label)
+        assertTrue(PdfMenuAction.TOOL_MORE in pdfMenuActions(PdfMenuGroup.TOOLS))
     }
 
     @Test
-    fun pageViewAndExportGroupsMatchTheRequestedSections() {
+    fun toolsGroupKeepsAnnotationAndPdfToolActions() {
         assertEquals(
-            listOf("페이지 관리", "페이지 편집", "주석 목록", "주석 숨기기/표시"),
-            pdfMenuActions(PdfMenuGroup.PAGES).map { it.label },
+            listOf(
+                "포스트잇", "주석 도구", "주석 목록", "주석 숨기기/표시", "오디오", "PDF 도구",
+            ),
+            pdfMenuActions(PdfMenuGroup.TOOLS).map { it.label },
         )
+    }
+
+    @Test
+    fun pageViewExportAndOtherGroupsMatchTheRequestedSections() {
         assertEquals(
-            listOf("화면 설정", "읽기 모드", "오디오"),
-            pdfMenuActions(PdfMenuGroup.VIEW).map { it.label },
+            listOf("화면 설정", "읽기 모드", "페이지 관리", "페이지", "화면에 맞추기"),
+            pdfMenuActions(PdfMenuGroup.VIEW_PAGES).map { it.label },
         )
+        assertEquals("페이지", PdfMenuAction.PAGE_EDIT.label)
         assertEquals(
             listOf("PDF 내보내기", "인쇄", "공유"),
             pdfMenuActions(PdfMenuGroup.EXPORT).map { it.label },
         )
-    }
-
-    @Test
-    fun advancedGroupKeepsEveryFormerDocumentAction() {
         assertEquals(
-            listOf(
-                "페이지 잠금",
-                "텍스트 복사",
-                "화면에 맞추기",
-                "문서 정보",
-                "문서 꾸미기",
-                "PDF 도구",
-                "도움말",
-            ),
-            pdfMenuActions(PdfMenuGroup.ADVANCED).map { it.label },
+            listOf("페이지 잠금", "텍스트 복사", "문서 정보", "문서 꾸미기", "도움말"),
+            pdfMenuActions(PdfMenuGroup.OTHER).map { it.label },
         )
     }
 
@@ -82,16 +86,35 @@ class PdfHubSheetTest {
         )
     }
 
+    /**
+     * Migration audit: no action was deleted or silently duplicated when the
+     * menu was regrouped. SEARCH is accounted for explicitly as top-bar-owned.
+     */
     @Test
-    fun everyMenuActionIsReachableFromExactlyOneGroupList() {
+    fun migrationAuditEveryActionAppearsExactlyOnce() {
         val topLevel = pdfMenuTopLevelGroups.flatMap { pdfMenuActions(it) }
         val subSheets = pdfReadModeActions + pdfAudioActions
-        val reachable = topLevel + subSheets
+        val topBarOwned = pdfTopBarOwnedActions.toList()
+        val reachable = topLevel + subSheets + topBarOwned
 
         assertEquals(PdfMenuAction.entries.size, reachable.size)
         assertEquals(PdfMenuAction.entries.toSet(), reachable.toSet())
+        assertEquals("no action may appear twice", reachable.size, reachable.toSet().size)
+        assertEquals(setOf(PdfMenuAction.SEARCH), topBarOwned.toSet())
+        assertFalse("SEARCH is owned by the top bar, not the menu", PdfMenuAction.SEARCH in topLevel)
+        assertFalse("SEARCH is owned by the top bar, not a sub-sheet", PdfMenuAction.SEARCH in subSheets)
         assertTrue(topLevel.isNotEmpty())
         assertTrue(subSheets.isNotEmpty())
+    }
+
+    @Test
+    fun searchStaysInTheTopBarOnly() {
+        assertEquals(setOf(PdfMenuAction.SEARCH), pdfTopBarOwnedActions)
+        assertEquals("검색", PdfMenuAction.SEARCH.label)
+        assertEquals(PdfMenuGroup.STUDY, PdfMenuAction.SEARCH.group)
+        pdfMenuTopLevelGroups.forEach { group ->
+            assertFalse("SEARCH must not be listed in ${group.title}", PdfMenuAction.SEARCH in pdfMenuActions(group))
+        }
     }
 
     @Test
@@ -116,18 +139,18 @@ class PdfHubSheetTest {
     }
 
     @Test
-    fun collapsedAdvancedGroupStaysReachableButHiddenUntilExpanded() {
+    fun collapsedOtherGroupStaysReachableButHiddenUntilExpanded() {
         val search = action("검색")
         val pageLock = action("페이지 잠금")
         val sections = listOf(
-            PdfHubSection("읽기", listOf(search)),
-            PdfHubSection("고급", listOf(pageLock), expandable = true),
+            PdfHubSection("학습", listOf(search)),
+            PdfHubSection("기타", listOf(pageLock), expandable = true),
         )
 
         assertEquals(listOf("검색"), hubVisibleActions(sections, emptySet()).map { it.label })
         assertEquals(
             listOf("검색", "페이지 잠금"),
-            hubVisibleActions(sections, setOf("고급")).map { it.label },
+            hubVisibleActions(sections, setOf("기타")).map { it.label },
         )
         assertEquals(listOf("검색", "페이지 잠금"), hubAllActions(sections).map { it.label })
     }

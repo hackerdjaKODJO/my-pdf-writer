@@ -93,10 +93,25 @@ class PdfSplitChromeTest {
     @Test
     fun selectionPrimaryActionsAreMarkupFirstAndCappedAtSix() {
         assertEquals(
-            listOf("형광펜", "밑줄", "취소선", "복사", "발췌", "더보기"),
+            listOf("형광펜", "밑줄", "취소선", "복사", "노트에 담기", "더보기"),
             TextSelectionPrimaryAction.entries.map { it.label },
         )
         assertEquals(6, TextSelectionPrimaryAction.entries.size)
+        // Identifiers stay unchanged across the label rename.
+        assertEquals(
+            listOf("HIGHLIGHT", "UNDERLINE", "STRIKEOUT", "COPY", "EXCERPT", "MORE"),
+            TextSelectionPrimaryAction.entries.map { it.name },
+        )
+    }
+
+    @Test
+    fun selectionPrimaryDescriptionsFollowTheNewLabels() {
+        assertEquals("형광펜 표시", TextSelectionPrimaryAction.HIGHLIGHT.contentDescription)
+        assertEquals("밑줄 표시", TextSelectionPrimaryAction.UNDERLINE.contentDescription)
+        assertEquals("취소선 표시", TextSelectionPrimaryAction.STRIKEOUT.contentDescription)
+        assertEquals("선택한 텍스트 복사", TextSelectionPrimaryAction.COPY.contentDescription)
+        assertEquals("노트에 담기", TextSelectionPrimaryAction.EXCERPT.contentDescription)
+        assertEquals("선택 도구 더보기", TextSelectionPrimaryAction.MORE.contentDescription)
     }
 
     @Test
