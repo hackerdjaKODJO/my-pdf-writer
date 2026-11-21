@@ -194,6 +194,10 @@ internal enum class NoteInkSetting {
 
 internal val NOTE_INK_SETTINGS = NoteInkSetting.entries
 
+/** Supporting line for the ink-settings row; the count must track the enum. */
+internal fun noteInkSettingsSupportingLabel(): String =
+    "손가락 필기·보정·필압 등 ${NOTE_INK_SETTINGS.size}가지"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun NoteMenuSheet(
@@ -339,7 +343,7 @@ internal fun NoteMenuSheet(
                         NoteMenuEntry.INK_SETTINGS -> NoteMenuRow(
                             icon = Icons.Filled.Draw,
                             title = NOTE_INK_SETTINGS_LABEL,
-                            supporting = "손가락 필기·보정·필압 등 8가지",
+                            supporting = noteInkSettingsSupportingLabel(),
                             onClick = onInkSettings,
                         )
 

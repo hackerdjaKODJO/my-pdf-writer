@@ -64,6 +64,15 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private val resolver = application.contentResolver
     private val operationGate = BackupOperationGate()
 
+    /**
+     * Host hook that flushes pending view-model writes before an archive is made.
+     * A debounced notebook save landing while BackupManager zips files can leave a
+     * half-written `.tmp` inside the archive or capture a stale stroke. Wired by the
+     * integration layer as `{ notebookViewModel.saveNow() }`; keeping it a lambda
+     * preserves this view model's deliberate independence from NotebookViewModel.
+     */
+    var flushPendingSavesBeforeBackup: () -> Unit = {}
+
     private val _state = MutableStateFlow(BackupUiState())
     val state: StateFlow<BackupUiState> = _state.asStateFlow()
 
@@ -75,7 +84,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     fun backup(uri: Uri, includeSources: Boolean) {
         if (!operationGate.tryStart()) return
-        _state.update { it.copy(busy = true, progress = 0, message = null, restoredAt = null) }
+        withFlushedSaves(flushPendingSavesBeforeBackup) {
+            _state.update { it.copy(busy = true, progress = 0, message = null, restoredAt = null) }
+        }
         viewModelScope.launch {
             try {
                 var lastPercent = -1
@@ -188,4 +199,13 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun Exception.readableMessage(): String =
         message?.takeIf { it.isNotBlank() } ?: "알 수 없는 오류"
+}
+
+/**
+ * Runs [flush] before [action] exactly once, so a backup never begins while a
+ * debounced write is still in flight. Pure so the ordering is unit-testable.
+ */
+internal inline fun <T> withFlushedSaves(flush: () -> Unit, action: () -> T): T {
+    flush()
+    return action()
 }

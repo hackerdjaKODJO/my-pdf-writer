@@ -49,9 +49,12 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
     /**
      * Guards every notebook JSON write. The debounced writer holds this on IO;
      * [saveNow] takes it on the calling thread so a close/backup flush can never
-     * interleave with a cancelled in-flight write of the same file.
+     * interleave with a cancelled in-flight write of the same file. All six direct
+     * write sites funnel through [saveLocked] too, so no write can bypass it.
      */
-    private val saveLock = Any()
+    private val saveLock = NotebookWriteGate(store::save)
+
+    private fun saveLocked(notebook: Notebook) = saveLock.writeLocked(notebook)
 
     /** Monotonic id of the newest scheduled write; older jobs may not publish. */
     private var saveGeneration = 0L
@@ -70,6 +73,27 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         _pageIndex.value = 0
     }
 
+    /**
+     * Drops the live editor notebook after an external restore or merge without
+     * writing it back over the freshly restored files. Any debounced write is
+     * cancelled and its generation invalidated, so a job already past its delay
+     * can neither write nor publish a stale snapshot. Unlike [close] this never
+     * calls [saveNow]; the caller keeps control of what reaches disk.
+     */
+    fun discardCurrent() {
+        saveJob?.cancel()
+        saveJob = null
+        val discarded = discardNotebookState(saveGeneration)
+        saveGeneration = discarded.saveGeneration
+        _current.value = discarded.current
+        _pageIndex.value = discarded.pageIndex
+        NoteTrace.event(
+            "NOTE_VM",
+            "discard_current",
+            "generation" to saveGeneration,
+        )
+    }
+
     fun create(draft: NotebookDraft): Notebook {
         val notebook = Notebook(
             title = draft.title.ifBlank { "새 노트" },
@@ -79,7 +103,7 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             tags = draft.tags,
             pages = listOf(NotePage(template = draft.template)),
         )
-        store.save(notebook)
+        saveLocked(notebook)
         refresh()
         open(notebook.id)
         return notebook
@@ -92,7 +116,7 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
     fun importNotebook(notebook: Notebook): Notebook {
         saveNow()
         val imported = notebook.normalized().copy(updatedAt = System.currentTimeMillis())
-        store.save(imported)
+        saveLocked(imported)
         refresh()
         open(imported.id)
         return imported
@@ -121,7 +145,7 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             )
         }
         if (trimmed.isBlank()) return updated
-        store.save(updated)
+        saveLocked(updated)
         if (_current.value?.id == updated.id) _current.value = updated
         refresh()
         return updated
@@ -142,7 +166,7 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
      */
     fun createBlankStudyNote(source: StudySource): Notebook {
         val notebook = StudyNoteBuilder.blankStudyNote(source)
-        store.save(notebook)
+        saveLocked(notebook)
         refresh()
         NoteTrace.event(
             "NOTE_VM",
@@ -163,7 +187,7 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
     fun saveDetached(notebook: Notebook): Notebook {
         val updated = notebook.normalized().copy(updatedAt = System.currentTimeMillis())
         val startedAt = System.currentTimeMillis()
-        store.save(updated)
+        saveLocked(updated)
         NoteTrace.event(
             "NOTE_VM",
             "save_detached",
@@ -248,9 +272,9 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
      * by the debounced writer and on the caller thread by [saveNow]; the lock
      * keeps a cancelled older write from clobbering a newer one on disk.
      */
-    private fun persistSnapshot(notebook: Notebook): List<Notebook> = synchronized(saveLock) {
+    private fun persistSnapshot(notebook: Notebook): List<Notebook> = saveLock.locked {
         val startedAt = System.currentTimeMillis()
-        store.save(notebook)
+        saveLocked(notebook)
         val loaded = store.loadAll()
         NoteTrace.event(
             "NOTE_VM",
@@ -390,8 +414,8 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         // flush completes on the caller thread under the same lock the IO writer
         // uses. This is runBlocking-free and still guarantees the bytes are on
         // disk before the screen closes.
-        val loaded = synchronized(saveLock) {
-            store.save(notebook)
+        val loaded = saveLock.locked {
+            saveLocked(notebook)
             store.loadAll()
         }
         NoteTrace.event(
@@ -415,7 +439,7 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             ?: _notebooks.value.firstOrNull { it.id == id }
             ?: return
         val updated = block(original).normalized().copy(updatedAt = System.currentTimeMillis())
-        store.save(updated)
+        saveLocked(updated)
         if (_current.value?.id == id) _current.value = updated
         refresh()
     }
@@ -439,6 +463,43 @@ private fun noteAnnotationTotal(notebook: Notebook): Int =
 internal fun nextSaveGeneration(current: Long): Long = current + 1L
 
 internal fun isLatestSaveGeneration(candidate: Long, latest: Long): Boolean = candidate == latest
+
+/**
+ * The single re-entrant lock behind every notebook JSON write. [NotebookStore]
+ * writes each notebook through a fixed `<id>.json.tmp` file and renames it into
+ * place, so two overlapping saves of the same id would truncate each other's tmp
+ * file and could leave a torn snapshot on disk. [writeLocked] is the one funnel
+ * all VM write sites use; [locked] also covers the load-all scan that publishes
+ * the library, so a flush cannot observe a half-finished write.
+ */
+internal class NotebookWriteGate(private val write: (Notebook) -> Unit) {
+    private val lock = Any()
+
+    fun writeLocked(notebook: Notebook) {
+        synchronized(lock) { write(notebook) }
+    }
+
+    fun <T> locked(block: () -> T): T = synchronized(lock, block)
+}
+
+/** Pure outcome of dropping the live editor notebook after an external change. */
+internal data class DiscardedNotebookState(
+    val current: Notebook?,
+    val pageIndex: Int,
+    val saveGeneration: Long,
+)
+
+/**
+ * A discard clears the in-memory notebook and its page without persisting, and
+ * advances the generation so any in-flight debounced write is ignored. Kept pure
+ * so the restore/merge policy is verifiable without an Android application.
+ */
+internal fun discardNotebookState(saveGeneration: Long): DiscardedNotebookState =
+    DiscardedNotebookState(
+        current = null,
+        pageIndex = 0,
+        saveGeneration = nextSaveGeneration(saveGeneration),
+    )
 
 /**
  * Pure page duplication behind [NotebookViewModel.duplicatePage]. Kept free of
