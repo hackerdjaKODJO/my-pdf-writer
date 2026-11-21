@@ -1,5 +1,6 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,9 +17,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Redo
+import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -35,69 +40,74 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hackerdjakodjo.mypdfwriter.R
 
 /**
- * Stable grouping for the single PDF menu. The order of [pdfMenuTopLevelGroups]
- * is the visible order; every [PdfMenuAction] belongs to exactly one group, so
- * adding an action cannot silently drop it from the sheet.
+ * Stable grouping for the single 학습 메뉴. The order of [pdfMenuTopLevelGroups]
+ * is the visible order; every [PdfMenuAction] belongs to exactly one surface, so
+ * adding an action cannot silently drop it from the sheet. 읽기 모드/오디오 are
+ * small sub-sheets and 상단바-owned actions are rendered by the viewer top bar.
  */
 internal enum class PdfMenuGroup(val title: String, val expandable: Boolean = false) {
-    READING("읽기"),
-    PAGES("페이지"),
-    VIEW("보기"),
+    STUDY("학습"),
+    TOOLS("도구"),
+    VIEW_PAGES("보기·페이지"),
     EXPORT("내보내기"),
-    ADVANCED("고급", expandable = true),
+    OTHER("기타", expandable = true),
     READ_MODE("읽기 모드"),
     AUDIO("오디오"),
 }
 
 internal val pdfMenuTopLevelGroups = listOf(
-    PdfMenuGroup.READING,
-    PdfMenuGroup.PAGES,
-    PdfMenuGroup.VIEW,
+    PdfMenuGroup.STUDY,
+    PdfMenuGroup.TOOLS,
+    PdfMenuGroup.VIEW_PAGES,
     PdfMenuGroup.EXPORT,
-    PdfMenuGroup.ADVANCED,
+    PdfMenuGroup.OTHER,
 )
 
-/** The advanced group is collapsed on open so the menu stays one calm screen. */
-internal const val PDF_HUB_ADVANCED_DEFAULT_EXPANDED = false
+/** The 기타 group is collapsed on open so the menu stays one calm screen. */
+internal const val PDF_HUB_OTHER_DEFAULT_EXPANDED = false
 
 /**
- * Every PDF action reachable from the menu. Actions in [PdfMenuGroup.READ_MODE]
- * and [PdfMenuGroup.AUDIO] are rendered by their small sub-sheet.
+ * Every action reachable from the 학습 메뉴 surface. Actions in
+ * [PdfMenuGroup.READ_MODE] and [PdfMenuGroup.AUDIO] use a small sub-sheet, and
+ * [pdfTopBarOwnedActions] stay in the viewer top bar instead of the menu.
  */
 internal enum class PdfMenuAction(val group: PdfMenuGroup, val label: String) {
-    SEARCH(PdfMenuGroup.READING, "검색"),
-    OUTLINE(PdfMenuGroup.READING, "목차"),
-    BOOKMARKS(PdfMenuGroup.READING, "북마크 목록"),
-    PAGE_NOTES(PdfMenuGroup.READING, "페이지 메모"),
-    MEMO_CARDS(PdfMenuGroup.READING, "메모 카드"),
-    EXCERPTS(PdfMenuGroup.READING, "발췌·번역"),
-    TEXT_SELECT(PdfMenuGroup.READING, "텍스트 선택"),
-    STUDY_NOTE(PdfMenuGroup.READING, "스터디 노트"),
+    SEARCH(PdfMenuGroup.STUDY, "검색"),
+    OUTLINE(PdfMenuGroup.STUDY, "목차"),
+    BOOKMARKS(PdfMenuGroup.STUDY, "북마크 목록"),
+    PAGE_NOTES(PdfMenuGroup.STUDY, "페이지 메모"),
+    EXCERPTS(PdfMenuGroup.STUDY, "발췌·번역"),
+    TEXT_SELECT(PdfMenuGroup.STUDY, "텍스트 선택"),
+    STUDY_NOTE(PdfMenuGroup.STUDY, "스터디 노트"),
 
-    PAGE_MANAGE(PdfMenuGroup.PAGES, "페이지 관리"),
-    PAGE_EDIT(PdfMenuGroup.PAGES, "페이지 편집"),
-    ANNOTATION_LIST(PdfMenuGroup.PAGES, "주석 목록"),
-    TOGGLE_ANNOTATIONS(PdfMenuGroup.PAGES, "주석 숨기기/표시"),
+    MEMO_CARDS(PdfMenuGroup.TOOLS, "포스트잇"),
+    TOOL_MORE(PdfMenuGroup.TOOLS, "주석 도구"),
+    ANNOTATION_LIST(PdfMenuGroup.TOOLS, "주석 목록"),
+    TOGGLE_ANNOTATIONS(PdfMenuGroup.TOOLS, "주석 숨기기/표시"),
+    AUDIO(PdfMenuGroup.TOOLS, "오디오"),
+    PDF_TOOLS(PdfMenuGroup.TOOLS, "PDF 도구"),
 
-    DISPLAY_SETTINGS(PdfMenuGroup.VIEW, "화면 설정"),
-    READ_MODE(PdfMenuGroup.VIEW, "읽기 모드"),
-    AUDIO(PdfMenuGroup.VIEW, "오디오"),
+    DISPLAY_SETTINGS(PdfMenuGroup.VIEW_PAGES, "화면 설정"),
+    READ_MODE(PdfMenuGroup.VIEW_PAGES, "읽기 모드"),
+    PAGE_MANAGE(PdfMenuGroup.VIEW_PAGES, "페이지 관리"),
+    PAGE_EDIT(PdfMenuGroup.VIEW_PAGES, "페이지"),
+    FIT_SCREEN(PdfMenuGroup.VIEW_PAGES, "화면에 맞추기"),
 
     EXPORT(PdfMenuGroup.EXPORT, "PDF 내보내기"),
     PRINT(PdfMenuGroup.EXPORT, "인쇄"),
     SHARE(PdfMenuGroup.EXPORT, "공유"),
 
-    PAGE_LOCK(PdfMenuGroup.ADVANCED, "페이지 잠금"),
-    COPY_TEXT(PdfMenuGroup.ADVANCED, "텍스트 복사"),
-    FIT_SCREEN(PdfMenuGroup.ADVANCED, "화면에 맞추기"),
-    DOCUMENT_INFO(PdfMenuGroup.ADVANCED, "문서 정보"),
-    DECORATE(PdfMenuGroup.ADVANCED, "문서 꾸미기"),
-    PDF_TOOLS(PdfMenuGroup.ADVANCED, "PDF 도구"),
-    HELP(PdfMenuGroup.ADVANCED, "도움말"),
+    PAGE_LOCK(PdfMenuGroup.OTHER, "페이지 잠금"),
+    COPY_TEXT(PdfMenuGroup.OTHER, "텍스트 복사"),
+    DOCUMENT_INFO(PdfMenuGroup.OTHER, "문서 정보"),
+    DECORATE(PdfMenuGroup.OTHER, "문서 꾸미기"),
+    HELP(PdfMenuGroup.OTHER, "도움말"),
 
     READ_TEXT_MODE(PdfMenuGroup.READ_MODE, "텍스트 모드"),
     READ_CONTINUOUS(PdfMenuGroup.READ_MODE, "연속 보기"),
@@ -108,6 +118,9 @@ internal enum class PdfMenuAction(val group: PdfMenuGroup, val label: String) {
     AUDIO_NOTES(PdfMenuGroup.AUDIO, "오디오 노트"),
     AUDIO_REPLAY(PdfMenuGroup.AUDIO, "오디오 재생"),
 }
+
+/** Actions the viewer owns outside the sheet; SEARCH lives in the top bar. */
+internal val pdfTopBarOwnedActions = setOf(PdfMenuAction.SEARCH)
 
 internal val pdfReadModeActions = listOf(
     PdfMenuAction.READ_TEXT_MODE,
@@ -123,7 +136,7 @@ internal val pdfAudioActions = listOf(
 )
 
 internal fun pdfMenuActions(group: PdfMenuGroup): List<PdfMenuAction> =
-    PdfMenuAction.entries.filter { it.group == group }
+    PdfMenuAction.entries.filter { it.group == group && it !in pdfTopBarOwnedActions }
 
 /**
  * Two rows have state-dependent wording. Keeping this pure makes the label
@@ -153,7 +166,7 @@ data class PdfHubSection(
     val title: String,
     val actions: List<PdfHubAction>,
     val expandable: Boolean = false,
-    val initiallyExpanded: Boolean = PDF_HUB_ADVANCED_DEFAULT_EXPANDED,
+    val initiallyExpanded: Boolean = PDF_HUB_OTHER_DEFAULT_EXPANDED,
 )
 
 /** Every action, including groups the user has not expanded yet. */
@@ -169,8 +182,9 @@ internal fun hubVisibleActions(
     .flatMap { it.actions }
 
 /**
- * The single PDF menu: always grouped, with the advanced group collapsed by
- * default instead of a separate simple/expanded mode.
+ * The single 학습 메뉴: always grouped, with 기타 collapsed by default instead
+ * of a separate simple/expanded mode. Undo/redo/style live here as quick chips
+ * now that the viewer dock is one focused six-slot row.
  *
  * Every row dismisses the menu before running its callback, so a target sheet,
  * reader mode or sub-menu appears without stacking a second modal on the menu.
@@ -183,6 +197,12 @@ fun PdfHubSheet(
     pageCount: Int,
     sections: List<PdfHubSection>,
     onDismiss: () -> Unit,
+    canUndo: Boolean = false,
+    canRedo: Boolean = false,
+    onUndo: (() -> Unit)? = null,
+    onRedo: (() -> Unit)? = null,
+    styleEnabled: Boolean = false,
+    onStyle: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var expandedTitles by remember {
@@ -209,6 +229,70 @@ fun PdfHubSheet(
                     pageIndex = pageIndex,
                     pageCount = pageCount,
                 )
+            }
+
+            // The dock's old undo/redo/style row moved here so the study dock
+            // stays one row of six slots. Same AssistChip pattern as 주석 도구.
+            if (onUndo != null || onRedo != null || (onStyle != null && styleEnabled)) {
+                item(key = "hub_quick_actions") {
+                    Column(Modifier.padding(horizontal = 20.dp)) {
+                        Text(
+                            "빠른 작업",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.size(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            onUndo?.let { undo ->
+                                AssistChip(
+                                    onClick = { onDismiss(); undo() },
+                                    enabled = canUndo,
+                                    label = { Text(stringResource(R.string.undo)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.AutoMirrored.Outlined.Undo,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    },
+                                )
+                            }
+                            onRedo?.let { redo ->
+                                AssistChip(
+                                    onClick = { onDismiss(); redo() },
+                                    enabled = canRedo,
+                                    label = { Text(stringResource(R.string.redo)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.AutoMirrored.Outlined.Redo,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    },
+                                )
+                            }
+                            if (onStyle != null && styleEnabled) {
+                                AssistChip(
+                                    onClick = { onDismiss(); onStyle() },
+                                    label = { Text("스타일") },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Outlined.Tune,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                        Spacer(Modifier.size(6.dp))
+                    }
+                }
             }
 
             sections.filter { it.actions.isNotEmpty() || it.expandable }.forEach { section ->
@@ -287,7 +371,7 @@ private fun HubHeader(
     pageCount: Int,
 ) {
     Column(Modifier.padding(horizontal = 20.dp)) {
-        Text("PDF 메뉴", style = MaterialTheme.typography.titleLarge)
+        Text("학습 메뉴", style = MaterialTheme.typography.titleLarge)
         Text(
             "$docName · ${pageIndex + 1} / $pageCount",
             style = MaterialTheme.typography.labelMedium,
@@ -297,7 +381,7 @@ private fun HubHeader(
         )
         Spacer(Modifier.size(4.dp))
         Text(
-            "읽기·페이지·보기·내보내기로 묶었습니다. 자주 쓰지 않는 도구는 고급에서 펼치세요.",
+            "학습·도구·보기·페이지·내보내기로 묶었습니다. 자주 쓰지 않는 도구는 기타에서 펼치세요.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

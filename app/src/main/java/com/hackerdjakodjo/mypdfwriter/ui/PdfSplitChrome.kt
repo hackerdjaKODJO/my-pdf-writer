@@ -169,7 +169,7 @@ internal enum class TextSelectionPrimaryAction(
     UNDERLINE("밑줄", "밑줄 표시"),
     STRIKEOUT("취소선", "취소선 표시"),
     COPY("복사", "선택한 텍스트 복사"),
-    EXCERPT("발췌", "발췌로 저장"),
+    EXCERPT("노트에 담기", "노트에 담기"),
     MORE("더보기", "선택 도구 더보기"),
 }
 
@@ -230,7 +230,7 @@ internal fun SplitPdfBackButton(
 
 /**
  * Floating top strip over the PDF area: page pill, text-selection toggle,
- * current-page bookmark, annotation-tool sheet and PDF menu. It never reserves
+ * current-page bookmark, annotation-tool sheet and 학습 메뉴. It never reserves
  * layout height; the note pane keeps the rest of the screen. In [compact] mode
  * only the page pill remains (the top-start back button is drawn separately),
  * which keeps a very short PDF strip readable.
@@ -319,7 +319,7 @@ internal fun SplitPdfToolbar(
 
                 SplitChromeButton(
                     icon = Icons.Outlined.Menu,
-                    contentDescription = "PDF 메뉴",
+                    contentDescription = "학습 메뉴",
                     onClick = onOpenHub,
                 )
             }
@@ -605,8 +605,8 @@ internal fun StudyPaneSizePresets(
 /**
  * Floating text-selection bar for split mode. It replaces the bottom dock and
  * overlays the PDF strip instead of adding a permanent row below the page.
- * The same markup-first order as the full-screen bar stays visible; translate,
- * dictionary, pane capture, text edit, share and clear live in the more sheet.
+ * The same markup-first order as the full-screen bar stays visible; 번역, 사전,
+ * 발췌로 저장, 텍스트 편집, 공유 and 선택 해제 live in the more sheet.
  */
 @Composable
 internal fun SplitSelectionActionBar(
@@ -786,8 +786,8 @@ private fun SplitChromeButton(
 
 /**
  * Secondary text actions for both selection bars. The primary bar keeps the
- * markup-first six; translate, dictionary, pane capture, text edit, share and
- * clear stay one tap behind this sheet.
+ * markup-first six; 번역, 사전, 발췌로 저장, 텍스트 편집, 공유 and 선택 해제 stay
+ * one tap behind this sheet (plus 노트 패널에 추가 when a study pane is open).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -798,6 +798,7 @@ internal fun TextSelectionMoreSheet(
     canAddToPane: Boolean,
     onTranslate: () -> Unit,
     onDictionary: () -> Unit,
+    onExcerpt: () -> Unit,
     onEditText: () -> Unit,
     onShare: () -> Unit,
     onAddToPane: (() -> Unit)?,
@@ -845,7 +846,7 @@ internal fun TextSelectionMoreSheet(
             }
 
             SplitSheetAction(
-                label = "Google 번역",
+                label = "번역",
                 icon = Icons.Outlined.Translate,
                 enabled = hasSelection,
                 onClick = {
@@ -854,7 +855,7 @@ internal fun TextSelectionMoreSheet(
                 },
             )
             SplitSheetAction(
-                label = "사전에서 찾기",
+                label = "사전",
                 icon = Icons.AutoMirrored.Outlined.MenuBook,
                 enabled = hasSelection,
                 onClick = {
@@ -864,7 +865,7 @@ internal fun TextSelectionMoreSheet(
             )
             if (canAddToPane && onAddToPane != null) {
                 SplitSheetAction(
-                    label = "노트 패널에 추가",
+                    label = "노트에 담기",
                     icon = Icons.Outlined.EditNote,
                     enabled = hasSelection,
                     onClick = {
@@ -874,7 +875,16 @@ internal fun TextSelectionMoreSheet(
                 )
             }
             SplitSheetAction(
-                label = "텍스트 수정 (화면 덮어쓰기)",
+                label = "발췌로 저장",
+                icon = Icons.AutoMirrored.Outlined.Notes,
+                enabled = hasSelection,
+                onClick = {
+                    onDismiss()
+                    onExcerpt()
+                },
+            )
+            SplitSheetAction(
+                label = "텍스트 편집",
                 icon = Icons.Outlined.Edit,
                 enabled = hasSelection,
                 onClick = {

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.CropSquare
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FormatStrikethrough
 import androidx.compose.material.icons.outlined.FormatUnderlined
 import androidx.compose.material.icons.outlined.Highlight
@@ -157,17 +158,31 @@ internal fun dockAnnotationIcon(tool: Tool): ImageVector = when (tool) {
     else -> Icons.Outlined.MoreHoriz
 }
 
-/** Exactly six primary dock slots; everything else is one tap into 주석 도구. */
+/**
+ * Exactly six primary dock slots in study order: 보기 · 형광펜 · 펜 · 지우개 ·
+ * 텍스트 · 노트. Undo/redo/style moved to the 학습 메뉴 quick chips, and 글상자,
+ * shapes and the rest stay one tap into 주석 도구 from that menu.
+ */
 internal enum class ViewerDockSlot {
     VIEW,
-    PEN,
     HIGHLIGHT,
+    PEN,
     ERASER,
     TEXT_SELECT,
-    ANNOTATION,
+    NOTE,
 }
 
 internal val viewerDockSlots: List<ViewerDockSlot> = ViewerDockSlot.entries.toList()
+
+/** Single source of truth for the six visible dock labels, kept pure for tests. */
+internal fun viewerDockSlotLabel(slot: ViewerDockSlot): String = when (slot) {
+    ViewerDockSlot.VIEW -> "보기"
+    ViewerDockSlot.HIGHLIGHT -> "형광펜"
+    ViewerDockSlot.PEN -> "펜"
+    ViewerDockSlot.ERASER -> "지우개"
+    ViewerDockSlot.TEXT_SELECT -> "텍스트"
+    ViewerDockSlot.NOTE -> "노트"
+}
 
 private data class DockEntry(
     val label: String,
@@ -177,108 +192,73 @@ private data class DockEntry(
 )
 
 /**
- * Thumb-reach toolbar for the viewer. Six primary slots stay visible; 글상자,
- * shapes and the other annotation tools live in one 주석 도구 sheet. Style
- * controls only appear for tools that actually use them.
+ * Single six-slot study dock: 보기 · 형광펜 · 펜 · 지우개 · 텍스트 · 노트.
+ * Undo/redo/style are quick chips at the top of 학습 메뉴, and the annotation
+ * extras stay in 주석 도구, so the dock never needs a second row.
  */
 @Composable
 fun ViewerToolDock(
     state: ViewerUiState,
     onSelectTool: (Tool) -> Unit,
     onTextSelect: () -> Unit,
-    onMore: () -> Unit,
-    onStyle: () -> Unit,
-    onUndo: () -> Unit,
-    onRedo: () -> Unit,
+    onNote: () -> Unit,
     textSelectMode: Boolean = false,
     compact: Boolean = false,
 ) {
-    val viewLabel = stringResource(R.string.tool_view)
-    val penLabel = stringResource(R.string.tool_pen)
-    val highlightLabel = stringResource(R.string.tool_highlight)
-    val eraserLabel = stringResource(R.string.tool_eraser)
     val entries = viewerDockSlots.map { slot ->
         when (slot) {
             ViewerDockSlot.VIEW -> DockEntry(
-                viewLabel,
+                viewerDockSlotLabel(slot),
                 Icons.Outlined.Visibility,
                 state.tool == Tool.VIEW && !textSelectMode,
             ) { onSelectTool(Tool.VIEW) }
 
-            ViewerDockSlot.PEN -> DockEntry(
-                penLabel,
-                Icons.Outlined.Edit,
-                state.tool == Tool.PEN,
-            ) { onSelectTool(Tool.PEN) }
-
             ViewerDockSlot.HIGHLIGHT -> DockEntry(
-                highlightLabel,
+                viewerDockSlotLabel(slot),
                 Icons.Outlined.Highlight,
                 state.tool == Tool.HIGHLIGHT,
             ) { onSelectTool(Tool.HIGHLIGHT) }
 
+            ViewerDockSlot.PEN -> DockEntry(
+                viewerDockSlotLabel(slot),
+                Icons.Outlined.Edit,
+                state.tool == Tool.PEN,
+            ) { onSelectTool(Tool.PEN) }
+
             ViewerDockSlot.ERASER -> DockEntry(
-                eraserLabel,
+                viewerDockSlotLabel(slot),
                 Icons.Outlined.DeleteSweep,
                 state.tool == Tool.ERASER,
             ) { onSelectTool(Tool.ERASER) }
 
-            // Direct text selection entry: this used to be labelled "올가미",
-            // which hid the most useful PDF action behind a note-editor term.
             ViewerDockSlot.TEXT_SELECT -> DockEntry(
-                "텍스트 선택",
+                viewerDockSlotLabel(slot),
                 Icons.AutoMirrored.Outlined.TextSnippet,
                 textSelectMode,
                 onTextSelect,
             )
 
-            ViewerDockSlot.ANNOTATION -> DockEntry(
-                dockAnnotationLabel(state.tool),
-                dockAnnotationIcon(state.tool),
-                isDockAnnotationTool(state.tool),
-                onMore,
+            ViewerDockSlot.NOTE -> DockEntry(
+                viewerDockSlotLabel(slot),
+                Icons.Outlined.EditNote,
+                false,
+                onNote,
             )
         }
     }
 
-    Column(Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 2.dp, vertical = if (compact) 2.dp else 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            entries.forEach { entry ->
-                DockItem(
-                    entry = entry,
-                    modifier = Modifier.weight(1f),
-                    compact = compact,
-                )
-            }
-        }
-
-        // The focused study pane uses a single dense row. Undo/redo and style
-        // stay one tap away in the 주석 도구 sheet instead of spending another
-        // 48 dp row.
-        if (!compact) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onUndo, enabled = state.canUndo) {
-                    Icon(Icons.AutoMirrored.Outlined.Undo, contentDescription = stringResource(R.string.undo))
-                }
-                IconButton(onClick = onRedo, enabled = state.canRedo) {
-                    Icon(Icons.AutoMirrored.Outlined.Redo, contentDescription = stringResource(R.string.redo))
-                }
-                Spacer(Modifier.weight(1f))
-                if (isStyleTool(state.tool)) {
-                    StylePill(color = state.color, onStyle = onStyle)
-                }
-            }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp, vertical = if (compact) 2.dp else 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        entries.forEach { entry ->
+            DockItem(
+                entry = entry,
+                modifier = Modifier.weight(1f),
+                compact = compact,
+            )
         }
     }
 }
@@ -339,44 +319,6 @@ private fun DockItem(
             color = contentColor,
             textAlign = TextAlign.Center,
         )
-    }
-}
-
-@Composable
-private fun StylePill(
-    color: Int,
-    onStyle: () -> Unit,
-    colorName: String = annotationColorName(color),
-) {
-    Surface(
-        onClick = onStyle,
-        modifier = Modifier
-            .sizeIn(
-                minWidth = MIN_TARGET_DP.dp,
-                minHeight = MIN_TARGET_DP.dp,
-            )
-            .semantics { contentDescription = "스타일, 현재 색상 $colorName" },
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 8.dp, end = 10.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Box(
-                Modifier
-                    .size(18.dp)
-                    .background(Color(color), CircleShape)
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
-            )
-            Text("스타일", style = MaterialTheme.typography.labelMedium)
-            Icon(
-                Icons.Outlined.Tune,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-            )
-        }
     }
 }
 

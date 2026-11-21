@@ -9,21 +9,32 @@ import org.junit.Test
 class ViewerToolDockTest {
 
     @Test
-    fun dockHasExactlyTheSixPrimarySlots() {
+    fun dockHasExactlyTheSixStudySlotsInOrder() {
         assertEquals(
             listOf(
                 ViewerDockSlot.VIEW,
-                ViewerDockSlot.PEN,
                 ViewerDockSlot.HIGHLIGHT,
+                ViewerDockSlot.PEN,
                 ViewerDockSlot.ERASER,
                 ViewerDockSlot.TEXT_SELECT,
-                ViewerDockSlot.ANNOTATION,
+                ViewerDockSlot.NOTE,
             ),
             viewerDockSlots,
         )
         assertEquals(6, viewerDockSlots.size)
         assertFalse(ViewerDockSlot.entries.any { it.name == "SHAPE" })
         assertFalse(ViewerDockSlot.entries.any { it.name == "TEXT_BOX" })
+        assertFalse(ViewerDockSlot.entries.any { it.name == "ANNOTATION" })
+    }
+
+    @Test
+    fun dockLabelsMatchTheStudySlotOrder() {
+        assertEquals(
+            listOf("보기", "형광펜", "펜", "지우개", "텍스트", "노트"),
+            viewerDockSlots.map { viewerDockSlotLabel(it) },
+        )
+        // Undo/redo/style left the dock for the 학습 메뉴 quick chips.
+        assertFalse(viewerDockSlots.map { viewerDockSlotLabel(it) }.any { it == "스타일" })
     }
 
     @Test

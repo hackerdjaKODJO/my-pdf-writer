@@ -474,8 +474,16 @@ fun ViewerScreen(
         }
     }
     fun hubAction(action: PdfMenuAction): PdfHubAction = when (action) {
+        // Kept exhaustive even though the menu no longer lists SEARCH: the
+        // top bar owns one-tap search. See pdfTopBarOwnedActions.
         PdfMenuAction.SEARCH -> PdfHubAction(action.label, Icons.Outlined.Search) {
             showSearch = true
+        }
+
+        // Replaces the dock's old annotation slot, so 글상자, shapes, markup,
+        // stamp/signature/redact and favorite pens stay one tap away.
+        PdfMenuAction.TOOL_MORE -> PdfHubAction(action.label, Icons.Outlined.Handyman) {
+            showToolMore = true
         }
 
         PdfMenuAction.OUTLINE -> PdfHubAction(action.label, Icons.AutoMirrored.Outlined.Toc) {
@@ -711,28 +719,13 @@ fun ViewerScreen(
                         }
                     },
                     actions = {
-                        // One-tap search: the sheet is also reachable from the
-                        // grouped PDF menu, but search is common enough to keep
-                        // directly beside the document title.
+                        // Search stays in the top bar only; the duplicate row was
+                        // removed from 학습 메뉴 (see pdfTopBarOwnedActions).
                         IconButton(onClick = { showSearch = true }) {
                             Icon(
                                 Icons.Outlined.Search,
                                 contentDescription = "검색",
                             )
-                        }
-                        // Direct note entry, visible as soon as a PDF opens. The host
-                        // resolves or creates the study notebook behind this callback.
-                        TextButton(
-                            onClick = openNote,
-                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
-                        ) {
-                            Icon(
-                                Icons.Outlined.EditNote,
-                                contentDescription = "노트 열기",
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text("노트", style = MaterialTheme.typography.labelLarge)
                         }
                         IconButton(
                             onClick = {
@@ -757,8 +750,22 @@ fun ViewerScreen(
                                 },
                             )
                         }
+                        // Direct note entry, visible as soon as a PDF opens. The host
+                        // resolves or creates the study notebook behind this callback.
+                        TextButton(
+                            onClick = openNote,
+                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
+                        ) {
+                            Icon(
+                                Icons.Outlined.EditNote,
+                                contentDescription = "노트",
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("노트", style = MaterialTheme.typography.labelLarge)
+                        }
                         IconButton(onClick = { showHub = true }) {
-                            Icon(Icons.Outlined.Menu, contentDescription = "PDF 메뉴")
+                            Icon(Icons.Outlined.Menu, contentDescription = "학습 메뉴")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -816,10 +823,7 @@ fun ViewerScreen(
                                 state = state,
                                 onSelectTool = selectTool,
                                 onTextSelect = toggleTextSelection,
-                                onMore = { showToolMore = true },
-                                onStyle = { showToolStyle = true },
-                                onUndo = vm::undo,
-                                onRedo = vm::redo,
+                                onNote = openNote,
                                 textSelectMode = textSelectMode,
                                 compact = studyPane != null,
                             )
@@ -1291,6 +1295,12 @@ fun ViewerScreen(
             pageCount = state.pageCount,
             sections = hubSections,
             onDismiss = { showHub = false },
+            canUndo = state.canUndo,
+            canRedo = state.canRedo,
+            onUndo = vm::undo,
+            onRedo = vm::redo,
+            styleEnabled = isStyleTool(state.tool),
+            onStyle = { showToolStyle = true },
         )
     }
     if (showReadModes) {
@@ -1394,6 +1404,7 @@ fun ViewerScreen(
             canAddToPane = studyPane != null,
             onTranslate = { TextActions.translate(context, selectedText) },
             onDictionary = { TextActions.define(context, selectedText) },
+            onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
             onEditText = { showTextEditDialog = true },
             onShare = { TextActions.shareText(context, selectedText) },
             onAddToPane = if (studyPane != null) {
