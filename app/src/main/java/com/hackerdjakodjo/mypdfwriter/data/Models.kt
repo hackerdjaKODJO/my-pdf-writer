@@ -1,5 +1,6 @@
 package com.hackerdjakodjo.mypdfwriter.data
 
+import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -233,17 +234,46 @@ data class PageSpec(
  * Per-document display preferences persisted alongside annotations and notes.
  *
  * Legacy documents have no `display` object and load with these defaults, so
- * adding this field never changes the JSON of older files on read. Brightness is
+ * adding a field never changes the JSON of older files on read. Brightness is
  * a screen dimming factor in 0.4..1.0 (1.0 = no dimming); values outside that
  * range are clamped when read or set.
+ *
+ * The crop fields are *view-only* margins: normalized fractions shaved off the
+ * rendered page so blank printed edges disappear. They never alter the PDF,
+ * its page box, annotation coordinates or flattened export. All are zero by
+ * default, and the whole `crop` object is omitted while they are at defaults,
+ * keeping legacy documents byte-shape compatible.
  */
 data class DisplayPrefs(
     val nightMode: Boolean = false,
     val brightness: Float = DEFAULT_BRIGHTNESS,
+    val cropLeft: Float = 0f,
+    val cropTop: Float = 0f,
+    val cropRight: Float = 0f,
+    val cropBottom: Float = 0f,
+    /** When true, even (1-based) pages mirror left/right for facing-page reading. */
+    val cropOddEven: Boolean = false,
 ) {
+    /** Convenience conversion for the reader/canvas crop parameters. */
+    fun cropInsets(): CropInsets = CropInsets(cropLeft, cropTop, cropRight, cropBottom)
+
     fun toJson(): JSONObject = JSONObject().apply {
         put("night", nightMode)
         put("bright", brightness.toDouble())
+        if (cropLeft != 0f || cropTop != 0f || cropRight != 0f ||
+            cropBottom != 0f || cropOddEven
+        ) {
+            put(
+                "crop",
+                JSONObject().apply {
+                    put("l", cropLeft.toDouble())
+                    put("t", cropTop.toDouble())
+                    put("r", cropRight.toDouble())
+                    put("b", cropBottom.toDouble())
+                    put("oe", cropOddEven)
+                },
+            )
+        }
     }
 
     companion object {
@@ -256,13 +286,24 @@ data class DisplayPrefs(
             return value.coerceIn(MIN_BRIGHTNESS, MAX_BRIGHTNESS)
         }
 
+        private fun readCrop(value: Double): Float {
+            if (!value.isFinite()) return 0f
+            return value.toFloat().coerceIn(0f, 1f)
+        }
+
         fun fromJson(o: JSONObject?): DisplayPrefs {
             if (o == null) return DisplayPrefs()
+            val crop = o.optJSONObject("crop")
             return DisplayPrefs(
                 nightMode = o.optBoolean("night", false),
                 brightness = clampBrightness(
                     o.optDouble("bright", DEFAULT_BRIGHTNESS.toDouble()).toFloat(),
                 ),
+                cropLeft = if (crop == null) 0f else readCrop(crop.optDouble("l", 0.0)),
+                cropTop = if (crop == null) 0f else readCrop(crop.optDouble("t", 0.0)),
+                cropRight = if (crop == null) 0f else readCrop(crop.optDouble("r", 0.0)),
+                cropBottom = if (crop == null) 0f else readCrop(crop.optDouble("b", 0.0)),
+                cropOddEven = crop?.optBoolean("oe", false) ?: false,
             )
         }
     }

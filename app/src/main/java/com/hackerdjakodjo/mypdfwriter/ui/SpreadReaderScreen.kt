@@ -1,9 +1,14 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import android.graphics.Bitmap
+import android.graphics.Paint
+import android.graphics.Rect
+import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
+import com.hackerdjakodjo.mypdfwriter.pdf.CropPixelRect
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfCrop
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,8 +54,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -78,6 +83,14 @@ fun SpreadReaderScreen(
     initialPage: Int,
     /** Screen dimming factor in 0.4..1.0; 1f draws no scrim. */
     brightness: Float = 1f,
+    /**
+     * View-only crop margins in normalized page fractions. Each spread page
+     * draws only its kept sub-rectangle; the source PDF and exports stay whole.
+     * Defaults keep the uncropped path.
+     */
+    cropInsets: CropInsets = CropInsets.NONE,
+    /** Mirror left/right margins on even (1-based) pages. */
+    cropOddEven: Boolean = false,
     loadPage: suspend (Int) -> Bitmap?,
     onBack: () -> Unit,
     onOpenPage: (Int) -> Unit,
@@ -163,6 +176,8 @@ fun SpreadReaderScreen(
                         layout = layout,
                         start = start,
                         endExclusive = endExclusive,
+                        cropInsets = cropInsets,
+                        cropOddEven = cropOddEven,
                         loadPage = loadPage,
                         onOpenPage = onOpenPage,
                         modifier = Modifier
@@ -189,6 +204,8 @@ private fun SpreadPages(
     layout: SpreadLayout,
     start: Int,
     endExclusive: Int,
+    cropInsets: CropInsets,
+    cropOddEven: Boolean,
     loadPage: suspend (Int) -> Bitmap?,
     onOpenPage: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -202,6 +219,8 @@ private fun SpreadPages(
                 SpreadPageCell(
                     index = start + offset,
                     endExclusive = endExclusive,
+                    cropInsets = cropInsets,
+                    cropOddEven = cropOddEven,
                     loadPage = loadPage,
                     onOpenPage = onOpenPage,
                     modifier = Modifier
@@ -219,6 +238,8 @@ private fun SpreadPages(
                 SpreadPageCell(
                     index = start + offset,
                     endExclusive = endExclusive,
+                    cropInsets = cropInsets,
+                    cropOddEven = cropOddEven,
                     loadPage = loadPage,
                     onOpenPage = onOpenPage,
                     modifier = Modifier
@@ -243,6 +264,8 @@ private fun SpreadPages(
                         SpreadPageCell(
                             index = start + row * 2 + column,
                             endExclusive = endExclusive,
+                            cropInsets = cropInsets,
+                            cropOddEven = cropOddEven,
                             loadPage = loadPage,
                             onOpenPage = onOpenPage,
                             modifier = Modifier
@@ -260,6 +283,8 @@ private fun SpreadPages(
 private fun SpreadPageCell(
     index: Int,
     endExclusive: Int,
+    cropInsets: CropInsets,
+    cropOddEven: Boolean,
     loadPage: suspend (Int) -> Bitmap?,
     onOpenPage: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -273,6 +298,8 @@ private fun SpreadPageCell(
 
     SpreadPageCard(
         index = index,
+        cropInsets = cropInsets,
+        cropOddEven = cropOddEven,
         loadPage = loadPage,
         onOpenPage = onOpenPage,
         modifier = modifier,
@@ -282,6 +309,8 @@ private fun SpreadPageCell(
 @Composable
 private fun SpreadPageCard(
     index: Int,
+    cropInsets: CropInsets,
+    cropOddEven: Boolean,
     loadPage: suspend (Int) -> Bitmap?,
     onOpenPage: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -304,9 +333,17 @@ private fun SpreadPageCard(
         value = if (bitmap != null) SpreadPageState.Ready(bitmap) else SpreadPageState.Failed
     }
 
+    // Same view-only crop policy as the continuous reader: size the cell to the
+    // kept bitmap window so the sub-rectangle fills it exactly.
+    val visible = PdfCrop.visibleRect(PdfCrop.cropForPage(cropInsets, index, cropOddEven))
+    val cropSrc: (Bitmap) -> CropPixelRect = { bitmap ->
+        PdfCrop.cropPixelRect(visible, bitmap.width, bitmap.height)
+    }
     val aspectRatio = when (val state = page) {
-        is SpreadPageState.Ready ->
-            state.bitmap.width.toFloat() / state.bitmap.height.coerceAtLeast(1).toFloat()
+        is SpreadPageState.Ready -> {
+            val src = cropSrc(state.bitmap)
+            src.width.toFloat() / src.height.coerceAtLeast(1).toFloat()
+        }
 
         else -> DEFAULT_SPREAD_PAGE_ASPECT
     }.coerceIn(0.15f, 10f)
@@ -341,13 +378,31 @@ private fun SpreadPageCard(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 when (val state = page) {
                     is SpreadPageState.Ready -> {
-                        val image = remember(state.bitmap) { state.bitmap.asImageBitmap() }
-                        Image(
-                            bitmap = image,
-                            contentDescription = "${index + 1}쪽 페이지",
-                            contentScale = ContentScale.Fit,
+                        val bitmap = state.bitmap
+                        val src = cropSrc(bitmap)
+                        Canvas(
                             modifier = Modifier.fillMaxSize(),
-                        )
+                            contentDescription = "${index + 1}쪽 페이지",
+                        ) {
+                            drawIntoCanvas { canvas ->
+                                canvas.nativeCanvas.drawBitmap(
+                                    bitmap,
+                                    Rect(
+                                        src.left,
+                                        src.top,
+                                        src.left + src.width,
+                                        src.top + src.height,
+                                    ),
+                                    Rect(
+                                        0,
+                                        0,
+                                        size.width.toInt().coerceAtLeast(1),
+                                        size.height.toInt().coerceAtLeast(1),
+                                    ),
+                                    Paint(Paint.FILTER_BITMAP_FLAG),
+                                )
+                            }
+                        }
                     }
 
                     SpreadPageState.Loading -> SpreadLoadingPage()

@@ -202,4 +202,112 @@ class DocStateTest {
 
         assertEquals(original.displayPrefs, original.normalized(3).displayPrefs)
     }
+
+    @Test
+    fun legacyJsonWithoutCrop_loadsZeroInsetsAndDoesNotWriteTheField() {
+        val legacy = JSONObject().apply {
+            put("version", 1)
+            put("name", "lecture.pdf")
+            put("pages", org.json.JSONArray())
+            put("annotations", org.json.JSONArray())
+            put("notes", JSONObject())
+        }
+
+        val parsed = DocState.fromJson("doc", legacy)
+
+        assertEquals(0f, parsed.displayPrefs.cropLeft, 0f)
+        assertEquals(0f, parsed.displayPrefs.cropTop, 0f)
+        assertEquals(0f, parsed.displayPrefs.cropRight, 0f)
+        assertEquals(0f, parsed.displayPrefs.cropBottom, 0f)
+        assertFalse(parsed.displayPrefs.cropOddEven)
+        assertEquals(DisplayPrefs(), parsed.displayPrefs)
+        assertFalse(parsed.toJson().has("display"))
+    }
+
+    @Test
+    fun legacyDisplayObjectWithoutCrop_doesNotWriteCropField() {
+        val legacy = JSONObject().apply {
+            put("version", 1)
+            put("name", "lecture.pdf")
+            put("pages", org.json.JSONArray())
+            put("annotations", org.json.JSONArray())
+            put("notes", JSONObject())
+            put("display", JSONObject().apply { put("night", true) })
+        }
+
+        val parsed = DocState.fromJson("doc", legacy)
+
+        assertEquals(DisplayPrefs(nightMode = true), parsed.displayPrefs)
+        assertFalse(parsed.toJson().getJSONObject("display").has("crop"))
+    }
+
+    @Test
+    fun jsonRoundTrip_keepsCropInsetsAndOddEvenPolicy() {
+        val original = state(
+            pages = listOf(PageSpec(0)),
+            displayPrefs = DisplayPrefs(
+                nightMode = true,
+                brightness = 0.6f,
+                cropLeft = 0.12f,
+                cropTop = 0.08f,
+                cropRight = 0.21f,
+                cropBottom = 0.05f,
+                cropOddEven = true,
+            ),
+        )
+
+        val parsed = DocState.fromJson("doc", JSONObject(original.toJson().toString()))
+
+        assertEquals(original.displayPrefs, parsed.displayPrefs)
+        assertEquals(0.12f, parsed.displayPrefs.cropLeft, 0.0001f)
+        assertEquals(0.08f, parsed.displayPrefs.cropTop, 0.0001f)
+        assertEquals(0.21f, parsed.displayPrefs.cropRight, 0.0001f)
+        assertEquals(0.05f, parsed.displayPrefs.cropBottom, 0.0001f)
+        assertTrue(parsed.displayPrefs.cropOddEven)
+    }
+
+    @Test
+    fun fromJsonClampsStoredCropInsetsToTheUnitRange() {
+        val parsed = DocState.fromJson(
+            "doc",
+            JSONObject().apply {
+                put("version", 1)
+                put("name", "lecture.pdf")
+                put("pages", org.json.JSONArray())
+                put("annotations", org.json.JSONArray())
+                put("notes", JSONObject())
+                put(
+                    "display",
+                    JSONObject().apply {
+                        put(
+                            "crop",
+                            JSONObject().apply {
+                                put("l", -0.4)
+                                put("t", 3.2)
+                                put("r", "not-a-number")
+                                put("b", 0.35)
+                                put("oe", true)
+                            },
+                        )
+                    },
+                )
+            },
+        )
+
+        assertEquals(0f, parsed.displayPrefs.cropLeft, 0f)
+        assertEquals(1f, parsed.displayPrefs.cropTop, 0f)
+        assertEquals(0f, parsed.displayPrefs.cropRight, 0f)
+        assertEquals(0.35f, parsed.displayPrefs.cropBottom, 0.0001f)
+        assertTrue(parsed.displayPrefs.cropOddEven)
+    }
+
+    @Test
+    fun normalized_preservesCropPreferences() {
+        val original = state(
+            pages = listOf(PageSpec(0), PageSpec(5)),
+            displayPrefs = DisplayPrefs(cropLeft = 0.1f, cropBottom = 0.2f, cropOddEven = true),
+        )
+
+        assertEquals(original.displayPrefs, original.normalized(3).displayPrefs)
+    }
 }

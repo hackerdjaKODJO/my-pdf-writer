@@ -14,6 +14,8 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -24,12 +26,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
@@ -38,10 +42,12 @@ import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
+import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
 import com.hackerdjakodjo.mypdfwriter.pdf.DocumentOverlayPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
 import com.hackerdjakodjo.mypdfwriter.ui.SearchHighlightOverlay
 import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfCrop
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfLink
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfLinks
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
@@ -54,15 +60,25 @@ private class CanvasTransform {
     var fit = 1f
     var zoom = 1f
     var pan = Offset.Zero
-    var pageW = 1f
-    var pageH = 1f
     var viewW = 1f
     var viewH = 1f
+    /** On-screen scale denominator: size of the *visible* crop in local units. */
+    var visibleW = 1f
+    var visibleH = 1f
+    var insets: CropInsets = CropInsets.NONE
 
+    /**
+     * Screen position -> normalized page coordinate (where ink is stored).
+     *
+     * The screen point is first expressed relative to the visible crop in
+     * display space, then [PdfCrop.displayToPage] inverse-maps it into page
+     * space. With zero insets this is exactly the old page-centred formula.
+     */
     fun normalize(position: Offset): NormalizedPoint {
-        val x = (position.x - viewW / 2f - pan.x) / total + pageW / 2f
-        val y = (position.y - viewH / 2f - pan.y) / total + pageH / 2f
-        return NormalizedPoint((x / pageW).coerceIn(0f, 1f), (y / pageH).coerceIn(0f, 1f))
+        val displayX = (position.x - viewW / 2f - pan.x) / (visibleW * total) + 0.5f
+        val displayY = (position.y - viewH / 2f - pan.y) / (visibleH * total) + 0.5f
+        val page = PdfCrop.displayToPage(displayX, displayY, insets)
+        return NormalizedPoint(page.x.coerceIn(0f, 1f), page.y.coerceIn(0f, 1f))
     }
 }
 
@@ -84,6 +100,15 @@ fun PdfCanvas(
     nightMode: Boolean = false,
     /** Screen dimming factor in 0.4..1.0; 1f draws no scrim. */
     brightness: Float = 1f,
+    /**
+     * View-only crop margins in normalized page fractions. Applied uniformly to
+     * the rendered page and every overlay (ink, markup, text, search, links and
+     * memo cards); hit-testing inverse-maps with the same transform. Defaults
+     * keep all existing callers on the uncropped path.
+     */
+    cropInsets: CropInsets = CropInsets.NONE,
+    /** Mirror left/right margins on even (1-based) pages via [PdfCrop.cropForPage]. */
+    cropOddEven: Boolean = false,
     /** Link annotations for this page. Only consulted for short taps in VIEW mode. */
     links: List<PdfLink> = emptyList(),
     textWords: List<PdfTextWord> = emptyList(),
@@ -162,8 +187,33 @@ fun PdfCanvas(
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val viewW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
         val viewH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
-        val fit = min(viewW / pageW, viewH / pageH)
+
+        // Crop is expressed in page-normalized fractions, then converted to the
+        // local pixel space the canvas already draws in. Everything below (the
+        // canvas transform, pan limits and hit-tests) uses the visible rect as
+        // the effective page, so zoom=1 still fits the kept area to the screen.
+        val effectiveCrop = PdfCrop.cropForPage(cropInsets, pageIndex, cropOddEven)
+        val visible = PdfCrop.visibleRect(effectiveCrop)
+        val cropLeftPx = visible.left * pageW
+        val cropTopPx = visible.top * pageH
+        val cropRightPx = visible.right * pageW
+        val cropBottomPx = visible.bottom * pageH
+        val visW = (cropRightPx - cropLeftPx).coerceAtLeast(1f)
+        val visH = (cropBottomPx - cropTopPx).coerceAtLeast(1f)
+        val originX = (cropLeftPx + cropRightPx) / 2f
+        val originY = (cropTopPx + cropBottomPx) / 2f
+        val hasCrop = visible.left > 0f || visible.top > 0f ||
+            visible.right < 1f || visible.bottom < 1f
+        val fit = min(viewW / visW, viewH / visH)
         val total = fit * zoom
+
+        // The memo-card helpers assume the full page centre sits at the viewport
+        // centre. Shifting pan by the crop-centre delta lets them reuse their
+        // existing geometry without changing the note-side shared code.
+        val memoPan = Offset(
+            pan.x + (pageW / 2f - originX) * total,
+            pan.y + (pageH / 2f - originY) * total,
+        )
 
         // A touch on a visible card belongs to that card: no stroke, erase, shape
         // or text selection may start underneath it.
@@ -173,7 +223,7 @@ fun PdfCanvas(
                     pdfMemoScreenRect(
                         card = card,
                         fit = total,
-                        pan = pan,
+                        pan = memoPan,
                         viewWidth = viewW,
                         viewHeight = viewH,
                         pageWidth = pageW,
@@ -184,9 +234,9 @@ fun PdfCanvas(
                 }
         }
 
-        LaunchedEffect(total, viewW, viewH, pageW, pageH) {
-            val limitX = ((pageW * total - viewW) / 2f).coerceAtLeast(0f)
-            val limitY = ((pageH * total - viewH) / 2f).coerceAtLeast(0f)
+        LaunchedEffect(total, viewW, viewH, visW, visH) {
+            val limitX = ((visW * total - viewW) / 2f).coerceAtLeast(0f)
+            val limitY = ((visH * total - viewH) / 2f).coerceAtLeast(0f)
             if (pan.x !in -limitX..limitX || pan.y !in -limitY..limitY) {
                 pan = Offset(pan.x.coerceIn(-limitX, limitX), pan.y.coerceIn(-limitY, limitY))
             }
@@ -197,15 +247,16 @@ fun PdfCanvas(
             transform.fit = fit
             transform.zoom = zoom
             transform.pan = pan
-            transform.pageW = pageW
-            transform.pageH = pageH
             transform.viewW = viewW
             transform.viewH = viewH
+            transform.visibleW = visW
+            transform.visibleH = visH
+            transform.insets = effectiveCrop
         }
 
         fun clampPan(candidate: Offset, scale: Float): Offset {
-            val limitX = ((pageW * scale - viewW) / 2f).coerceAtLeast(0f)
-            val limitY = ((pageH * scale - viewH) / 2f).coerceAtLeast(0f)
+            val limitX = ((visW * scale - viewW) / 2f).coerceAtLeast(0f)
+            val limitY = ((visH * scale - viewH) / 2f).coerceAtLeast(0f)
             return Offset(candidate.x.coerceIn(-limitX, limitX), candidate.y.coerceIn(-limitY, limitY))
         }
 
@@ -424,15 +475,31 @@ fun PdfCanvas(
                 native.save()
                 native.translate(cx, cy)
                 native.scale(total, total)
+                // Centre the visible crop, not the full page. The page is drawn
+                // from `left = -pageW/2`, so its centre already sits at the
+                // origin; shifting by (page centre - crop centre) puts the kept
+                // region there instead. Every layer below is drawn in original
+                // page-local pixels, so this one affine transform keeps the
+                // bitmap, ink, markup, text, search and links aligned while the
+                // clip hides the removed blank edges. With zero insets this is
+                // a no-op and the old full-page rendering is reproduced exactly.
+                native.translate(pageW / 2f - originX, pageH / 2f - originY)
 
                 val left = -pageW / 2f
                 val top = -pageH / 2f
 
-                val shadowPaint = Paint().apply {
-                    this.color = android.graphics.Color.argb(38, 0, 0, 0)
-                    maskFilter = BlurMaskFilter(10f, BlurMaskFilter.Blur.NORMAL)
+                // A full-page shadow would peek out from the cropped edge; with
+                // a crop active the visible page is its own hard boundary.
+                if (!hasCrop) {
+                    val shadowPaint = Paint().apply {
+                        this.color = android.graphics.Color.argb(38, 0, 0, 0)
+                        maskFilter = BlurMaskFilter(10f, BlurMaskFilter.Blur.NORMAL)
+                    }
+                    native.drawRect(left + 3f, top + 5f, left + pageW + 3f, top + pageH + 5f, shadowPaint)
                 }
-                native.drawRect(left + 3f, top + 5f, left + pageW + 3f, top + pageH + 5f, shadowPaint)
+
+                native.save()
+                native.clipRect(cropLeftPx, cropTopPx, cropRightPx, cropBottomPx)
 
                 if (bitmap != null) {
                     val bitmapPaint = Paint().apply {
@@ -612,8 +679,9 @@ fun PdfCanvas(
                     )
                 }
 
-                native.restore()
-                native.restore()
+                native.restore() // page-origin translate (ink/text overlays)
+                native.restore() // crop clip
+                native.restore() // viewport translate + scale + crop centre
             }
         }
 
@@ -621,22 +689,42 @@ fun PdfCanvas(
         // full-size parent has no pointer input, so strokes outside a card still reach
         // the canvas below; only the card's own small box consumes touches.
         if (showMemoCardsOnPage && memoCards.isNotEmpty()) {
-            PdfMemoCardLayer(
-                cards = memoCards,
-                fit = total,
-                pan = pan,
-                viewWidth = viewW,
-                viewHeight = viewH,
-                pageWidth = pageW,
-                pageHeight = pageH,
-                minWidthPx = minMemoWidthPx,
-                minHeightPx = minMemoHeightPx,
-                onOpen = onOpenMemoCard,
-                onCardChange = onMemoCardChange,
-                onHide = onHideMemoCardOverlay,
-                onDelete = onDeleteMemoCard,
-                onDragActiveChange = { memoGestureActive.value = it },
-            )
+            // Cards share the crop transform, and the layer is clipped to the
+            // visible rectangle so a card pinned to a removed margin cannot
+            // float over the cropped page. Its pan is expressed relative to the
+            // crop box; the hit-test above keeps the full-screen equivalent.
+            val cropBoxLeft = viewW / 2f + pan.x - visW * total / 2f
+            val cropBoxTop = viewH / 2f + pan.y - visH * total / 2f
+            val cropBoxWidth = with(memoDensity) { (visW * total).toDp() }
+            val cropBoxHeight = with(memoDensity) { (visH * total).toDp() }
+            Box(
+                Modifier
+                    .offset {
+                        IntOffset(cropBoxLeft.roundToInt(), cropBoxTop.roundToInt())
+                    }
+                    .size(cropBoxWidth, cropBoxHeight)
+                    .clipToBounds(),
+            ) {
+                PdfMemoCardLayer(
+                    cards = memoCards,
+                    fit = total,
+                    pan = Offset(
+                        (pageW / 2f - originX) * total,
+                        (pageH / 2f - originY) * total,
+                    ),
+                    viewWidth = visW * total,
+                    viewHeight = visH * total,
+                    pageWidth = pageW,
+                    pageHeight = pageH,
+                    minWidthPx = minMemoWidthPx,
+                    minHeightPx = minMemoHeightPx,
+                    onOpen = onOpenMemoCard,
+                    onCardChange = onMemoCardChange,
+                    onHide = onHideMemoCardOverlay,
+                    onDelete = onDeleteMemoCard,
+                    onDragActiveChange = { memoGestureActive.value = it },
+                )
+            }
         }
     }
 }
