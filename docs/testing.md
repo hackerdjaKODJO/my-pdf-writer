@@ -21,6 +21,29 @@ The note-stroke regression tests are instrumentation tests:
 Both tests address the canvas through `Modifier.testTag("note_canvas")`, which is
 part of the note-stroke fix.
 
+Three more instrumentation classes cover the data/backup/home/help fixes:
+
+- `app/src/androidTest/java/com/hackerdjakodjo/mypdfwriter/ui/HomeAndHelpE2ETest.kt`
+  uses `createAndroidComposeRule<ComponentActivity>()` for the home primary
+  action (continue vs. import), the two-button quick row, the three-card
+  onboarding and the help centre (four ordered quick cards, `더보기` legacy
+  topics, quick-action routing). Its plain-JUnit content check rejects stale
+  help/onboarding vocabulary.
+- `app/src/androidTest/java/com/hackerdjakodjo/mypdfwriter/ui/BackupRestoreE2ETest.kt`
+  races two restore results through `BackupOperationGate`, pins the
+  flush-before-archive order, and checks `onBackupRestored` ordering and
+  `shouldCloseAfterRestore`; it also drives `BackupSheet` while busy and through
+  the restore confirmation.
+- `app/src/androidTest/java/com/hackerdjakodjo/mypdfwriter/data/DocumentSwitchE2ETest.kt`
+  is pure JUnit for per-docId save queues, rapid-double-open generation tokens,
+  and SAF export snapshots bound to the document captured when the picker opens.
+
+The HTML guide (`docs/usage-guide.html`) is a repo file rather than an app asset,
+so it cannot be read from an on-device `androidTest`. Its `고급`/`스터디` absence
+and the `켜져 있는지` (not `꺼져 있는지`) wording are asserted by the JVM-only
+`UsageGuideContentTest`; `HomeAndHelpE2ETest` adds `발췌로 저장` to the same
+vocabulary guard over the in-app help/onboarding copy derived from the guide.
+
 Build the test APK (no device required):
 
 ```bash

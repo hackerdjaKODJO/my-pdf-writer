@@ -10,7 +10,7 @@ executed here. Instrumentation APKs are compiled with
 | Suite | Count | Status |
 | --- | --- | --- |
 | JVM unit tests | 879 | **Passing** on this phone |
-| Instrumentation/E2E | 7 classes (see below) | **Compiled**; on-device run pending |
+| Instrumentation/E2E | 10 classes (see below) | **Compiled**; on-device run pending |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally) |
 
@@ -92,6 +92,35 @@ executed here. Instrumentation APKs are compiled with
 | GR-05 | Locations panel, annotation summary, tabs, auto-hide and crop | JVM `LocationsSheetTest`, `AnnotationSummaryTest`, `DocumentTabsTest`, `PdfCropTest` | Passing |
 | UX-06 | Four-group hub, unified 위치, 4-button chrome, coach card, quick help | JVM `PdfHubSheetTest`, `ViewerScreenTest`, `HelpCenterContentTest`, `NotebookHomeFormatTest` | Passing |
 | BUG-07 | Save/open/export races, pressure calibration, crop clip, backup concurrency | JVM `PdfViewModelTest`, `IntentImportPolicyTest`, `NotePressureCaptureTest`, `PdfCropTest`, `NotebookSaveRaceTest` | Passing |
+| HOME-12 | Returning student sees `이어서 읽기`, new student sees `PDF 가져오기`; exactly two quick buttons; onboarding capped at 3 cards | Instrumentation `HomeAndHelpE2ETest` (UI + pure) | Compiled |
+| HELP-02 | Four quick cards in documented order; `더보기` reveals all 8 legacy topics; quick callbacks route to their destinations | Instrumentation `HomeAndHelpE2ETest` | Compiled |
+| BACKUP-02 | Two simultaneous restore results start one manager call; backup flushes pending notebook saves; restore discards stale notebook state before refresh and keeps a PDF opened during restore | Instrumentation `BackupRestoreE2ETest` (pure + sheet UI) | Compiled |
+| DOC-02 | Save queue keeps newest state per docId; rapid double open publishes only the last document; SAF export snapshot stays bound to the launch document | Instrumentation `DocumentSwitchE2ETest` (pure JUnit) | Compiled |
+| GUIDE-01 | No stale `고급`/`스터디`/`발췌로 저장` and no `켜져 있는지` contradiction | JVM `UsageGuideContentTest` (HTML) + pure in-app content check in `HomeAndHelpE2ETest` | Passing / Compiled |
+
+## New data/home/help instrumentation classes
+
+- `ui/HomeAndHelpE2ETest.kt` drives `NotebookHomeScreen`, `OnboardingSheet` and
+  `HelpCenterSheet` with `createAndroidComposeRule<ComponentActivity>()`. It pins
+  the single primary action (continue vs. import) and two-button quick row,
+  steps the three-card walkthrough, checks quick-card order/routing, and toggles
+  `더보기`/`접기` over the eight legacy topics. Its plain-JUnit content check
+  guards the in-app guidance vocabulary.
+- `ui/BackupRestoreE2ETest.kt` races two SAF restore results through
+  `BackupOperationGate`, verifies `withFlushedSaves` runs before archiving and
+  through the notebook write gate, and checks `onBackupRestored` ordering plus
+  `shouldCloseAfterRestore` for a document opened mid-restore. Sheet UI tests
+  assert both actions are disabled while busy and that backup/restore callbacks
+  route correctly (including the confirm dialog).
+- `data/DocumentSwitchE2ETest.kt` is pure JUnit: per-docId save-queue coalescing,
+  `OpenGenerationGate` for rapid opens, and `PdfExportSnapshot`/`viewerDocState`
+  immutability with the active-document publication guard.
+
+`docs/usage-guide.html` is a repository file, not an app asset, so an on-device
+`androidTest` cannot read it. The HTML itself is checked by the JVM-only
+`UsageGuideContentTest` (`고급`/`스터디` absent, `켜져 있는지` present and
+`꺼져 있는지` absent). `GUIDE-01` adds `발췌로 저장` to the same vocabulary guard
+over the in-app help/onboarding copy that is derived from the guide.
 
 ## Run on a device
 
