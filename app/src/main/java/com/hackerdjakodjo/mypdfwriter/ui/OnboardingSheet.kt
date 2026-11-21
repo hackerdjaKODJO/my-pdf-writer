@@ -52,6 +52,9 @@ internal object OnboardingLabels {
     const val START = "시작"
 }
 
+/** Framing shared with the help center's four-card quick start. */
+internal const val ONBOARDING_QUICK_START_LABEL = "60초 빠른 시작"
+
 /** One short onboarding card: a title and exactly one sentence of guidance. */
 internal data class OnboardingCard(
     val key: OnboardingTopicKey,
@@ -110,7 +113,7 @@ private fun onboardingCardsByKey(): Map<OnboardingTopicKey, OnboardingCard> = ma
     OnboardingTopicKey.HELP_BACKUP to OnboardingCard(
         key = OnboardingTopicKey.HELP_BACKUP,
         title = "도움말과 백업",
-        body = "어려울 때는 도움말에서 안내를 다시 보고, 설정의 백업으로 작업을 기기 안에 보관할 수 있어요.",
+        body = "어려울 때는 도움말의 4단계 빠른 시작을 다시 보고, 홈의 백업·복원으로 작업을 기기 안에 보관할 수 있어요.",
     ),
 )
 
@@ -136,7 +139,7 @@ fun OnboardingSheet(
                 Column(Modifier.weight(1f)) {
                     Text("처음 사용법", style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        "짧은 안내 ${cards.size}장 · 도움말에서 다시 볼 수 있어요",
+                        "$ONBOARDING_QUICK_START_LABEL · 도움말에서 다시 볼 수 있어요",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

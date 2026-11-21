@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -209,27 +210,122 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
     ),
 )
 
+/**
+ * The four 60-second quick-start actions that replace the old eight-chip grid.
+ * Each card is one sentence plus the place it takes the user; all eight legacy
+ * topics stay reachable behind 더보기 so nothing is removed.
+ */
+internal enum class QuickCardKey {
+    OPEN_PDF,
+    MARK_WHILE_READ,
+    CAPTURE_TO_NOTE,
+    REVIEW,
+}
+
+/** Optional deep-link target for a quick card. The host decides what to open. */
+enum class QuickDestination {
+    OPEN_PDF,
+    MARKUP_TOOLS,
+    NOTE_PANE,
+    REVIEW_CARDS,
+}
+
+internal data class QuickCard(
+    val key: QuickCardKey,
+    val label: String,
+    val sentence: String,
+    val destination: QuickDestination,
+    val actionLabel: String,
+    val topicKey: HelpTopicKey,
+)
+
+/** Labels of the disclosure that reveals (and hides) the full legacy list. */
+internal const val SHOW_MORE_LABEL = "더보기"
+internal const val SHOW_LESS_LABEL = "접기"
+
+/** The four primary quick cards, in the exact order shown in the sheet. */
+internal fun quickCards(): List<QuickCard> = listOf(
+    QuickCard(
+        key = QuickCardKey.OPEN_PDF,
+        label = "1 PDF 열기",
+        sentence = "홈에서 PDF 가져오기를 눌러 강의자료를 엽니다.",
+        destination = QuickDestination.OPEN_PDF,
+        actionLabel = "열기",
+        topicKey = HelpTopicKey.OPEN_PDF,
+    ),
+    QuickCard(
+        key = QuickCardKey.MARK_WHILE_READ,
+        label = "2 표시하며 읽기",
+        sentence = "하단의 텍스트 선택으로 문장을 고르고 형광펜으로 표시합니다.",
+        destination = QuickDestination.MARKUP_TOOLS,
+        actionLabel = "표시",
+        topicKey = HelpTopicKey.TEXT_SELECTION,
+    ),
+    QuickCard(
+        key = QuickCardKey.CAPTURE_TO_NOTE,
+        label = "3 노트에 담기",
+        sentence = "PDF 상단의 노트를 눌러 발췌와 필기를 함께 담습니다.",
+        destination = QuickDestination.NOTE_PANE,
+        actionLabel = "노트",
+        topicKey = HelpTopicKey.STUDY_NOTE,
+    ),
+    QuickCard(
+        key = QuickCardKey.REVIEW,
+        label = "4 복습하기",
+        sentence = "노트 메뉴의 복습 카드에서 가리기 카드로 스스로 확인합니다.",
+        destination = QuickDestination.REVIEW_CARDS,
+        actionLabel = "복습",
+        topicKey = HelpTopicKey.WRITE_TOOLS,
+    ),
+)
+
+/**
+ * Legacy topics stay hidden until 더보기 is tapped. This pure function is the
+ * single source of truth for that disclosure and is checked by JVM tests.
+ */
+internal fun visibleLegacyTopics(expanded: Boolean): List<HelpTopic> =
+    if (expanded) helpTopics() else emptyList()
+
 /** Label for the optional replay entry in the help center. */
 internal const val REPLAY_TUTORIAL_LABEL = "튜토리얼 다시 보기"
 
 /**
- * Fully offline, Material 3 bottom-sheet help center. Chips jump to a topic
- * section; every section shows short numbered steps plus optional note/caution
- * callouts. No external links, assets, fonts, web views or analytics.
+ * Fully offline, Material 3 bottom-sheet help center. The primary surface is
+ * four 60-second quick cards; the eight legacy topics live behind 더보기 so
+ * nothing is removed while the first screen stays uncluttered. Every section
+ * shows short numbered steps plus optional note/caution callouts. No external
+ * links, assets, fonts, web views or analytics.
  *
  * [onReplayTutorial] is optional: when supplied, the sheet offers a replay of
- * the first-run tutorial. The caller owns closing this sheet and showing it.
+ * the first-run tutorial. [onQuickAction] is optional: when supplied, tapping a
+ * quick card hands its [QuickDestination] to the host for a deep link; without
+ * it, the card expands 더보기 and scrolls to the matching legacy topic. The
+ * caller owns closing this sheet and showing any follow-up screen.
  */
 @Composable
 fun HelpCenterSheet(
     onDismiss: () -> Unit,
     onReplayTutorial: (() -> Unit)? = null,
+    onQuickAction: ((QuickDestination) -> Unit)? = null,
 ) {
     val topics = remember { helpTopics() }
+    val quickCards = remember { quickCards() }
     var selectedKey by remember { mutableStateOf(topics.first().key) }
+    var showMore by remember { mutableStateOf(false) }
+    var pendingScrollKey by remember { mutableStateOf<HelpTopicKey?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Scroll only after the legacy list has been revealed by 더보기.
+    LaunchedEffect(showMore, pendingScrollKey) {
+        val key = pendingScrollKey
+        if (showMore && key != null) {
+            val index = topics.indexOfFirst { it.key == key }
+            if (index >= 0) listState.animateScrollToItem(index)
+            pendingScrollKey = null
+        }
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -246,7 +342,7 @@ fun HelpCenterSheet(
                         modifier = Modifier.semantics { heading() },
                     )
                     Text(
-                        "오프라인 사용 가이드 · 기기 안에서만 동작합니다",
+                        "60초 빠른 시작 · 기기 안에서만 동작합니다",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -268,37 +364,110 @@ fun HelpCenterSheet(
                 }
             }
 
-            FlowRow(
+            // Four primary quick cards, each a 48dp+ target with a two-line label.
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                topics.forEachIndexed { index, topic ->
-                    FilterChip(
-                        selected = selectedKey == topic.key,
+                quickCards.forEach { card ->
+                    QuickCardRow(
+                        card = card,
                         onClick = {
-                            selectedKey = topic.key
-                            scope.launch { listState.animateScrollToItem(index) }
+                            selectedKey = card.topicKey
+                            if (onQuickAction != null) {
+                                onQuickAction(card.destination)
+                            } else {
+                                showMore = true
+                                pendingScrollKey = card.topicKey
+                            }
                         },
-                        modifier = Modifier.heightIn(min = 48.dp),
-                        label = { Text(topic.chip) },
                     )
                 }
             }
-            Spacer(Modifier.height(10.dp))
 
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+            TextButton(
+                onClick = { showMore = !showMore },
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .padding(start = 12.dp),
             ) {
-                items(topics, key = { it.key.name }) { topic ->
-                    HelpTopicSection(topic)
+                Text(if (showMore) SHOW_LESS_LABEL else SHOW_MORE_LABEL)
+            }
+
+            val legacyTopics = visibleLegacyTopics(showMore)
+            if (legacyTopics.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    legacyTopics.forEach { topic ->
+                        FilterChip(
+                            selected = selectedKey == topic.key,
+                            onClick = {
+                                selectedKey = topic.key
+                                val index = topics.indexOfFirst { it.key == topic.key }
+                                if (index >= 0) scope.launch { listState.animateScrollToItem(index) }
+                            },
+                            modifier = Modifier.heightIn(min = 48.dp),
+                            label = { Text(topic.chip, maxLines = 2) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(legacyTopics, key = { it.key.name }) { topic ->
+                        HelpTopicSection(topic)
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun QuickCardRow(card: QuickCard, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    card.label,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "${card.actionLabel} ›",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                card.sentence,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 2,
+            )
         }
     }
 }
