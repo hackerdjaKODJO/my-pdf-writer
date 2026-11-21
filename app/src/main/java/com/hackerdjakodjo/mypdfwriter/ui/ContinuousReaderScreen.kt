@@ -1,11 +1,16 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import android.graphics.Bitmap
+import android.graphics.Paint
+import android.graphics.Rect
 import com.hackerdjakodjo.mypdfwriter.BuildConfig
+import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
+import com.hackerdjakodjo.mypdfwriter.pdf.CropPixelRect
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfContinuousTrace
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfCrop
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -56,13 +61,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -92,6 +97,14 @@ fun ContinuousReaderScreen(
     initialPage: Int,
     /** Screen dimming factor in 0.4..1.0; 1f draws no scrim. */
     brightness: Float = 1f,
+    /**
+     * View-only crop margins in normalized page fractions. The reader draws
+     * only the kept sub-rectangle of every rendered bitmap; the original page,
+     * file and exported PDF stay untouched. Defaults keep the uncropped path.
+     */
+    cropInsets: CropInsets = CropInsets.NONE,
+    /** Mirror left/right margins on even (1-based) pages. */
+    cropOddEven: Boolean = false,
     loadPage: suspend (Int, Float) -> Bitmap?,
     onBack: () -> Unit,
     onOpenPage: (Int) -> Unit,
@@ -359,6 +372,8 @@ fun ContinuousReaderScreen(
                                 index = index,
                                 zoom = zoom,
                                 panX = { panX.floatValue },
+                                cropInsets = cropInsets,
+                                cropOddEven = cropOddEven,
                                 loadPage = loadPage,
                                 onOpenPage = onOpenPage,
                                 onToggleZoom = toggleZoom,
@@ -430,6 +445,8 @@ private fun ReaderPageCard(
     index: Int,
     zoom: Float,
     panX: () -> Float,
+    cropInsets: CropInsets,
+    cropOddEven: Boolean,
     loadPage: suspend (Int, Float) -> Bitmap?,
     onOpenPage: (Int) -> Unit,
     onToggleZoom: () -> Unit,
@@ -479,9 +496,17 @@ private fun ReaderPageCard(
         value = if (bitmap != null) ReaderPageState.Ready(bitmap) else ReaderPageState.Failed
     }
 
+    // Crop is view-only: pick the sub-rectangle of the already-rendered bitmap
+    // that corresponds to this page's margins, and size the card to it. Odd/even
+    // mirroring uses the same pure policy as the single-page canvas.
+    val visible = PdfCrop.visibleRect(PdfCrop.cropForPage(cropInsets, index, cropOddEven))
+    val cropSrc: (Bitmap) -> CropPixelRect = { bitmap ->
+        PdfCrop.cropPixelRect(visible, bitmap.width, bitmap.height)
+    }
     val aspectRatio = when (val state = page) {
         is ReaderPageState.Ready -> {
-            state.bitmap.width.toFloat() / state.bitmap.height.coerceAtLeast(1).toFloat()
+            val src = cropSrc(state.bitmap)
+            src.width.toFloat() / src.height.coerceAtLeast(1).toFloat()
         }
 
         else -> DEFAULT_PAGE_ASPECT
@@ -543,13 +568,31 @@ private fun ReaderPageCard(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     when (val state = page) {
                         is ReaderPageState.Ready -> {
-                            val image = remember(state.bitmap) { state.bitmap.asImageBitmap() }
-                            Image(
-                                bitmap = image,
-                                contentDescription = "${index + 1}쪽 페이지",
-                                contentScale = ContentScale.FillWidth,
+                            val bitmap = state.bitmap
+                            val src = cropSrc(bitmap)
+                            Canvas(
                                 modifier = Modifier.fillMaxSize(),
-                            )
+                                contentDescription = "${index + 1}쪽 페이지",
+                            ) {
+                                drawIntoCanvas { canvas ->
+                                    canvas.nativeCanvas.drawBitmap(
+                                        bitmap,
+                                        Rect(
+                                            src.left,
+                                            src.top,
+                                            src.left + src.width,
+                                            src.top + src.height,
+                                        ),
+                                        Rect(
+                                            0,
+                                            0,
+                                            size.width.toInt().coerceAtLeast(1),
+                                            size.height.toInt().coerceAtLeast(1),
+                                        ),
+                                        Paint(Paint.FILTER_BITMAP_FLAG),
+                                    )
+                                }
+                            }
                         }
 
                         ReaderPageState.Loading -> LoadingPage()
