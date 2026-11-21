@@ -58,7 +58,13 @@ object AnnotationPainter {
             return
         }
         when (annotation.type) {
-            AnnotationType.PEN -> drawPen(canvas, annotation, width, height, inkContextFor(annotation))
+            AnnotationType.PEN -> drawPen(
+                canvas,
+                annotation,
+                width,
+                height,
+                inkContextFor(annotation, width, height),
+            )
             AnnotationType.HIGHLIGHT -> drawStroke(
                 canvas,
                 annotation,
@@ -95,9 +101,11 @@ object AnnotationPainter {
     ) {
         when (annotation.type) {
             AnnotationType.PEN, AnnotationType.HIGHLIGHT -> {
-                // Response factors come from the full annotation, not the revealed
-                // prefix, so a stroke's ink density never changes as it is uncovered.
-                val ink = inkContextFor(annotation)
+                // Everything derived from the stroke comes from the full
+                // annotation, not the revealed prefix: ink density, outline
+                // widths, fountain nib factors and the brush envelope. Replay
+                // only slices those arrays so already revealed ink never shifts.
+                val ink = inkContextFor(annotation, width, height)
                 val points = revealedPoints(annotation.points, fraction)
                 val partial = annotation.copy(points = points)
                 if (annotation.type == AnnotationType.PEN) {
@@ -108,9 +116,9 @@ object AnnotationPainter {
                         height,
                         ink.copy(
                             series = ink.series.take(points.size),
-                            // Slice the full-stroke widths; never rebuild them from
-                            // the visible prefix or the outline would breathe.
                             outlineWidths = ink.outlineWidths.copyOf(points.size),
+                            fountainSmoothed = ink.fountainSmoothed.copyOf(points.size),
+                            brushEnvelope = ink.brushEnvelope.copyOf(points.size),
                         ),
                     )
                 } else {
@@ -230,6 +238,18 @@ object AnnotationPainter {
         val outlineWidths: FloatArray,
         /** Full-stroke result of [PenStrokeGeometry.useVariableWidthOutline]. */
         val variableOutline: Boolean,
+        /**
+         * Fountain nib factors, neighbour-averaged once over the full stroke.
+         * Replay slices this array; recomputing it from a prefix retapers ink
+         * that was already visible.
+         */
+        val fountainSmoothed: FloatArray,
+        /**
+         * Brush thickness envelope from the full stroke. Replay slices this
+         * array; an envelope built from a truncated prefix swells/shrinks the
+         * already revealed wash on every frame.
+         */
+        val brushEnvelope: FloatArray,
     )
 
     /**
@@ -242,6 +262,8 @@ object AnnotationPainter {
         points: List<NormalizedPoint>,
         penStyle: PenStyle,
         isHighlight: Boolean = false,
+        width: Float = 1f,
+        height: Float = 1f,
     ): InkContext {
         val series = inkResponseSeries(points, penStyle, isHighlight)
         val variation = PenStrokeGeometry.pressureVariation(points)
@@ -259,14 +281,61 @@ object AnnotationPainter {
                 legacyWidth = 1f,
             ),
             variableOutline = PenStrokeGeometry.useVariableWidthOutline(points),
+            fountainSmoothed = fountainSmoothedFactors(points, width, height),
+            brushEnvelope = brushEnvelope(points),
         )
     }
 
-    private fun inkContextFor(annotation: Annotation): InkContext = inkContext(
+    private fun inkContextFor(
+        annotation: Annotation,
+        width: Float,
+        height: Float,
+    ): InkContext = inkContext(
         points = annotation.points,
         penStyle = annotation.penStyle,
         isHighlight = annotation.type == AnnotationType.HIGHLIGHT,
+        width = width,
+        height = height,
     )
+
+    /**
+     * Fountain nib response over the whole stroke, including the neighbour
+     * averaging that removes single-point spikes. Pure/JVM-safe: replay keeps
+     * the prefix of this array instead of recomputing it from fewer points.
+     */
+    internal fun fountainSmoothedFactors(
+        points: List<NormalizedPoint>,
+        width: Float,
+        height: Float,
+    ): FloatArray {
+        val nibAngle = (PI / 4.0).toFloat()
+        val factors = FloatArray(points.size) { index ->
+            val prev = points[(index - 1).coerceAtLeast(0)]
+            val next = points[(index + 1).coerceAtMost(points.lastIndex)]
+            val dx = (next.x - prev.x) * width
+            val dy = (next.y - prev.y) * height
+            if (abs(dx) + abs(dy) < 0.0001f) {
+                0.72f
+            } else {
+                0.30f + 0.95f * abs(sin(atan2(dy, dx) - nibAngle))
+            }
+        }
+        return FloatArray(points.size) { index ->
+            val a = factors[(index - 1).coerceAtLeast(0)]
+            val b = factors[index]
+            val c = factors[(index + 1).coerceAtMost(points.lastIndex)]
+            (a + b + b + c) / 4f
+        }
+    }
+
+    /** Full-stroke brush thickness envelope, independent of any replay prefix. */
+    internal fun brushEnvelope(points: List<NormalizedPoint>): FloatArray {
+        val lastIndex = points.lastIndex
+        return FloatArray(points.size) { index ->
+            val t = if (lastIndex == 0) 0.5f else index.toFloat() / lastIndex
+            0.38f + 0.72f * sin(PI * t).pow(0.6).toFloat()
+        }
+    }
 
     /** Per-point response from the full annotation, shared by drawing and replay. */
     internal fun annotationInkSeries(annotation: Annotation): List<InkResponse> =
@@ -294,7 +363,6 @@ object AnnotationPainter {
             drawVariableWidthOutline(canvas, annotation, width, height, ink)
             return
         }
-        val widths = ink.series.map { it.width }
         when (annotation.penStyle) {
             PenStyle.BALLPOINT -> {
                 if (ink.neutral) {
@@ -303,10 +371,8 @@ object AnnotationPainter {
                     drawBallpoint(canvas, annotation, width, height, ink.series)
                 }
             }
-            PenStyle.FOUNTAIN -> drawFountain(
-                canvas, annotation, width, height, ink.mean, widths, ink.variation, ink.totalSamples,
-            )
-            PenStyle.BRUSH -> drawBrush(canvas, annotation, width, height, ink.mean, widths)
+            PenStyle.FOUNTAIN -> drawFountain(canvas, annotation, width, height, ink)
+            PenStyle.BRUSH -> drawBrush(canvas, annotation, width, height, ink)
             PenStyle.PENCIL -> drawPencil(canvas, annotation, width, height, ink.mean, ink.series, ink.neutral)
         }
     }
@@ -580,14 +646,14 @@ object AnnotationPainter {
         annotation: Annotation,
         width: Float,
         height: Float,
-        response: InkResponse,
-        widths: List<Float>,
-        variation: Float,
-        totalSamples: Int,
+        ink: InkContext,
     ) {
         val points = annotation.points
         val base = (annotation.width * width).coerceAtLeast(1.1f)
-        val pressure = widths
+        val pressure = ink.series.map { it.width }
+        val response = ink.mean
+        val variation = ink.variation
+        val totalSamples = ink.totalSamples
         if (points.size == 1) {
             drawPenDot(
                 canvas,
@@ -600,25 +666,10 @@ object AnnotationPainter {
             )
             return
         }
-        val nibAngle = (PI / 4.0).toFloat()
-        val factors = FloatArray(points.size) { index ->
-            val prev = points[(index - 1).coerceAtLeast(0)]
-            val next = points[(index + 1).coerceAtMost(points.lastIndex)]
-            val dx = (next.x - prev.x) * width
-            val dy = (next.y - prev.y) * height
-            if (abs(dx) + abs(dy) < 0.0001f) {
-                0.72f
-            } else {
-                0.30f + 0.95f * abs(sin(atan2(dy, dx) - nibAngle))
-            }
-        }
-        // Neighbour averaging removes single-point width spikes at sharp corners.
-        val smoothed = FloatArray(points.size) { index ->
-            val a = factors[(index - 1).coerceAtLeast(0)]
-            val b = factors[index]
-            val c = factors[(index + 1).coerceAtMost(points.lastIndex)]
-            (a + b + b + c) / 4f
-        }
+        // Precomputed once from the full stroke (nib factors plus neighbour
+        // averaging). Replay slices the same array, so revealing a prefix can
+        // never re-smooth the ink that was already visible.
+        val smoothed = ink.fountainSmoothed
         // A real nib lifts off at the start and end of a stroke, but only when the
         // stylus actually varied pressure. `fountainTaper` is exactly 1f for neutral
         // ink, so legacy strokes keep the original ribbon and round end caps.
@@ -662,12 +713,12 @@ object AnnotationPainter {
         annotation: Annotation,
         width: Float,
         height: Float,
-        response: InkResponse,
-        widths: List<Float>,
+        ink: InkContext,
     ) {
         val points = annotation.points
         val base = (annotation.width * width).coerceAtLeast(1.1f)
-        val pressure = widths
+        val pressure = ink.series.map { it.width }
+        val response = ink.mean
         if (points.size == 1) {
             drawPenDot(
                 canvas,
@@ -680,11 +731,9 @@ object AnnotationPainter {
             )
             return
         }
-        val lastIndex = points.lastIndex
-        val envelope = FloatArray(points.size) { index ->
-            val t = if (lastIndex == 0) 0.5f else index.toFloat() / lastIndex
-            0.38f + 0.72f * sin(PI * t).pow(0.6).toFloat()
-        }
+        // Full-stroke envelope, sliced by replay; a prefix-local envelope would
+        // change the thickness of every already revealed point on each frame.
+        val envelope = ink.brushEnvelope
         // Light pressure thins and fades the wash as well as the core, giving a
         // dry-brush look; at neutral flow/grain this is the old 0.20 halo verbatim.
         val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {

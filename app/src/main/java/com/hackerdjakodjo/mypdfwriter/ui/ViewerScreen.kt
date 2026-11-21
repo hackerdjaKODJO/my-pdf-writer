@@ -86,6 +86,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -116,6 +117,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
+import com.hackerdjakodjo.mypdfwriter.pdf.SummarySafWriter
 import com.hackerdjakodjo.mypdfwriter.pdf.TextActions
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -212,6 +214,13 @@ internal fun shouldShowPdfCoach(state: PdfCoachState): Boolean =
 
 internal fun dismissPdfCoach(state: PdfCoachState): PdfCoachState =
     state.copy(shownThisSession = true, dismissed = true)
+
+/**
+ * Query used by the on-page highlight overlay. It must be normalized exactly
+ * like `PdfViewModel.search` does, otherwise a padded query highlights matches
+ * that the search result list (and its navigation chip) never reports.
+ */
+internal fun viewerHighlightQuery(rawQuery: String): String = rawQuery.trim()
 
 internal object PdfViewerCoachSession {
     var shown: Boolean = false
@@ -347,7 +356,9 @@ fun ViewerScreen(
     var showTabOverflow by remember { mutableStateOf(false) }
     var showLocations by remember { mutableStateOf(false) }
     var showFileTools by remember { mutableStateOf(false) }
-    var pendingSummary by remember { mutableStateOf("") }
+    // SAF returns after the Activity is recreated; keep the text across that
+    // recreation and clear it on every outcome (including a cancelled picker).
+    var pendingSummary by rememberSaveable { mutableStateOf("") }
     var coachState by remember {
         mutableStateOf(PdfCoachState(shownThisSession = PdfViewerCoachSession.shown))
     }
@@ -455,7 +466,7 @@ fun ViewerScreen(
         if (textSelectMode || state.tool != Tool.VIEW) chromeHidden = false
     }
     LaunchedEffect(state.searchQuery, state.pageIndex, state.revision) {
-        val query = state.searchQuery.trim()
+        val query = viewerHighlightQuery(state.searchQuery)
         if (query.isEmpty()) {
             searchHighlights = emptyList()
             return@LaunchedEffect
@@ -481,18 +492,23 @@ fun ViewerScreen(
     val exportSummary = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/markdown"),
     ) { uri ->
-        if (uri != null && pendingSummary.isNotBlank()) {
-            runCatching {
+        if (SummarySafWriter.outcomeForResult(uri != null, pendingSummary) ==
+            SummarySafWriter.Outcome.WRITE && uri != null
+        ) {
+            val written = runCatching {
                 context.contentResolver.openOutputStream(uri)?.use { out ->
-                    out.write(pendingSummary.toByteArray(Charsets.UTF_8))
-                }
-            }.onSuccess {
-                Toast.makeText(context, "주석 요약을 저장했습니다", Toast.LENGTH_SHORT).show()
-            }.onFailure {
-                Toast.makeText(context, "주석 요약을 저장하지 못했습니다", Toast.LENGTH_SHORT).show()
-            }
-            pendingSummary = ""
+                    SummarySafWriter.write(out, pendingSummary)
+                } ?: false
+            }.getOrDefault(false)
+            Toast.makeText(
+                context,
+                if (written) "주석 요약을 저장했습니다" else "주석 요약을 저장하지 못했습니다",
+                Toast.LENGTH_SHORT,
+            ).show()
         }
+        // Cancelled picker, blank payload, failed write or success: never carry
+        // the pending text into the next export request.
+        pendingSummary = ""
     }
 
     val sheetOpen = ViewerSheetFlags(
@@ -1101,7 +1117,8 @@ fun ViewerScreen(
                 0f
             }
             var splitAreaHeightPx by remember { mutableFloatStateOf(0f) }
-            val showSearchNavigation = !state.searching && state.searchQuery.trim().isNotEmpty() &&
+            val showSearchNavigation = !state.searching &&
+                viewerHighlightQuery(state.searchQuery).isNotEmpty() &&
                 state.searchHits.isNotEmpty()
             val pdfStripHeightDp = if (splitMode) {
                 (maxHeight * (1f - paneFraction)).value
@@ -1159,6 +1176,7 @@ fun ViewerScreen(
 
                     PdfCanvas(
                         bitmap = bitmap,
+                        docId = state.docId,
                         pageIndex = state.pageIndex,
                         displayWidthPt = state.displayWidthPt,
                         displayHeightPt = state.displayHeightPt,

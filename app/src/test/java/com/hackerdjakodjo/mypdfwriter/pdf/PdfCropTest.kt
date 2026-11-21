@@ -172,6 +172,30 @@ class PdfCropTest {
     }
 
     @Test
+    fun clipRectForCanvasIsCentredOnTheVisibleCrop() {
+        val full = PdfCrop.clipRectForCanvas(
+            PdfCrop.visibleRect(CropInsets()),
+            pageWidth = 1000f,
+            pageHeight = 2000f,
+        )
+        assertEquals(CanvasClipRect(-500f, -1000f, 500f, 1000f), full)
+
+        // Asymmetric margins: the clip still sits at the local origin because
+        // the canvas translates the crop centre there. Raw page pixels would
+        // put this rectangle at [100, 700] and clip only a quadrant.
+        val visible = PdfCrop.visibleRect(CropInsets(0.1f, 0.2f, 0.3f, 0.25f))
+        val clip = PdfCrop.clipRectForCanvas(visible, 1000f, 2000f)
+        assertEquals(-300f, clip.left, 0.0001f)
+        assertEquals(-550f, clip.top, 0.0001f)
+        assertEquals(300f, clip.right, 0.0001f)
+        assertEquals(550f, clip.bottom, 0.0001f)
+        assertEquals(0f, clip.left + clip.right, 0.0001f)
+        assertEquals(0f, clip.top + clip.bottom, 0.0001f)
+        assertEquals(visible.width * 1000f, clip.right - clip.left, 0.0001f)
+        assertEquals(visible.height * 2000f, clip.bottom - clip.top, 0.0001f)
+    }
+
+    @Test
     fun cropPixelRectReturnsFullBitmapForZeroInsets() {
         val full = PdfCrop.cropPixelRect(
             PdfCrop.visibleRect(CropInsets()),
