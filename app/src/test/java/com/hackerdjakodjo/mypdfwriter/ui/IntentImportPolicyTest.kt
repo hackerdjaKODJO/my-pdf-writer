@@ -208,4 +208,18 @@ class IntentImportPolicyTest {
         assertFalse(shouldCloseAfterRestore(null, "new.pdf"))
         assertTrue(shouldCloseAfterRestore("old.pdf", "old.pdf"))
     }
+
+    @Test
+    fun restoreCompletionDiscardsStaleNotebookBeforeRefresh() {
+        val calls = mutableListOf<String>()
+        onBackupRestored(
+            restoredAt = 1_700_000_000_002L,
+            discardNotebook = { calls += "discard" },
+            refreshNotebook = { calls += "refresh" },
+            reloadLibrary = { calls += "library" },
+            closeDocument = { calls += "close" },
+            consumeRestored = { calls += "consume" },
+        )
+        assertEquals(listOf("discard", "refresh", "library", "close", "consume"), calls)
+    }
 }

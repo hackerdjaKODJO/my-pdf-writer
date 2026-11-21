@@ -1807,7 +1807,17 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun search(query: String) {
         val state = _viewer.value ?: return
         val trimmed = query.trim()
-        _viewer.update { it?.copy(searchQuery = query) }
+        // A new query must not keep showing the previous query's hits while the
+        // debounce runs; otherwise the sheet and page highlights disagree.
+        _viewer.update {
+            it?.copy(
+                searchQuery = query,
+                searchHits = emptyList(),
+                currentSearchHit = -1,
+                searching = false,
+                searchFailed = false,
+            )
+        }
         searchJob?.cancel()
         if (trimmed.isEmpty()) {
             _viewer.update {

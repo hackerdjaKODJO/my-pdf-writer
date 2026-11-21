@@ -103,6 +103,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        backupViewModel.flushPendingSavesBeforeBackup = { notebookViewModel.saveNow() }
         handleViewIntent(intent)
 
         setContent {
@@ -130,6 +131,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(backupState.restoredAt) {
                     onBackupRestored(
                         restoredAt = backupState.restoredAt,
+                        discardNotebook = { notebookViewModel.discardCurrent() },
                         refreshNotebook = { notebookViewModel.refresh() },
                         reloadLibrary = { viewModel.reloadLibrary() },
                         closeDocument = { viewModel.discardDocument() },
@@ -484,11 +486,14 @@ internal fun onBackupRestored(
     restoredAt: Long?,
     refreshNotebook: () -> Unit,
     reloadLibrary: () -> Unit,
+    discardNotebook: () -> Unit = {},
     closeDocument: () -> Unit,
     consumeRestored: () -> Unit,
     shouldCloseDocument: () -> Boolean = { true },
 ) {
     if (restoredAt == null) return
+    // A stale in-memory working notebook can be written back over restored JSON.
+    discardNotebook()
     refreshNotebook()
     reloadLibrary()
     if (shouldCloseDocument()) closeDocument()
