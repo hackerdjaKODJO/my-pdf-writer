@@ -78,4 +78,20 @@ object PdfAnnotationFilter {
             .sortedWith(compareBy<Annotation>({ it.page }, { it.type.ordinal }))
             .toList()
     }
+
+    /**
+     * Sanitized count per filter chip, computed from the same rows [filter]
+     * would show for [AnnotationFilter.ALL]. This lets the Locations panel show
+     * accurate `전체 / 필기 / 텍스트 / 도형 / 가림` counts without duplicating
+     * the sanitizer, and keeps the total consistent with the visible list.
+     */
+    fun counts(
+        annotations: List<Annotation>,
+        pageCount: Int = Int.MAX_VALUE,
+    ): Map<AnnotationFilter, Int> {
+        val clean = filter(annotations, AnnotationFilter.ALL, pageCount)
+        return AnnotationFilter.entries.associateWith { option ->
+            if (option == AnnotationFilter.ALL) clean.size else clean.count { matches(it.type, option) }
+        }
+    }
 }

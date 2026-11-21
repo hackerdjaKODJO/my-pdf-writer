@@ -28,12 +28,21 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Approval
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material.icons.outlined.CropSquare
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Draw
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.FormatStrikethrough
+import androidx.compose.material.icons.outlined.FormatUnderlined
+import androidx.compose.material.icons.outlined.Highlight
+import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.RotateLeft
 import androidx.compose.material.icons.outlined.RotateRight
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -49,8 +58,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -81,7 +92,10 @@ import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.DisplayPrefs
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
+import com.hackerdjakodjo.mypdfwriter.data.PdfBookmark
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
+import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationSummary
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfOutlineEntry
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -1166,3 +1180,422 @@ fun TextEditDialog(
 
 /** Small helper kept for layout readability in dialogs/sheets. */
 private fun Modifier.horizontalScrollIfNeeded(): Modifier = this
+
+// ---------------------------------------------------------------------------
+// GoodReader-style unified Locations panel
+// ---------------------------------------------------------------------------
+
+/** The three unified location tabs in their fixed visible order. */
+internal enum class LocationsTab(val label: String) {
+    BOOKMARKS("북마크"),
+    OUTLINE("목차"),
+    ANNOTATIONS("주석"),
+}
+
+internal val LOCATIONS_TAB_ORDER = listOf(
+    LocationsTab.BOOKMARKS,
+    LocationsTab.OUTLINE,
+    LocationsTab.ANNOTATIONS,
+)
+
+/**
+ * Callback router for every row in [LocationsSheet]. Keeping the jump/dismiss
+ * policy in one small object makes it testable without a Compose test and makes
+ * every tap behave the same: jump to the page, then dismiss the panel.
+ */
+internal class LocationsActions(
+    private val onJumpToPage: (Int) -> Unit,
+    private val onDismiss: () -> Unit,
+    private val onExportSummary: (String) -> Unit,
+) {
+    fun jump(page: Int) {
+        onJumpToPage(page)
+        onDismiss()
+    }
+
+    fun export(text: String) = onExportSummary(text)
+
+    fun close() = onDismiss()
+}
+
+/** Sanitized, page-ascending groups used by the 주석 tab. */
+internal fun locationsAnnotationGroups(
+    annotations: List<Annotation>,
+    filter: AnnotationFilter = AnnotationFilter.ALL,
+    pageCount: Int = Int.MAX_VALUE,
+): Map<Int, List<Annotation>> =
+    PdfAnnotationFilter.filter(annotations, filter, pageCount)
+        .groupBy { it.page }
+        .toSortedMap()
+
+/**
+ * One panel for 북마크 / 목차 / 주석 with the tabs pinned above a scrolling list.
+ * Bookmarks and outlines are the lists already loaded by the viewer; this sheet
+ * never edits them. The 주석 tab groups by page, offers the standard five filter
+ * chips and builds an offline Markdown summary without writing a file.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LocationsSheet(
+    bookmarks: List<PdfBookmark>,
+    outline: List<PdfOutlineEntry>,
+    annotations: List<Annotation>,
+    pageCount: Int,
+    currentPage: Int = 0,
+    onJumpToPage: (Int) -> Unit,
+    onExportSummary: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var selectedTab by remember { mutableStateOf(LocationsTab.BOOKMARKS) }
+    var filter by remember { mutableStateOf(AnnotationFilter.ALL) }
+    val actions = remember(onJumpToPage, onDismiss, onExportSummary) {
+        LocationsActions(onJumpToPage, onDismiss, onExportSummary)
+    }
+    val sortedBookmarks = remember(bookmarks) {
+        bookmarks.sortedWith(compareBy<PdfBookmark>({ it.pageIndex }, { it.createdAt }))
+    }
+    val allAnnotations = remember(annotations, pageCount) {
+        PdfAnnotationFilter.filter(annotations, AnnotationFilter.ALL, pageCount)
+    }
+    val counts = remember(annotations, pageCount) {
+        PdfAnnotationFilter.counts(annotations, pageCount)
+    }
+    val groups = remember(annotations, filter, pageCount) {
+        locationsAnnotationGroups(annotations, filter, pageCount)
+    }
+    val summary = remember(annotations, pageCount) {
+        AnnotationSummary.buildMarkdown(annotations, pageCount)
+    }
+
+    ModalBottomSheet(onDismissRequest = { actions.close() }, sheetState = sheetState) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text("위치", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                Text(
+                    "${bookmarks.size} 북마크 · ${outline.size} 목차 · ${allAnnotations.size} 주석",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.size(2.dp))
+            Text(
+                "북마크·목차·주석을 한 곳에서 보고 원하는 쪽으로 바로 이동하세요.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.size(10.dp))
+
+            // Sticky tabs: the tab row lives outside the scrolling list below.
+            PrimaryTabRow(selectedTabIndex = LOCATIONS_TAB_ORDER.indexOf(selectedTab)) {
+                LOCATIONS_TAB_ORDER.forEach { tab ->
+                    Tab(
+                        selected = selectedTab == tab,
+                        onClick = { selectedTab = tab },
+                        text = { Text(tab.label) },
+                    )
+                }
+            }
+            Spacer(Modifier.size(10.dp))
+
+            when (selectedTab) {
+                LocationsTab.BOOKMARKS -> LocationsBookmarksTab(
+                    bookmarks = sortedBookmarks,
+                    currentPage = currentPage,
+                    onJump = actions::jump,
+                )
+
+                LocationsTab.OUTLINE -> LocationsOutlineTab(
+                    entries = outline,
+                    onJump = actions::jump,
+                )
+
+                LocationsTab.ANNOTATIONS -> LocationsAnnotationsTab(
+                    allCount = allAnnotations.size,
+                    counts = counts,
+                    filter = filter,
+                    onFilterChange = { filter = it },
+                    groups = groups,
+                    summary = summary,
+                    onExport = actions::export,
+                    onJump = actions::jump,
+                )
+            }
+            Spacer(Modifier.size(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun LocationsBookmarksTab(
+    bookmarks: List<PdfBookmark>,
+    currentPage: Int,
+    onJump: (Int) -> Unit,
+) {
+    if (bookmarks.isEmpty()) {
+        Text(
+            "아직 북마크가 없습니다. 학습 메뉴에서 현재 쪽을 북마크해 두면 여기에서 바로 찾을 수 있습니다.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 24.dp),
+        )
+        return
+    }
+    LazyColumn(
+        Modifier.fillMaxWidth().heightIn(max = 400.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        contentPadding = PaddingValues(bottom = 8.dp),
+    ) {
+        items(bookmarks, key = { it.id }) { bookmark ->
+            Surface(
+                onClick = { onJump(bookmark.pageIndex) },
+                shape = RoundedCornerShape(12.dp),
+                color = if (bookmark.pageIndex == currentPage) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Outlined.StarBorder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        bookmark.title.ifBlank { "${bookmark.pageIndex + 1}쪽 북마크" },
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    LocationsPageChip(bookmark.pageIndex)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocationsOutlineTab(
+    entries: List<PdfOutlineEntry>,
+    onJump: (Int) -> Unit,
+) {
+    if (entries.isEmpty()) {
+        Text(
+            "이 PDF에는 목차가 없습니다.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 24.dp),
+        )
+        return
+    }
+    LazyColumn(
+        Modifier.fillMaxWidth().heightIn(max = 400.dp),
+        contentPadding = PaddingValues(bottom = 8.dp),
+    ) {
+        items(entries) { entry ->
+            val page = entry.pageIndex
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = page != null) { page?.let(onJump) }
+                    .padding(
+                        start = (entry.level.coerceIn(0, 6) * 16).dp,
+                        top = 10.dp,
+                        bottom = 10.dp,
+                        end = 4.dp,
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    entry.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (page != null) {
+                    Spacer(Modifier.width(8.dp))
+                    LocationsPageChip(page)
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        }
+    }
+}
+
+@Composable
+private fun LocationsAnnotationsTab(
+    allCount: Int,
+    counts: Map<AnnotationFilter, Int>,
+    filter: AnnotationFilter,
+    onFilterChange: (AnnotationFilter) -> Unit,
+    groups: Map<Int, List<Annotation>>,
+    summary: String,
+    onExport: (String) -> Unit,
+    onJump: (Int) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Text("주석", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+        Text(
+            if (filter == AnnotationFilter.ALL) "${allCount}개" else "${counts[filter] ?: 0} / ${allCount}개",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+    Spacer(Modifier.size(8.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        AnnotationFilter.entries.forEach { option ->
+            FilterChip(
+                selected = filter == option,
+                onClick = { onFilterChange(option) },
+                label = { Text("${option.label} ${counts[option] ?: 0}") },
+            )
+        }
+    }
+    Spacer(Modifier.size(10.dp))
+    Button(
+        onClick = { onExport(summary) },
+        enabled = allCount > 0,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(
+            Icons.Outlined.FileDownload,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text("주석 요약 내보내기")
+    }
+    Spacer(Modifier.size(10.dp))
+
+    when {
+        allCount == 0 -> Text(
+            "이 문서에는 주석이 없습니다.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 20.dp),
+        )
+
+        groups.isEmpty() -> Text(
+            "선택한 유형의 주석이 없습니다.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 20.dp),
+        )
+
+        else -> LazyColumn(
+            Modifier.fillMaxWidth().heightIn(max = 380.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            contentPadding = PaddingValues(bottom = 8.dp),
+        ) {
+            groups.forEach { (page, pageAnnotations) ->
+                item(key = "loc_page_header_$page") {
+                    AnnotationPageHeader(page = page, count = pageAnnotations.size)
+                }
+                items(pageAnnotations, key = { it.id }) { annotation ->
+                    LocationsAnnotationRow(annotation = annotation, onJump = onJump)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocationsAnnotationRow(annotation: Annotation, onJump: (Int) -> Unit) {
+    Surface(
+        onClick = { onJump(annotation.page) },
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier.padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Color chip with a type icon: black stays black for redactions.
+            Box(
+                Modifier
+                    .size(30.dp)
+                    .background(
+                        if (annotation.type == AnnotationType.REDACT) Color.Black else Color(annotation.color),
+                        RoundedCornerShape(8.dp),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    locationsAnnotationIcon(annotation.type),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(17.dp),
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(annotationTypeLabelRes(annotation.type)),
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.size(2.dp))
+                Text(
+                    annotationSummary(annotation),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            LocationsPageChip(annotation.page)
+        }
+    }
+}
+
+@Composable
+private fun LocationsPageChip(page: Int) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    ) {
+        Text(
+            stringResource(R.string.page_number, page + 1),
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+private fun locationsAnnotationIcon(type: AnnotationType): ImageVector = when (type) {
+    AnnotationType.PEN,
+    AnnotationType.SIGNATURE,
+    -> Icons.Outlined.Draw
+
+    AnnotationType.HIGHLIGHT -> Icons.Outlined.Highlight
+    AnnotationType.UNDERLINE -> Icons.Outlined.FormatUnderlined
+    AnnotationType.STRIKEOUT -> Icons.Outlined.FormatStrikethrough
+    AnnotationType.TEXT,
+    AnnotationType.STAMP,
+    AnnotationType.COVER_TEXT,
+    -> Icons.Outlined.TextFields
+
+    AnnotationType.RECT -> Icons.Outlined.CropSquare
+    AnnotationType.ELLIPSE -> Icons.Outlined.Circle
+    AnnotationType.LINE -> Icons.Outlined.HorizontalRule
+    AnnotationType.ARROW -> Icons.Outlined.NorthEast
+    AnnotationType.REDACT -> Icons.Outlined.VisibilityOff
+}

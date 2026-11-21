@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -181,6 +182,36 @@ internal fun hubVisibleActions(
     .filter { !it.expandable || it.title in expandedTitles }
     .flatMap { it.actions }
 
+/** The 읽기 group in the 학습 메뉴 that hosts the unified 위치 entry point. */
+internal const val PDF_HUB_READ_GROUP_TITLE = "읽기"
+internal const val PDF_HUB_LOCATIONS_LABEL = "위치"
+
+/** The unified Locations action; the host decides what sheet it opens. */
+internal fun pdfLocationsAction(onOpen: () -> Unit): PdfHubAction = PdfHubAction(
+    label = PDF_HUB_LOCATIONS_LABEL,
+    icon = Icons.Outlined.StarBorder,
+    onClick = onOpen,
+)
+
+/**
+ * Inserts the 읽기 group just after 학습 so the unified 위치 entry point is
+ * always visible without expanding 기타. The host passes no callback until it is
+ * ready to wire the sheet, in which case the menu stays byte-for-byte unchanged
+ * and every older action keeps its place.
+ */
+internal fun pdfHubSectionsWithLocations(
+    sections: List<PdfHubSection>,
+    onOpen: () -> Unit,
+): List<PdfHubSection> {
+    val readSection = PdfHubSection(
+        title = PDF_HUB_READ_GROUP_TITLE,
+        actions = listOf(pdfLocationsAction(onOpen)),
+    )
+    if (sections.isEmpty()) return listOf(readSection)
+    val insertAt = 1.coerceAtMost(sections.size)
+    return sections.take(insertAt) + readSection + sections.drop(insertAt)
+}
+
 /**
  * The single 학습 메뉴: always grouped, with 기타 collapsed by default instead
  * of a separate simple/expanded mode. Undo/redo/style live here as quick chips
@@ -203,17 +234,22 @@ fun PdfHubSheet(
     onRedo: (() -> Unit)? = null,
     styleEnabled: Boolean = false,
     onStyle: (() -> Unit)? = null,
+    /** Wired by the integrator; until then the 기존 메뉴 is rendered unchanged. */
+    onLocations: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val effectiveSections = remember(sections, onLocations) {
+        if (onLocations == null) sections else pdfHubSectionsWithLocations(sections, onLocations)
+    }
     var expandedTitles by remember {
         mutableStateOf(
-            sections
+            effectiveSections
                 .filter { it.expandable && it.initiallyExpanded }
                 .map { it.title }
                 .toSet(),
         )
     }
-    val visibleSections = sections.filter {
+    val visibleSections = effectiveSections.filter {
         !it.expandable || it.title in expandedTitles
     }
     val activeSections = visibleSections.filter { it.actions.isNotEmpty() }
@@ -295,7 +331,7 @@ fun PdfHubSheet(
                 }
             }
 
-            sections.filter { it.actions.isNotEmpty() || it.expandable }.forEach { section ->
+            effectiveSections.filter { it.actions.isNotEmpty() || it.expandable }.forEach { section ->
                 val expanded = section.title in expandedTitles
                 item(key = "header_${section.title}") {
                     HubSectionHeader(
