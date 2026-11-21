@@ -66,7 +66,7 @@ import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
 
 /** Shared label so the study-card sub-sheet and tests use one vocabulary. */
-internal const val NOTE_MEMO_CARD_LABEL = "메모 카드"
+internal const val NOTE_MEMO_CARD_LABEL = "포스트잇"
 
 /**
  * Student-facing menu vocabulary. The legacy terms were `학습 카드`/`가림 카드`;

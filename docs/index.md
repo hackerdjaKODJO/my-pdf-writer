@@ -31,6 +31,7 @@
 - [Accessibility and menu redesign — 0.8.30](a11y-0830.md)
 - [Realistic pen dynamics — 0.8.31](pen-fidelity-0831.md)
 - [Faster PDF open + PDF post-its — 0.8.32](pdf-open-and-memo-0832.md)
+- [Student-first UX redesign — 0.8.33](student-ux-0833.md)
 
 ## 문의
 

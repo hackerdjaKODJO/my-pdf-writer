@@ -877,8 +877,8 @@ private fun styleToolLabel(tool: Tool): String = when (tool) {
     Tool.SIGNATURE -> "서명"
     Tool.REDACT -> "가림"
     Tool.ERASER -> "지우개"
-    Tool.LASSO -> "올가미"
-    Tool.LASSO_RECT -> "사각 올가미"
+    Tool.LASSO -> "선택"
+    Tool.LASSO_RECT -> "사각 선택"
 }
 
 @Composable

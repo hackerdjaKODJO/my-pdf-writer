@@ -264,7 +264,7 @@ private fun PdfMemoCardView(
                 ) {
                     Icon(
                         Icons.Filled.Delete,
-                        contentDescription = "메모 카드 삭제",
+                        contentDescription = "포스트잇 삭제",
                         tint = card.tint.pdfLine,
                         modifier = Modifier.size(13.dp),
                     )
@@ -277,7 +277,7 @@ private fun PdfMemoCardView(
                 ) {
                     Icon(
                         Icons.Filled.Close,
-                        contentDescription = "페이지의 메모 카드 숨기기",
+                        contentDescription = "페이지의 포스트잇 숨기기",
                         tint = card.tint.pdfLine,
                         modifier = Modifier.size(13.dp),
                     )
@@ -442,7 +442,7 @@ fun PdfMemoCardsSheet(
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("메모 카드", style = MaterialTheme.typography.titleLarge)
+                        Text("포스트잇", style = MaterialTheme.typography.titleLarge)
                         Text(
                             "PDF 페이지에 붙여 둔 짧은 메모를 한곳에서 관리",
                             style = MaterialTheme.typography.labelMedium,
@@ -528,7 +528,7 @@ fun PdfMemoCardsSheet(
     pendingDelete?.let { entry ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("메모 카드 삭제") },
+            title = { Text("포스트잇 삭제") },
             text = { Text("이 카드의 메모를 삭제합니다. 실행 취소로 되돌릴 수 있습니다.") },
             confirmButton = {
                 TextButton(onClick = {
@@ -622,7 +622,7 @@ private fun PdfMemoEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "메모 카드 추가" else "메모 카드 수정") },
+        title = { Text(if (initial == null) "포스트잇 추가" else "포스트잇 수정") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(

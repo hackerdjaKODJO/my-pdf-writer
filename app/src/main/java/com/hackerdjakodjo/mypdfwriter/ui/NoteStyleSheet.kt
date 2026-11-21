@@ -75,7 +75,7 @@ internal fun noteStyleSliderDescription(label: String, valueLabel: String): Stri
 internal const val NOTE_TEXT_TOOL_LABEL = "글상자"
 internal const val NOTE_PAGE_MANAGER_LABEL = "페이지"
 internal const val NOTE_PEN_PRESETS_LABEL = "내 펜"
-internal const val NOTE_MASKING_CARD_LABEL = "가림 카드"
+internal const val NOTE_MASKING_CARD_LABEL = "가리기 카드"
 internal const val NOTE_CHECKLIST_LABEL = "체크리스트"
 
 internal val NOTE_SHAPE_TOOLS = listOf(Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE)
@@ -121,7 +121,7 @@ internal fun noteStyleTitle(tool: Tool): String = when (tool) {
     Tool.HIGHLIGHT -> "형광펜 스타일"
     Tool.TEXT -> "$NOTE_TEXT_TOOL_LABEL 스타일"
     Tool.ERASER -> "지우개"
-    Tool.LASSO, Tool.LASSO_RECT -> "올가미"
+    Tool.LASSO, Tool.LASSO_RECT -> "선택"
     Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> "도형 스타일"
     else -> "스타일"
 }

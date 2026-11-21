@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.32`** — `versionCode = 41`.
-- **Next version is `0.8.33` — `versionCode = 42`.**
+- Current delivered version: **`0.8.33`** — `versionCode = 42`.
+- **Next version is `0.8.34` — `versionCode = 43`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.33` | 42 | 2026-11-21 | `v0.8.33` | Student-first redesign: Home segments + quick study, 6-slot PDF study dock, 학습 메뉴, single-row note dock, clearer vocabulary |
 | `0.8.32` | 41 | 2026-11-21 | `v0.8.32` | Faster PDF open (single documentInfo, identity skip assemble, source cache), PDF post-it cards, obvious card close |
 | `0.8.31` | 40 | 2026-11-21 | `v0.8.31` | Realistic pen dynamics: ballpoint dry skipping, fountain nib taper, per-point pencil graphite, neutral legacy compatibility |
 | `0.8.30` | 39 | 2026-11-21 | `v0.8.30` | Accessibility pass: 48dp targets, state labels, accessible split divider, large-font/320dp layout policy, headings/paneTitle, contrast |

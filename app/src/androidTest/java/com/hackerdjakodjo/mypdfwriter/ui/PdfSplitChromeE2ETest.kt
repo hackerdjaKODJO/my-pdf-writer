@@ -45,6 +45,7 @@ class PdfSplitChromeE2ETest {
                     onNext = { next += 1 },
                     onOpenPages = { pages += 1 },
                     onToggleTextSelection = { selection += 1 },
+                    onOpenSearch = {},
                     onToggleBookmark = { bookmark += 1 },
                     onOpenTools = { tools += 1 },
                     onOpenHub = { hub += 1 },
@@ -56,6 +57,7 @@ class PdfSplitChromeE2ETest {
         composeRule.onNodeWithContentDescription("이전 페이지").performClick()
         composeRule.onNodeWithContentDescription("다음 페이지").performClick()
         composeRule.onNodeWithContentDescription("페이지 선택").performClick()
+        composeRule.onNodeWithContentDescription("검색").performClick()
         composeRule.onNodeWithContentDescription("텍스트 선택").performClick()
         composeRule.onNodeWithContentDescription("현재 페이지 북마크").performClick()
         composeRule.onNodeWithContentDescription("주석").performClick()
@@ -93,6 +95,7 @@ class PdfSplitChromeE2ETest {
                     onNext = { next += 1 },
                     onOpenPages = { pages += 1 },
                     onToggleTextSelection = { selection += 1 },
+                    onOpenSearch = {},
                     onToggleBookmark = { bookmark += 1 },
                     onOpenTools = { tools += 1 },
                     onOpenHub = { hub += 1 },

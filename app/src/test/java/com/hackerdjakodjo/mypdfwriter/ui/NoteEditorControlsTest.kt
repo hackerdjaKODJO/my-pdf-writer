@@ -146,12 +146,12 @@ class NoteEditorControlsTest {
         assertEquals("페이지", NOTE_PAGE_MANAGER_LABEL)
         assertEquals("내 펜", NOTE_PEN_PRESETS_LABEL)
         // The legacy card constants are untouched; the menu uses student-facing aliases.
-        assertEquals("가림 카드", NOTE_MASKING_CARD_LABEL)
+        assertEquals("가리기 카드", NOTE_MASKING_CARD_LABEL)
         assertEquals("복습 카드", NOTE_REVIEW_CARDS_LABEL)
         assertEquals("가리기 카드", NOTE_MASKING_REVIEW_CARD_LABEL)
         assertEquals("필기 설정", NOTE_INK_SETTINGS_LABEL)
         assertEquals("체크리스트", NOTE_CHECKLIST_LABEL)
-        assertEquals("메모 카드", NOTE_MEMO_CARD_LABEL)
+        assertEquals("포스트잇", NOTE_MEMO_CARD_LABEL)
         assertTrue(noteStyleTitle(Tool.TEXT).contains(NOTE_TEXT_TOOL_LABEL))
         assertTrue(noteToolHint(Tool.TEXT).contains(NOTE_TEXT_TOOL_LABEL))
     }
@@ -235,10 +235,10 @@ class NoteEditorControlsTest {
     @Test
     fun `memo close hide and restore stay distinct and accessible`() {
         assertEquals("닫기", MEMO_CARD_CLOSE_LABEL)
-        assertEquals("메모 카드 닫기", MEMO_CARD_CLOSE_DESCRIPTION)
+        assertEquals("포스트잇 닫기", MEMO_CARD_CLOSE_DESCRIPTION)
         assertEquals("memo_card_close_m1", memoCardCloseTag("m1"))
-        assertEquals("메모 카드 숨기기", MEMO_HIDE_CARDS_LABEL)
-        assertEquals("메모 카드 표시", MEMO_SHOW_CARDS_LABEL)
+        assertEquals("포스트잇 숨기기", MEMO_HIDE_CARDS_LABEL)
+        assertEquals("포스트잇 표시", MEMO_SHOW_CARDS_LABEL)
         assertEquals("memo_cards_restore_pill", MEMO_CARDS_RESTORE_PILL_TAG)
         assertTrue(MEMO_CARD_HEADER_MIN_HEIGHT_DP >= MIN_TARGET_DP)
         assertFalse(MEMO_CARD_CLOSE_DESCRIPTION.contains("삭제"))

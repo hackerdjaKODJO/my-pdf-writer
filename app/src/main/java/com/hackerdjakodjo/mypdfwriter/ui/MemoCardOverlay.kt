@@ -69,7 +69,7 @@ private val MemoTint.inkColor: Color get() = Color(ink)
 internal const val MEMO_CARD_CLOSE_LABEL = "닫기"
 
 /** Spoken description: closing a card only hides the overlay, it never deletes it. */
-internal const val MEMO_CARD_CLOSE_DESCRIPTION = "메모 카드 닫기"
+internal const val MEMO_CARD_CLOSE_DESCRIPTION = "포스트잇 닫기"
 
 /** Per-card test tag prefix; the full tag is [memoCardCloseTag]. */
 internal const val MEMO_CARD_CLOSE_TAG_PREFIX = "memo_card_close_"
@@ -81,7 +81,7 @@ internal const val MEMO_CARD_HEADER_MIN_HEIGHT_DP: Int = MIN_TARGET_DP
 
 /** Card-local destructive action stays inside the ⋮ menu and always confirms. */
 internal const val MEMO_CARD_DELETE_MENU_LABEL = "카드 삭제"
-internal const val MEMO_DELETE_TITLE = "메모 카드 삭제"
+internal const val MEMO_DELETE_TITLE = "포스트잇 삭제"
 internal const val MEMO_DELETE_MESSAGE = "이 카드의 메모를 삭제합니다. 실행 취소로 되돌릴 수 있습니다."
 internal const val MEMO_DELETE_CONFIRM = "삭제"
 internal const val MEMO_DELETE_CANCEL = "취소"
@@ -318,7 +318,7 @@ private fun MemoCardView(
                             .clip(RoundedCornerShape(4.dp))
                             .clickable { menuOpen = true }
                             .testTag("memo_card_more_${card.id}")
-                            .semantics { contentDescription = "메모 카드 메뉴" },
+                            .semantics { contentDescription = "포스트잇 메뉴" },
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(

@@ -57,10 +57,10 @@ import kotlin.math.roundToInt
 private val MemoTint.bg: Color get() = Color(background)
 
 /** Top-level sheet action: hiding the cards is view-only, never a deletion. */
-internal const val MEMO_HIDE_CARDS_LABEL = "메모 카드 숨기기"
+internal const val MEMO_HIDE_CARDS_LABEL = "포스트잇 숨기기"
 
 /** Matching restore action, shown both in the sheet and as an on-page pill. */
-internal const val MEMO_SHOW_CARDS_LABEL = "메모 카드 표시"
+internal const val MEMO_SHOW_CARDS_LABEL = "포스트잇 표시"
 internal const val MEMO_SHEET_HIDE_TAG = "memo_sheet_hide_cards"
 internal const val MEMO_SHEET_SHOW_TAG = "memo_sheet_show_cards"
 internal const val MEMO_CARDS_RESTORE_PILL_TAG = "memo_cards_restore_pill"
@@ -207,7 +207,7 @@ fun MemoCardsSheet(
 
             item {
                 Text(
-                    "메모 카드는 노트 JSON과 로컬 백업에 저장되며 PDF 내보내기에도 기본적으로 포함됩니다. 페이지에서 숨기기는 보기 전용입니다.",
+                    "포스트잇는 노트 JSON과 로컬 백업에 저장되며 PDF 내보내기에도 기본적으로 포함됩니다. 페이지에서 숨기기는 보기 전용입니다.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 10.dp),
@@ -348,7 +348,7 @@ private fun MemoCardEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "메모 카드 추가" else "메모 카드 수정") },
+        title = { Text(if (initial == null) "포스트잇 추가" else "포스트잇 수정") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(

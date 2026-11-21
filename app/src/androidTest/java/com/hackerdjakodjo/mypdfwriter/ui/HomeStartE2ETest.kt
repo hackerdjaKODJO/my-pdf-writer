@@ -246,7 +246,7 @@ class HomeStartE2ETest {
 
         composeRule.onNodeWithContentDescription("PDF 섹션").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("PDF 메뉴: lecture.pdf").performClick()
+        composeRule.onNodeWithContentDescription("학습 메뉴: lecture.pdf").performClick()
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("최근 목록에서 제거").assertExists()

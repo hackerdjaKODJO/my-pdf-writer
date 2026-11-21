@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.FormatUnderlined
 import androidx.compose.material.icons.outlined.Handyman
 import androidx.compose.material.icons.outlined.Highlight
 import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
@@ -248,6 +249,7 @@ internal fun SplitPdfToolbar(
     onOpenPages: () -> Unit,
     onToggleTextSelection: () -> Unit,
     onToggleBookmark: () -> Unit,
+    onOpenSearch: () -> Unit,
     onOpenTools: () -> Unit,
     onOpenHub: () -> Unit,
     modifier: Modifier = Modifier,
@@ -285,6 +287,12 @@ internal fun SplitPdfToolbar(
             )
 
             if (!compact) {
+                SplitChromeButton(
+                    icon = Icons.Outlined.Search,
+                    contentDescription = "검색",
+                    onClick = onOpenSearch,
+                )
+
                 SplitChromeButton(
                     icon = Icons.AutoMirrored.Outlined.TextSnippet,
                     contentDescription = when (toggleState) {

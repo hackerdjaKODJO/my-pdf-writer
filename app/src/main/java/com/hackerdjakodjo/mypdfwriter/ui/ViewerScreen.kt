@@ -1015,6 +1015,7 @@ fun ViewerScreen(
                                 onNext = vm::nextPage,
                                 onOpenPages = { showPages = true },
                                 onToggleTextSelection = toggleTextSelection,
+                                onOpenSearch = { showSearch = true },
                                 onToggleBookmark = {
                                     if (currentBookmark != null) {
                                         vm.deleteBookmark(currentBookmark.id)

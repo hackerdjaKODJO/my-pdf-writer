@@ -64,8 +64,8 @@ class MemoCardsSheetTest {
 
     @Test
     fun hideAndRestoreAreSeparateVisibleActions() {
-        assertEquals("메모 카드 숨기기", MEMO_HIDE_CARDS_LABEL)
-        assertEquals("메모 카드 표시", MEMO_SHOW_CARDS_LABEL)
+        assertEquals("포스트잇 숨기기", MEMO_HIDE_CARDS_LABEL)
+        assertEquals("포스트잇 표시", MEMO_SHOW_CARDS_LABEL)
         assertNotEquals(MEMO_HIDE_CARDS_LABEL, MEMO_SHOW_CARDS_LABEL)
         assertEquals("memo_sheet_hide_cards", MEMO_SHEET_HIDE_TAG)
         assertEquals("memo_sheet_show_cards", MEMO_SHEET_SHOW_TAG)

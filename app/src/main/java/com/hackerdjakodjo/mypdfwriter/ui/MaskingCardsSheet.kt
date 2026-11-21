@@ -93,7 +93,7 @@ fun MaskingCardsSheet(
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("가림 카드", style = MaterialTheme.typography.titleLarge)
+                        Text("가리기 카드", style = MaterialTheme.typography.titleLarge)
                         Text(
                             "질문을 가리고 정답을 확인하는 오프라인 복습",
                             style = MaterialTheme.typography.labelMedium,
@@ -165,7 +165,7 @@ fun MaskingCardsSheet(
 
             item {
                 Text(
-                    "가림 카드는 공부용 데이터입니다. 노트 JSON과 로컬 백업에는 저장되지만 " +
+                    "가리기 카드는 공부용 데이터입니다. 노트 JSON과 로컬 백업에는 저장되지만 " +
                         "PDF 내보내기에는 포함되지 않습니다.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -281,7 +281,7 @@ private fun MaskingCardEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "가림 카드 추가" else "가림 카드 수정") },
+        title = { Text(if (initial == null) "가리기 카드 추가" else "가리기 카드 수정") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(

@@ -1661,7 +1661,7 @@ private fun PdfGridCard(doc: RecentDoc, onClick: () -> Unit, onMenu: () -> Unit)
                 IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
                     Icon(
                         Icons.Outlined.MoreVert,
-                        contentDescription = menuLabel("PDF 메뉴", doc.name),
+                        contentDescription = menuLabel("학습 메뉴", doc.name),
                         modifier = Modifier.size(19.dp),
                     )
                 }
@@ -1730,7 +1730,7 @@ private fun PdfListRow(doc: RecentDoc, onClick: () -> Unit, onMenu: () -> Unit) 
             IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
                 Icon(
                     Icons.Outlined.MoreVert,
-                    contentDescription = menuLabel("PDF 메뉴", doc.name),
+                    contentDescription = menuLabel("학습 메뉴", doc.name),
                     modifier = Modifier.size(19.dp),
                 )
             }
