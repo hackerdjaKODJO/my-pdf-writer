@@ -89,6 +89,83 @@ class HelpCenterContentTest {
         assertTrue(topics[HelpTopicKey.BACKUP]!!.caution!!.contains("암호화되지"))
     }
 
+    @Test
+    fun quickCardsAreFourInDocumentedOrder() {
+        assertEquals(
+            listOf("1 PDF 열기", "2 표시하며 읽기", "3 노트에 담기", "4 복습하기"),
+            quickCards().map { it.label },
+        )
+        assertEquals(4, quickCards().size)
+        assertEquals(quickCards().map { it.key }.toSet().size, quickCards().size)
+        assertEquals(
+            listOf(
+                QuickCardKey.OPEN_PDF,
+                QuickCardKey.MARK_WHILE_READ,
+                QuickCardKey.CAPTURE_TO_NOTE,
+                QuickCardKey.REVIEW,
+            ),
+            quickCards().map { it.key },
+        )
+    }
+
+    @Test
+    fun quickCardsAreOneSentenceWithTapDestinations() {
+        quickCards().forEach { card ->
+            assertTrue("${card.key} sentence is blank", card.sentence.isNotBlank())
+            assertTrue("${card.key} sentence should be Korean", containsKorean(card.sentence))
+            assertEquals(
+                "${card.key} sentence must be one sentence: ${card.sentence}",
+                1,
+                card.sentence.count { it == '.' },
+            )
+            assertTrue("${card.key} sentence must end with a period", card.sentence.endsWith("."))
+            assertTrue("${card.key} action label is blank", card.actionLabel.isNotBlank())
+            assertTrue(
+                "${card.key} must point at a legacy topic",
+                helpTopics().any { it.key == card.topicKey },
+            )
+        }
+        assertEquals(
+            listOf(
+                QuickDestination.OPEN_PDF,
+                QuickDestination.MARKUP_TOOLS,
+                QuickDestination.NOTE_PANE,
+                QuickDestination.REVIEW_CARDS,
+            ),
+            quickCards().map { it.destination },
+        )
+        assertEquals(
+            listOf(
+                HelpTopicKey.OPEN_PDF,
+                HelpTopicKey.TEXT_SELECTION,
+                HelpTopicKey.STUDY_NOTE,
+                HelpTopicKey.WRITE_TOOLS,
+            ),
+            quickCards().map { it.topicKey },
+        )
+    }
+
+    @Test
+    fun showMoreRevealsAllEightLegacyTopics() {
+        assertEquals("더보기", SHOW_MORE_LABEL)
+        assertTrue("legacy topics must be hidden until 더보기", visibleLegacyTopics(false).isEmpty())
+        assertEquals(helpTopics(), visibleLegacyTopics(true))
+        assertEquals(8, visibleLegacyTopics(true).size)
+        assertEquals(
+            setOf(
+                HelpTopicKey.QUICK_START,
+                HelpTopicKey.OPEN_PDF,
+                HelpTopicKey.TEXT_SELECTION,
+                HelpTopicKey.STUDY_NOTE,
+                HelpTopicKey.WRITE_TOOLS,
+                HelpTopicKey.SEARCH_NAV,
+                HelpTopicKey.BACKUP,
+                HelpTopicKey.TROUBLESHOOT,
+            ),
+            visibleLegacyTopics(true).map { it.key }.toSet(),
+        )
+    }
+
     private fun containsKorean(value: String): Boolean =
         value.any { it.code in 0xAC00..0xD7A3 }
 }

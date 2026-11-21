@@ -70,6 +70,15 @@ class OnboardingContentTest {
     }
 
     @Test
+    fun quickStartFramingMatchesTheHelpCenter() {
+        assertEquals("60초 빠른 시작", ONBOARDING_QUICK_START_LABEL)
+        assertTrue(
+            "the last card should point at the help center quick cards",
+            onboardingCards().any { it.body.contains("4단계 빠른 시작") },
+        )
+    }
+
+    @Test
     fun contentIsFullyOfflineWithNoExternalReferences() {
         val allText = onboardingCards().joinToString("\n") { "${it.title}\n${it.body}" }.lowercase()
         listOf("http", "https", "www.", "mailto:", ".html", "play.google", "github.com")
