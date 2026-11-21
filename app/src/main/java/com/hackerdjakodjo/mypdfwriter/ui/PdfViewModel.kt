@@ -43,6 +43,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLine
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTools
+import com.hackerdjakodjo.mypdfwriter.pdf.isIdentityPageSpecs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -183,10 +184,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val name = repo.queryDisplayName(uri)
                 val docId = docIdFor(uri)
-                val source = File(sourceDir, "$docId.pdf")
-                repo.copyFromUri(uri, source)
-                val sourceCount = repo.pageCount(source)
-                val sizes = runCatching { repo.sourcePageSizes(source) }.getOrDefault(emptyList())
+                // Reuse this session's copy when possible; page edits never touch it.
+                val source = repo.sourceFileFor(uri, File(sourceDir, "$docId.pdf"))
+                // One PDDocument load replaces the old pageCount() + sourcePageSizes() pair.
+                val info = repo.documentInfo(source)
+                val sourceCount = info.pageCount
+                val sizes = info.pageSizes
                 val style = docStyleStore.load(docId)
                 val saved = docStore.load(docId)?.normalized(sourceCount)
                 val pages = saved?.pages ?: List(sourceCount) { PageSpec(it) }
@@ -194,8 +197,16 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 val notes = saved?.notes ?: emptyMap()
                 val displayPrefs = saved?.displayPrefs ?: DisplayPrefs()
                 val reading = (readingStore.load(docId) ?: PdfReadingState()).normalized(pages.size)
-                val working = File(workingDir, "$docId.pdf")
-                repo.assemble(source, pages, working)
+                // An unchanged layout needs no load+save pass: render the source directly.
+                // newVersion() keeps the per-open bitmap-cache invalidation assemble() used to do.
+                val working: File
+                if (isIdentityPageSpecs(pages, sourceCount)) {
+                    repo.newVersion()
+                    working = source
+                } else {
+                    working = File(workingDir, "$docId.pdf")
+                    repo.assemble(source, pages, working)
+                }
 
                 sourceFile = source
                 workingFile = working
@@ -244,6 +255,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 renderPage(restoredPage)
             }.onFailure { error ->
+                // A bad/truncated copy must not poison later opens in this session.
+                repo.invalidateSource(uri.toString())
                 _viewer.value = null
                 _pageBitmap.value = null
                 _pageLinks.value = emptyList()
@@ -270,6 +283,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 resolver.openOutputStream(uri)?.use { output -> repo.writeBlankPdf(output) }
                     ?: error("출력 파일을 열 수 없습니다.")
             }.onSuccess {
+                // The URI now holds different bytes; drop any session copy of the old file.
+                repo.invalidateSource(uri.toString())
                 openDocument(uri)
             }.onFailure { error ->
                 _libraryMessage.value = text(R.string.error_generic, error.message ?: "")
@@ -1009,9 +1024,9 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun resetPages() {
         val state = _viewer.value ?: return
         if (state.busy) return
-        val source = sourceFile ?: return
         viewModelScope.launch {
-            val sizes = runCatching { repo.sourcePageSizes(source) }.getOrDefault(emptyList())
+            // Reuse the sizes loaded at open time instead of loading the PDF again.
+            val sizes = sourceSizes
             val specs = List(state.sourcePageCount) { PageSpec(it) }
 
             fun rotated(annotation: Annotation, spec: PageSpec): Annotation {
@@ -1051,11 +1066,14 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun rebuild(state: ViewerUiState) {
         val source = sourceFile ?: return
-        val working = workingFile ?: return
+        // Always assemble into a distinct working path: an identity open may have
+        // pointed workingFile at the source, and assembling onto it would corrupt it.
+        val working = File(workingDir, "${state.docId}.pdf")
         viewModelScope.launch {
             _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.building_pages)) }
             runCatching { repo.assemble(source, state.pages, working) }
                 .onSuccess {
+                    workingFile = working
                     val pageCount = state.pages.size
                     val safeIndex = state.pageIndex.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
                     _viewer.value = state.copy(
@@ -1588,6 +1606,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             excerptStore.delete(id)
             readingStore.delete(id)
             File(sourceDir, "$id.pdf").delete()
+            repo.invalidateSource(uri)
         }
     }
 

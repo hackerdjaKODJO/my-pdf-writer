@@ -25,7 +25,69 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
 import kotlin.math.roundToInt
 
+/** Page count and per-page display sizes obtained from a single PDDocument load. */
+data class DocumentInfo(val pageCount: Int, val pageSizes: List<PageSize>)
+
+/**
+ * True when [pages] is exactly the source document: same page count, every page
+ * references its own index, no extra rotation and no blank page. Such a layout
+ * needs no assemble() pass; the source file can be used as the working file.
+ *
+ * Rotation is compared after normalization, so a full 360-degree turn is also
+ * treated as identity (it produces the same rendered page).
+ */
+fun isIdentityPageSpecs(pages: List<PageSpec>, sourceCount: Int): Boolean {
+    if (pages.size != sourceCount) return false
+    for (index in pages.indices) {
+        val spec = pages[index]
+        if (spec.sourcePage != index) return false
+        if (PageSpec.normalizeRotation(spec.extraRotation) != 0) return false
+    }
+    return true
+}
+
+/**
+ * Pure cache-reuse decision used by [PdfRepository.sourceFileFor]: a previously
+ * copied source is reusable only while it still exists on disk and has bytes.
+ * A missing or truncated copy is treated as a cache miss and copied again.
+ */
+fun reusableCachedSource(cached: File?): File? =
+    cached?.takeIf { it.exists() && it.length() > 0L }
+
+/**
+ * Blocking implementation shared by [PdfRepository.documentInfo]. Kept as a
+ * top-level function so the count/size extraction can be exercised by plain JVM
+ * tests without an Android [Context]. The PDDocument is loaded exactly once.
+ */
+fun readDocumentInfo(file: File): DocumentInfo = PDDocument.load(file).use { doc ->
+    val count = doc.numberOfPages
+    // A malformed page box must not cost us the page count; the old two-call
+    // flow also let size extraction fail soft while pageCount() still succeeded.
+    val sizes = runCatching {
+        (0 until count).map { index ->
+            val page = doc.getPage(index)
+            val box = page.cropBox
+            if (PageSpec.normalizeRotation(page.rotation) % 180 == 0) {
+                PageSize(box.width, box.height)
+            } else {
+                PageSize(box.height, box.width)
+            }
+        }
+    }.getOrDefault(emptyList())
+    DocumentInfo(count, sizes)
+}
+
 class PdfRepository(private val context: Context) {
+
+    /**
+     * Session-only map from a URI string to the file we copied from it. It lives
+     * only as long as this repository (one ViewModel / app process): reopening the
+     * same URI reuses the bytes instead of copying them again, and nothing is
+     * persisted. Page edits never touch these files — assemble() always writes a
+     * separate working copy — so the cached source stays pristine. Stale entries
+     * are dropped when the file is gone/empty or when any step of opening fails.
+     */
+    private val sourceCache = HashMap<String, File>()
 
     private val renderMutex = Mutex()
     private val version = AtomicInteger(0)
@@ -46,6 +108,28 @@ class PdfRepository(private val context: Context) {
         target
     }
 
+    /**
+     * Returns the local source file for [uri], copying it into [target] only when
+     * this session has no existing, non-empty copy. See [sourceCache] for the
+     * session-only lifetime and the page-edit/working-copy distinction. Any copy
+     * failure drops the entry so the next attempt starts clean.
+     */
+    suspend fun sourceFileFor(uri: Uri, target: File): File = withContext(Dispatchers.IO) {
+        val key = uri.toString()
+        val cached = synchronized(sourceCache) { reusableCachedSource(sourceCache[key]) }
+        if (cached != null) return@withContext cached
+        val copied = runCatching { copyFromUri(uri, target) }
+            .onFailure { synchronized(sourceCache) { sourceCache.remove(key) } }
+            .getOrThrow()
+        synchronized(sourceCache) { sourceCache[key] = copied }
+        copied
+    }
+
+    /** Drops the session-only source copy for a URI (e.g. after a failed open or a delete). */
+    fun invalidateSource(uriString: String) {
+        synchronized(sourceCache) { sourceCache.remove(uriString) }
+    }
+
     suspend fun queryDisplayName(uri: Uri): String = withContext(Dispatchers.IO) {
         var name: String? = null
         runCatching {
@@ -59,24 +143,17 @@ class PdfRepository(private val context: Context) {
         name?.takeIf { it.isNotBlank() } ?: "문서.pdf"
     }
 
+    /** Single PDDocument load providing both the page count and source page sizes. */
+    suspend fun documentInfo(file: File): DocumentInfo = withContext(Dispatchers.IO) {
+        readDocumentInfo(file)
+    }
+
     suspend fun pageCount(file: File): Int = withContext(Dispatchers.IO) {
         PDDocument.load(file).use { it.numberOfPages }
     }
 
     /** Display size of each source page (after its own /Rotate), used to keep annotations aligned. */
-    suspend fun sourcePageSizes(file: File): List<PageSize> = withContext(Dispatchers.IO) {
-        PDDocument.load(file).use { doc ->
-            (0 until doc.numberOfPages).map { index ->
-                val page = doc.getPage(index)
-                val box = page.cropBox
-                if (PageSpec.normalizeRotation(page.rotation) % 180 == 0) {
-                    PageSize(box.width, box.height)
-                } else {
-                    PageSize(box.height, box.width)
-                }
-            }
-        }
-    }
+    suspend fun sourcePageSizes(file: File): List<PageSize> = documentInfo(file).pageSizes
 
     /** Builds a working PDF from the source file according to [specs] (order, deletions, extra rotation, blanks). */
     suspend fun assemble(source: File, specs: List<PageSpec>, target: File) = withContext(Dispatchers.IO) {
