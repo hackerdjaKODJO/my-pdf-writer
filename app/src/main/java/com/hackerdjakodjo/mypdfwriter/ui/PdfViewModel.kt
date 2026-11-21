@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -122,6 +123,82 @@ internal fun upsertMemoCardIn(cards: List<MemoCard>, card: MemoCard): List<MemoC
 internal fun deleteMemoCardFrom(cards: List<MemoCard>, id: String): List<MemoCard> =
     cards.filterNot { it.id == id }
 
+/**
+ * Undo payload for page layout and ink only. Notes and memo cards are deliberately
+ * absent: undoing an annotation must not roll back a later note/card edit.
+ */
+internal data class DocSnapshot(
+    val pages: List<PageSpec>,
+    val annotations: List<Annotation>,
+    val pageIndex: Int,
+)
+
+/**
+ * Applies a snapshot while keeping the *current* notes and memo cards. The note
+ * draft is re-derived from those notes at the restored page, so undo/redo never
+ * leaves a draft that no longer matches the page being shown.
+ */
+internal fun restoreSnapshotInto(
+    state: ViewerUiState,
+    snapshot: DocSnapshot,
+    canUndo: Boolean,
+    canRedo: Boolean,
+): ViewerUiState {
+    val page = snapshot.pageIndex.coerceIn(0, (snapshot.pages.size - 1).coerceAtLeast(0))
+    return state.copy(
+        pages = snapshot.pages,
+        annotations = snapshot.annotations,
+        notes = state.notes,
+        memoCards = state.memoCards,
+        pageIndex = page,
+        pageCount = snapshot.pages.size,
+        noteDraft = state.notes[page] ?: "",
+        canUndo = canUndo,
+        canRedo = canRedo,
+    )
+}
+
+/**
+ * Pure state of the coalescing doc-state writer. [pending] is the newest captured
+ * state not yet written; [running] is true while the single IO drain loop owns it.
+ */
+internal data class DocSaveQueue(
+    val pending: DocState? = null,
+    val running: Boolean = false,
+) {
+    /** Returns the updated queue and whether a writer job must be started. */
+    fun offer(state: DocState): Pair<DocSaveQueue, Boolean> =
+        copy(pending = state, running = true) to !running
+
+    /** Returns the updated queue and the state to write, or null when drained. */
+    fun take(): Pair<DocSaveQueue, DocState?> =
+        if (pending == null) {
+            copy(running = false) to null
+        } else {
+            copy(pending = null, running = true) to pending
+        }
+}
+
+/** Cancellation is control flow, not a failure: never let it become a UI error. */
+internal fun rethrowIfCancelled(error: Throwable) {
+    if (error is CancellationException) throw error
+}
+
+/** Guards background publication against stale work after a document swap. */
+internal fun mayPublishViewerResult(
+    isActive: Boolean,
+    currentDocId: String?,
+    docId: String,
+): Boolean = isActive && currentDocId == docId
+
+/** Drops annotations on pages that were not extracted before remapping indexes. */
+internal fun remapExtractedAnnotations(
+    annotations: List<Annotation>,
+    ordered: List<Int>,
+): List<Annotation> = annotations
+    .filter { it.page in ordered }
+    .map { it.copy(page = ordered.indexOf(it.page)) }
+
 class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repo = PdfRepository(application)
@@ -183,13 +260,9 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private var textLayoutLoadingKey: String? = null
     private var currentPageTextsKey: String? = null
 
-    private data class DocSnapshot(
-        val pages: List<PageSpec>,
-        val annotations: List<Annotation>,
-        val notes: Map<Int, String>,
-        val memoCards: List<MemoCard>,
-        val pageIndex: Int,
-    )
+    private var docSaveJob: Job? = null
+    private var docSaveQueue = DocSaveQueue()
+    private val docSaveLock = Any()
 
     private val undoStack = ArrayDeque<DocSnapshot>()
     private val redoStack = ArrayDeque<DocSnapshot>()
@@ -198,6 +271,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openDocument(uri: Uri, addToRecents: Boolean = true) {
         saveReadingNow()
+        searchJob?.cancel()
         viewModelScope.launch {
             _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.rendering_page)) }
             runCatching {
@@ -345,8 +419,16 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val file = workingFile ?: return
         renderJob?.cancel()
         renderJob = viewModelScope.launch {
+            val docId = _viewer.value?.docId ?: return@launch
             _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.rendering_page)) }
-            val rendered = runCatching { repo.renderPage(file, index, RENDER_SCALE) }.getOrNull()
+            val rendered = try {
+                repo.renderPage(file, index, RENDER_SCALE)
+            } catch (error: Throwable) {
+                rethrowIfCancelled(error)
+                null
+            }
+            // A superseded render (page flip or document swap) must not publish.
+            if (!mayPublishViewerResult(isActive, _viewer.value?.docId, docId)) return@launch
             if (rendered == null) {
                 _viewer.update {
                     it?.copy(busy = false, busyLabel = null, message = text(R.string.unsupported_pdf))
@@ -863,8 +945,6 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private fun snapshot(state: ViewerUiState) = DocSnapshot(
         pages = state.pages,
         annotations = state.annotations,
-        notes = state.notes,
-        memoCards = state.memoCards,
         pageIndex = state.pageIndex,
     )
 
@@ -877,13 +957,9 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun restoreSnapshot(state: ViewerUiState, snapshot: DocSnapshot) {
         val pagesChanged = snapshot.pages != state.pages
-        val restored = state.copy(
-            pages = snapshot.pages,
-            annotations = snapshot.annotations,
-            notes = snapshot.notes,
-            memoCards = snapshot.memoCards,
-            pageIndex = snapshot.pageIndex.coerceIn(0, (snapshot.pages.size - 1).coerceAtLeast(0)),
-            pageCount = snapshot.pages.size,
+        val restored = restoreSnapshotInto(
+            state = state,
+            snapshot = snapshot,
             canUndo = undoStack.isNotEmpty(),
             canRedo = redoStack.isNotEmpty(),
         )
@@ -1084,9 +1160,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             _viewer.update { it?.copy(busy = true, busyLabel = "페이지를 추출하는 중…") }
             runCatching {
                 val specs = ordered.map { state.pages[it] }
-                val annotations = state.annotations
-                    .filter { it.page in indices }
-                    .map { it.copy(page = ordered.indexOf(it.page)) }
+                val annotations = remapExtractedAnnotations(state.annotations, ordered)
                 withContext(Dispatchers.IO) {
                     resolver.openOutputStream(uri, "wt")?.use { output ->
                         PdfExporter.export(
@@ -1619,23 +1693,32 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         }
         searchJob = viewModelScope.launch {
             delay(220)
+            if (!mayPublishViewerResult(isActive, _viewer.value?.docId, state.docId)) return@launch
             _viewer.update { it?.copy(searching = true, searchFailed = false) }
             val file = workingFile ?: return@launch
             val key = "${state.docId}:${file.lastModified()}:${state.pages.size}"
-            if (pageTexts == null || currentPageTextsKey != key) {
-                val extracted = runCatching { repo.extractPagesText(file) }.getOrNull()
-                if (extracted == null) {
-                    _viewer.update { it?.copy(searching = false, searchFailed = true) }
-                    return@launch
-                }
-                pageTexts = extracted
-                currentPageTextsKey = key
+            val texts = pageTexts?.takeIf { currentPageTextsKey == key } ?: try {
+                repo.extractPagesText(file)
+            } catch (error: Throwable) {
+                rethrowIfCancelled(error)
+                null
             }
-            val hits = SearchNavigation.hitsForPages(pageTexts.orEmpty(), trimmed)
+            if (texts == null) {
+                if (mayPublishViewerResult(isActive, _viewer.value?.docId, state.docId)) {
+                    _viewer.update { it?.copy(searching = false, searchFailed = true) }
+                }
+                return@launch
+            }
+            pageTexts = texts
+            currentPageTextsKey = key
+            val hits = SearchNavigation.hitsForPages(texts, trimmed)
+            if (!mayPublishViewerResult(isActive, _viewer.value?.docId, state.docId)) return@launch
             _viewer.update { current ->
                 current?.copy(
                     searchHits = hits,
                     searching = false,
+                    // A successful search always clears an earlier failure.
+                    searchFailed = false,
                     // A new query restarts at the first result; a repeat search keeps
                     // the reader's place, clamped to the new list.
                     currentSearchHit = SearchNavigation.indexAfterQueryChange(
@@ -1754,6 +1837,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun persistNow() {
         val state = _viewer.value ?: return
+        // Capture the whole DocState on the Main thread before handing it to the writer.
         val doc = DocState(
             docId = state.docId,
             displayName = state.docName,
@@ -1766,7 +1850,29 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             ),
             memoCards = state.memoCards,
         )
-        viewModelScope.launch(Dispatchers.IO) { docStore.save(doc) }
+        val startWriter: Boolean
+        synchronized(docSaveLock) {
+            val (updated, shouldStart) = docSaveQueue.offer(doc)
+            docSaveQueue = updated
+            startWriter = shouldStart
+        }
+        // One drain loop owns the tmp file; never cancel it mid-write. Close/error
+        // paths keep calling persistNow(), so their final state is always written.
+        if (startWriter) docSaveJob = viewModelScope.launch(Dispatchers.IO) { drainDocSaves() }
+    }
+
+    /** Writes the newest pending state in a loop until nothing remains queued. */
+    private fun drainDocSaves() {
+        while (true) {
+            val next: DocState?
+            synchronized(docSaveLock) {
+                val (updated, state) = docSaveQueue.take()
+                docSaveQueue = updated
+                next = state
+            }
+            if (next == null) return
+            docStore.save(next)
+        }
     }
 
     /** Saves the page the user landed on after a short pause so page flipping stays cheap. */
