@@ -3,6 +3,7 @@ package com.hackerdjakodjo.mypdfwriter.data
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -332,6 +333,91 @@ class BackupManagerTest {
                 )
             }
             assertTrue(error.message.orEmpty().contains("파일 수"))
+        }
+    }
+
+    @Test
+    fun preferenceFailureRollsBackReplacedDirectoriesBeforePropagating() {
+        withTempRoot { root ->
+            val files = File(root, "files")
+            write(File(files, "notebooks/old.json"), "old")
+            write(File(files, "docstates/old.json"), "old-state")
+            write(File(files, "unrelated.txt"), "keep")
+
+            val staged = File(root, "staged")
+            write(File(staged, "notebooks/new.json"), "new")
+            write(File(staged, "docstates/new.json"), "new-state")
+
+            val failure = IllegalStateException("pref commit failed")
+            val error = assertThrows(IllegalStateException::class.java) {
+                installRestoredData(
+                    filesDir = files,
+                    stagedFilesDir = staged,
+                    directories = listOf("notebooks", "docstates"),
+                    rollbackDir = File(root, "rollback"),
+                    applyPreferences = { throw failure },
+                )
+            }
+
+            assertSame(failure, error)
+            assertEquals("old", File(files, "notebooks/old.json").readText())
+            assertEquals("old-state", File(files, "docstates/old.json").readText())
+            assertFalse(File(files, "notebooks/new.json").exists())
+            assertFalse(File(files, "docstates/new.json").exists())
+            assertEquals("keep", File(files, "unrelated.txt").readText())
+        }
+    }
+
+    @Test
+    fun preferenceFailureRemovesDirectoriesThatDidNotExistBefore() {
+        withTempRoot { root ->
+            val files = File(root, "files")
+            write(File(files, "notebooks/old.json"), "old")
+
+            val staged = File(root, "staged")
+            write(File(staged, "docstates/new.json"), "new-state")
+            write(File(staged, "notebooks/new.json"), "new")
+
+            var rollbackFailed = false
+            assertThrows(IllegalStateException::class.java) {
+                installRestoredData(
+                    filesDir = files,
+                    stagedFilesDir = staged,
+                    directories = listOf("docstates", "notebooks"),
+                    rollbackDir = File(root, "rollback"),
+                    applyPreferences = { throw IllegalStateException("pref commit failed") },
+                    onRollbackFailed = { rollbackFailed = true },
+                )
+            }
+
+            assertFalse(rollbackFailed)
+            assertFalse(File(files, "docstates").exists())
+            assertEquals("old", File(files, "notebooks/old.json").readText())
+            assertFalse(File(files, "notebooks/new.json").exists())
+        }
+    }
+
+    @Test
+    fun applyingPreferencesSuccessfullyKeepsRestoredDirectories() {
+        withTempRoot { root ->
+            val files = File(root, "files")
+            write(File(files, "notebooks/old.json"), "old")
+
+            val staged = File(root, "staged")
+            write(File(staged, "notebooks/new.json"), "new")
+
+            var applied = false
+            installRestoredData(
+                filesDir = files,
+                stagedFilesDir = staged,
+                directories = listOf("notebooks"),
+                rollbackDir = File(root, "rollback"),
+                applyPreferences = { applied = true },
+            )
+
+            assertTrue(applied)
+            assertEquals("new", File(files, "notebooks/new.json").readText())
+            assertFalse(File(files, "notebooks/old.json").exists())
         }
     }
 
