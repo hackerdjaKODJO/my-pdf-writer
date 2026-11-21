@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.40` | 49 | 2026-11-22 | — | Play closed-beta release build from latest main |
 | `0.8.39` | 48 | 2026-11-22 | `v0.8.39` | E2E expansion: 48 new instrumentation cases across PDF, notes, data/backup/help |
 | `0.8.38` | 47 | 2026-11-22 | `v0.8.38` | Latent bug pass: save/open/export races, pressure calibration, crop clip, backup/notebook concurrency, replay parity |
 | `0.8.37` | 46 | 2026-11-22 | `v0.8.37` | Multi-app review: 4-group PDF hub, unified 위치, 4-button chrome, coach card, one primary home action, 60-second help |
