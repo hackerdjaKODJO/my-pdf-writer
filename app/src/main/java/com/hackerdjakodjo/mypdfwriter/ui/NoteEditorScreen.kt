@@ -236,6 +236,9 @@ fun NoteEditorScreen(
     var fingerWriting by remember { mutableStateOf(false) }
     var zoomLock by remember { mutableStateOf(false) }
     var strokeStabilization by remember { mutableStateOf(true) }
+    // Session-only refinement toggles: never persisted into the notebook or JSON.
+    var smoothHandwriting by remember { mutableStateOf(NOTE_SMOOTH_HANDWRITING_DEFAULT) }
+    var simplifyPoints by remember { mutableStateOf(NOTE_SIMPLIFY_POINTS_DEFAULT) }
     var shapeRecognition by remember { mutableStateOf(false) }
     var partialEraser by remember { mutableStateOf(true) }
     var pressureInk by remember { mutableStateOf(true) }
@@ -859,6 +862,7 @@ fun NoteEditorScreen(
         if (layer.locked) return
         var type = noteAnnotationTypeForTool(tool) ?: return
         var committedPoints = points
+        var recognizedShape = false
         val safeDuration = durationMs.coerceAtLeast(0L)
 
         if (tool == Tool.PEN && type == AnnotationType.PEN && shapeRecognition) {
@@ -875,6 +879,7 @@ fun NoteEditorScreen(
             if (recognized != null) {
                 type = recognized.type
                 committedPoints = recognized.points
+                recognizedShape = true
             }
         }
 
@@ -908,6 +913,27 @@ fun NoteEditorScreen(
                 "max" to (committedPoints.maxOfOrNull { it.pressure } ?: 1f),
             )
         }
+
+        // Refine exactly once, after recognition and stabilization have decided the
+        // final geometry. The live canvas keeps drawing raw input; only the stored
+        // annotation (and therefore the PDF export) sees this refined polyline.
+        val beforeRefine = committedPoints
+        committedPoints = noteRefineForCommit(
+            points = beforeRefine,
+            smoothHandwriting = smoothHandwriting,
+            simplifyPoints = simplifyPoints,
+            skipRefinement = recognizedShape,
+        )
+        NoteTrace.event(
+            NOTE_TRACE_TAG,
+            "refine",
+            "smooth" to smoothHandwriting,
+            "simplify" to simplifyPoints,
+            "skipped" to recognizedShape,
+            "before" to beforeRefine.size,
+            "after" to committedPoints.size,
+            "applied" to (committedPoints !== beforeRefine),
+        )
 
         val annotation = Annotation(
             type = type,
@@ -2110,6 +2136,8 @@ fun NoteEditorScreen(
             fingerWriting = fingerWriting,
             zoomLock = zoomLock,
             strokeStabilization = strokeStabilization,
+            smoothHandwriting = smoothHandwriting,
+            simplifyPoints = simplifyPoints,
             shapeRecognition = shapeRecognition,
             partialEraser = partialEraser,
             pressureInk = pressureInk,
@@ -2118,6 +2146,8 @@ fun NoteEditorScreen(
             onFingerWriting = { fingerWriting = it },
             onZoomLock = { zoomLock = it },
             onStrokeStabilization = { strokeStabilization = it },
+            onSmoothHandwriting = { smoothHandwriting = it },
+            onSimplifyPoints = { simplifyPoints = it },
             onShapeRecognition = { shapeRecognition = it },
             onPartialEraser = { partialEraser = it },
             onPressureInk = { pressureInk = it },
@@ -3931,6 +3961,31 @@ internal fun noteToolHint(tool: Tool): String = when (tool) {
     Tool.LASSO -> "끌어서 자유롭게 선택"
     Tool.LASSO_RECT -> "끌어서 사각형으로 선택"
     else -> "필기"
+}
+
+/**
+ * Single commit-time refinement decision, kept pure so the "applied once"
+ * contract is testable without a Compose host.
+ *
+ * Recognized shapes already carry final two-point geometry and must not be
+ * refined. Short/atomic strokes have nothing to smooth. When both toggles are
+ * off the exact input list is returned, so legacy behavior is byte-for-byte
+ * unchanged.
+ */
+internal fun noteRefineForCommit(
+    points: List<NormalizedPoint>,
+    smoothHandwriting: Boolean,
+    simplifyPoints: Boolean,
+    skipRefinement: Boolean = false,
+): List<NormalizedPoint> {
+    if (skipRefinement || points.size < 3) return points
+    if (!smoothHandwriting && !simplifyPoints) return points
+    return refineStroke(
+        points = points,
+        brushRadius = if (smoothHandwriting) NOTE_LAZY_BRUSH_RADIUS else 0f,
+        simplifyTolerance = if (simplifyPoints) NOTE_SIMPLIFY_TOLERANCE else 0f,
+        chaikinIterations = if (smoothHandwriting) 1 else 0,
+    )
 }
 
 internal fun notebookAnnotationCount(notebook: Notebook): Int =
