@@ -33,6 +33,16 @@ internal val NOTE_FULL_DOCK_TOOLS: List<Tool> = NOTE_DOCK_TOOLS
 internal val NOTE_COMPACT_DOCK_TOOLS: List<Tool> = NOTE_DOCK_TOOLS
 
 /**
+ * Pen is the primary writing tool in both docks. It keeps the same slot and the
+ * same label; the dock only gives it the primary tint so a student can find the
+ * default tool without reading every slot. Selection is still a separate state
+ * reported by [noteToolDescription].
+ */
+internal val NOTE_PRIMARY_DOCK_TOOL: Tool = Tool.PEN
+
+internal fun noteToolIsPrimary(tool: Tool): Boolean = tool == NOTE_PRIMARY_DOCK_TOOL
+
+/**
  * Action slots. The colour dot and the style button are one slot, and the note
  * menu owns favourite/export so neither dock duplicates them.
  *
@@ -71,10 +81,16 @@ internal enum class NoteTopBarAction {
     EXPORT,
 }
 
+/**
+ * Top bar order follows the student's reading order: 뒤로(back) and 제목(title)
+ * are the navigation/title slots owned by the app bar itself, then these quick
+ * actions run 메뉴 → 실행 취소 → 다시 실행. Menu stays first so history actions
+ * never push it off a 320 dp bar.
+ */
 internal val NOTE_TOP_BAR_ACTIONS = listOf(
+    NoteTopBarAction.MENU,
     NoteTopBarAction.UNDO,
     NoteTopBarAction.REDO,
-    NoteTopBarAction.MENU,
 )
 
 internal fun noteTopBarActionLabel(action: NoteTopBarAction): String = when (action) {
@@ -196,6 +212,33 @@ internal fun notePagePillDescription(pageIndex: Int, pageCount: Int): String =
 /** Spoken name of one page thumbnail; [number] is the zero-based index. */
 internal fun notePageThumbnailDescription(number: Int): String =
     "$NOTE_PAGE_MANAGER_LABEL ${number + 1}"
+
+/**
+ * Student-first text policy: secondary labels and supporting lines may wrap to
+ * two lines, never more. One line is still preferred when it fits, so short
+ * labels do not gain artificial height at 320 dp or with large fonts.
+ */
+internal const val STUDENT_LABEL_MAX_LINES = 2
+
+internal fun studentLabelMaxLines(
+    availableWidthDp: Int,
+    estimatedTextWidthDp: Int,
+    fontScale: Float = 1f,
+): Int {
+    val scale = if (fontScale.isNaN()) 1f else fontScale.coerceIn(1f, 3f)
+    val scaled = (estimatedTextWidthDp * scale).toInt()
+    return minOf(STUDENT_LABEL_MAX_LINES, labelMaxLines(availableWidthDp, scaled))
+}
+
+/**
+ * One capture vocabulary for every "put this in my notes" row. Translation and
+ * dictionary stay distinct external hand-offs and are deliberately kept out of
+ * this group so they are not mistaken for local capture.
+ */
+internal const val NOTE_CAPTURE_LABEL = "노트에 담기"
+internal val STUDENT_HANDOFF_LABELS: List<String> = listOf("번역", "사전")
+
+internal fun studentCaptureLabel(): String = NOTE_CAPTURE_LABEL
 
 /** One shared label helper so full and compact docks never drift. */
 internal fun noteToolLabel(tool: Tool): String = when (tool) {

@@ -128,14 +128,14 @@ class NoteEditorControlsTest {
     @Test
     fun `top bar has undo redo menu and no duplicate favourite or export`() {
         assertEquals(
-            listOf(NoteTopBarAction.UNDO, NoteTopBarAction.REDO, NoteTopBarAction.MENU),
+            listOf(NoteTopBarAction.MENU, NoteTopBarAction.UNDO, NoteTopBarAction.REDO),
             NOTE_TOP_BAR_ACTIONS,
         )
         assertEquals(3, NOTE_TOP_BAR_ACTIONS.toSet().size)
         assertTrue(NoteTopBarAction.FAVORITE !in NOTE_TOP_BAR_ACTIONS)
         assertTrue(NoteTopBarAction.EXPORT !in NOTE_TOP_BAR_ACTIONS)
         val labels = NOTE_TOP_BAR_ACTIONS.map(::noteTopBarActionLabel)
-        assertEquals(listOf("실행 취소", "다시 실행", "노트 메뉴"), labels)
+        assertEquals(listOf("노트 메뉴", "실행 취소", "다시 실행"), labels)
         assertFalse("즐겨찾기" in labels)
         assertFalse("PDF로 내보내기" in labels)
     }
@@ -243,5 +243,32 @@ class NoteEditorControlsTest {
         assertTrue(MEMO_CARD_HEADER_MIN_HEIGHT_DP >= MIN_TARGET_DP)
         assertFalse(MEMO_CARD_CLOSE_DESCRIPTION.contains("삭제"))
         assertFalse(MEMO_HIDE_CARDS_LABEL.contains("삭제"))
+    }
+
+    @Test
+    fun `pen is the primary dock tool in both six slot docks`() {
+        assertEquals(Tool.PEN, NOTE_PRIMARY_DOCK_TOOL)
+        assertTrue(noteToolIsPrimary(Tool.PEN))
+        NOTE_DOCK_TOOLS.forEach { tool ->
+            assertEquals("only pen is primary", tool == Tool.PEN, noteToolIsPrimary(tool))
+        }
+        assertEquals(1, NOTE_DOCK_TOOLS.count(::noteToolIsPrimary))
+        // Primary is chrome only: the spoken label stays the short tool name.
+        assertEquals("펜", noteToolLabel(NOTE_PRIMARY_DOCK_TOOL))
+        assertEquals("펜", noteCompactToolLabel(NOTE_PRIMARY_DOCK_TOOL))
+    }
+
+    @Test
+    fun `student labels wrap to two lines and never more`() {
+        assertEquals(2, STUDENT_LABEL_MAX_LINES)
+        assertEquals(1, studentLabelMaxLines(220, 80))
+        assertEquals(2, studentLabelMaxLines(80, 220))
+        assertEquals(2, studentLabelMaxLines(80, 220, 2f))
+        // Large font can only trade a line; it never adds a third.
+        (1..5).forEach { scale ->
+            assertTrue(studentLabelMaxLines(48, 400, scale.toFloat()) <= STUDENT_LABEL_MAX_LINES)
+        }
+        assertEquals(1, studentLabelMaxLines(300, 80, 3f))
+        assertEquals(STUDENT_LABEL_MAX_LINES, minOf(labelMaxLines(1, 2), STUDENT_LABEL_MAX_LINES))
     }
 }

@@ -48,7 +48,6 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DeleteForever
-import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FilterList
@@ -127,6 +126,54 @@ internal enum class LibrarySection(val label: String) {
 
 /** Compact top control that replaces the old bottom tab bar / side rail. */
 internal fun homeSectionLabels(): List<String> = LibrarySection.entries.map { it.label }
+
+/**
+ * Home has exactly one primary action. A returning student resumes the last
+ * document (`이어서 읽기`); a new student starts with a PDF (`PDF 가져오기`).
+ * The decision is pure so the JVM tests can pin the policy without Compose.
+ */
+internal enum class HomePrimaryAction(val label: String) {
+    CONTINUE("이어서 읽기"),
+    IMPORT("PDF 가져오기"),
+}
+
+internal fun homePrimaryAction(hasContent: Boolean): HomePrimaryAction =
+    if (hasContent) HomePrimaryAction.CONTINUE else HomePrimaryAction.IMPORT
+
+/** The secondary create action that is always present beside the primary one. */
+internal const val HOME_NEW_NOTE_LABEL = "새 노트"
+
+/**
+ * Home quick buttons collapse to two slots: the primary action (resume for a
+ * returning student, import for a new one) and 새 노트. Tools, backup and empty
+ * PDF creation live in 홈 설정 instead of competing for this row.
+ */
+internal fun homeQuickActionLabels(hasContent: Boolean): List<String> = listOf(
+    homePrimaryAction(hasContent).label,
+    HOME_NEW_NOTE_LABEL,
+)
+
+/** Both quick labels are allowed two lines; 48 dp targets are set by the UI. */
+internal fun homeQuickLabelMaxLines(
+    availableWidthDp: Int,
+    label: String,
+    fontScale: Float = 1f,
+): Int = studentLabelMaxLines(availableWidthDp, label.length * 12, fontScale)
+
+/** Which document the `이어서 읽기` action opens: the most recently used one. */
+internal enum class HomeResumeTarget { PDF, NOTEBOOK, IMPORT }
+
+internal fun homeResumeTarget(continuation: HomeContinuation): HomeResumeTarget {
+    val pdf = continuation.lastPdf
+    val notebook = continuation.lastNotebook
+    return when {
+        pdf == null && notebook == null -> HomeResumeTarget.IMPORT
+        notebook == null -> HomeResumeTarget.PDF
+        pdf == null -> HomeResumeTarget.NOTEBOOK
+        pdf.lastOpenedAt >= notebook.updatedAt -> HomeResumeTarget.PDF
+        else -> HomeResumeTarget.NOTEBOOK
+    }
+}
 
 private val CoverPalette: List<Int> = listOf(
     0xFFD8E6F3.toInt(),
@@ -269,6 +316,15 @@ fun NotebookHomeScreen(
     val continuation = remember(notebooks, pdfs) {
         selectHomeContinuation(notebooks, pdfs)
     }
+    val onContinue: () -> Unit = {
+        when (homeResumeTarget(continuation)) {
+            HomeResumeTarget.PDF -> continuation.lastPdf?.let(onOpenPdf)
+            HomeResumeTarget.NOTEBOOK ->
+                continuation.lastNotebook?.let { onOpenNotebook(it.id) }
+            HomeResumeTarget.IMPORT -> onImportPdf()
+        }
+        Unit
+    }
     val filterState = HomeFilterState(
         scope = scope,
         folder = selectedFolder,
@@ -304,7 +360,6 @@ fun NotebookHomeScreen(
                 HomeCreateFab(
                     onNewNote = { showCreate = true },
                     onImportPdf = onImportPdf,
-                    onCreatePdf = onCreatePdf,
                 )
             },
             topBar = {
@@ -414,7 +469,9 @@ fun NotebookHomeScreen(
                                 query = updated.query
                             },
                             showStart = showStart,
+                            hasContent = continuation.hasContent,
                             onImportPdf = onImportPdf,
+                            onContinue = onContinue,
                             onOpenQuickStudy = { showQuickStudy = true },
                             horizontalPadding = horizontalPadding,
                             actions = actions,
@@ -445,7 +502,6 @@ fun NotebookHomeScreen(
                             onOpenPdf = onOpenPdf,
                             onImportPdf = onImportPdf,
                             onCreatePdf = onCreatePdf,
-                            onOpenTools = onOpenTools,
                             onRemovePdfRecent = onRemovePdfRecent,
                         )
 
@@ -542,6 +598,10 @@ fun NotebookHomeScreen(
     if (showSettings) {
         HomeSettingsSheet(
             onDismiss = { showSettings = false },
+            onCreatePdf = {
+                showSettings = false
+                onCreatePdf()
+            },
             onOpenBackup = {
                 showSettings = false
                 onOpenBackup()
@@ -600,7 +660,6 @@ fun NotebookHomeScreen(
 private fun HomeCreateFab(
     onNewNote: () -> Unit,
     onImportPdf: () -> Unit,
-    onCreatePdf: () -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
@@ -631,14 +690,7 @@ private fun HomeCreateFab(
                     onImportPdf()
                 },
             )
-            DropdownMenuItem(
-                text = { Text("빈 PDF") },
-                leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                onClick = {
-                    open = false
-                    onCreatePdf()
-                },
-            )
+            // 빈 PDF moved to 홈 설정; the FAB stays a two-item creation menu.
         }
     }
 }
@@ -733,6 +785,123 @@ private fun HomeSectionSegments(
     }
 }
 
+/**
+ * Home start: one primary action plus exactly one secondary create button. The
+ * primary slot resumes a returning student and imports for a new student; the
+ * quick-study entry stays reachable but is de-emphasised so it never competes
+ * with the primary action.
+ */
+@Composable
+private fun StudentHomeStart(
+    primary: HomePrimaryAction,
+    onPrimary: () -> Unit,
+    onCreateNote: () -> Unit,
+    onOpenQuickStudy: () -> Unit,
+) {
+    val labels = homeQuickActionLabels(primary == HomePrimaryAction.CONTINUE)
+    Column(Modifier.fillMaxWidth()) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val fontScale = LocalDensity.current.fontScale
+            val cardWidthDp = ((maxWidth - 8.dp) / 2).value.roundToInt()
+            val labelWidthDp = (cardWidthDp - 24).coerceAtLeast(48)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                HomePrimaryActionButton(
+                    label = labels[0],
+                    primary = true,
+                    icon = if (primary == HomePrimaryAction.CONTINUE) {
+                        Icons.Outlined.ChevronRight
+                    } else {
+                        Icons.Outlined.PictureAsPdf
+                    },
+                    labelMaxLines = homeQuickLabelMaxLines(labelWidthDp, labels[0], fontScale),
+                    onClick = onPrimary,
+                    modifier = Modifier.weight(1f),
+                )
+                HomePrimaryActionButton(
+                    label = labels[1],
+                    primary = false,
+                    icon = Icons.AutoMirrored.Outlined.NoteAdd,
+                    labelMaxLines = homeQuickLabelMaxLines(labelWidthDp, labels[1], fontScale),
+                    onClick = onCreateNote,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        TextButton(
+            onClick = onOpenQuickStudy,
+            modifier = Modifier
+                .heightIn(min = MIN_TARGET_DP.dp)
+                .semantics { contentDescription = "빠른 학습" },
+        ) {
+            Text(
+                "빠른 학습 · 네 단계로 시작하기",
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = STUDENT_LABEL_MAX_LINES,
+                overflow = TextOverflow.Clip,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomePrimaryActionButton(
+    label: String,
+    icon: ImageVector,
+    primary: Boolean,
+    labelMaxLines: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = if (primary) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = if (primary) {
+            null
+        } else {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+        },
+        modifier = modifier
+            .heightIn(min = 72.dp)
+            .semantics { contentDescription = label },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = if (primary) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = labelMaxLines,
+                overflow = TextOverflow.Clip,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
 @Composable
 private fun NotesSection(
     notebooks: List<Notebook>,
@@ -746,7 +915,9 @@ private fun NotesSection(
     onRemoveFilter: (HomeFilterKind) -> Unit,
     onClearAllFilters: () -> Unit,
     showStart: Boolean,
+    hasContent: Boolean,
     onImportPdf: () -> Unit,
+    onContinue: () -> Unit,
     onOpenQuickStudy: () -> Unit,
     horizontalPadding: Dp,
     actions: NotebookActions,
@@ -779,8 +950,9 @@ private fun NotesSection(
             ) {
                 if (showStart) {
                     item {
-                        HomeStartContent(
-                            onImportPdf = onImportPdf,
+                        StudentHomeStart(
+                            primary = homePrimaryAction(hasContent),
+                            onPrimary = if (hasContent) onContinue else onImportPdf,
                             onCreateNote = onCreate,
                             onOpenQuickStudy = onOpenQuickStudy,
                         )
@@ -812,8 +984,9 @@ private fun NotesSection(
             ) {
                 if (showStart) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        HomeStartContent(
-                            onImportPdf = onImportPdf,
+                        StudentHomeStart(
+                            primary = homePrimaryAction(hasContent),
+                            onPrimary = if (hasContent) onContinue else onImportPdf,
                             onCreateNote = onCreate,
                             onOpenQuickStudy = onOpenQuickStudy,
                         )
@@ -837,8 +1010,9 @@ private fun NotesSection(
             ) {
                 if (showStart) {
                     item {
-                        HomeStartContent(
-                            onImportPdf = onImportPdf,
+                        StudentHomeStart(
+                            primary = homePrimaryAction(hasContent),
+                            onPrimary = if (hasContent) onContinue else onImportPdf,
                             onCreateNote = onCreate,
                             onOpenQuickStudy = onOpenQuickStudy,
                         )
@@ -1405,7 +1579,6 @@ private fun PdfSection(
     onOpenPdf: (RecentDoc) -> Unit,
     onImportPdf: () -> Unit,
     onCreatePdf: () -> Unit,
-    onOpenTools: () -> Unit,
     onRemovePdfRecent: (String) -> Unit,
 ) {
     var menuTarget by remember { mutableStateOf<RecentDoc?>(null) }
@@ -1439,7 +1612,6 @@ private fun PdfSection(
                     sort = sort,
                     onSortChange = onSortChange,
                     gridMode = gridMode,
-                    onOpenTools = onOpenTools,
                     onToggleGrid = onToggleGrid,
                 )
             }
@@ -1493,7 +1665,6 @@ private fun PdfSection(
                     sort = sort,
                     onSortChange = onSortChange,
                     gridMode = gridMode,
-                    onOpenTools = onOpenTools,
                     onToggleGrid = onToggleGrid,
                 )
             }
@@ -1603,7 +1774,6 @@ private fun PdfHeader(
     sort: LibrarySort,
     onSortChange: (LibrarySort) -> Unit,
     gridMode: Boolean,
-    onOpenTools: () -> Unit,
     onToggleGrid: () -> Unit,
 ) {
     Row(
@@ -1622,10 +1792,8 @@ private fun PdfHeader(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        // PDF 도구 lives in 홈 설정; the PDF header keeps only view controls.
         SortMenuButton(sort = sort, onSortChange = onSortChange)
-        IconButton(onClick = onOpenTools, modifier = Modifier.size(48.dp)) {
-            Icon(Icons.Outlined.Dashboard, contentDescription = "PDF 도구")
-        }
         ViewModeButton(gridMode = gridMode, onToggleGrid = onToggleGrid)
     }
 }

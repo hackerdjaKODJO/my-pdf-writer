@@ -69,6 +69,14 @@ import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
 internal const val NOTE_MEMO_CARD_LABEL = "포스트잇"
 
 /**
+ * Local capture and external hand-off are different actions. Every row that puts
+ * selected content into the student's note says [NOTE_CAPTURE_LABEL]; 번역/사전
+ * remain explicit hand-offs to another app and are de-emphasised in menus.
+ */
+internal val NOTE_CAPTURE_VOCABULARY: List<String> =
+    listOf(NOTE_CAPTURE_LABEL) + STUDENT_HANDOFF_LABELS
+
+/**
  * Student-facing menu vocabulary. The legacy terms were `학습 카드`/`가림 카드`;
  * the menu now says `복습 카드`/`가리기 카드` while the underlying cards, sheets
  * and identifiers stay exactly the same. `필기 설정` is already student-friendly
@@ -125,10 +133,13 @@ internal fun noteToggleStateDescription(checked: Boolean): String =
  */
 internal enum class NoteMenuSection(val label: String) {
     NOTE("노트"),
-    STUDY("학습"),
+    REVIEW("복습"),
     EXPORT("내보내기"),
     HELP("도움말"),
 }
+
+/** Four groups in reading order; kept explicit so tests and UI cannot drift. */
+internal val NOTE_MENU_SECTION_ORDER: List<NoteMenuSection> = NoteMenuSection.entries
 
 internal enum class NoteMenuEntry(val section: NoteMenuSection) {
     RENAME(NoteMenuSection.NOTE),
@@ -136,9 +147,9 @@ internal enum class NoteMenuEntry(val section: NoteMenuSection) {
     TEMPLATES(NoteMenuSection.NOTE),
     LAYERS(NoteMenuSection.NOTE),
     SEARCH(NoteMenuSection.NOTE),
-    STUDY_CARDS(NoteMenuSection.STUDY),
-    AUDIO(NoteMenuSection.STUDY),
-    INK_SETTINGS(NoteMenuSection.STUDY),
+    STUDY_CARDS(NoteMenuSection.REVIEW),
+    AUDIO(NoteMenuSection.REVIEW),
+    INK_SETTINGS(NoteMenuSection.REVIEW),
     EXPORT_PDF(NoteMenuSection.EXPORT),
     SOURCE_PDF(NoteMenuSection.EXPORT),
     HELP(NoteMenuSection.HELP),
@@ -763,7 +774,7 @@ private fun NoteMenuRow(
                         supporting,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = labelMaxLines(220, supporting.length * 7),
+                        maxLines = studentLabelMaxLines(220, supporting.length * 7),
                         overflow = TextOverflow.Ellipsis,
                     )
                 }

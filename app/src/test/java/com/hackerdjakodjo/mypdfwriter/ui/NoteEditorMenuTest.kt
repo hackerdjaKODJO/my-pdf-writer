@@ -115,9 +115,9 @@ class NoteEditorMenuTest {
         assertEquals(NoteMenuSection.NOTE, NoteMenuEntry.TEMPLATES.section)
         assertEquals(NoteMenuSection.NOTE, NoteMenuEntry.LAYERS.section)
         assertEquals(NoteMenuSection.NOTE, NoteMenuEntry.SEARCH.section)
-        assertEquals(NoteMenuSection.STUDY, NoteMenuEntry.STUDY_CARDS.section)
-        assertEquals(NoteMenuSection.STUDY, NoteMenuEntry.AUDIO.section)
-        assertEquals(NoteMenuSection.STUDY, NoteMenuEntry.INK_SETTINGS.section)
+        assertEquals(NoteMenuSection.REVIEW, NoteMenuEntry.STUDY_CARDS.section)
+        assertEquals(NoteMenuSection.REVIEW, NoteMenuEntry.AUDIO.section)
+        assertEquals(NoteMenuSection.REVIEW, NoteMenuEntry.INK_SETTINGS.section)
         assertEquals(NoteMenuSection.EXPORT, NoteMenuEntry.EXPORT_PDF.section)
         assertEquals(NoteMenuSection.EXPORT, NoteMenuEntry.SOURCE_PDF.section)
         assertEquals(NoteMenuSection.HELP, NoteMenuEntry.HELP.section)
@@ -128,7 +128,7 @@ class NoteEditorMenuTest {
         assertEquals(
             listOf(
                 NoteMenuSection.NOTE,
-                NoteMenuSection.STUDY,
+                NoteMenuSection.REVIEW,
                 NoteMenuSection.EXPORT,
                 NoteMenuSection.HELP,
             ),
@@ -160,5 +160,50 @@ class NoteEditorMenuTest {
         assertTrue(isAccessibleTarget(NOTE_MENU_ROW_MIN_HEIGHT_DP))
         assertEquals(56, NOTE_MENU_ROW_MIN_HEIGHT_DP)
         assertTrue(NOTE_MENU_ROW_MIN_HEIGHT_DP >= MIN_TARGET_DP)
+    }
+
+    @Test
+    fun `menu has four groups in student reading order`() {
+        assertEquals(
+            listOf("노트", "복습", "내보내기", "도움말"),
+            NOTE_MENU_SECTION_ORDER.map { it.label },
+        )
+        assertEquals(4, NOTE_MENU_SECTION_ORDER.size)
+        assertEquals(NoteMenuSection.entries, NOTE_MENU_SECTION_ORDER)
+        assertFalse(NOTE_MENU_SECTION_ORDER.any { it.label == "학습" })
+
+        // Every row's group is one of the four, and the rows stay contiguous.
+        val sections = noteMenuEntries(true, true).map { it.section }
+        assertTrue(sections.all { it in NOTE_MENU_SECTION_ORDER })
+        assertEquals(NOTE_MENU_SECTION_ORDER, sections.distinct())
+    }
+
+    @Test
+    fun `primary review action and reachable card tools use student labels`() {
+        assertEquals("복습 카드", NOTE_REVIEW_CARDS_LABEL)
+        assertEquals("복습", NoteMenuSection.REVIEW.label)
+        assertFalse(NoteMenuSection.REVIEW.label.contains("학습"))
+
+        // The sub-sheets behind 복습 카드 keep these tools one tap away.
+        assertTrue(NoteMenuEntry.STUDY_CARDS in noteMenuEntries(true, true))
+        assertTrue(NoteMenuEntry.AUDIO in noteMenuEntries(true, true))
+        assertTrue(NoteMenuEntry.INK_SETTINGS in noteMenuEntries(true, true))
+        assertEquals("포스트잇", NOTE_MEMO_CARD_LABEL)
+        assertEquals("체크리스트", NOTE_CHECKLIST_LABEL)
+        assertEquals("필기 설정", NOTE_INK_SETTINGS_LABEL)
+    }
+
+    @Test
+    fun `capture vocabulary unifies note rows and keeps handoffs separate`() {
+        assertEquals("노트에 담기", NOTE_CAPTURE_LABEL)
+        assertEquals("노트에 담기", studentCaptureLabel())
+        assertEquals("노트에 담기", NOTE_CAPTURE_VOCABULARY.first())
+        assertEquals(listOf("번역", "사전"), STUDENT_HANDOFF_LABELS)
+        assertEquals(
+            listOf("노트에 담기", "번역", "사전"),
+            NOTE_CAPTURE_VOCABULARY,
+        )
+        assertFalse(NOTE_CAPTURE_VOCABULARY.contains("발췌로 저장"))
+        assertFalse(NOTE_CAPTURE_VOCABULARY.contains("노트 패널에 추가"))
     }
 }

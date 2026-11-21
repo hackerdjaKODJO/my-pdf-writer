@@ -59,42 +59,58 @@ internal data class OnboardingCard(
     val body: String,
 )
 
+/** First-run walkthrough is short: at most three cards, never five. */
+internal const val ONBOARDING_CARD_LIMIT = 3
+
+/**
+ * The three topics a student actually needs on day one: resume where they left
+ * off, mark a passage once, and capture it into a linked note. Backup and the
+ * full tool tour stay in 도움말 instead of padding the walkthrough.
+ */
+internal val ONBOARDING_CARD_TOPICS: List<OnboardingTopicKey> = listOf(
+    OnboardingTopicKey.HOME_QUICK_ACTIONS,
+    OnboardingTopicKey.SELECT_HIGHLIGHT,
+    OnboardingTopicKey.NOTE_PANE,
+)
+
 /**
  * Original, offline copy derived from the app's own usage guide. Every card is
  * a single sentence; the illustrations below are drawn with Compose primitives
  * rather than copied assets or third-party artwork.
  */
 internal fun onboardingCards(): List<OnboardingCard> {
-    val order = onboardingTopicOrder()
     val byKey = onboardingCardsByKey()
-    return order.map { byKey.getValue(it) }
+    return onboardingTopicOrder()
+        .filter { it in ONBOARDING_CARD_TOPICS }
+        .take(ONBOARDING_CARD_LIMIT)
+        .map { byKey.getValue(it) }
 }
 
 private fun onboardingCardsByKey(): Map<OnboardingTopicKey, OnboardingCard> = mapOf(
     OnboardingTopicKey.HOME_QUICK_ACTIONS to OnboardingCard(
         key = OnboardingTopicKey.HOME_QUICK_ACTIONS,
         title = "홈에서 바로 시작",
-        body = "홈 화면의 이어서 읽기와 빠른 버튼으로 PDF 가져오기, 새 노트, 백업·복원을 바로 시작할 수 있어요.",
+        body = "홈의 이어서 읽기와 새 노트 두 버튼으로 바로 시작하고, 백업은 설정에 있어요.",
     ),
     OnboardingTopicKey.OPEN_READ_PDF to OnboardingCard(
         key = OnboardingTopicKey.OPEN_READ_PDF,
         title = "PDF 열고 읽기",
-        body = "홈의 PDF 가져오기로 파일을 고르고, 두 손가락으로 확대하며 학습 메뉴에서 자주 쓰는 도구를 찾을 수 있어요.",
+        body = "홈의 PDF 가져오기로 파일을 고르고, 두 손가락으로 확대하며 자주 쓰는 도구를 찾을 수 있어요.",
     ),
     OnboardingTopicKey.SELECT_HIGHLIGHT to OnboardingCard(
         key = OnboardingTopicKey.SELECT_HIGHLIGHT,
         title = "선택하고 하이라이트",
-        body = "텍스트 PDF에서 단어를 탭하거나 드래그하거나 길게 눌러 고른 뒤 플로팅 바의 형광펜으로 표시할 수 있어요.",
+        body = "텍스트 PDF에서 단어를 고른 뒤 플로팅 바의 형광펜으로 한 번에 표시할 수 있어요.",
     ),
     OnboardingTopicKey.NOTE_PANE to OnboardingCard(
         key = OnboardingTopicKey.NOTE_PANE,
-        title = "노트 버튼과 분할 화면",
-        body = "PDF 상단의 노트를 누르면 아래에 노트가 펼쳐지고, 가운데 손잡이를 드래그해 두 화면의 높이를 바꿀 수 있어요.",
+        title = "노트에 담기",
+        body = "노트 버튼으로 아래에 노트를 펼치고, 담은 내용은 원본 페이지 링크와 함께 저장돼요.",
     ),
     OnboardingTopicKey.HELP_BACKUP to OnboardingCard(
         key = OnboardingTopicKey.HELP_BACKUP,
         title = "도움말과 백업",
-        body = "어려울 때는 도움말에서 짧은 안내를 다시 보고, 홈의 백업·복원으로 작업을 기기 안에 보관할 수 있어요.",
+        body = "어려울 때는 도움말에서 안내를 다시 보고, 설정의 백업으로 작업을 기기 안에 보관할 수 있어요.",
     ),
 )
 
@@ -120,7 +136,7 @@ fun OnboardingSheet(
                 Column(Modifier.weight(1f)) {
                     Text("처음 사용법", style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        "짧은 안내 5장 · 도움말에서 다시 볼 수 있어요",
+                        "짧은 안내 ${cards.size}장 · 도움말에서 다시 볼 수 있어요",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

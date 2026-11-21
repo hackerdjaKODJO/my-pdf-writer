@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -284,6 +285,7 @@ private fun FilterSection(
 @Composable
 internal fun HomeSettingsSheet(
     onDismiss: () -> Unit,
+    onCreatePdf: () -> Unit,
     onOpenBackup: () -> Unit,
     onOpenTrash: () -> Unit,
     onOpenTags: () -> Unit,
@@ -348,6 +350,12 @@ internal fun HomeSettingsSheet(
                 body = "병합·분할·OCR·보안",
                 onClick = onOpenTools,
             )
+            SettingsRow(
+                icon = Icons.Outlined.Add,
+                title = "빈 PDF",
+                body = "새 빈 PDF를 만들어 필기 시작",
+                onClick = onCreatePdf,
+            )
 
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
@@ -411,11 +419,16 @@ private fun SettingsRow(
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = STUDENT_LABEL_MAX_LINES,
+                )
                 Text(
                     body,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = studentLabelMaxLines(220, body.length * 7),
                 )
             }
             Icon(
