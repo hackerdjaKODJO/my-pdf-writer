@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.automirrored.outlined.TextSnippet
 import androidx.compose.material.icons.filled.Star
@@ -41,9 +40,9 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -248,7 +247,7 @@ internal enum class TextSelectionPrimaryAction(
     UNDERLINE("밑줄", "밑줄 표시"),
     STRIKEOUT("취소선", "취소선 표시"),
     COPY("복사", "선택한 텍스트 복사"),
-    EXCERPT("노트에 담기", "노트에 담기"),
+    EXCERPT(PDF_HUB_CAPTURE_LABEL, PDF_HUB_CAPTURE_LABEL),
     MORE("더보기", "선택 도구 더보기"),
 }
 
@@ -262,6 +261,20 @@ internal fun textSelectionPrimaryIcon(action: TextSelectionPrimaryAction): Image
 }
 
 /**
+ * The 더보기 sheet keeps exactly one capture label. 번역/사전 are external
+ * handoffs, not study actions, so they sit in a quiet row at the bottom instead
+ * of competing with 노트에 담기 for the first tap.
+ */
+internal enum class TextSelectionSecondaryAction(val label: String) {
+    CAPTURE(PDF_HUB_CAPTURE_LABEL),
+    EDIT("텍스트 편집"),
+    SHARE("공유"),
+    DISMISS("선택 해제"),
+}
+
+internal val PDF_TEXT_HANDOFF_LABELS = listOf("번역", "사전")
+
+/**
  * All floating split-chrome controls expose a full 48 dp TalkBack target. The
  * drawn circle stays smaller so a short PDF strip is not swamped by chrome.
  */
@@ -269,6 +282,24 @@ internal const val SPLIT_CHROME_TARGET_DP = MIN_TARGET_DP
 
 /** Visual diameter of the compact circle drawn inside a 48 dp hit target. */
 internal const val SPLIT_CHROME_VISUAL_DP = 36
+
+/**
+ * Inventory of the floating PDF strip. The compact (ESSENTIAL) density keeps
+ * page navigation and search but drops the four secondary tools; it is a pure
+ * list so the "split compact" contract can be checked without a device.
+ */
+internal fun splitPdfToolbarControls(compact: Boolean): List<String> = buildList {
+    add("이전 페이지")
+    add("페이지 선택")
+    add("다음 페이지")
+    add("검색")
+    if (!compact) {
+        add("텍스트 선택")
+        add("현재 페이지 북마크")
+        add("주석")
+        add("학습 메뉴")
+    }
+}
 
 /** Tiny translucent back target shown at the PDF-strip edge in split mode. */
 @Composable
@@ -694,8 +725,9 @@ internal fun StudyPaneSizePresets(
 /**
  * Floating text-selection bar for split mode. It replaces the bottom dock and
  * overlays the PDF strip instead of adding a permanent row below the page.
- * The same markup-first order as the full-screen bar stays visible; 번역, 사전,
- * 발췌로 저장, 텍스트 편집, 공유 and 선택 해제 live in the more sheet.
+ * The same markup-first order as the full-screen bar stays visible; 노트에 담기,
+ * 텍스트 편집, 공유 and 선택 해제 live in the more sheet, with 번역/사전 as quiet
+ * external handoffs.
  */
 @Composable
 internal fun SplitSelectionActionBar(
@@ -875,8 +907,9 @@ private fun SplitChromeButton(
 
 /**
  * Secondary text actions for both selection bars. The primary bar keeps the
- * markup-first six; 번역, 사전, 발췌로 저장, 텍스트 편집, 공유 and 선택 해제 stay
- * one tap behind this sheet (plus 노트 패널에 추가 when a study pane is open).
+ * markup-first six. This sheet has exactly one capture row — [PDF_HUB_CAPTURE_LABEL]
+ * — which either adds to the open note pane or saves an excerpt. 번역/사전 remain
+ * reachable as quiet external handoffs at the bottom, not as study actions.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -934,46 +967,19 @@ internal fun TextSelectionMoreSheet(
                 )
             }
 
+            // Single capture row: pane capture wins when the pane is open, but
+            // the excerpt is still persisted by the host in that callback.
             SplitSheetAction(
-                label = "번역",
-                icon = Icons.Outlined.Translate,
+                label = TextSelectionSecondaryAction.CAPTURE.label,
+                icon = Icons.Outlined.EditNote,
                 enabled = hasSelection,
                 onClick = {
                     onDismiss()
-                    onTranslate()
+                    if (canAddToPane && onAddToPane != null) onAddToPane() else onExcerpt()
                 },
             )
             SplitSheetAction(
-                label = "사전",
-                icon = Icons.AutoMirrored.Outlined.MenuBook,
-                enabled = hasSelection,
-                onClick = {
-                    onDismiss()
-                    onDictionary()
-                },
-            )
-            if (canAddToPane && onAddToPane != null) {
-                SplitSheetAction(
-                    label = "노트에 담기",
-                    icon = Icons.Outlined.EditNote,
-                    enabled = hasSelection,
-                    onClick = {
-                        onDismiss()
-                        onAddToPane()
-                    },
-                )
-            }
-            SplitSheetAction(
-                label = "발췌로 저장",
-                icon = Icons.AutoMirrored.Outlined.Notes,
-                enabled = hasSelection,
-                onClick = {
-                    onDismiss()
-                    onExcerpt()
-                },
-            )
-            SplitSheetAction(
-                label = "텍스트 편집",
+                label = TextSelectionSecondaryAction.EDIT.label,
                 icon = Icons.Outlined.Edit,
                 enabled = hasSelection,
                 onClick = {
@@ -982,7 +988,7 @@ internal fun TextSelectionMoreSheet(
                 },
             )
             SplitSheetAction(
-                label = "공유",
+                label = TextSelectionSecondaryAction.SHARE.label,
                 icon = Icons.Outlined.Share,
                 enabled = hasSelection,
                 onClick = {
@@ -998,6 +1004,25 @@ internal fun TextSelectionMoreSheet(
                     modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
                 )
             }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text(
+                "다른 앱에서 보기",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                PDF_TEXT_HANDOFF_LABELS.forEach { label ->
+                    TextButton(
+                        onClick = {
+                            onDismiss()
+                            if (label == PDF_TEXT_HANDOFF_LABELS.first()) onTranslate() else onDictionary()
+                        },
+                        enabled = hasSelection,
+                        modifier = Modifier.sizeIn(minHeight = SPLIT_CHROME_TARGET_DP.dp),
+                    ) { Text(label) }
+                }
+            }
             Spacer(Modifier.height(8.dp))
             TextButton(
                 onClick = {
@@ -1008,7 +1033,13 @@ internal fun TextSelectionMoreSheet(
                     .fillMaxWidth()
                     .sizeIn(minHeight = SPLIT_CHROME_TARGET_DP.dp),
             ) {
-                Text(if (hasSelection) "선택 해제" else "텍스트 선택 종료")
+                Text(
+                    if (hasSelection) {
+                        TextSelectionSecondaryAction.DISMISS.label
+                    } else {
+                        "텍스트 선택 종료"
+                    },
+                )
             }
         }
     }

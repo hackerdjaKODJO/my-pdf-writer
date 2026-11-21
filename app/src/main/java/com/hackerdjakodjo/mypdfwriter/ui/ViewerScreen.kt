@@ -32,13 +32,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
-import androidx.compose.material.icons.automirrored.outlined.Comment
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.automirrored.outlined.StickyNote2
 import androidx.compose.material.icons.automirrored.outlined.TextSnippet
-import androidx.compose.material.icons.automirrored.outlined.Toc
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AutoStories
@@ -148,7 +146,6 @@ internal data class ViewerSheetFlags(
     val showStudyNote: Boolean = false,
     val showReflow: Boolean = false,
     val showReadAloud: Boolean = false,
-    val showOutline: Boolean = false,
     val showProperties: Boolean = false,
     val showStyle: Boolean = false,
     val showDisplaySettings: Boolean = false,
@@ -164,6 +161,7 @@ internal data class ViewerSheetFlags(
     val showRecentDocs: Boolean = false,
     val showTabOverflow: Boolean = false,
     val showLocations: Boolean = false,
+    val showFileTools: Boolean = false,
     val textTargetOpen: Boolean = false,
     val stampTargetOpen: Boolean = false,
     val signatureTargetOpen: Boolean = false,
@@ -171,11 +169,52 @@ internal data class ViewerSheetFlags(
     val anyOpen: Boolean get() = showPages || showNotes || showBookmarks || showSearch ||
         showAnnotations || showOrganize || showExcerpts || showContinuous || showSpread ||
         showPopup || showAudioNotes || showAudioReplay || showStudyNote || showReflow ||
-        showReadAloud || showOutline || showProperties || showStyle || showDisplaySettings ||
+        showReadAloud || showProperties || showStyle || showDisplaySettings ||
         showHub || showReadModes || showAudioMenu || showToolMore || showToolStyle ||
         showSelectionMore || showTextEditDialog || showMemoCardsSheet || showViewerPenBox ||
-        showRecentDocs || showTabOverflow || showLocations ||
+        showRecentDocs || showTabOverflow || showLocations || showFileTools ||
         textTargetOpen || stampTargetOpen || signatureTargetOpen
+}
+
+/**
+ * The full-screen top chrome has exactly four controls, in this order. The
+ * bookmark button, note entry and auto-hide toggle moved into 학습 메뉴 (and the
+ * existing document-tab sheets) so the bar no longer competes for reading space.
+ */
+internal enum class PdfTopChromeControl(val label: String) {
+    BACK("뒤로"),
+    TITLE("문서 이름"),
+    SEARCH("검색"),
+    HUB("학습 메뉴"),
+}
+
+internal val pdfTopChromeControls = listOf(
+    PdfTopChromeControl.BACK,
+    PdfTopChromeControl.TITLE,
+    PdfTopChromeControl.SEARCH,
+    PdfTopChromeControl.HUB,
+)
+
+internal const val PDF_TOP_CHROME_MAX_CONTROLS = 4
+
+/**
+ * Session-only first-open coach. The three steps mirror the student flow
+ * (open → mark → capture) and stay in process memory: one card per visit, not
+ * per document, and no persistence.
+ */
+internal data class PdfCoachState(
+    val shownThisSession: Boolean = false,
+    val dismissed: Boolean = false,
+)
+
+internal fun shouldShowPdfCoach(state: PdfCoachState): Boolean =
+    !state.shownThisSession && !state.dismissed
+
+internal fun dismissPdfCoach(state: PdfCoachState): PdfCoachState =
+    state.copy(shownThisSession = true, dismissed = true)
+
+internal object PdfViewerCoachSession {
+    var shown: Boolean = false
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -271,7 +310,6 @@ fun ViewerScreen(
     var showStudyNote by remember { mutableStateOf(false) }
     var showReflow by remember { mutableStateOf(false) }
     var showReadAloud by remember { mutableStateOf(false) }
-    var showOutline by remember { mutableStateOf(false) }
     var showProperties by remember { mutableStateOf(false) }
     var showStyle by remember { mutableStateOf(false) }
     var showDisplaySettings by remember { mutableStateOf(false) }
@@ -308,7 +346,16 @@ fun ViewerScreen(
     var showRecentDocs by remember { mutableStateOf(false) }
     var showTabOverflow by remember { mutableStateOf(false) }
     var showLocations by remember { mutableStateOf(false) }
+    var showFileTools by remember { mutableStateOf(false) }
     var pendingSummary by remember { mutableStateOf("") }
+    var coachState by remember {
+        mutableStateOf(PdfCoachState(shownThisSession = PdfViewerCoachSession.shown))
+    }
+    val coachVisible = shouldShowPdfCoach(coachState)
+    val dismissCoach: () -> Unit = {
+        coachState = dismissPdfCoach(coachState)
+        PdfViewerCoachSession.shown = true
+    }
     val smallestScreenWidthDp = LocalConfiguration.current.smallestScreenWidthDp
     var autoHideMode by remember {
         mutableStateOf(defaultChromeAutoHideMode(smallestScreenWidthDp))
@@ -464,7 +511,6 @@ fun ViewerScreen(
         showStudyNote = showStudyNote,
         showReflow = showReflow,
         showReadAloud = showReadAloud,
-        showOutline = showOutline,
         showProperties = showProperties,
         showStyle = showStyle,
         showDisplaySettings = showDisplaySettings,
@@ -480,6 +526,7 @@ fun ViewerScreen(
         showRecentDocs = showRecentDocs,
         showTabOverflow = showTabOverflow,
         showLocations = showLocations,
+        showFileTools = showFileTools,
         textTargetOpen = textTarget != null,
         stampTargetOpen = stampTarget != null,
         signatureTargetOpen = signatureTarget != null,
@@ -612,6 +659,17 @@ fun ViewerScreen(
             showStudyNote = true
         }
     }
+    // One capture path for the hub, the selection bar and drag-and-drop: persist
+    // the excerpt, hand it to the live pane when there is one, then open the note.
+    val captureToNote: () -> Unit = {
+        if (selectedText.isNotBlank()) {
+            vm.addExcerptFromSelection(state.pageIndex, selectedText)
+            if (studyPane != null) onAppendStudyExcerpt(selectedText, state.pageIndex)
+            selectedWords = emptyList()
+            textSelectMode = false
+        }
+        openNote()
+    }
     fun hubAction(action: PdfMenuAction): PdfHubAction = when (action) {
         // Kept exhaustive even though the menu no longer lists SEARCH: the
         // top bar owns one-tap search. See pdfTopBarOwnedActions.
@@ -619,75 +677,29 @@ fun ViewerScreen(
             showSearch = true
         }
 
-        // Replaces the dock's old annotation slot, so 글상자, shapes, markup,
-        // stamp/signature/redact and favorite pens stay one tap away.
-        PdfMenuAction.TOOL_MORE -> PdfHubAction(action.label, Icons.Outlined.Handyman) {
-            showToolMore = true
-        }
-
-        PdfMenuAction.OUTLINE -> PdfHubAction(action.label, Icons.AutoMirrored.Outlined.Toc) {
+        // 읽기: one 위치 entry replaces the three duplicate navigation rows.
+        PdfMenuAction.LOCATIONS -> PdfHubAction(action.label, Icons.Outlined.StarBorder) {
             vm.loadOutline()
-            showOutline = true
+            showLocations = true
         }
 
-        PdfMenuAction.BOOKMARKS -> PdfHubAction(
-            action.label,
-            Icons.Outlined.StarBorder,
-            trailing = if (bookmarks.isEmpty()) null else "${bookmarks.size}개",
-        ) { showBookmarks = true }
+        PdfMenuAction.BOOKMARK_TOGGLE -> PdfHubAction(
+            pdfMenuActionLabel(action, bookmarked = currentBookmark != null),
+            if (currentBookmark != null) Icons.Filled.Star else Icons.Outlined.StarBorder,
+            trailing = if (currentBookmark != null) "저장됨" else null,
+        ) {
+            if (currentBookmark != null) {
+                vm.deleteBookmark(currentBookmark.id)
+            } else {
+                vm.addCurrentPageBookmark("${state.pageIndex + 1}쪽")
+            }
+        }
 
         PdfMenuAction.PAGE_NOTES -> PdfHubAction(
             action.label,
             Icons.AutoMirrored.Outlined.StickyNote2,
             trailing = if (state.notes.isEmpty()) null else "${state.notes.size}개",
         ) { showNotes = true }
-
-        PdfMenuAction.MEMO_CARDS -> PdfHubAction(
-            action.label,
-            Icons.AutoMirrored.Outlined.StickyNote2,
-            trailing = if (state.memoCards.isEmpty()) null else "${state.memoCards.size}개",
-        ) {
-            memoEditCardId = null
-            showMemoCardsSheet = true
-        }
-
-        PdfMenuAction.EXCERPTS -> PdfHubAction(
-            action.label,
-            Icons.AutoMirrored.Outlined.Notes,
-            trailing = if (excerpts.isEmpty()) null else "${excerpts.size}개",
-        ) { showExcerpts = true }
-
-        PdfMenuAction.TEXT_SELECT -> PdfHubAction(
-            action.label,
-            Icons.AutoMirrored.Outlined.TextSnippet,
-            trailing = if (textSelectMode) "켜짐" else null,
-            onClick = toggleTextSelection,
-        )
-
-        PdfMenuAction.STUDY_NOTE -> PdfHubAction(action.label, Icons.Outlined.EditNote) {
-            openNote()
-        }
-
-        PdfMenuAction.PAGE_MANAGE -> PdfHubAction(action.label, Icons.Outlined.GridView) {
-            selectedPages = emptySet()
-            showOrganize = true
-        }
-
-        PdfMenuAction.PAGE_EDIT -> PdfHubAction(action.label, Icons.Outlined.EditNote) {
-            showPages = true
-        }
-
-        PdfMenuAction.ANNOTATION_LIST -> PdfHubAction(
-            action.label,
-            Icons.AutoMirrored.Outlined.Comment,
-            trailing = if (state.annotations.isEmpty()) null else "${state.annotations.size}개",
-        ) { showAnnotations = true }
-
-        PdfMenuAction.TOGGLE_ANNOTATIONS -> PdfHubAction(
-            pdfMenuActionLabel(action, annotationsHidden = annotationsHidden),
-            if (annotationsHidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
-            trailing = if (annotationsHidden) "숨김" else "표시 중",
-        ) { annotationsHidden = !annotationsHidden }
 
         PdfMenuAction.DISPLAY_SETTINGS -> PdfHubAction(
             action.label,
@@ -703,6 +715,92 @@ fun ViewerScreen(
             showAudioMenu = true
         }
 
+        PdfMenuAction.FIT_SCREEN -> PdfHubAction(
+            action.label,
+            Icons.Outlined.FitScreen,
+            trailing = "${(state.zoom * 100).roundToInt()}%",
+        ) { vm.setZoom(1f) }
+
+        // 필기: annotation tools, post-its and visibility stay one tap away.
+        PdfMenuAction.TOOL_MORE -> PdfHubAction(action.label, Icons.Outlined.Handyman) {
+            showToolMore = true
+        }
+
+        PdfMenuAction.MEMO_CARDS -> PdfHubAction(
+            action.label,
+            Icons.AutoMirrored.Outlined.StickyNote2,
+            trailing = if (state.memoCards.isEmpty()) null else "${state.memoCards.size}개",
+        ) {
+            memoEditCardId = null
+            showMemoCardsSheet = true
+        }
+
+        PdfMenuAction.TOGGLE_ANNOTATIONS -> PdfHubAction(
+            pdfMenuActionLabel(action, annotationsHidden = annotationsHidden),
+            if (annotationsHidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+            trailing = if (annotationsHidden) "숨김" else "표시 중",
+        ) { annotationsHidden = !annotationsHidden }
+
+        PdfMenuAction.TEXT_SELECT -> PdfHubAction(
+            action.label,
+            Icons.AutoMirrored.Outlined.TextSnippet,
+            trailing = if (textSelectMode) "켜짐" else null,
+            onClick = toggleTextSelection,
+        )
+
+        PdfMenuAction.DECORATE -> PdfHubAction(action.label, Icons.Outlined.Palette) {
+            showStyle = true
+        }
+
+        // 담기: one label, one capture path, one list of what was captured.
+        PdfMenuAction.CAPTURE -> PdfHubAction(action.label, Icons.Outlined.EditNote) {
+            captureToNote()
+        }
+
+        PdfMenuAction.EXCERPTS -> PdfHubAction(
+            action.label,
+            Icons.AutoMirrored.Outlined.Notes,
+            trailing = if (excerpts.isEmpty()) null else "${excerpts.size}개",
+        ) { showExcerpts = true }
+
+        PdfMenuAction.COPY_TEXT -> PdfHubAction(action.label, Icons.Outlined.ContentCopy) {
+            vm.copyPageText()
+        }
+
+        // 설정: the advanced file operations live one level deeper.
+        PdfMenuAction.FILE_TOOLS -> PdfHubAction(action.label, Icons.Outlined.Handyman) {
+            showFileTools = true
+        }
+
+        PdfMenuAction.AUTO_HIDE -> PdfHubAction(
+            pdfMenuActionLabel(action, autoHideEnabled = autoHideMode == ChromeAutoHideMode.ON),
+            if (autoHideMode == ChromeAutoHideMode.ON) {
+                Icons.Outlined.VisibilityOff
+            } else {
+                Icons.Outlined.Visibility
+            },
+            trailing = autoHideMode.label,
+        ) { autoHideMode = toggleChromeAutoHideMode(autoHideMode) }
+
+        PdfMenuAction.HELP -> PdfHubAction(
+            action.label,
+            Icons.AutoMirrored.Outlined.HelpOutline,
+            enabled = onOpenHelp != null,
+        ) { onOpenHelp?.invoke() }
+
+        PdfMenuAction.PAGE_EDIT -> PdfHubAction(action.label, Icons.Outlined.EditNote) {
+            showPages = true
+        }
+
+        PdfMenuAction.PAGE_MANAGE -> PdfHubAction(action.label, Icons.Outlined.GridView) {
+            selectedPages = emptySet()
+            showOrganize = true
+        }
+
+        PdfMenuAction.PDF_TOOLS -> PdfHubAction(action.label, Icons.Outlined.Handyman) {
+            onOpenTools()
+        }
+
         PdfMenuAction.EXPORT -> PdfHubAction(action.label, Icons.Outlined.FileDownload) {
             onExportRequest(vm.exportSuggestedName())
         }
@@ -715,40 +813,16 @@ fun ViewerScreen(
             vm.shareCurrent()
         }
 
-        PdfMenuAction.PAGE_LOCK -> PdfHubAction(
-            pdfMenuActionLabel(action, pageLocked = state.pageLocked),
-            if (state.pageLocked) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
-            trailing = if (state.pageLocked) "켜짐" else null,
-        ) { vm.togglePageLock() }
-
-        PdfMenuAction.COPY_TEXT -> PdfHubAction(action.label, Icons.Outlined.ContentCopy) {
-            vm.copyPageText()
-        }
-
-        PdfMenuAction.FIT_SCREEN -> PdfHubAction(
-            action.label,
-            Icons.Outlined.FitScreen,
-            trailing = "${(state.zoom * 100).roundToInt()}%",
-        ) { vm.setZoom(1f) }
-
         PdfMenuAction.DOCUMENT_INFO -> PdfHubAction(action.label, Icons.Outlined.Info) {
             vm.loadMetadata()
             showProperties = true
         }
 
-        PdfMenuAction.DECORATE -> PdfHubAction(action.label, Icons.Outlined.Palette) {
-            showStyle = true
-        }
-
-        PdfMenuAction.PDF_TOOLS -> PdfHubAction(action.label, Icons.Outlined.Handyman) {
-            onOpenTools()
-        }
-
-        PdfMenuAction.HELP -> PdfHubAction(
-            action.label,
-            Icons.AutoMirrored.Outlined.HelpOutline,
-            enabled = onOpenHelp != null,
-        ) { onOpenHelp?.invoke() }
+        PdfMenuAction.PAGE_LOCK -> PdfHubAction(
+            pdfMenuActionLabel(action, pageLocked = state.pageLocked),
+            if (state.pageLocked) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
+            trailing = if (state.pageLocked) "켜짐" else null,
+        ) { vm.togglePageLock() }
 
         PdfMenuAction.READ_TEXT_MODE -> PdfHubAction(action.label, Icons.Outlined.AutoStories) {
             showReflow = true
@@ -787,6 +861,7 @@ fun ViewerScreen(
     }
     val readModeSheetActions = pdfReadModeActions.map { hubAction(it) }
     val audioSheetActions = pdfAudioActions.map { hubAction(it) }
+    val fileToolsSheetActions = pdfFileToolsActions.map { hubAction(it) }
 
     // Split/focus chrome: with the study pane open no app bar or dock row may
     // consume height. All PDF controls become floating overlays over the strip.
@@ -909,72 +984,35 @@ fun ViewerScreen(
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = vm::closeDocument) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
+                        IconButton(
+                            onClick = vm::closeDocument,
+                            modifier = Modifier.sizeIn(minWidth = MIN_TARGET_DP.dp, minHeight = MIN_TARGET_DP.dp),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = PdfTopChromeControl.BACK.label,
+                            )
                         }
                     },
                     actions = {
-                        // Search stays in the top bar only; the duplicate row was
-                        // removed from 학습 메뉴 (see pdfTopBarOwnedActions).
-                        IconButton(onClick = { showSearch = true }) {
+                        // Only four controls exist up here: back, the document
+                        // name (title), search and the study menu. Bookmark, note
+                        // capture and auto-hide moved into 학습 메뉴; the existing
+                        // tab/recent sheets still expose the chrome toggles.
+                        IconButton(
+                            onClick = { showSearch = true },
+                            modifier = Modifier.sizeIn(minWidth = MIN_TARGET_DP.dp, minHeight = MIN_TARGET_DP.dp),
+                        ) {
                             Icon(
                                 Icons.Outlined.Search,
-                                contentDescription = "검색",
+                                contentDescription = PdfTopChromeControl.SEARCH.label,
                             )
                         }
                         IconButton(
-                            onClick = {
-                                if (currentBookmark != null) {
-                                    vm.deleteBookmark(currentBookmark.id)
-                                } else {
-                                    vm.addCurrentPageBookmark("${state.pageIndex + 1}쪽")
-                                }
-                            },
+                            onClick = { showHub = true },
+                            modifier = Modifier.sizeIn(minWidth = MIN_TARGET_DP.dp, minHeight = MIN_TARGET_DP.dp),
                         ) {
-                            Icon(
-                                if (currentBookmark != null) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                                contentDescription = if (currentBookmark != null) {
-                                    "현재 페이지 북마크 해제"
-                                } else {
-                                    "현재 페이지 북마크"
-                                },
-                                tint = if (currentBookmark != null) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            )
-                        }
-                        // Direct note entry, visible as soon as a PDF opens. The host
-                        // resolves or creates the study notebook behind this callback.
-                        TextButton(
-                            onClick = openNote,
-                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
-                        ) {
-                            Icon(
-                                Icons.Outlined.EditNote,
-                                contentDescription = "노트",
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text("노트", style = MaterialTheme.typography.labelLarge)
-                        }
-                        // Session mode switch; when bars are hidden a centre tap
-                        // or the floating "메뉴 표시" chip brings them back.
-                        IconButton(
-                            onClick = { autoHideMode = toggleChromeAutoHideMode(autoHideMode) },
-                        ) {
-                            Icon(
-                                if (autoHideMode == ChromeAutoHideMode.ON) {
-                                    Icons.Outlined.VisibilityOff
-                                } else {
-                                    Icons.Outlined.Visibility
-                                },
-                                contentDescription = "메뉴 자동 숨김",
-                            )
-                        }
-                        IconButton(onClick = { showHub = true }) {
-                            Icon(Icons.Outlined.Menu, contentDescription = "학습 메뉴")
+                            Icon(Icons.Outlined.Menu, contentDescription = PdfTopChromeControl.HUB.label)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1079,6 +1117,8 @@ fun ViewerScreen(
                 splitMode = splitMode,
                 pdfStripHeightDp = pdfStripHeightDp,
             )
+            // The one-time coach replaces the contextual hint; they never stack.
+            val showTopHint = showHintChip && !coachVisible && !immersive
             Column(
                 Modifier
                     .fillMaxSize()
@@ -1198,13 +1238,21 @@ fun ViewerScreen(
                                     max = if (showSearchNavigation) 240.dp else 320.dp,
                                 ),
                             )
-                            if (showHintChip) Spacer(Modifier.height(6.dp))
+                            if (showTopHint) Spacer(Modifier.height(6.dp))
                         }
                         if (annotationsHidden) {
                             HiddenAnnotationsBanner(onShow = { annotationsHidden = false })
-                            if (showHintChip) Spacer(Modifier.height(6.dp))
+                            if (showTopHint || coachVisible) Spacer(Modifier.height(6.dp))
                         }
-                        if (showHintChip && !immersive) {
+                        if (coachVisible && !immersive) {
+                            // Small, self-dismissing overlay: it intercepts only its
+                            // own bounds, so pinch, scroll, selection and page taps
+                            // keep working everywhere else on the page.
+                            PdfCoachCard(
+                                onDismiss = dismissCoach,
+                                modifier = Modifier.padding(horizontal = if (splitMode) 48.dp else 8.dp),
+                            )
+                        } else if (showTopHint) {
                             PdfContextHintChip(
                                 text = pdfContextHintText(contextHint, stringResource(toolHintRes)),
                                 loading = contextHint == PdfContextHint.LOADING,
@@ -1560,16 +1608,6 @@ fun ViewerScreen(
             onDismiss = { showPopup = false },
         )
     }
-    if (showOutline) {
-        OutlineSheet(
-            entries = outline.orEmpty(),
-            onSelect = { page ->
-                vm.goToPage(page)
-                showOutline = false
-            },
-            onDismiss = { showOutline = false },
-        )
-    }
     if (showProperties) {
         PropertiesSheet(
             metadata = metadata,
@@ -1603,17 +1641,6 @@ fun ViewerScreen(
             pageCount = state.pageCount,
             sections = hubSections,
             onDismiss = { showHub = false },
-            canUndo = state.canUndo,
-            canRedo = state.canRedo,
-            onUndo = vm::undo,
-            onRedo = vm::redo,
-            styleEnabled = isStyleTool(state.tool),
-            onStyle = { showToolStyle = true },
-            onLocations = {
-                showHub = false
-                vm.loadOutline()
-                showLocations = true
-            },
         )
     }
     if (showLocations) {
@@ -1630,6 +1657,16 @@ fun ViewerScreen(
                 exportSummary.launch("PDF-주석요약-$safeName.md")
             },
             onDismiss = { showLocations = false },
+            // Full managers stay reachable without adding duplicate nav rows
+            // to the hub: the unified panel hands off to the existing sheets.
+            onManageBookmarks = {
+                showLocations = false
+                showBookmarks = true
+            },
+            onManageAnnotations = {
+                showLocations = false
+                showAnnotations = true
+            },
         )
     }
     if (showRecentDocs) {
@@ -1690,6 +1727,14 @@ fun ViewerScreen(
             subtitle = "현재 PDF 페이지에 연결된 오디오 노트",
             actions = audioSheetActions,
             onDismiss = { showAudioMenu = false },
+        )
+    }
+    if (showFileTools) {
+        PdfHubSubSheet(
+            title = "파일 도구",
+            subtitle = "쪽 편집·쪽 관리, PDF 도구, 내보내기와 문서 설정",
+            actions = fileToolsSheetActions,
+            onDismiss = { showFileTools = false },
         )
     }
     if (showToolMore) {
@@ -1781,7 +1826,10 @@ fun ViewerScreen(
             onEditText = { showTextEditDialog = true },
             onShare = { TextActions.shareText(context, selectedText) },
             onAddToPane = if (studyPane != null) {
-                { appendStudyExcerpt(selectedText, state.pageIndex) }
+                {
+                    vm.addExcerptFromSelection(state.pageIndex, selectedText)
+                    appendStudyExcerpt(selectedText, state.pageIndex)
+                }
             } else {
                 null
             },
@@ -2151,6 +2199,57 @@ private fun HiddenAnnotationsBanner(onShow: () -> Unit) {
         }
     }
 }
+
+/**
+ * Session-only, one-time coach for the first PDF open. Three steps in the order
+ * students actually work: open the PDF, mark it up, capture it into a note. It is
+ * a small self-dismissing card — never a modal or a full-screen pointer sink — so
+ * every page gesture outside the card keeps its existing behaviour.
+ */
+@Composable
+private fun PdfCoachCard(
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onDismiss,
+        modifier = modifier
+            .sizeIn(minHeight = MIN_TARGET_DP.dp)
+            .semantics { contentDescription = PDF_COACH_DISMISS_DESCRIPTION },
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f),
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        tonalElevation = 3.dp,
+        shadowElevation = 3.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "① 열기 ② 표시 ③ 노트에 담기",
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 2,
+                )
+                Text(
+                    "탭해서 닫기",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                Icons.Outlined.Close,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+/** TalkBack label for the one-time coach; also used by Compose tests. */
+internal const val PDF_COACH_DISMISS_DESCRIPTION = "첫 PDF 안내, 탭하여 닫기"
 
 /**
  * Single compact, translucent first-use hint over the page. It carries only a
