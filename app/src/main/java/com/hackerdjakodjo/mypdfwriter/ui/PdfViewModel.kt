@@ -32,6 +32,8 @@ import com.hackerdjakodjo.mypdfwriter.data.PdfReadingStore
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfCrop
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfExporter
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfLink
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfLinks
@@ -95,6 +97,10 @@ data class ViewerUiState(
     val nightMode: Boolean = false,
     /** Screen dimming factor in 0.4..1.0, persisted per document. */
     val brightness: Float = DisplayPrefs.DEFAULT_BRIGHTNESS,
+    /** View-only crop margins; never change the source PDF or exported pages. */
+    val cropInsets: CropInsets = CropInsets.NONE,
+    /** When true, even pages mirror the left/right crop insets. */
+    val cropOddEven: Boolean = false,
     /** Session-only page lock: blocks page navigation until explicitly unlocked. */
     val pageLocked: Boolean = false,
     val revision: Int = 0,
@@ -344,6 +350,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     documentStyle = style,
                     nightMode = displayPrefs.nightMode,
                     brightness = displayPrefs.brightness,
+                    cropInsets = displayPrefs.cropInsets(),
+                    cropOddEven = displayPrefs.cropOddEven,
                 )
                 persistNow()
                 if (addToRecents) {
@@ -567,6 +575,15 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val clamped = DisplayPrefs.clampBrightness(value)
         if (state.brightness == clamped) return
         _viewer.value = state.copy(brightness = clamped)
+        persistNow()
+    }
+
+    /** View-only crop margins. Saved with the document; never changes the file. */
+    fun setCrop(insets: CropInsets, oddEven: Boolean) {
+        val state = _viewer.value ?: return
+        val clamped = PdfCrop.clampInsets(insets)
+        if (state.cropInsets == clamped && state.cropOddEven == oddEven) return
+        _viewer.value = state.copy(cropInsets = clamped, cropOddEven = oddEven)
         persistNow()
     }
 
@@ -1878,6 +1895,11 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             displayPrefs = DisplayPrefs(
                 nightMode = state.nightMode,
                 brightness = state.brightness,
+                cropLeft = state.cropInsets.left,
+                cropTop = state.cropInsets.top,
+                cropRight = state.cropInsets.right,
+                cropBottom = state.cropInsets.bottom,
+                cropOddEven = state.cropOddEven,
             ),
             memoCards = state.memoCards,
         )

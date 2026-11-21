@@ -395,6 +395,7 @@ class PdfSplitChromeE2ETest {
         var bar = 0
         var autoHide = 0
         var recents = 0
+        var locations = 0
         var dismissed = 0
         val tabs = (1..4).map { OpenDocumentTab("doc$it", "content://docs/$it", "$it.pdf") }
 
@@ -411,13 +412,14 @@ class PdfSplitChromeE2ETest {
                     onToggleBar = { bar += 1 },
                     onToggleAutoHide = { autoHide += 1 },
                     onOpenRecents = { recents += 1 },
+                    onOpenLocations = { locations += 1 },
                     onDismiss = { dismissed += 1 },
                 )
             }
         }
 
         composeRule.onNodeWithText("문서 탭").assertExists()
-        listOf("다른 탭 닫기", "모든 탭 닫기", "탭 표시/숨기기", "메뉴 자동 숨김", "최근 문서")
+        listOf("다른 탭 닫기", "모든 탭 닫기", "탭 표시/숨기기", "메뉴 자동 숨김", "최근 문서", "위치 · 북마크/목차/주석")
             .forEach { composeRule.onNodeWithText(it).assertExists() }
         composeRule.onNodeWithContentDescription("문서 탭 열기: 4.pdf").performClick()
         composeRule.onNodeWithText("다른 탭 닫기").performClick()
@@ -425,6 +427,7 @@ class PdfSplitChromeE2ETest {
         composeRule.onNodeWithText("탭 표시/숨기기").performClick()
         composeRule.onNodeWithText("메뉴 자동 숨김").performClick()
         composeRule.onNodeWithText("최근 문서").performClick()
+        composeRule.onNodeWithText("위치 · 북마크/목차/주석").performClick()
 
         assertEquals("doc4", switched)
         assertEquals(1, others)
@@ -432,6 +435,7 @@ class PdfSplitChromeE2ETest {
         assertEquals(1, bar)
         assertEquals(1, autoHide)
         assertEquals(1, recents)
+        assertEquals(1, locations)
         assertEquals(0, dismissed)
     }
 

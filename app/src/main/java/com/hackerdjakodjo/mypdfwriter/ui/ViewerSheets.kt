@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -95,6 +96,8 @@ import com.hackerdjakodjo.mypdfwriter.data.PageSpec
 import com.hackerdjakodjo.mypdfwriter.data.PdfBookmark
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationSummary
+import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfCrop
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfOutlineEntry
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
@@ -113,6 +116,7 @@ fun DisplaySettingsSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -
         Column(
             Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp),
         ) {
@@ -168,6 +172,47 @@ fun DisplaySettingsSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -
                 TextButton(onClick = { vm.setBrightness(DisplayPrefs.DEFAULT_BRIGHTNESS) }) {
                     Text("기본값")
                 }
+            }
+
+            HorizontalDivider(Modifier.padding(vertical = 10.dp))
+            Text("여백 자르기", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.size(4.dp))
+            Text(
+                "보기에서만 여백을 숨깁니다. 원본 PDF와 내보내기는 그대로입니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val crop = state.cropInsets
+            val cropMax = 0.3f
+            listOf<Triple<String, Float, (Float) -> Unit>>(
+                Triple("왼쪽", crop.left) { v -> vm.setCrop(crop.copy(left = v), state.cropOddEven) },
+                Triple("위", crop.top) { v -> vm.setCrop(crop.copy(top = v), state.cropOddEven) },
+                Triple("오른쪽", crop.right) { v -> vm.setCrop(crop.copy(right = v), state.cropOddEven) },
+                Triple("아래", crop.bottom) { v -> vm.setCrop(crop.copy(bottom = v), state.cropOddEven) },
+            ).forEach { (label, value, update) ->
+                Spacer(Modifier.size(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                    Text(
+                        "${(value * 100).roundToInt()}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Slider(
+                    value = value.coerceIn(0f, cropMax),
+                    valueRange = 0f..cropMax,
+                    onValueChange = update,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            FilterChip(
+                selected = state.cropOddEven,
+                onClick = { vm.setCrop(crop, !state.cropOddEven) },
+                label = { Text("홀수·짝수 페이지 다르게") },
+            )
+            TextButton(onClick = { vm.setCrop(CropInsets.NONE, false) }) {
+                Text("여백 초기화")
             }
         }
     }

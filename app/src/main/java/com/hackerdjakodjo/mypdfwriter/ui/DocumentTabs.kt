@@ -315,6 +315,7 @@ internal fun DocumentTabOverflowSheet(
     onToggleBar: () -> Unit,
     onToggleAutoHide: () -> Unit,
     onOpenRecents: () -> Unit,
+    onOpenLocations: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -356,11 +357,7 @@ internal fun DocumentTabOverflowSheet(
                 trailing = autoHideMode.label,
             ) { onToggleAutoHide() }
             TabPanelRow(label = "최근 문서") { onOpenRecents() }
-            // TODO(post-merge): the other worktree adds a unified `위치` sheet
-            // (bookmarks + outline + annotations) in ViewerSheets/PdfHubSheet.
-            // Wire that action into this panel once those files are merged; this
-            // branch may not edit them. Existing 북마크/목차/주석 actions stay
-            // reachable through 학습 메뉴 in the meantime.
+            TabPanelRow(label = "위치 · 북마크/목차/주석") { onOpenLocations() }
         }
     }
 }

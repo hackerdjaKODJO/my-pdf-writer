@@ -34,6 +34,7 @@
 - [Student-first UX redesign — 0.8.33](student-ux-0833.md)
 - [Latent bug and performance pass — 0.8.34](bugfix-perf-0834.md)
 - [Open-source ink refinement — 0.8.35](ink-refinement-0835.md)
+- [GoodReader patterns applied — 0.8.36](goodreader-parity-0836.md)
 
 ## 문의
 

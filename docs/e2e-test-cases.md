@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.35
+# E2E test cases — My PDF Writer 0.8.36
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator; the build machine has no adb device attached, so only JVM tests are
@@ -9,7 +9,7 @@ executed here. Instrumentation APKs are compiled with
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 773 | **Passing** on this phone |
+| JVM unit tests | 830 | **Passing** on this phone |
 | Instrumentation/E2E | 7 classes (see below) | **Compiled**; on-device run pending |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally) |
@@ -89,6 +89,7 @@ executed here. Instrumentation APKs are compiled with
 | BUG-02 | Viewer back handling, split search and memo edit requests | JVM + E2E | Compiled |
 | BUG-03 | Backup rollback and intent carrier clearing | JVM `BackupManagerTest`, `IntentImportPolicyTest` | Passing |
 | INK-04 | Variable-width outline, lazy brush/RDP/Chaikin and pressure calibration | JVM `VariableWidthOutlineTest`, `NoteStrokeRefineTest`, `InkPressureTest` | Passing |
+| GR-05 | Locations panel, annotation summary, tabs, auto-hide and crop | JVM `LocationsSheetTest`, `AnnotationSummaryTest`, `DocumentTabsTest`, `PdfCropTest` | Passing |
 
 ## Run on a device
 

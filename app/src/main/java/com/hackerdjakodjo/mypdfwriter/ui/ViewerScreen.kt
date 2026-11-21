@@ -129,9 +129,8 @@ import kotlin.math.roundToInt
  * a single flag (as happened with the memo-card and pen-box sheets) makes Back
  * close the whole PDF while that sheet is still open.
  *
- * TODO(post-merge): another worktree's unified `위치` sheet (bookmarks + outline
- * + annotations) needs a flag here, a render block in ViewerScreen and an action
- * in the tab overflow panel. This branch may not edit ViewerSheets/PdfHubSheet.
+ * The unified `위치` sheet lives here too: opening it must not let Back close
+ * the whole document while it is on screen.
  */
 internal data class ViewerSheetFlags(
     val showPages: Boolean = false,
@@ -164,6 +163,7 @@ internal data class ViewerSheetFlags(
     val showViewerPenBox: Boolean = false,
     val showRecentDocs: Boolean = false,
     val showTabOverflow: Boolean = false,
+    val showLocations: Boolean = false,
     val textTargetOpen: Boolean = false,
     val stampTargetOpen: Boolean = false,
     val signatureTargetOpen: Boolean = false,
@@ -174,7 +174,7 @@ internal data class ViewerSheetFlags(
         showReadAloud || showOutline || showProperties || showStyle || showDisplaySettings ||
         showHub || showReadModes || showAudioMenu || showToolMore || showToolStyle ||
         showSelectionMore || showTextEditDialog || showMemoCardsSheet || showViewerPenBox ||
-        showRecentDocs || showTabOverflow ||
+        showRecentDocs || showTabOverflow || showLocations ||
         textTargetOpen || stampTargetOpen || signatureTargetOpen
 }
 
@@ -307,6 +307,8 @@ fun ViewerScreen(
     var tabsState by remember { mutableStateOf(DocumentTabsState()) }
     var showRecentDocs by remember { mutableStateOf(false) }
     var showTabOverflow by remember { mutableStateOf(false) }
+    var showLocations by remember { mutableStateOf(false) }
+    var pendingSummary by remember { mutableStateOf("") }
     val smallestScreenWidthDp = LocalConfiguration.current.smallestScreenWidthDp
     var autoHideMode by remember {
         mutableStateOf(defaultChromeAutoHideMode(smallestScreenWidthDp))
@@ -429,6 +431,23 @@ fun ViewerScreen(
         }
     }
 
+    val exportSummary = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/markdown"),
+    ) { uri ->
+        if (uri != null && pendingSummary.isNotBlank()) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(pendingSummary.toByteArray(Charsets.UTF_8))
+                }
+            }.onSuccess {
+                Toast.makeText(context, "주석 요약을 저장했습니다", Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Toast.makeText(context, "주석 요약을 저장하지 못했습니다", Toast.LENGTH_SHORT).show()
+            }
+            pendingSummary = ""
+        }
+    }
+
     val sheetOpen = ViewerSheetFlags(
         showPages = showPages,
         showNotes = showNotes,
@@ -460,6 +479,7 @@ fun ViewerScreen(
         showViewerPenBox = showViewerPenBox,
         showRecentDocs = showRecentDocs,
         showTabOverflow = showTabOverflow,
+        showLocations = showLocations,
         textTargetOpen = textTarget != null,
         stampTargetOpen = stampTarget != null,
         signatureTargetOpen = signatureTarget != null,
@@ -500,6 +520,8 @@ fun ViewerScreen(
             pageCount = state.pageCount,
             initialPage = state.pageIndex,
             brightness = state.brightness,
+            cropInsets = state.cropInsets,
+            cropOddEven = state.cropOddEven,
             loadPage = { index -> vm.loadReaderPage(index) },
             onBack = { showSpread = false },
             onOpenPage = { index ->
@@ -516,6 +538,8 @@ fun ViewerScreen(
             pageCount = state.pageCount,
             initialPage = state.pageIndex,
             brightness = state.brightness,
+            cropInsets = state.cropInsets,
+            cropOddEven = state.cropOddEven,
             loadPage = { index, zoom -> vm.loadReaderPage(index, zoom) },
             onBack = { showContinuous = false },
             onOpenPage = { index ->
@@ -1110,6 +1134,8 @@ fun ViewerScreen(
                         pageCount = state.pageCount,
                         nightMode = state.nightMode,
                         brightness = state.brightness,
+                        cropInsets = state.cropInsets,
+                        cropOddEven = state.cropOddEven,
                         links = pageLinks,
                         textWords = pageTextWords,
                         textSelectMode = textSelectMode,
@@ -1583,6 +1609,27 @@ fun ViewerScreen(
             onRedo = vm::redo,
             styleEnabled = isStyleTool(state.tool),
             onStyle = { showToolStyle = true },
+            onLocations = {
+                showHub = false
+                vm.loadOutline()
+                showLocations = true
+            },
+        )
+    }
+    if (showLocations) {
+        LocationsSheet(
+            bookmarks = bookmarks,
+            outline = outline.orEmpty(),
+            annotations = state.annotations,
+            pageCount = state.pageCount,
+            currentPage = state.pageIndex,
+            onJumpToPage = { page -> vm.goToPage(page) },
+            onExportSummary = { markdown ->
+                pendingSummary = markdown
+                val safeName = state.docName.replace(Regex("[^0-9A-Za-z가-힣._-]"), "_")
+                exportSummary.launch("PDF-주석요약-$safeName.md")
+            },
+            onDismiss = { showLocations = false },
         )
     }
     if (showRecentDocs) {
@@ -1621,6 +1668,11 @@ fun ViewerScreen(
             },
             onToggleAutoHide = { autoHideMode = toggleChromeAutoHideMode(autoHideMode) },
             onOpenRecents = openRecentDocs,
+            onOpenLocations = {
+                showTabOverflow = false
+                vm.loadOutline()
+                showLocations = true
+            },
             onDismiss = { showTabOverflow = false },
         )
     }
