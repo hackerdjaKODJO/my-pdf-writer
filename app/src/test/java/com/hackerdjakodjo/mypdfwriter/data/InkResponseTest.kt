@@ -225,4 +225,32 @@ class InkResponseTest {
             assertEquals(neutral, it)
         }
     }
+
+    @Test
+    fun `calibrator neutral outputs keep curves and responses exactly neutral`() {
+        val calibrator = PressureCalibrator(alpha = 1f, deadZone = 0f)
+        calibrator.map(0.2f)
+        calibrator.map(0.7f)
+
+        listOf(
+            calibrator.map(1f),
+            calibrator.map(Float.NaN),
+            calibrator.map(Float.POSITIVE_INFINITY),
+            calibrator.map(Float.NEGATIVE_INFINITY),
+        ).forEach { neutralInput ->
+            assertEquals(1f, neutralInput, 0f)
+            PressureCurve.entries.forEach { curve ->
+                assertEquals("$curve full pressure", 1f, curve.applyTo(neutralInput), 0f)
+            }
+            styles.forEach { style ->
+                flags.forEach { highlight ->
+                    assertEquals(
+                        "$style/$highlight response",
+                        neutral,
+                        inkResponse(style, highlight, neutralInput),
+                    )
+                }
+            }
+        }
+    }
 }

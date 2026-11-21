@@ -127,6 +127,89 @@ fun pressureCurveRange(
 }
 
 /**
+ * Adaptive, session-scoped calibration for digitizers whose reported pressure
+ * never reaches the full 0..1 range (a stylus that reports 0.2..0.7, for
+ * example). A fixed gamma curve can only work if its input spans the whole
+ * range; this class learns the range actually produced by the pen and remaps it
+ * before a [PressureCurve] preset is applied.
+ *
+ * The observed extremes are smoothed with an exponential weighted moving
+ * average: a new extreme moves its tracked bound only by [alpha] of the
+ * distance, so a single noisy spike cannot define the whole range. Bounds only
+ * move when the sample is a new extreme, which keeps the learned span stable
+ * across the many in-range samples of a stroke. Once the span is wide enough to
+ * be meaningful, each sample is mapped from [observedMin]..[observedMax] to
+ * 0..1, with the faintest [deadZone] of that range flattened to zero so
+ * light-contact jitter never produces ink.
+ *
+ * This is deliberately transient. The instance lives only as long as the input
+ * session that owns it and is never written to a notebook or to JSON; call
+ * [reset] to start a fresh session. A fully pressed sample (1f) and non-finite
+ * samples pass through as the neutral 1f so legacy, finger and undefined input
+ * stay byte-for-byte unchanged. Only stylus samples should be fed to [map];
+ * fingers, mice and erasers are handled by the caller.
+ */
+class PressureCalibrator(
+    private val alpha: Float = 0.08f,
+    private val deadZone: Float = 0.02f,
+) {
+    /** Smoothed lowest finite stylus sample seen in this session. */
+    var observedMin: Float = Float.POSITIVE_INFINITY
+        private set
+
+    /** Smoothed highest finite stylus sample seen in this session. */
+    var observedMax: Float = Float.NEGATIVE_INFINITY
+        private set
+
+    /** True once at least one finite, non-full sample has been observed. */
+    val hasRange: Boolean get() = observedMin.isFinite() && observedMax.isFinite()
+
+    /**
+     * Maps one stylus sample into 0..1 using the learned range. Out-of-range
+     * samples are clamped, non-finite and fully pressed samples are neutral
+     * (exactly 1f), and a range too narrow to distinguish from sensor noise is
+     * left untouched (identity).
+     */
+    fun map(rawPressure: Float): Float {
+        if (!rawPressure.isFinite() || rawPressure >= MAX_INK_PRESSURE) {
+            return DEFAULT_INK_PRESSURE
+        }
+        val raw = clampInkPressure(rawPressure)
+        if (!hasRange) {
+            observedMin = raw
+            observedMax = raw
+        } else {
+            // EWMA on each extreme. Moving both bounds by the same alpha keeps
+            // the span from decaying when many in-range samples arrive, while
+            // still smoothing out an isolated outlier at either end.
+            if (raw < observedMin) observedMin += alpha * (raw - observedMin)
+            if (raw > observedMax) observedMax += alpha * (raw - observedMax)
+        }
+
+        val span = observedMax - observedMin
+        if (span <= MIN_CALIBRATION_SPAN) return raw
+
+        val normalized = ((raw - observedMin) / span).coerceIn(MIN_INK_PRESSURE, MAX_INK_PRESSURE)
+        if (deadZone <= 0f) return normalized
+        // Compress the faintest band to zero and rescale the remainder so a
+        // fully pressed sample still reaches exactly 1f.
+        val band = deadZone.coerceIn(0f, 0.5f)
+        return ((normalized - band) / (1f - band)).coerceIn(MIN_INK_PRESSURE, MAX_INK_PRESSURE)
+    }
+
+    /** Forgets everything learned so the next sample starts a new session. */
+    fun reset() {
+        observedMin = Float.POSITIVE_INFINITY
+        observedMax = Float.NEGATIVE_INFINITY
+    }
+
+    private companion object {
+        /** Ranges this narrow are indistinguishable from a noisy sensor. */
+        const val MIN_CALIBRATION_SPAN = 0.05f
+    }
+}
+
+/**
  * Normalized, per-sample ink response. Every component is a multiplier that is
  * safe to feed straight into rendering: [width] never drops below
  * [MIN_PRESSURE_WIDTH_FACTOR], while [flow] (darkness/opacity) and [grain]
