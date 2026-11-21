@@ -125,7 +125,7 @@ class MainActivity : ComponentActivity() {
                         restoredAt = backupState.restoredAt,
                         refreshNotebook = { notebookViewModel.refresh() },
                         reloadLibrary = { viewModel.reloadLibrary() },
-                        closeDocument = { viewModel.closeDocument() },
+                        closeDocument = { viewModel.discardDocument() },
                         consumeRestored = { backupViewModel.consumeRestored() },
                     )
                 }

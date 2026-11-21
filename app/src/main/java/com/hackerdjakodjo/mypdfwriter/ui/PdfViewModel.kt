@@ -413,6 +413,37 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         repo.clearCache()
     }
 
+    /**
+     * Drops the current document without writing its in-memory state back to disk.
+     * Used after a local backup restore replaces sidecars on disk: persisting the
+     * stale viewer here would immediately overwrite the restored annotations.
+     */
+    fun discardDocument() {
+        renderJob?.cancel()
+        searchJob?.cancel()
+        linkLoadJob?.cancel()
+        synchronized(docSaveLock) {
+            docSaveQueue = DocSaveQueue()
+        }
+        docSaveJob?.cancel()
+        docSaveJob = null
+        _viewer.value = null
+        _pageBitmap.value = null
+        _pageLinks.value = emptyList()
+        _outline.value = null
+        _metadata.value = null
+        _excerpts.value = emptyList()
+        _bookmarks.value = emptyList()
+        resetTextLayout()
+        pageTexts = null
+        sourceSizes = emptyList()
+        sourceFile = null
+        workingFile = null
+        currentUriString = null
+        pendingInitialPage = null
+        repo.clearCache()
+    }
+
     // ---------------------------------------------------------------- rendering
 
     private fun renderPage(index: Int) {
