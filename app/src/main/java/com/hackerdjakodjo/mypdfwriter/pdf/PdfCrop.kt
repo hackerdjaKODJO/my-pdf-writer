@@ -43,6 +43,13 @@ data class CropPoint(val x: Float, val y: Float)
 data class CropPixelRect(val left: Int, val top: Int, val width: Int, val height: Int)
 
 /**
+ * Float rectangle in the canvas' page-centred *local pixel* space: the page
+ * bitmap is drawn from `-pageWidth/2, -pageHeight/2`, so this rect is centred
+ * on the local origin and its extent is exactly the visible crop.
+ */
+data class CanvasClipRect(val left: Float, val top: Float, val right: Float, val bottom: Float)
+
+/**
  * Clean-room, view-only crop math shared by every PDF surface.
  *
  * Coordinate spaces:
@@ -154,6 +161,30 @@ object PdfCrop {
         if (!oddEvenEnabled || pageIndex < 0) return safe
         val isEvenPage = ((pageIndex + 1) and 1) == 0
         return if (isEvenPage) safe.copy(left = safe.right, right = safe.left) else safe
+    }
+
+    /**
+     * Clip rectangle for the single-page canvas' native draw, expressed in the
+     * page-centred local pixel space in which the bitmap and every overlay are
+     * drawn.
+     *
+     * `PdfCanvas` translates the visible crop centre to the local origin before
+     * drawing, so the clip must be centred there too and sized to the kept
+     * extent. Passing the raw page-pixel crop rect instead (e.g. `0, 0, w, h`
+     * with zero insets) clips only one quadrant and disagrees with the inverse
+     * hit-test, which treats the crop centre as the origin.
+     *
+     * With identity insets this returns the whole page rect, so existing
+     * uncropped rendering is reproduced exactly.
+     */
+    fun clipRectForCanvas(
+        visible: NormalizedRect,
+        pageWidth: Float,
+        pageHeight: Float,
+    ): CanvasClipRect {
+        val halfW = pageWidth.coerceAtLeast(0f) * visible.width / 2f
+        val halfH = pageHeight.coerceAtLeast(0f) * visible.height / 2f
+        return CanvasClipRect(-halfW, -halfH, halfW, halfH)
     }
 
     /** Converts a visible page rectangle into an integral bitmap crop window. */

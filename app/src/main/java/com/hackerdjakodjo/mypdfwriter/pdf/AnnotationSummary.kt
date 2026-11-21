@@ -2,6 +2,8 @@ package com.hackerdjakodjo.mypdfwriter.pdf
 
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import java.io.IOException
+import java.io.OutputStream
 
 /**
  * Pure, offline builder for the text of the `주석 요약 내보내기` action in the
@@ -100,7 +102,10 @@ object AnnotationSummary {
     }
 
     /**
-     * Sanitized rows ordered by page, then stored type order, then id/snippet.
+     * Sanitized rows ordered exactly like the Locations panel: ascending page,
+     * then stored type order, with Kotlin's stable sort preserving the document
+     * order inside a page/type group. No random id/text tiebreak — adding one
+     * made the export disagree with the panel on visually identical rows.
      * Blanks, duplicate ids and out-of-range pages are dropped just like the
      * panel filter, so the export can never contain a row the UI cannot show.
      */
@@ -112,9 +117,7 @@ object AnnotationSummary {
             .asSequence()
             .filter { it.id.isNotBlank() && it.page >= 0 && it.page < limit }
             .filter { seenIds.add(it.id) }
-            .sortedWith(
-                compareBy<Annotation>({ it.page }, { it.type.ordinal }, { it.id }, { it.text }, { it.stamp }),
-            )
+            .sortedWith(compareBy<Annotation>({ it.page }, { it.type.ordinal }))
             .map { Row(it.page, it.type, colorName(it.color), snippet(it)) }
             .toList()
     }
@@ -152,4 +155,34 @@ object AnnotationSummary {
 
     private fun escape(value: String): String =
         value.replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+}
+
+/**
+ * Pure handoff between the annotation-summary text and the SAF write action.
+ *
+ * The composable keeps the pending text in `rememberSaveable` so it survives the
+ * Activity recreation that a `CreateDocument` picker causes. This object owns
+ * the two decisions the callback needs — whether to write, and the exact UTF-8
+ * payload — so both can be unit-tested without Android. The caller always clears
+ * the pending text afterwards, including when the picker is cancelled.
+ */
+object SummarySafWriter {
+
+    enum class Outcome { WRITE, CLEAR }
+
+    /** A cancelled/blank request must clear the pending text rather than keep it. */
+    fun outcomeForResult(uriGranted: Boolean, pending: String): Outcome =
+        if (uriGranted && pending.isNotBlank()) Outcome.WRITE else Outcome.CLEAR
+
+    /** Exact bytes handed to SAF: UTF-8, no BOM, no locale-dependent charset. */
+    fun utf8(pending: String): ByteArray = pending.toByteArray(Charsets.UTF_8)
+
+    /** Writes the UTF-8 payload; false only when the stream itself rejects it. */
+    fun write(out: OutputStream, pending: String): Boolean = try {
+        out.write(utf8(pending))
+        out.flush()
+        true
+    } catch (_: IOException) {
+        false
+    }
 }

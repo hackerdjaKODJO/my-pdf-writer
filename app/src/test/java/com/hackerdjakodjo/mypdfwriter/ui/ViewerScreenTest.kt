@@ -71,6 +71,26 @@ class ViewerScreenTest {
     }
 
     @Test
+    fun highlightQueryIsTrimmedLikeTheViewModelSearch() {
+        assertEquals("주석", viewerHighlightQuery("  주석  "))
+        // Only the ends are trimmed — exactly like PdfViewModel.search, which
+        // does query.trim() and leaves internal spacing to the matcher.
+        assertEquals("hello  world", viewerHighlightQuery("\n\t hello  world \n"))
+        assertEquals("", viewerHighlightQuery("   "))
+        // The overlay and the search result list must agree on what is a query.
+        assertEquals(viewerHighlightQuery(" annotated "), "annotated")
+    }
+
+    @Test
+    fun canvasStateKeyChangesOnDocumentSwitchEvenAtTheSamePage() {
+        val first = CanvasPageKey(docId = "doc-a", pageIndex = 3)
+        assertEquals(first, CanvasPageKey("doc-a", 3))
+        assertFalse("same page in another document resets pan", first == CanvasPageKey("doc-b", 3))
+        assertFalse("different page resets pan", first == CanvasPageKey("doc-a", 4))
+        assertEquals(setOf(first, CanvasPageKey("doc-b", 3), CanvasPageKey("doc-a", 4)).size, 3)
+    }
+
+    @Test
     fun everyViewerLayerInterceptsBack() {
         val idle = ViewerSheetFlags()
         val layers = listOf(

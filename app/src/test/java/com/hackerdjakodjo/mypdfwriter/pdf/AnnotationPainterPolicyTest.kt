@@ -347,6 +347,62 @@ class AnnotationPainterPolicyTest {
     }
 
     @Test
+    fun `replay slices full stroke envelopes instead of recomputing from a prefix`() {
+        // A zigzag so the nib factors change with direction and the brush
+        // envelope changes with stroke length; a straight line cannot expose
+        // either bug.
+        val points = listOf(
+            NormalizedPoint(0.10f, 0.10f, 1f),
+            NormalizedPoint(0.20f, 0.40f, 0.8f),
+            NormalizedPoint(0.30f, 0.12f, 0.5f),
+            NormalizedPoint(0.45f, 0.45f, 0.2f),
+            NormalizedPoint(0.60f, 0.10f, 0.6f),
+            NormalizedPoint(0.75f, 0.40f, 0.9f),
+            NormalizedPoint(0.90f, 0.15f, 1f),
+            NormalizedPoint(0.95f, 0.55f, 0.7f),
+        )
+        val width = 1000f
+        val height = 2000f
+        val context = AnnotationPainter.inkContext(
+            points,
+            PenStyle.FOUNTAIN,
+            width = width,
+            height = height,
+        )
+
+        assertEquals(points.size, context.fountainSmoothed.size)
+        assertEquals(points.size, context.brushEnvelope.size)
+        assertEquals(
+            AnnotationPainter.fountainSmoothedFactors(points, width, height).toList(),
+            context.fountainSmoothed.toList(),
+        )
+        assertEquals(
+            AnnotationPainter.brushEnvelope(points).toList(),
+            context.brushEnvelope.toList(),
+        )
+
+        val shown = 3
+        val slicedFountain = context.fountainSmoothed.copyOf(shown)
+        val slicedBrush = context.brushEnvelope.copyOf(shown)
+        assertEquals("reveal slices the full nib factors", context.fountainSmoothed.take(shown), slicedFountain.toList())
+        assertEquals("reveal slices the full brush envelope", context.brushEnvelope.take(shown), slicedBrush.toList())
+
+        // A prefix-local recomputation retapers the nib (the last revealed
+        // point loses its right neighbour) and reswells the brush (a short
+        // stroke has a different envelope), so it cannot stand in for a slice.
+        val prefix = points.take(shown)
+        assertFalse(
+            "fountain reveal must not recompute from the prefix",
+            slicedFountain.toList() ==
+                AnnotationPainter.fountainSmoothedFactors(prefix, width, height).toList(),
+        )
+        assertFalse(
+            "brush reveal must not recompute from the prefix",
+            slicedBrush.toList() == AnnotationPainter.brushEnvelope(prefix).toList(),
+        )
+    }
+
+    @Test
     fun `graphite policies keep the legacy pencil constants at neutral grain`() {
         val neutral = InkResponse(1f, 1f, 1f)
         assertEquals(-0.55f, PenStrokeGeometry.graphitePassOffset(0, neutral.grain), 0f)

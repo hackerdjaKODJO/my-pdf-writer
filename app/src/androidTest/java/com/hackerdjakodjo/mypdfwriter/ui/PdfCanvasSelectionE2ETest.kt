@@ -114,6 +114,7 @@ class PdfCanvasSelectionE2ETest {
         composeRule.setContent {
             PdfCanvas(
                 bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888),
+                docId = "e2e-doc",
                 pageIndex = 0,
                 displayWidthPt = 595f,
                 displayHeightPt = 595f,

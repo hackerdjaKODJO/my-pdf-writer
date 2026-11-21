@@ -2,6 +2,7 @@ package com.hackerdjakodjo.mypdfwriter.pdf
 
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.ui.PdfAnnotationFilter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -72,6 +73,27 @@ class AnnotationSummaryTest {
         assertEquals(first, AnnotationSummary.buildMarkdown(listOf(a, b, c, d), pageCount = 4))
         assertTrue(first.endsWith("\n"))
         assertTrue("exactly one trailing newline", !first.endsWith("\n\n"))
+    }
+
+    @Test
+    fun rowsFollowTheLocationsPanelPageTypeOrderWithoutAnIdTiebreak() {
+        // Ids deliberately sort the opposite way to the document order inside
+        // one page/type group. The export used to follow those random ids while
+        // the Locations panel kept its stable page/type order.
+        val rect = annotation(AnnotationType.RECT, page = 1, id = "a-rect", text = "first")
+        val pen1 = annotation(AnnotationType.PEN, page = 1, id = "z-pen", text = "second")
+        val earlierPage = annotation(AnnotationType.RECT, page = 0, id = "c-rect", text = "third")
+        val pen2 = annotation(AnnotationType.PEN, page = 1, id = "a-pen", text = "fourth")
+        val input = listOf(rect, pen1, earlierPage, pen2)
+
+        val rows = AnnotationSummary.rows(input, pageCount = 3)
+
+        assertEquals(listOf("third", "second", "fourth", "first"), rows.map { it.snippet })
+        assertEquals(
+            "one comparator shared with the Locations panel",
+            PdfAnnotationFilter.filter(input, pageCount = 3).map { it.page to it.type },
+            rows.map { it.page to it.type },
+        )
     }
 
     @Test

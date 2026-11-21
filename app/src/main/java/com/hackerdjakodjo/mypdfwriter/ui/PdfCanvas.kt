@@ -55,6 +55,13 @@ import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/**
+ * Identity of the page a canvas is showing. A document switch to a new file
+ * that happens to be on the same page index must still start with a fresh pan;
+ * keying state by page index alone leaked the previous document's pan.
+ */
+internal data class CanvasPageKey(val docId: String, val pageIndex: Int)
+
 private class CanvasTransform {
     var total = 1f
     var fit = 1f
@@ -85,6 +92,8 @@ private class CanvasTransform {
 @Composable
 fun PdfCanvas(
     bitmap: Bitmap?,
+    /** Document identity; together with [pageIndex] it keys all transient canvas state. */
+    docId: String,
     pageIndex: Int,
     displayWidthPt: Float,
     displayHeightPt: Float,
@@ -150,7 +159,10 @@ fun PdfCanvas(
     // pan/zoom gesture cannot also move the page under the user's finger.
     val memoGestureActive = remember { mutableStateOf(false) }
 
-    var pan by remember(pageIndex) { mutableStateOf(Offset.Zero) }
+    val pageKey = CanvasPageKey(docId, pageIndex)
+    // Pan is transient per *document page*, not just per index: switching to
+    // another document that happens to be at the same page must not inherit it.
+    var pan by remember(pageKey) { mutableStateOf(Offset.Zero) }
     val livePoints = remember { mutableStateListOf<NormalizedPoint>() }
     var shapeStart by remember { mutableStateOf<NormalizedPoint?>(null) }
     var shapeEnd by remember { mutableStateOf<NormalizedPoint?>(null) }
@@ -166,7 +178,8 @@ fun PdfCanvas(
     val currentLinks by rememberUpdatedState(links)
     val currentOnLinkTapped by rememberUpdatedState(onLinkTapped)
 
-    LaunchedEffect(pageIndex) {
+    LaunchedEffect(pageKey) {
+        pan = Offset.Zero
         memoGestureActive.value = false
         livePoints.clear()
         eraserTrail.clear()
@@ -499,7 +512,11 @@ fun PdfCanvas(
                 }
 
                 native.save()
-                native.clipRect(cropLeftPx, cropTopPx, cropRightPx, cropBottomPx)
+                // The crop centre was translated to the local origin above, so the
+                // clip must be centred there too. Raw page pixels would clip just
+                // one quadrant (and disagree with transform.normalize).
+                val clip = PdfCrop.clipRectForCanvas(visible, pageW, pageH)
+                native.clipRect(clip.left, clip.top, clip.right, clip.bottom)
 
                 if (bitmap != null) {
                     val bitmapPaint = Paint().apply {
