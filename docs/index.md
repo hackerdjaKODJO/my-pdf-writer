@@ -29,6 +29,7 @@
 - [Split divider and chrome — 0.8.28](split-chrome-0828.md)
 - [Per-pen pressure response — 0.8.29](ink-response-0829.md)
 - [Accessibility and menu redesign — 0.8.30](a11y-0830.md)
+- [Realistic pen dynamics — 0.8.31](pen-fidelity-0831.md)
 
 ## 문의
 
