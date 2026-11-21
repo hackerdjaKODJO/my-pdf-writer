@@ -384,6 +384,36 @@ class NoteInkTest {
     }
 
     @Test
+    fun `text annotation without points never crashes the eraser`() {
+        val emptyText = annotation("empty-text", AnnotationType.TEXT, emptyList(), text = "메모")
+
+        val result = NoteInk.erasePartial(
+            annotations = listOf(emptyText),
+            trail = listOf(point(0.50f, 0.50f)),
+            radius = 0.03f,
+        )
+
+        assertEquals(0, result.removed)
+        assertEquals(0, result.split)
+        assertEquals(listOf(emptyText), result.annotations)
+    }
+
+    @Test
+    fun `stamp annotation without points never crashes the eraser`() {
+        val emptyStamp = annotation("empty-stamp", AnnotationType.STAMP, emptyList(), stamp = "확인")
+
+        val result = NoteInk.erasePartial(
+            annotations = listOf(emptyStamp),
+            trail = listOf(point(0.50f, 0.50f)),
+            radius = 0.03f,
+        )
+
+        assertEquals(0, result.removed)
+        assertEquals(0, result.split)
+        assertEquals(listOf(emptyStamp), result.annotations)
+    }
+
+    @Test
     fun `multiple cuts create unique ids and preserve drawing order`() {
         val original = annotation(
             id = "source",

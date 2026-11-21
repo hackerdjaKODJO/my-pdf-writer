@@ -55,7 +55,6 @@ import kotlin.math.min
 
 private const val NOTE_PAGE_SCALE = 2.5f
 private const val MAX_NOTE_ZOOM = 6f
-private const val ERASER_RADIUS_FRACTION = 0.028f
 private const val CANVAS_TRACE_TAG = "NoteCanvas"
 
 /**
@@ -293,6 +292,7 @@ fun NoteCanvas(
                         pressureEnabled = pressureEnabled,
                         pressureCurve = pressureCurve,
                         calibrator = pressureCalibrator,
+                        pressed = change.pressed,
                     )
                     if (pressureEnabled && change.type == PointerType.Stylus && change.pressed) {
                         val raw = clampInkPressure(change.pressure)
@@ -302,7 +302,11 @@ fun NoteCanvas(
                     return effective
                 }
 
-                val downPressure = capturePressure(down)
+                // A memo tap, a navigation gesture or a VIEW touch never writes ink,
+                // so it must not teach the calibrator anything either. Sampling those
+                // pointers used to drag the learned minimum toward the pointer-up
+                // pressure of zero and make every later stroke render too bold.
+                val downPressure = if (canDraw) capturePressure(down) else DEFAULT_INK_PRESSURE
 
                 if (canDraw) {
                     down.consume()
@@ -689,14 +693,21 @@ fun NoteCanvas(
 
                 val eraser = eraserPoint
                 if (eraser != null) {
-                    AnnotationPainter.drawEraserPreview(
-                        canvas = native,
-                        point = NormalizedPoint(
-                            eraser.x * pageWidth,
-                            eraser.y * pageHeight,
-                        ),
-                        radiusPx = ERASER_RADIUS_FRACTION * pageWidth,
-                    )
+                    // Draw the preview as the same normalized W x H ellipse the eraser
+                    // actually cuts (NOTE_ERASE_RADIUS), not a W-based circle. This page-
+                    // space oval also inherits the pan/zoom transform above.
+                    val oval = noteEraserPreviewOval(eraser, pageWidth, pageHeight)
+                    val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.STROKE
+                        this.strokeWidth = 2f
+                        this.color = android.graphics.Color.argb(190, 70, 70, 70)
+                    }
+                    native.drawOval(oval.left, oval.top, oval.right, oval.bottom, outline)
+                    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.FILL
+                        this.color = android.graphics.Color.argb(40, 70, 70, 70)
+                    }
+                    native.drawOval(oval.left, oval.top, oval.right, oval.bottom, fillPaint)
                 }
 
                 native.restore()
@@ -831,6 +842,35 @@ private fun drawLassoPreview(
 }
 
 /**
+ * Page-space bounds of the eraser preview. The radius comes from the single
+ * [NOTE_ERASE_RADIUS] constant the committed eraser uses, applied to each axis,
+ * so a preview can never disagree with the strokes it is about to remove.
+ */
+internal data class NoteEraserPreviewOval(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+)
+
+internal fun noteEraserPreviewOval(
+    center: NormalizedPoint,
+    pageWidth: Float,
+    pageHeight: Float,
+): NoteEraserPreviewOval {
+    val centerX = center.x * pageWidth
+    val centerY = center.y * pageHeight
+    val radiusX = NOTE_ERASE_RADIUS * pageWidth
+    val radiusY = NOTE_ERASE_RADIUS * pageHeight
+    return NoteEraserPreviewOval(
+        left = centerX - radiusX,
+        top = centerY - radiusY,
+        right = centerX + radiusX,
+        bottom = centerY + radiusY,
+    )
+}
+
+/**
  * Effective ink pressure for one captured pointer sample.
  *
  * Only a stylus carries pressure: fingers, mice, erasers and unknown pointers
@@ -843,6 +883,13 @@ private fun drawLassoPreview(
  * Reading [pointerType] from the current sample (not from a type latched at
  * pointer-down) keeps a stylus that joins an already started finger stroke
  * pressure-aware.
+ *
+ * A sample is only allowed to teach [calibrator] while the pointer is actually
+ * down. Compose reports pointer-up with `pressure = 0` and `pressed = false`;
+ * feeding that synthetic sample into the learned range would pull the observed
+ * minimum toward zero and make every later stroke render too bold. For an up
+ * sample the raw value is still curved (TEXT taps use it) but the calibrator is
+ * left untouched.
  */
 internal fun effectiveInkPressure(
     pointerType: PointerType,
@@ -850,9 +897,14 @@ internal fun effectiveInkPressure(
     pressureEnabled: Boolean,
     pressureCurve: PressureCurve,
     calibrator: PressureCalibrator? = null,
+    pressed: Boolean = true,
 ): Float {
     if (!pressureEnabled || pointerType != PointerType.Stylus) return DEFAULT_INK_PRESSURE
-    val calibrated = calibrator?.map(rawPressure) ?: clampInkPressure(rawPressure)
+    val calibrated = if (calibrator != null && pressed) {
+        calibrator.map(rawPressure)
+    } else {
+        clampInkPressure(rawPressure)
+    }
     return pressureCurve.applyTo(calibrated)
 }
 

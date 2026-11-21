@@ -207,6 +207,32 @@ class NoteStrokeRefineTest {
     }
 
     @Test
+    fun `simplify never increases the stored point count`() {
+        val points = spikeStroke()
+
+        val smoothOnly = refineStroke(points, NOTE_LAZY_BRUSH_RADIUS, 0f, 1)
+        val smoothAndSimplify = refineStroke(points, NOTE_LAZY_BRUSH_RADIUS, NOTE_SIMPLIFY_TOLERANCE, 1)
+        assertTrue(
+            "simplify ${smoothAndSimplify.size} must not exceed smooth-only ${smoothOnly.size}",
+            smoothAndSimplify.size <= smoothOnly.size,
+        )
+
+        // A short stroke used to grow when the toggle was turned on: Chaikin ran
+        // after RDP and re-added points the reduction had just removed.
+        val shortStroke = listOf(point(0.1f, 0.5f), point(0.5f, 0.5f), point(0.9f, 0.5f))
+        val shortSmooth = refineStroke(shortStroke, 0f, 0f, 1)
+        val shortSimplified = refineStroke(shortStroke, 0f, NOTE_SIMPLIFY_TOLERANCE, 1)
+        assertTrue(shortSimplified.size <= shortSmooth.size)
+
+        // Corner rounding must be applied before reduction, so RDP is the last
+        // stage and can only drop points.
+        assertEquals(
+            simplifyRdp(chaikin(points, 1), NOTE_SIMPLIFY_TOLERANCE),
+            refineStroke(points, 0f, NOTE_SIMPLIFY_TOLERANCE, 1),
+        )
+    }
+
+    @Test
     fun `refine stroke is deterministic endpoint preserving and finite`() {
         val points = spikeStroke()
 

@@ -8,7 +8,7 @@ import org.junit.Test
 /**
  * Pure checks for the note-menu index. The sheet is intentionally a short index:
  * page operations belong to the page manager, study overlays to their own sheets,
- * and the eight ink options to one sub-sheet.
+ * and the ten ink options to one sub-sheet.
  */
 class NoteEditorMenuTest {
 
@@ -90,6 +90,15 @@ class NoteEditorMenuTest {
             ),
             NOTE_INK_SETTINGS,
         )
+    }
+
+    @Test
+    fun inkSettingsLabelUsesActualOptionCount() {
+        val label = noteInkSettingsSupportingLabel()
+
+        assertTrue("label must include the real option count: $label", label.contains("${NOTE_INK_SETTINGS.size}가지"))
+        assertTrue("stale hardcoded 8 must be gone: $label", !label.contains("8가지") || NOTE_INK_SETTINGS.size == 8)
+        assertEquals(10, NOTE_INK_SETTINGS.size)
     }
 
     @Test

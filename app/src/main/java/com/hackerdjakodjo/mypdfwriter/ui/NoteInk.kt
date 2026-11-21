@@ -258,9 +258,14 @@ object NoteInk {
     }
 
     /**
-     * One refinement pass: trailing filter, then point reduction, then corner
-     * rounding. Every stage is optional; with all three arguments neutral the
+     * One refinement pass: trailing filter, then corner rounding, then point
+     * reduction. Every stage is optional; with all three arguments neutral the
      * input list is returned unchanged. Nothing here mutates stored annotations.
+     *
+     * Chaikin runs before RDP on purpose. It roughly doubles the sample count, so
+     * applying it after simplification made turning "점 간소화" on *increase* the
+     * stored points. With this order the final RDP stage can only drop points, so
+     * enabling simplification never produces a larger stroke than leaving it off.
      */
     fun refineStroke(
         points: List<NormalizedPoint>,
@@ -273,11 +278,11 @@ object NoteInk {
         if (brushRadius.isFinite() && brushRadius > 0f) {
             result = lazyBrush(result, brushRadius)
         }
-        if (simplifyTolerance.isFinite() && simplifyTolerance > 0f) {
-            result = simplifyRdp(result, simplifyTolerance)
-        }
         if (chaikinIterations > 0) {
             result = chaikin(result, chaikinIterations)
+        }
+        if (simplifyTolerance.isFinite() && simplifyTolerance > 0f) {
+            result = simplifyRdp(result, simplifyTolerance)
         }
         return result
     }
@@ -863,7 +868,9 @@ private fun noteAnnotationHit(
         }
 
         AnnotationType.TEXT,
-        AnnotationType.STAMP -> distanceToPolyline(annotation.points[0], probes) <= radius * 2.4f
+        AnnotationType.STAMP -> annotation.points.firstOrNull()?.let { anchor ->
+            distanceToPolyline(anchor, probes) <= radius * 2.4f
+        } ?: false
 
         AnnotationType.REDACT,
         AnnotationType.COVER_TEXT -> annotation.points.size >= 2 && probes.any {

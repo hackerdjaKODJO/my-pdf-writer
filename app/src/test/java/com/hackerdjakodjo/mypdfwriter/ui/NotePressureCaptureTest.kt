@@ -161,6 +161,53 @@ class NotePressureCaptureTest {
     }
 
     @Test
+    fun calibratorIgnoresPointerUpAndNonDrawingSamples() {
+        val calibrator = PressureCalibrator(alpha = 1f, deadZone = 0f)
+
+        // Compose reports pointer-up as pressure 0 with pressed = false. Feeding
+        // that synthetic sample used to drag the learned minimum toward zero.
+        effectiveInkPressure(PointerType.Stylus, 0f, true, PressureCurve.LINEAR, calibrator, pressed = false)
+        // An up event may also carry a stale non-zero pressure; still not drawing.
+        effectiveInkPressure(PointerType.Stylus, 0.9f, true, PressureCurve.LINEAR, calibrator, pressed = false)
+        // Memo taps and navigation gestures are skipped by the canvas entirely, but
+        // even if sampled, neutral pointer types must never teach the calibrator.
+        listOf(PointerType.Touch, PointerType.Mouse, PointerType.Eraser, PointerType.Unknown)
+            .forEach { type ->
+                effectiveInkPressure(type, 0f, true, PressureCurve.LINEAR, calibrator, pressed = true)
+                effectiveInkPressure(type, 1f, true, PressureCurve.LINEAR, calibrator, pressed = true)
+            }
+
+        assertFalse("no range learned from up or non-drawing samples", calibrator.hasRange)
+
+        // The first real pressed stylus sample still starts a fresh range.
+        effectiveInkPressure(PointerType.Stylus, 0.3f, true, PressureCurve.LINEAR, calibrator)
+        assertTrue(calibrator.hasRange)
+        assertEquals(0.3f, calibrator.observedMin, 0f)
+        assertEquals(0.3f, calibrator.observedMax, 0f)
+    }
+
+    @Test
+    fun calibrationRangeSurvivesRepeatedStrokeEnds() {
+        val calibrator = PressureCalibrator(alpha = 1f, deadZone = 0f)
+        effectiveInkPressure(PointerType.Stylus, 0.2f, true, PressureCurve.LINEAR, calibrator)
+        effectiveInkPressure(PointerType.Stylus, 0.7f, true, PressureCurve.LINEAR, calibrator)
+        assertEquals(0.2f, calibrator.observedMin, 0f)
+        assertEquals(0.7f, calibrator.observedMax, 0f)
+
+        // Many strokes ending on pointer-up (pressure 0, pressed false) must not
+        // move the learned bounds; otherwise later strokes render far too bold.
+        repeat(50) {
+            effectiveInkPressure(PointerType.Stylus, 0f, true, PressureCurve.LINEAR, calibrator, pressed = false)
+        }
+        assertEquals(0.2f, calibrator.observedMin, 0f)
+        assertEquals(0.7f, calibrator.observedMax, 0f)
+        assertEquals(0.5f,
+            effectiveInkPressure(PointerType.Stylus, 0.45f, true, PressureCurve.LINEAR, calibrator),
+            1e-6f,
+        )
+    }
+
+    @Test
     fun `neutral pointer samples do not feed the calibrator range`() {
         // The caller only forwards stylus samples to the calibrator, so finger
         // and mouse input must leave its learned range completely untouched.
