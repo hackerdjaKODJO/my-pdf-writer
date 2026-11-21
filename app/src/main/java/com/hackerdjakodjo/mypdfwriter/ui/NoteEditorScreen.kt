@@ -1,5 +1,6 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -82,6 +83,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -136,7 +138,9 @@ import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportPageRange
 import com.hackerdjakodjo.mypdfwriter.pdf.noteExportFileName
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 private const val NOTE_TRACE_TAG = "NoteEditor"
@@ -251,8 +255,20 @@ fun NoteEditorScreen(
     fun refreshFavoritePens() {
         favoritePens = penBoxStore.loadFavorites()
     }
-    val pageBackground = remember(page.id, page.customBackground) {
-        page.customBackground?.let(customTemplateStore::load)
+    // Decoding a full-size custom background is disk + BitmapFactory work. Do it
+    // off Main so switching to a page with a photo background cannot jank the UI;
+    // the canvas simply paints no background until the decode publishes a bitmap.
+    val pageBackground by produceState<Bitmap?>(
+        initialValue = null,
+        page.id,
+        page.customBackground,
+    ) {
+        val key = page.customBackground
+        value = if (key == null) {
+            null
+        } else {
+            withContext(Dispatchers.IO) { customTemplateStore.load(key) }
+        }
     }
     var selection by remember(workingNotebook.id, page.id) {
         mutableStateOf<Set<String>>(emptySet())
@@ -290,13 +306,17 @@ fun NoteEditorScreen(
     val activeLayer = page.layers.firstOrNull { it.id == activeLayerId && !it.locked && it.visible }
         ?: page.layers.firstOrNull { !it.locked && it.visible }
         ?: page.layers.firstOrNull()
-    val visibleAnnotations = NoteLayers.visibleAnnotations(page).map { annotation ->
-        val layer = page.layers.firstOrNull { it.id == annotation.layerId }
-            ?: page.layers.firstOrNull()
-        if (layer != null && layer.opacity < 1f) {
-            annotation.copy(opacity = (annotation.opacity * layer.opacity).coerceIn(0f, 1f))
-        } else {
-            annotation
+    // Depends only on the immutable page snapshot, so a recomposition from any
+    // other state (zoom, replay position, sheets) must not re-walk the layers.
+    val visibleAnnotations = remember(page) {
+        NoteLayers.visibleAnnotations(page).map { annotation ->
+            val layer = page.layers.firstOrNull { it.id == annotation.layerId }
+                ?: page.layers.firstOrNull()
+            if (layer != null && layer.opacity < 1f) {
+                annotation.copy(opacity = (annotation.opacity * layer.opacity).coerceIn(0f, 1f))
+            } else {
+                annotation
+            }
         }
     }
     val visiblePage = page.copy(annotations = visibleAnnotations)
