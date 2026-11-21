@@ -117,6 +117,36 @@ class PdfAnnotationFilterTest {
         )
     }
 
+    @Test
+    fun countsUseTheSameSanitizedRowsAsTheFilter() {
+        val input = listOf(
+            annotation(AnnotationType.PEN, page = 0, id = "pen"),
+            annotation(AnnotationType.HIGHLIGHT, page = 1, id = "hl"),
+            annotation(AnnotationType.TEXT, page = 1, id = "text"),
+            annotation(AnnotationType.RECT, page = 2, id = "rect"),
+            annotation(AnnotationType.REDACT, page = 2, id = "redact"),
+            annotation(AnnotationType.PEN, page = 0, id = "pen"), // duplicate
+            annotation(AnnotationType.PEN, page = 9, id = "past-end"),
+            annotation(AnnotationType.PEN, page = 0, id = ""),
+        )
+
+        val counts = PdfAnnotationFilter.counts(input, pageCount = 3)
+
+        assertEquals(5, counts[AnnotationFilter.ALL])
+        assertEquals(2, counts[AnnotationFilter.INK])
+        assertEquals(1, counts[AnnotationFilter.TEXT])
+        assertEquals(1, counts[AnnotationFilter.SHAPES])
+        assertEquals(1, counts[AnnotationFilter.REDACT])
+        AnnotationFilter.entries.forEach { option ->
+            assertEquals(
+                "count must match the filter output for ${option.label}",
+                PdfAnnotationFilter.filter(input, option, pageCount = 3).size,
+                counts[option],
+            )
+        }
+        assertTrue(PdfAnnotationFilter.counts(emptyList()).all { it.value == 0 })
+    }
+
     private fun allTypes(): List<Annotation> = AnnotationType.entries.mapIndexed { index, type ->
         annotation(type, page = index / 4, id = type.name.lowercase())
     }

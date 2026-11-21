@@ -155,6 +155,57 @@ class PdfHubSheetTest {
         assertEquals(listOf("검색", "페이지 잠금"), hubAllActions(sections).map { it.label })
     }
 
+    @Test
+    fun locationsActionLivesInTheReadOnlyGroupOfTheHub() {
+        var opened = 0
+        val sections = listOf(
+            PdfHubSection("학습", listOf(action("검색"))),
+            PdfHubSection("도구", listOf(action("포스트잇"))),
+        )
+
+        val withLocations = pdfHubSectionsWithLocations(sections) { opened++ }
+
+        assertEquals(
+            listOf("학습", "읽기", "도구"),
+            withLocations.map { it.title },
+        )
+        val readGroup = withLocations[1]
+        assertEquals(listOf("위치"), readGroup.actions.map { it.label })
+        assertFalse(readGroup.expandable)
+        readGroup.actions.single().onClick()
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun locationsActionDoesNotChangeAnyExistingGroupOrAction() {
+        val study = listOf(action("검색"), action("목차"))
+        val sections = listOf(
+            PdfHubSection("학습", study),
+            PdfHubSection("기타", listOf(action("도움말")), expandable = true),
+        )
+
+        val withLocations = pdfHubSectionsWithLocations(sections) {}
+
+        assertEquals(listOf("검색", "목차"), withLocations.first().actions.map { it.label })
+        assertEquals(sections.last(), withLocations.last())
+        assertEquals(
+            listOf("위치"),
+            withLocations.filter { it.title == PDF_HUB_READ_GROUP_TITLE }
+                .flatMap { it.actions }
+                .map { it.label },
+        )
+        assertEquals(PDF_HUB_LOCATIONS_LABEL, pdfLocationsAction {} .label)
+    }
+
+    @Test
+    fun emptyHubStillGetsTheLocationsAction() {
+        val withLocations = pdfHubSectionsWithLocations(emptyList()) {}
+
+        assertEquals(listOf("읽기"), withLocations.map { it.title })
+        assertEquals(listOf("위치"), hubAllActions(withLocations).map { it.label })
+        assertEquals(listOf("위치"), hubVisibleActions(withLocations, emptySet()).map { it.label })
+    }
+
     private fun action(label: String) = PdfHubAction(
         label = label,
         icon = Icons.Outlined.Search,
