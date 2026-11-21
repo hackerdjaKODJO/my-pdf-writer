@@ -404,7 +404,7 @@ fun ViewerPageNavigator(
             IconButton(
                 onClick = onPrevious,
                 enabled = pageIndex > 0,
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(MIN_TARGET_DP.dp),
             ) {
                 Icon(
                     Icons.Outlined.ChevronLeft,
@@ -426,7 +426,7 @@ fun ViewerPageNavigator(
             IconButton(
                 onClick = onNext,
                 enabled = pageIndex < pageCount - 1,
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(MIN_TARGET_DP.dp),
             ) {
                 Icon(
                     Icons.Outlined.ChevronRight,

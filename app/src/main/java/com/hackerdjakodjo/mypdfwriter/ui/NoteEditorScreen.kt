@@ -240,6 +240,7 @@ fun NoteEditorScreen(
     var gestureUndo by remember { mutableStateOf(NOTE_GESTURE_UNDO_DEFAULT) }
 
     val context = LocalContext.current
+    val accessibilityScale = chromeScale(widthDp = 360, fontScale = LocalConfiguration.current.fontScale)
     val configuration = LocalConfiguration.current
     // Large fonts hide the secondary dock labels, but never shrink the slots.
     val showDockLabels = noteDockShowLabels(configuration.screenWidthDp, configuration.fontScale)
@@ -1211,7 +1212,7 @@ fun NoteEditorScreen(
                                 .clickable(onClickLabel = "제목 편집") { showRename = true }
                                 .padding(horizontal = 2.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
+                            maxLines = accessibilityScale.titleMaxLines,
                             overflow = TextOverflow.Ellipsis,
                         )
                     },

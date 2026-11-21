@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -81,7 +82,7 @@ class HomeStartE2ETest {
         composeRule.onNodeWithContentDescription("검색").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("노트 제목·태그 검색").assertExists()
-        composeRule.onNodeWithText("노트 제목·태그 검색").performTextInput("기말")
+        composeRule.onNode(hasSetTextAction()).performTextInput("기말")
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("검색어 지우기").performClick()
         composeRule.waitForIdle()

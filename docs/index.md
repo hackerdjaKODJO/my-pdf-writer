@@ -28,6 +28,7 @@
 - [Samsung post-it + favorite pens — 0.8.27](samsung-postit-favpens-0827.md)
 - [Split divider and chrome — 0.8.28](split-chrome-0828.md)
 - [Per-pen pressure response — 0.8.29](ink-response-0829.md)
+- [Accessibility and menu redesign — 0.8.30](a11y-0830.md)
 
 ## 문의
 

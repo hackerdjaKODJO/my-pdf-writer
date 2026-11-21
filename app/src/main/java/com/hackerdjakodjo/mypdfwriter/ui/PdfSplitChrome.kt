@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -441,8 +442,10 @@ internal fun SplitDivider(
                     minWidth = SPLIT_CHROME_TARGET_DP.dp,
                     minHeight = SPLIT_CHROME_TARGET_DP.dp,
                 )
-                .clickable(onClickLabel = "노트 크기 선택") { showSizePopup = true }
-                .semantics { contentDescription = studyPaneDividerDescription(paneFraction) }
+                .semantics(mergeDescendants = true) {
+                    contentDescription = studyPaneDividerDescription(paneFraction)
+                    onClick(label = "노트 크기 선택") { showSizePopup = true; true }
+                }
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { showSizePopup = true },

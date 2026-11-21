@@ -91,6 +91,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -158,6 +159,7 @@ fun ViewerScreen(
     val pageTextWords by vm.textWords.collectAsStateWithLifecycle()
     val pageLinks by vm.pageLinks.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val accessibilityScale = chromeScale(widthDp = 360, fontScale = LocalConfiguration.current.fontScale)
     val penBoxStore = remember(context) { PenBoxStore(context) }
     var viewerFavorites by remember(penBoxStore) { mutableStateOf(penBoxStore.loadFavorites()) }
     var showViewerPenBox by remember { mutableStateOf(false) }
@@ -677,7 +679,7 @@ fun ViewerScreen(
                             Text(
                                 state.docName,
                                 style = MaterialTheme.typography.titleMedium,
-                                maxLines = 1,
+                                maxLines = accessibilityScale.titleMaxLines,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.sectionHeading(),
                             )

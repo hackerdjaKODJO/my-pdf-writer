@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.29
+# E2E test cases — My PDF Writer 0.8.30
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator; the build machine has no adb device attached, so only JVM tests are
@@ -9,7 +9,7 @@ executed here. Instrumentation APKs are compiled with
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 603 | **Passing** on this phone |
+| JVM unit tests | 646 | **Passing** on this phone |
 | Instrumentation/E2E | 7 classes (see below) | **Compiled**; on-device run pending |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally) |
@@ -75,6 +75,10 @@ executed here. Instrumentation APKs are compiled with
 | INK-01 | Per-style pressure width/flow/grain profiles and legacy identity | JVM `InkResponseTest` | Passing |
 | INK-02 | Painter flow/wash/graphite policy and replay stability | JVM `AnnotationPainterPolicyTest` | Passing |
 | INK-03 | Active stylus pressure sampling and neutral fallback | JVM `NotePressureCaptureTest` | Passing |
+| A11Y-01 | 48dp targets and state labels | JVM `AccessibilityPolicyTest`, E2E smoke | Compiled |
+| A11Y-02 | 320dp / 200% font layout decisions | JVM `AccessibilityLayoutTest` | Passing |
+| A11Y-03 | Split divider accessible size control | JVM `StudyPaneLayoutTest` + E2E | Compiled |
+| A11Y-04 | Home/note/PDF labels and selected states | JVM + E2E smoke | Compiled |
 
 ## Run on a device
 

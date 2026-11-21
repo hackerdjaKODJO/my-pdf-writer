@@ -192,7 +192,7 @@ fun ReflowReaderScreen(
                             onClick = { showMenu = true },
                             enabled = !loading && failure == null,
                         ) {
-                            Icon(Icons.Outlined.MoreVert, contentDescription = "더보기")
+                            Icon(Icons.Outlined.MoreVert, contentDescription = "더보기: $docName")
                         }
                         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                             DropdownMenuItem(
