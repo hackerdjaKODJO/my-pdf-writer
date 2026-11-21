@@ -96,8 +96,10 @@ internal fun pdfChromePolicy(
     studyPaneOpen: Boolean,
     textSelectMode: Boolean,
     hasSelection: Boolean,
-): PdfChromePolicy = if (studyPaneOpen) {
-    PdfChromePolicy(
+    chromeHidden: Boolean = false,
+    autoHideMode: ChromeAutoHideMode = ChromeAutoHideMode.OFF,
+): PdfChromePolicy = when {
+    studyPaneOpen -> PdfChromePolicy(
         showTopAppBar = false,
         showBottomBar = false,
         showHintPill = false,
@@ -107,8 +109,19 @@ internal fun pdfChromePolicy(
         showSplitToolbar = !textSelectMode,
         showSplitSelectionBar = textSelectMode,
     )
-} else {
-    PdfChromePolicy(
+
+    isChromeImmersive(studyPaneOpen, autoHideMode, chromeHidden) -> PdfChromePolicy(
+        // Auto-hide is an overlay state: no bar, hint or drop target may consume
+        // height. The floating back/menu controls in ViewerScreen stay reachable.
+        showTopAppBar = false,
+        showBottomBar = false,
+        showHintPill = false,
+        showPageDropTarget = false,
+        showSplitToolbar = false,
+        showSplitSelectionBar = false,
+    )
+
+    else -> PdfChromePolicy(
         showTopAppBar = true,
         showBottomBar = true,
         showHintPill = true,
@@ -116,6 +129,71 @@ internal fun pdfChromePolicy(
         showSplitToolbar = false,
         showSplitSelectionBar = false,
     )
+}
+
+/**
+ * GoodReader-style reading chrome modes. [ON] lets a tap on the centre of the
+ * page hide/show the bars; [OFF] keeps the normal fixed chrome. The choice is
+ * session-only and defaults to ON on phone-sized screens.
+ */
+internal enum class ChromeAutoHideMode {
+    OFF,
+    ON,
+}
+
+/** 600dp is the phone/large-screen boundary used elsewhere in this codebase. */
+internal const val CHROME_AUTO_HIDE_PHONE_WIDTH_DP = 600
+
+internal fun defaultChromeAutoHideMode(smallestScreenWidthDp: Int): ChromeAutoHideMode =
+    if (smallestScreenWidthDp < CHROME_AUTO_HIDE_PHONE_WIDTH_DP) {
+        ChromeAutoHideMode.ON
+    } else {
+        ChromeAutoHideMode.OFF
+    }
+
+internal fun toggleChromeAutoHideMode(mode: ChromeAutoHideMode): ChromeAutoHideMode =
+    when (mode) {
+        ChromeAutoHideMode.OFF -> ChromeAutoHideMode.ON
+        ChromeAutoHideMode.ON -> ChromeAutoHideMode.OFF
+    }
+
+/** True only for the full-screen reader; split chrome already floats. */
+internal fun isChromeImmersive(
+    studyPaneOpen: Boolean,
+    mode: ChromeAutoHideMode,
+    chromeHidden: Boolean,
+): Boolean = !studyPaneOpen && mode == ChromeAutoHideMode.ON && chromeHidden
+
+/**
+ * A canvas tap may toggle chrome only in the safe state: full-screen reader,
+ * VIEW tool, no selection or sheet or busy render in progress. Split mode never
+ * hijacks canvas taps, so pinch, annotation hit-testing and the floating tool
+ * strip keep their current behaviour.
+ */
+internal fun chromeTapToggleAllowed(
+    mode: ChromeAutoHideMode,
+    studyPaneOpen: Boolean,
+    sheetOpen: Boolean,
+    textSelectMode: Boolean,
+    hasSelection: Boolean,
+    toolIsView: Boolean,
+    busy: Boolean,
+): Boolean = mode == ChromeAutoHideMode.ON &&
+    !studyPaneOpen && !sheetOpen && !textSelectMode && !hasSelection && toolIsView && !busy
+
+internal fun nextChromeHidden(hidden: Boolean, toggleAllowed: Boolean): Boolean =
+    if (toggleAllowed) !hidden else hidden
+
+/** Centre band only: the edges stay free for page pills, hints and link taps. */
+internal fun isChromeToggleTap(
+    x: Float,
+    y: Float,
+    width: Int,
+    height: Int,
+): Boolean {
+    if (width <= 0 || height <= 0) return false
+    return x >= width * 0.25f && x <= width * 0.75f &&
+        y >= height * 0.25f && y <= height * 0.75f
 }
 
 /**

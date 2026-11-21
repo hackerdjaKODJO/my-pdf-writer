@@ -3,11 +3,13 @@ package com.hackerdjakodjo.mypdfwriter.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -125,6 +128,10 @@ import kotlin.math.roundToInt
  * itself closes. Kept as a pure value so the predicate is unit-testable — omitting
  * a single flag (as happened with the memo-card and pen-box sheets) makes Back
  * close the whole PDF while that sheet is still open.
+ *
+ * TODO(post-merge): another worktree's unified `위치` sheet (bookmarks + outline
+ * + annotations) needs a flag here, a render block in ViewerScreen and an action
+ * in the tab overflow panel. This branch may not edit ViewerSheets/PdfHubSheet.
  */
 internal data class ViewerSheetFlags(
     val showPages: Boolean = false,
@@ -155,6 +162,8 @@ internal data class ViewerSheetFlags(
     val showTextEditDialog: Boolean = false,
     val showMemoCardsSheet: Boolean = false,
     val showViewerPenBox: Boolean = false,
+    val showRecentDocs: Boolean = false,
+    val showTabOverflow: Boolean = false,
     val textTargetOpen: Boolean = false,
     val stampTargetOpen: Boolean = false,
     val signatureTargetOpen: Boolean = false,
@@ -165,6 +174,7 @@ internal data class ViewerSheetFlags(
         showReadAloud || showOutline || showProperties || showStyle || showDisplaySettings ||
         showHub || showReadModes || showAudioMenu || showToolMore || showToolStyle ||
         showSelectionMore || showTextEditDialog || showMemoCardsSheet || showViewerPenBox ||
+        showRecentDocs || showTabOverflow ||
         textTargetOpen || stampTargetOpen || signatureTargetOpen
 }
 
@@ -204,6 +214,7 @@ fun ViewerScreen(
     val metadata by vm.metadata.collectAsStateWithLifecycle()
     val excerpts by vm.excerpts.collectAsStateWithLifecycle()
     val bookmarks by vm.bookmarks.collectAsStateWithLifecycle()
+    val recentDocs by vm.library.collectAsStateWithLifecycle()
     val pageTextWords by vm.textWords.collectAsStateWithLifecycle()
     val pageLinks by vm.pageLinks.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -290,6 +301,17 @@ fun ViewerScreen(
     // Divider chip: the floating PDF tool strip starts visible and can be hidden
     // without affecting the selection bar or any document callback.
     var pdfToolsVisible by remember { mutableStateOf(true) }
+
+    // GoodReader-style session chrome: file tabs, the recents switcher and the
+    // auto-hide menu mode. None of this is persisted; a new visit starts fresh.
+    var tabsState by remember { mutableStateOf(DocumentTabsState()) }
+    var showRecentDocs by remember { mutableStateOf(false) }
+    var showTabOverflow by remember { mutableStateOf(false) }
+    val smallestScreenWidthDp = LocalConfiguration.current.smallestScreenWidthDp
+    var autoHideMode by remember {
+        mutableStateOf(defaultChromeAutoHideMode(smallestScreenWidthDp))
+    }
+    var chromeHidden by remember { mutableStateOf(false) }
     val selectedText = remember(selectedWords) { PdfTextLayout.selectionText(selectedWords) }
 
     // The replacement action lives in the view model, so mirror the local canvas
@@ -354,6 +376,17 @@ fun ViewerScreen(
         textSelectMode = false
         selectedWords = emptyList()
     }
+    // Seeds the first tab and follows every document switch/rename. The study
+    // pane still saves on the existing docId change; this only tracks the tab.
+    LaunchedEffect(state.docId, state.docName) {
+        val uri = vm.currentDocumentUri()
+        if (!uri.isNullOrBlank()) {
+            tabsState = upsertDocumentTab(
+                tabsState,
+                OpenDocumentTab(state.docId, uri, state.docName),
+            )
+        }
+    }
     LaunchedEffect(state.pageIndex, state.revision) {
         selectedWords = emptyList()
         if (textSelectMode) vm.loadTextWords(state.pageIndex)
@@ -366,6 +399,11 @@ fun ViewerScreen(
     }
     LaunchedEffect(state.docId, state.pageIndex, state.tool, textSelectMode) {
         hintDismissed = false
+    }
+    // An active annotation tool or text selection needs its action bar; never
+    // leave it stranded behind hidden chrome.
+    LaunchedEffect(textSelectMode, state.tool) {
+        if (textSelectMode || state.tool != Tool.VIEW) chromeHidden = false
     }
     LaunchedEffect(state.searchQuery, state.pageIndex, state.revision) {
         val query = state.searchQuery.trim()
@@ -420,6 +458,8 @@ fun ViewerScreen(
         showTextEditDialog = showTextEditDialog,
         showMemoCardsSheet = showMemoCardsSheet,
         showViewerPenBox = showViewerPenBox,
+        showRecentDocs = showRecentDocs,
+        showTabOverflow = showTabOverflow,
         textTargetOpen = textTarget != null,
         stampTargetOpen = stampTarget != null,
         signatureTargetOpen = signatureTarget != null,
@@ -727,11 +767,62 @@ fun ViewerScreen(
     // Split/focus chrome: with the study pane open no app bar or dock row may
     // consume height. All PDF controls become floating overlays over the strip.
     val splitMode = studyPane != null
+    val immersive = isChromeImmersive(splitMode, autoHideMode, chromeHidden)
     val chromePolicy = pdfChromePolicy(
         studyPaneOpen = splitMode,
         textSelectMode = textSelectMode,
         hasSelection = selectedWords.isNotEmpty(),
+        chromeHidden = chromeHidden,
+        autoHideMode = autoHideMode,
     )
+    val chromeTapAllowed = chromeTapToggleAllowed(
+        mode = autoHideMode,
+        studyPaneOpen = splitMode,
+        sheetOpen = sheetOpen,
+        textSelectMode = textSelectMode,
+        hasSelection = selectedWords.isNotEmpty(),
+        toolIsView = state.tool == Tool.VIEW,
+        busy = state.busy,
+    )
+    val showTabStrip = shouldShowDocumentTabStrip(tabsState) && !immersive &&
+        !(splitMode && chromePolicy.showSplitSelectionBar)
+
+    val openRecentDocs: () -> Unit = {
+        chromeHidden = false
+        showTabOverflow = false
+        showRecentDocs = true
+    }
+    val openTabOverflow: () -> Unit = {
+        chromeHidden = false
+        showRecentDocs = false
+        showTabOverflow = true
+    }
+    val hideTabStrip: () -> Unit = {
+        tabsState = setDocumentTabBarVisible(tabsState, false)
+    }
+    val switchToTab: (OpenDocumentTab) -> Unit = { tab ->
+        showRecentDocs = false
+        showTabOverflow = false
+        chromeHidden = false
+        if (tab.docId != state.docId) {
+            activateDocumentTab(tabsState, tab.docId)?.let { tabsState = it }
+            vm.openDocument(Uri.parse(tab.uri))
+        }
+    }
+    val closeTab: (OpenDocumentTab) -> Unit = { tab ->
+        val before = tabsState
+        val after = closeDocumentTab(before, tab.docId)
+        tabsState = after
+        if (tab.docId == before.activeDocId) {
+            val next = after.activeTab
+            if (next != null) {
+                vm.openDocument(Uri.parse(next.uri))
+            } else {
+                // Last tab: unchanged exit path back to the library.
+                vm.closeDocument()
+            }
+        }
+    }
     // The pane share decides how much of the floating PDF strip fits. On a very
     // short strip only the page pill remains; the back button stays top-start.
     val pdfChromeDensity = if (splitMode) {
@@ -771,7 +862,12 @@ fun ViewerScreen(
             if (chromePolicy.showTopAppBar) {
                 TopAppBar(
                     title = {
-                        Column {
+                        // GoodReader: the filename opens the recent-document switcher.
+                        Column(
+                            Modifier
+                                .clickable { openRecentDocs() }
+                                .semantics { contentDescription = "${state.docName}, 최근 문서 열기" },
+                        ) {
                             Text(
                                 state.docName,
                                 style = MaterialTheme.typography.titleMedium,
@@ -838,6 +934,20 @@ fun ViewerScreen(
                             )
                             Spacer(Modifier.width(4.dp))
                             Text("노트", style = MaterialTheme.typography.labelLarge)
+                        }
+                        // Session mode switch; when bars are hidden a centre tap
+                        // or the floating "메뉴 표시" chip brings them back.
+                        IconButton(
+                            onClick = { autoHideMode = toggleChromeAutoHideMode(autoHideMode) },
+                        ) {
+                            Icon(
+                                if (autoHideMode == ChromeAutoHideMode.ON) {
+                                    Icons.Outlined.VisibilityOff
+                                } else {
+                                    Icons.Outlined.Visibility
+                                },
+                                contentDescription = "메뉴 자동 숨김",
+                            )
                         }
                         IconButton(onClick = { showHub = true }) {
                             Icon(Icons.Outlined.Menu, contentDescription = "학습 메뉴")
@@ -955,6 +1065,34 @@ fun ViewerScreen(
                         .fillMaxWidth()
                         .weight((1f - paneFraction).coerceAtLeast(0.10f)),
                 ) {
+                    // Below the canvas in z-order: drawing, pinch, selection and
+                    // link taps are consumed by PdfCanvas first, so this only sees
+                    // a plain VIEW tap in the centre band. Never used in split mode.
+                    if (chromeTapAllowed) {
+                        Box(
+                            Modifier
+                                .matchParentSize()
+                                .pointerInput(chromeHidden) {
+                                    detectTapGestures(
+                                        onTap = { offset ->
+                                            if (isChromeToggleTap(
+                                                    offset.x,
+                                                    offset.y,
+                                                    size.width,
+                                                    size.height,
+                                                )
+                                            ) {
+                                                chromeHidden = nextChromeHidden(chromeHidden, true)
+                                            }
+                                        },
+                                        // Double-tap remains the canvas' zoom reset.
+                                        onDoubleTap = {},
+                                    )
+                                }
+                                .semantics { contentDescription = "화면 탭하여 메뉴 표시/숨기기" },
+                        )
+                    }
+
                     PdfCanvas(
                         bitmap = bitmap,
                         pageIndex = state.pageIndex,
@@ -1020,11 +1158,27 @@ fun ViewerScreen(
                             .padding(top = splitTopOverlayOffsetDp.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
+                        // Full-screen reader: the strip sits above the hint chip.
+                        // Split mode places it at the strip's bottom instead, where
+                        // it cannot cover the floating page/toolbar row.
+                        if (showTabStrip && !splitMode) {
+                            DocumentTabStrip(
+                                state = tabsState,
+                                onSelectTab = switchToTab,
+                                onCloseTab = closeTab,
+                                onOpenMenu = openTabOverflow,
+                                onHideStrip = hideTabStrip,
+                                modifier = Modifier.widthIn(
+                                    max = if (showSearchNavigation) 240.dp else 320.dp,
+                                ),
+                            )
+                            if (showHintChip) Spacer(Modifier.height(6.dp))
+                        }
                         if (annotationsHidden) {
                             HiddenAnnotationsBanner(onShow = { annotationsHidden = false })
                             if (showHintChip) Spacer(Modifier.height(6.dp))
                         }
-                        if (showHintChip) {
+                        if (showHintChip && !immersive) {
                             PdfContextHintChip(
                                 text = pdfContextHintText(contextHint, stringResource(toolHintRes)),
                                 loading = contextHint == PdfContextHint.LOADING,
@@ -1037,6 +1191,41 @@ fun ViewerScreen(
                                     end = if (splitMode) 8.dp else 0.dp,
                                 ),
                             )
+                        }
+                    }
+
+                    if (immersive) {
+                        // Auto-hidden chrome never traps the reader: exit stays a
+                        // top-start tap and the menu stays a top-end tap away.
+                        SplitPdfBackButton(
+                            onBack = vm::closeDocument,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(start = 8.dp, top = 6.dp),
+                        )
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tonalElevation = 2.dp,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(end = 8.dp, top = 6.dp)
+                                .size(SPLIT_CHROME_TARGET_DP.dp)
+                                .clickable { chromeHidden = false }
+                                .semantics { contentDescription = "메뉴 표시" },
+                        ) {
+                            Box(
+                                Modifier.size(SPLIT_CHROME_VISUAL_DP.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Menu,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(19.dp),
+                                )
+                            }
                         }
                     }
 
@@ -1147,17 +1336,34 @@ fun ViewerScreen(
                                     .padding(bottom = 6.dp),
                             )
                         }
+                        // The strip floats at the bottom of the PDF sample so the
+                        // top-center page/toolbar row stays untouched. During text
+                        // selection the selection bar owns that edge.
+                        if (showTabStrip && !chromePolicy.showSplitSelectionBar) {
+                            DocumentTabStrip(
+                                state = tabsState,
+                                onSelectTab = switchToTab,
+                                onCloseTab = closeTab,
+                                onOpenMenu = openTabOverflow,
+                                onHideStrip = hideTabStrip,
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(start = 8.dp, end = 8.dp, bottom = 6.dp),
+                            )
+                        }
                     } else {
-                        ViewerPageNavigator(
-                            pageIndex = state.pageIndex,
-                            pageCount = state.pageCount,
-                            onPrevious = vm::previousPage,
-                            onNext = vm::nextPage,
-                            onOpenPages = { showPages = true },
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 14.dp),
-                        )
+                        if (!immersive) {
+                            ViewerPageNavigator(
+                                pageIndex = state.pageIndex,
+                                pageCount = state.pageCount,
+                                onPrevious = vm::previousPage,
+                                onNext = vm::nextPage,
+                                onOpenPages = { showPages = true },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 14.dp),
+                            )
+                        }
                     }
 
                     if (state.busy) {
@@ -1377,6 +1583,45 @@ fun ViewerScreen(
             onRedo = vm::redo,
             styleEnabled = isStyleTool(state.tool),
             onStyle = { showToolStyle = true },
+        )
+    }
+    if (showRecentDocs) {
+        RecentDocumentsSheet(
+            documents = recentDocumentsForSwitcher(recentDocs),
+            activeUri = vm.currentDocumentUri(),
+            tabBarVisible = tabsState.barVisible,
+            autoHideMode = autoHideMode,
+            onOpenDocument = { doc ->
+                showRecentDocs = false
+                chromeHidden = false
+                vm.openDocument(Uri.parse(doc.uri))
+            },
+            onToggleTabBar = {
+                tabsState = setDocumentTabBarVisible(tabsState, !tabsState.barVisible)
+            },
+            onToggleAutoHide = { autoHideMode = toggleChromeAutoHideMode(autoHideMode) },
+            onDismiss = { showRecentDocs = false },
+        )
+    }
+    if (showTabOverflow) {
+        DocumentTabOverflowSheet(
+            tabs = tabsState.tabs,
+            activeDocId = tabsState.activeDocId,
+            tabBarVisible = tabsState.barVisible,
+            autoHideMode = autoHideMode,
+            onSelectTab = switchToTab,
+            onCloseOthers = { tabsState = closeOtherDocumentTabs(tabsState) },
+            onCloseAll = {
+                showTabOverflow = false
+                tabsState = closeAllDocumentTabs(tabsState)
+                vm.closeDocument()
+            },
+            onToggleBar = {
+                tabsState = setDocumentTabBarVisible(tabsState, !tabsState.barVisible)
+            },
+            onToggleAutoHide = { autoHideMode = toggleChromeAutoHideMode(autoHideMode) },
+            onOpenRecents = openRecentDocs,
+            onDismiss = { showTabOverflow = false },
         )
     }
     if (showReadModes) {

@@ -27,6 +27,16 @@ class ViewerScreenTest {
     }
 
     @Test
+    fun recentDocumentsSheetInterceptsBack() {
+        assertTrue(ViewerSheetFlags(showRecentDocs = true).anyOpen)
+    }
+
+    @Test
+    fun tabOverflowSheetInterceptsBack() {
+        assertTrue(ViewerSheetFlags(showTabOverflow = true).anyOpen)
+    }
+
+    @Test
     fun everyViewerLayerInterceptsBack() {
         val idle = ViewerSheetFlags()
         val layers = listOf(
@@ -58,6 +68,8 @@ class ViewerScreenTest {
             idle.copy(showTextEditDialog = true),
             idle.copy(showMemoCardsSheet = true),
             idle.copy(showViewerPenBox = true),
+            idle.copy(showRecentDocs = true),
+            idle.copy(showTabOverflow = true),
             idle.copy(textTargetOpen = true),
             idle.copy(stampTargetOpen = true),
             idle.copy(signatureTargetOpen = true),
