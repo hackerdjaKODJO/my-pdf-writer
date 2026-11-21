@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
@@ -99,6 +100,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -1436,6 +1438,17 @@ fun NoteEditorScreen(
                 )
             }
 
+            // Hiding the cards is view-only, so always leave an obvious way back.
+            // The pill sits on the page itself, not buried in a menu.
+            if (!showMemoCardsOnPage && page.memoCards.isNotEmpty()) {
+                MemoCardsRestorePill(
+                    onClick = { showMemoCardsOnPage = true },
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 10.dp, top = 10.dp),
+                )
+            }
+
             if (compact) {
                 when (compactChromeMode) {
                     // The canvas above is already full-size. The dock floats over
@@ -2390,6 +2403,44 @@ private fun NoteCompactRestorePill(
             Text(
                 "도구",
                 style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/** On-page restore affordance shown whenever a page's memo cards are hidden. */
+@Composable
+private fun MemoCardsRestorePill(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .heightIn(min = MIN_TARGET_DP.dp)
+            .widthIn(min = MIN_TARGET_DP.dp)
+            .testTag(MEMO_CARDS_RESTORE_PILL_TAG)
+            .semantics { contentDescription = MEMO_SHOW_CARDS_LABEL },
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        tonalElevation = 3.dp,
+        shadowElevation = 6.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.Visibility,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                MEMO_SHOW_CARDS_LABEL,
+                style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
             )
         }

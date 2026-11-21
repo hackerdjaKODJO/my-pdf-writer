@@ -5,6 +5,9 @@ import com.hackerdjakodjo.mypdfwriter.data.MemoTint
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -57,5 +60,32 @@ class MemoCardsSheetTest {
         val label = memoPlacementLabel(card)
 
         assertEquals("X 26% · Y 40% · W 33% · H 21%", label)
+    }
+
+    @Test
+    fun hideAndRestoreAreSeparateVisibleActions() {
+        assertEquals("메모 카드 숨기기", MEMO_HIDE_CARDS_LABEL)
+        assertEquals("메모 카드 표시", MEMO_SHOW_CARDS_LABEL)
+        assertNotEquals(MEMO_HIDE_CARDS_LABEL, MEMO_SHOW_CARDS_LABEL)
+        assertEquals("memo_sheet_hide_cards", MEMO_SHEET_HIDE_TAG)
+        assertEquals("memo_sheet_show_cards", MEMO_SHEET_SHOW_TAG)
+        assertEquals("memo_cards_restore_pill", MEMO_CARDS_RESTORE_PILL_TAG)
+        assertFalse(MEMO_SHOW_CARDS_LABEL.contains("삭제"))
+    }
+
+    @Test
+    fun hidingTheOverlayKeepsEveryCardInTheNotebookJson() {
+        val card = MemoCard(id = "a", text = "지워지면 안 되는 메모")
+        val notebook = Notebook(pages = listOf(NotePage(id = "p0", memoCards = listOf(card))))
+
+        val (hidden, hiddenNotebook) = memoOverlayHidden(notebook)
+        assertFalse(hidden)
+        assertSame("hide is view-only, the notebook must not be rewritten", notebook, hiddenNotebook)
+        assertEquals(listOf(card), hiddenNotebook.pages.single().memoCards)
+
+        val (restored, restoredNotebook) = memoOverlayShown(hiddenNotebook)
+        assertTrue(restored)
+        assertSame(notebook, restoredNotebook)
+        assertEquals("지워지면 안 되는 메모", restoredNotebook.pages.single().memoCards.single().text)
     }
 }

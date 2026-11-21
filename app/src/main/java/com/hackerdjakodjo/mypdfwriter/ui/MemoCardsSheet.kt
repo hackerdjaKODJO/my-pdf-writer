@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.MemoCard
@@ -53,6 +55,24 @@ import kotlin.math.roundToInt
 
 /** Compose view of the portable ARGB fill stored in [MemoTint]. */
 private val MemoTint.bg: Color get() = Color(background)
+
+/** Top-level sheet action: hiding the cards is view-only, never a deletion. */
+internal const val MEMO_HIDE_CARDS_LABEL = "메모 카드 숨기기"
+
+/** Matching restore action, shown both in the sheet and as an on-page pill. */
+internal const val MEMO_SHOW_CARDS_LABEL = "메모 카드 표시"
+internal const val MEMO_SHEET_HIDE_TAG = "memo_sheet_hide_cards"
+internal const val MEMO_SHEET_SHOW_TAG = "memo_sheet_show_cards"
+internal const val MEMO_CARDS_RESTORE_PILL_TAG = "memo_cards_restore_pill"
+
+/**
+ * View-only visibility transition. The notebook is returned untouched: hiding the
+ * overlay must not delete or rewrite any memo card JSON.
+ */
+internal fun memoOverlayHidden(notebook: Notebook): Pair<Boolean, Notebook> = false to notebook
+
+/** Restore transition paired with [memoOverlayHidden]. */
+internal fun memoOverlayShown(notebook: Notebook): Pair<Boolean, Notebook> = true to notebook
 
 /** One card plus the page it lives on. Kept pure so the sheet list is JVM-tested. */
 internal data class MemoPageCard(val pageIndex: Int, val card: MemoCard)
@@ -127,7 +147,29 @@ fun MemoCardsSheet(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    TextButton(onClick = onDismiss) { Text("닫기") }
+                    // Top-level hide/restore action: users should never have to
+                    // hunt for a card just to clear the page for writing.
+                    TextButton(
+                        onClick = {
+                            val (visible, _) = if (showOnPage) {
+                                memoOverlayHidden(notebook)
+                            } else {
+                                memoOverlayShown(notebook)
+                            }
+                            onToggleShowOnPage(visible)
+                        },
+                        modifier = Modifier
+                            .heightIn(min = MIN_TARGET_DP.dp)
+                            .testTag(if (showOnPage) MEMO_SHEET_HIDE_TAG else MEMO_SHEET_SHOW_TAG),
+                    ) {
+                        Text(if (showOnPage) MEMO_HIDE_CARDS_LABEL else MEMO_SHOW_CARDS_LABEL)
+                    }
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
+                    ) {
+                        Text("닫기")
+                    }
                 }
             }
 
@@ -144,7 +186,7 @@ fun MemoCardsSheet(
                             if (showOnPage) {
                                 "카드가 있는 페이지에 메모를 겹쳐 표시"
                             } else {
-                                "카드 숨김 · 필기 도구가 페이지를 완전히 사용"
+                                "카드 숨김 · 필기 도구가 페이지를 완전히 사용 · ${MEMO_SHOW_CARDS_LABEL}로 복원"
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -209,8 +251,8 @@ fun MemoCardsSheet(
     pendingDelete?.let { entry ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("메모 카드 삭제") },
-            text = { Text("이 카드의 메모를 삭제합니다. 실행 취소로 되돌릴 수 있습니다.") },
+            title = { Text(MEMO_DELETE_TITLE) },
+            text = { Text(MEMO_DELETE_MESSAGE) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -218,11 +260,11 @@ fun MemoCardsSheet(
                         pendingDelete = null
                     },
                 ) {
-                    Text("삭제")
+                    Text(MEMO_DELETE_CONFIRM)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("취소") }
+                TextButton(onClick = { pendingDelete = null }) { Text(MEMO_DELETE_CANCEL) }
             },
         )
     }
