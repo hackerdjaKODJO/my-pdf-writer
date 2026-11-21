@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.38
+# E2E test cases — My PDF Writer 0.8.39
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator; the build machine has no adb device attached, so only JVM tests are
@@ -10,7 +10,7 @@ executed here. Instrumentation APKs are compiled with
 | Suite | Count | Status |
 | --- | --- | --- |
 | JVM unit tests | 879 | **Passing** on this phone |
-| Instrumentation/E2E | 10 classes (see below) | **Compiled**; on-device run pending |
+| Instrumentation/E2E | 16 classes, 85 cases (see below) | **Compiled**; on-device run pending |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally) |
 

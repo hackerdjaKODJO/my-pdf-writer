@@ -37,6 +37,7 @@
 - [GoodReader patterns applied — 0.8.36](goodreader-parity-0836.md)
 - [Multi-app review and simpler menus — 0.8.37](app-feature-review-0837.md)
 - [Latent bug review and fixes — 0.8.38](bugfix-review-0838.md)
+- [E2E coverage expansion — 0.8.39](e2e-coverage-0839.md)
 
 ## 문의
 
