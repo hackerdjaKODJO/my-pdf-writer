@@ -27,6 +27,7 @@ class PdfSplitChromeE2ETest {
         var previous = 0
         var next = 0
         var pages = 0
+        var search = 0
         var selection = 0
         var bookmark = 0
         var tools = 0
@@ -45,7 +46,7 @@ class PdfSplitChromeE2ETest {
                     onNext = { next += 1 },
                     onOpenPages = { pages += 1 },
                     onToggleTextSelection = { selection += 1 },
-                    onOpenSearch = {},
+                    onOpenSearch = { search += 1 },
                     onToggleBookmark = { bookmark += 1 },
                     onOpenTools = { tools += 1 },
                     onOpenHub = { hub += 1 },
@@ -66,6 +67,7 @@ class PdfSplitChromeE2ETest {
         assertEquals(1, previous)
         assertEquals(1, next)
         assertEquals(1, pages)
+        assertEquals(1, search)
         assertEquals(1, selection)
         assertEquals(1, bookmark)
         assertEquals(1, tools)
@@ -73,10 +75,11 @@ class PdfSplitChromeE2ETest {
     }
 
     @Test
-    fun compactToolbarKeepsPageNavigationAndBackWithoutTheExtraTools() {
+    fun compactToolbarKeepsSearchAndPageNavigationButHidesSecondaryTools() {
         var previous = 0
         var next = 0
         var pages = 0
+        var search = 0
         var selection = 0
         var bookmark = 0
         var tools = 0
@@ -95,7 +98,7 @@ class PdfSplitChromeE2ETest {
                     onNext = { next += 1 },
                     onOpenPages = { pages += 1 },
                     onToggleTextSelection = { selection += 1 },
-                    onOpenSearch = {},
+                    onOpenSearch = { search += 1 },
                     onToggleBookmark = { bookmark += 1 },
                     onOpenTools = { tools += 1 },
                     onOpenHub = { hub += 1 },
@@ -108,6 +111,8 @@ class PdfSplitChromeE2ETest {
         composeRule.onNodeWithContentDescription("이전 페이지").performClick()
         composeRule.onNodeWithContentDescription("다음 페이지").performClick()
         composeRule.onNodeWithContentDescription("페이지 선택").performClick()
+        // The default 85% study pane is ESSENTIAL/compact; search must survive it.
+        composeRule.onNodeWithContentDescription("검색").performClick()
         listOf("텍스트 선택", "현재 페이지 북마크", "주석", "학습 메뉴").forEach {
             composeRule.onNodeWithContentDescription(it).assertIsNotDisplayed()
         }
@@ -115,6 +120,7 @@ class PdfSplitChromeE2ETest {
         assertEquals(1, previous)
         assertEquals(1, next)
         assertEquals(1, pages)
+        assertEquals(1, search)
         assertEquals(0, selection)
         assertEquals(0, bookmark)
         assertEquals(0, tools)

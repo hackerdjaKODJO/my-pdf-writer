@@ -124,4 +124,59 @@ class PdfMemoCardLayerTest {
 
         assertEquals("X 25% · Y 25% · W 40% · H 20%", pdfMemoPlacementLabel(card))
     }
+
+    @Test
+    fun memoEditRequestIsAcknowledgedOnlyWhenAnEditorOpens() {
+        val entries = pdfMemoCardEntries(listOf(card))
+
+        val matched = pdfMemoEditRequest(
+            editCardId = "m1",
+            entries = entries,
+            editorAlreadyOpen = false,
+            pendingDelete = false,
+        )
+        assertEquals(card, matched.cardToEdit)
+        assertTrue(matched.handled)
+
+        // A stale id must not be swallowed: no editor opened, so the host keeps
+        // the request and can retry instead of losing the user's edit intent.
+        val stale = pdfMemoEditRequest(
+            editCardId = "deleted-card",
+            entries = entries,
+            editorAlreadyOpen = false,
+            pendingDelete = false,
+        )
+        assertEquals(null, stale.cardToEdit)
+        assertFalse(stale.handled)
+
+        val absent = pdfMemoEditRequest(
+            editCardId = null,
+            entries = entries,
+            editorAlreadyOpen = false,
+            pendingDelete = false,
+        )
+        assertEquals(null, absent.cardToEdit)
+        assertFalse(absent.handled)
+    }
+
+    @Test
+    fun memoEditRequestRespectsAnOpenEditorOrPendingDelete() {
+        val entries = pdfMemoCardEntries(listOf(card))
+
+        val alreadyOpen = pdfMemoEditRequest(
+            editCardId = "m1",
+            entries = entries,
+            editorAlreadyOpen = true,
+            pendingDelete = false,
+        )
+        assertFalse(alreadyOpen.handled)
+
+        val deleting = pdfMemoEditRequest(
+            editCardId = "m1",
+            entries = entries,
+            editorAlreadyOpen = false,
+            pendingDelete = true,
+        )
+        assertFalse(deleting.handled)
+    }
 }

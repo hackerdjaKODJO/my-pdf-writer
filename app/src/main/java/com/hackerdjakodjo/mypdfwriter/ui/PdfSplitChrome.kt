@@ -233,8 +233,9 @@ internal fun SplitPdfBackButton(
  * Floating top strip over the PDF area: page pill, text-selection toggle,
  * current-page bookmark, annotation-tool sheet and 학습 메뉴. It never reserves
  * layout height; the note pane keeps the rest of the screen. In [compact] mode
- * only the page pill remains (the top-start back button is drawn separately),
- * which keeps a very short PDF strip readable.
+ * the secondary tools are hidden (the top-start back button is drawn separately),
+ * but search stays reachable: the default 85% study pane is ESSENTIAL, so gating
+ * search behind `!compact` removed it from the primary study mode.
  */
 @Composable
 internal fun SplitPdfToolbar(
@@ -286,13 +287,15 @@ internal fun SplitPdfToolbar(
                 onOpenPages = onOpenPages,
             )
 
-            if (!compact) {
-                SplitChromeButton(
-                    icon = Icons.Outlined.Search,
-                    contentDescription = "검색",
-                    onClick = onOpenSearch,
-                )
+            // Search is one tap away in every density, including the ESSENTIAL
+            // strip used by the default 85% study pane.
+            SplitChromeButton(
+                icon = Icons.Outlined.Search,
+                contentDescription = "검색",
+                onClick = onOpenSearch,
+            )
 
+            if (!compact) {
                 SplitChromeButton(
                     icon = Icons.AutoMirrored.Outlined.TextSnippet,
                     contentDescription = when (toggleState) {

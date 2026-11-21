@@ -120,6 +120,54 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.math.roundToInt
 
+/**
+ * Every viewer sheet/dialog that must intercept system Back before the document
+ * itself closes. Kept as a pure value so the predicate is unit-testable — omitting
+ * a single flag (as happened with the memo-card and pen-box sheets) makes Back
+ * close the whole PDF while that sheet is still open.
+ */
+internal data class ViewerSheetFlags(
+    val showPages: Boolean = false,
+    val showNotes: Boolean = false,
+    val showBookmarks: Boolean = false,
+    val showSearch: Boolean = false,
+    val showAnnotations: Boolean = false,
+    val showOrganize: Boolean = false,
+    val showExcerpts: Boolean = false,
+    val showContinuous: Boolean = false,
+    val showSpread: Boolean = false,
+    val showPopup: Boolean = false,
+    val showAudioNotes: Boolean = false,
+    val showAudioReplay: Boolean = false,
+    val showStudyNote: Boolean = false,
+    val showReflow: Boolean = false,
+    val showReadAloud: Boolean = false,
+    val showOutline: Boolean = false,
+    val showProperties: Boolean = false,
+    val showStyle: Boolean = false,
+    val showDisplaySettings: Boolean = false,
+    val showHub: Boolean = false,
+    val showReadModes: Boolean = false,
+    val showAudioMenu: Boolean = false,
+    val showToolMore: Boolean = false,
+    val showToolStyle: Boolean = false,
+    val showSelectionMore: Boolean = false,
+    val showTextEditDialog: Boolean = false,
+    val showMemoCardsSheet: Boolean = false,
+    val showViewerPenBox: Boolean = false,
+    val textTargetOpen: Boolean = false,
+    val stampTargetOpen: Boolean = false,
+    val signatureTargetOpen: Boolean = false,
+) {
+    val anyOpen: Boolean get() = showPages || showNotes || showBookmarks || showSearch ||
+        showAnnotations || showOrganize || showExcerpts || showContinuous || showSpread ||
+        showPopup || showAudioNotes || showAudioReplay || showStudyNote || showReflow ||
+        showReadAloud || showOutline || showProperties || showStyle || showDisplaySettings ||
+        showHub || showReadModes || showAudioMenu || showToolMore || showToolStyle ||
+        showSelectionMore || showTextEditDialog || showMemoCardsSheet || showViewerPenBox ||
+        textTargetOpen || stampTargetOpen || signatureTargetOpen
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViewerScreen(
@@ -343,12 +391,39 @@ fun ViewerScreen(
         }
     }
 
-    val sheetOpen = showPages || showNotes || showBookmarks || showSearch || showAnnotations ||
-        showOrganize || showExcerpts || showContinuous || showSpread || showPopup || showAudioNotes ||
-        showAudioReplay || showStudyNote || showReflow || showReadAloud || showOutline || showProperties ||
-        showStyle || showDisplaySettings || showHub || showReadModes || showAudioMenu || showToolMore ||
-        showToolStyle || showSelectionMore || showTextEditDialog ||
-        textTarget != null || stampTarget != null || signatureTarget != null
+    val sheetOpen = ViewerSheetFlags(
+        showPages = showPages,
+        showNotes = showNotes,
+        showBookmarks = showBookmarks,
+        showSearch = showSearch,
+        showAnnotations = showAnnotations,
+        showOrganize = showOrganize,
+        showExcerpts = showExcerpts,
+        showContinuous = showContinuous,
+        showSpread = showSpread,
+        showPopup = showPopup,
+        showAudioNotes = showAudioNotes,
+        showAudioReplay = showAudioReplay,
+        showStudyNote = showStudyNote,
+        showReflow = showReflow,
+        showReadAloud = showReadAloud,
+        showOutline = showOutline,
+        showProperties = showProperties,
+        showStyle = showStyle,
+        showDisplaySettings = showDisplaySettings,
+        showHub = showHub,
+        showReadModes = showReadModes,
+        showAudioMenu = showAudioMenu,
+        showToolMore = showToolMore,
+        showToolStyle = showToolStyle,
+        showSelectionMore = showSelectionMore,
+        showTextEditDialog = showTextEditDialog,
+        showMemoCardsSheet = showMemoCardsSheet,
+        showViewerPenBox = showViewerPenBox,
+        textTargetOpen = textTarget != null,
+        stampTargetOpen = stampTarget != null,
+        signatureTargetOpen = signatureTarget != null,
+    ).anyOpen
 
     BackHandler(enabled = !sheetOpen) {
         if (textSelectMode || selectedWords.isNotEmpty()) {
