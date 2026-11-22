@@ -234,4 +234,14 @@ class PdfViewModelTest {
     fun extractionHandlesAnEmptySelection() {
         assertTrue(remapExtractedAnnotations(listOf(annotation("a", 0)), emptyList()).isEmpty())
     }
+
+    @Test
+    fun linkCacheKeyDistinguishesDocumentsPagesAndLayouts() {
+        val file = java.io.File("/tmp/lecture.pdf")
+        val base = linkCacheKey("doc1", file, 3, 0)
+        assertEquals(base, linkCacheKey("doc1", file, 3, 0))
+        assertTrue(base != linkCacheKey("doc2", file, 3, 0))
+        assertTrue(base != linkCacheKey("doc1", file, 4, 0))
+        assertTrue(base != linkCacheKey("doc1", file, 3, 90))
+    }
 }

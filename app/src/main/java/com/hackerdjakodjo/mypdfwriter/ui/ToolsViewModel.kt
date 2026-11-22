@@ -27,6 +27,13 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.OutputStream
 
+/** Tools must operate on the edited working PDF, not the pristine source. */
+internal fun toolHandoffFile(working: File?, source: File?): File? = working ?: source
+
+/** For a protected PDF only the unlock tool makes sense. */
+internal fun toolsEnabledFor(needsPassword: Boolean, isUnlock: Boolean): Boolean =
+    if (needsPassword) isUnlock else true
+
 data class ToolsUiState(
     val busy: Boolean = false,
     val label: String? = null,
@@ -34,6 +41,8 @@ data class ToolsUiState(
     val sourceName: String = "",
     val sourceFile: File? = null,
     val pageCount: Int = 0,
+    /** A protected file is still selectable so "암호 해제" can be used. */
+    val sourceNeedsPassword: Boolean = false,
     val metadata: PdfMetadata? = null,
     val outline: List<PdfOutlineEntry>? = null,
     val forms: List<PdfFormField>? = null,
@@ -58,11 +67,21 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
             runTool("PDF를 읽는 중…") {
                 val name = queryName(uri)
                 val file = copyToTemp(uri, name)
-                val pages = PdfTools.pageCount(file)
+                val needsPassword = PdfTools.isEncrypted(file)
+                val pages = if (needsPassword) 0 else PdfTools.pageCount(file)
                 _state.update {
-                    it.copy(sourceName = name, sourceFile = file, pageCount = pages, metadata = null, outline = null, forms = null)
+                    it.copy(
+                        sourceName = name,
+                        sourceFile = file,
+                        pageCount = pages,
+                        sourceNeedsPassword = needsPassword,
+                        metadata = null,
+                        outline = null,
+                        forms = null,
+                    )
                 }
-                "‘$name’ · ${pages}쪽"
+                if (needsPassword) "암호가 필요한 PDF입니다. ‘암호 해제’를 사용하세요."
+                else "‘$name’ · ${pages}쪽"
             }
         }
     }
@@ -71,18 +90,21 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
     fun selectSource(file: File, name: String = file.name) {
         viewModelScope.launch {
             runTool("PDF를 읽는 중…") {
-                val pages = PdfTools.pageCount(file)
+                val needsPassword = PdfTools.isEncrypted(file)
+                val pages = if (needsPassword) 0 else PdfTools.pageCount(file)
                 _state.update {
                     it.copy(
                         sourceName = name.ifBlank { file.name },
                         sourceFile = file,
                         pageCount = pages,
+                        sourceNeedsPassword = needsPassword,
                         metadata = null,
                         outline = null,
                         forms = null,
                     )
                 }
-                "‘${name.ifBlank { file.name }}’ · ${pages}쪽"
+                if (needsPassword) "암호가 필요한 PDF입니다. ‘암호 해제’를 사용하세요."
+                else "‘${name.ifBlank { file.name }}’ · ${pages}쪽"
             }
         }
     }
@@ -344,8 +366,15 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun runTool(label: String?, block: suspend () -> String?) {
-        _state.update { it.copy(busy = true, label = label, message = null) }
-        runCatching { block() }
+        // Clear the previous result so a failure (or a tool with no single
+        // output, like split) cannot offer "열기" on an unrelated old file.
+        _state.update {
+            it.copy(busy = true, label = label, message = null, lastOutput = null)
+        }
+        // Every tool below reads/writes files or decodes pages. Running them on
+        // Dispatchers.Main froze the UI for the whole operation (and could ANR
+        // on a long PDF-to-images run). StateFlow.update stays thread-safe.
+        runCatching { withContext(Dispatchers.IO) { block() } }
             .onSuccess { message ->
                 _state.update { it.copy(busy = false, label = null, message = message) }
             }

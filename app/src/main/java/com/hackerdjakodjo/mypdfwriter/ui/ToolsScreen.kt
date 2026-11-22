@@ -143,6 +143,7 @@ fun ToolsScreen(
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     val source = state.sourceFile
+    val canUseTools = source != null && !state.sourceNeedsPassword
 
     var pending by remember { mutableStateOf<PendingOutput?>(null) }
     var showExtract by remember { mutableStateOf(false) }
@@ -312,11 +313,11 @@ fun ToolsScreen(
                                 pickImages.launch(arrayOf("image/*"))
                             }),
                             ToolItem("PDF → 이미지", "모든 페이지를 PNG로", Icons.Outlined.Image, {
-                                if (source != null) {
+                                if (canUseTools && source != null) {
                                     pending = PendingOutput.Images(source)
                                     openTree.launch(null)
                                 }
-                            }, source != null),
+                            }, canUseTools),
                         ),
                     )
                 }
@@ -326,11 +327,11 @@ fun ToolsScreen(
                         title = PdfToolSections.PAGES,
                         items = listOf(
                             ToolItem("페이지 추출", "원하는 페이지만 새 PDF로", Icons.Outlined.FileDownload, {
-                                if (source != null) showExtract = true
-                            }, source != null),
+                                if (canUseTools) showExtract = true
+                            }, canUseTools),
                             ToolItem("문서 분할", "N쪽마다 파일 나누기", Icons.Outlined.CallSplit, {
-                                if (source != null) showSplit = true
-                            }, source != null),
+                                if (canUseTools) showSplit = true
+                            }, canUseTools),
                         ),
                     )
                 }
@@ -342,23 +343,23 @@ fun ToolsScreen(
                         title = PdfToolSections.OCR,
                         items = listOf(
                             ToolItem("OCR 텍스트", "스캔 PDF에서 글자 추출", Icons.Outlined.DocumentScanner, {
-                                if (source != null) {
+                                if (canUseTools && source != null) {
                                     pending = PendingOutput.OcrText(source, ocrLanguage)
                                     createText.launch("ocr.txt")
                                 }
-                            }, source != null),
+                            }, canUseTools),
                             ToolItem("검색 가능한 PDF", "이미지 위에 보이지 않는 텍스트 레이어", Icons.Outlined.DocumentScanner, {
-                                if (source != null) {
+                                if (canUseTools && source != null) {
                                     pending = PendingOutput.OcrPdf(source, ocrLanguage)
                                     createPdf.launch("searchable.pdf")
                                 }
-                            }, source != null),
+                            }, canUseTools),
                             ToolItem("텍스트 추출", "복사 가능한 TXT로", Icons.Outlined.TextSnippet, {
-                                if (source != null) {
+                                if (canUseTools && source != null) {
                                     pending = PendingOutput.ExtractText(source)
                                     createText.launch("document.txt")
                                 }
-                            }, source != null),
+                            }, canUseTools),
                         ),
                     )
                 }
@@ -368,22 +369,22 @@ fun ToolsScreen(
                         title = PdfToolSections.SECURITY,
                         items = listOf(
                             ToolItem("최적화", "메타데이터를 정리해 다시 저장", Icons.Outlined.Compress, {
-                                if (source != null) {
+                                if (canUseTools && source != null) {
                                     pending = PendingOutput.Optimize(source)
                                     createPdf.launch("optimized.pdf")
                                 }
-                            }, source != null),
+                            }, canUseTools),
                             ToolItem("문서 정보", "제목·작성자·페이지 수", Icons.Outlined.Info, {
-                                if (source != null) {
+                                if (canUseTools && source != null) {
                                     vm.loadMetadata()
                                     showMetadata = true
                                 }
-                            }, source != null),
+                            }, canUseTools),
                             ToolItem("암호 설정", "열기 암호로 보호", Icons.Outlined.Lock, {
-                                if (source != null) showProtect = true
-                            }, source != null),
+                                if (canUseTools) showProtect = true
+                            }, canUseTools),
                             ToolItem("암호 해제", "암호를 풀어 새 PDF로", Icons.Outlined.LockOpen, {
-                                if (source != null) showUnlock = true
+                                if (canUseTools) showUnlock = true
                             }, source != null),
                         ),
                     )
@@ -394,11 +395,11 @@ fun ToolsScreen(
                         title = PdfToolSections.FORMS,
                         items = listOf(
                             ToolItem("양식 채우기", "AcroForm 입력 후 저장", Icons.Outlined.FactCheck, {
-                                if (source != null) {
+                                if (canUseTools && source != null) {
                                     vm.loadForms()
                                     showForms = true
                                 }
-                            }, source != null),
+                            }, canUseTools),
                         ),
                     )
                 }
@@ -409,10 +410,10 @@ fun ToolsScreen(
                         items = listOf(
                             ToolItem("인쇄", "Android 인쇄로 보내기", Icons.Outlined.Print, {
                                 source?.let(vm::print)
-                            }, source != null),
+                            }, canUseTools),
                             ToolItem("공유", "PDF를 다른 앱으로", Icons.Outlined.Share, {
                                 source?.let(vm::share)
-                            }, source != null),
+                            }, canUseTools),
                         ),
                     )
                 }
@@ -451,7 +452,14 @@ fun ToolsScreen(
         RangeDialog(
             title = "페이지 추출",
             value = rangeText,
-            hint = "예: 1-3,5 (총 ${state.pageCount}쪽)",
+            hint = buildString {
+                append("예: 1-3,5 (총 ${state.pageCount}쪽)")
+                val described = PdfRange.describe(rangeText, state.pageCount)
+                if (described.pages.isNotEmpty()) {
+                    append(" · ").append(described.summary)
+                    if (described.clamped) append(" · 범위를 넘긴 쪽은 조정되었습니다")
+                }
+            },
             onValueChange = { rangeText = it },
             onDismiss = { showExtract = false },
             onConfirm = {

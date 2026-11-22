@@ -262,7 +262,20 @@ internal fun remapExtractedAnnotations(
     .filter { it.page in ordered }
     .map { it.copy(page = ordered.indexOf(it.page)) }
 
+/** Cache key for parsed link targets of one source page. */
+internal fun linkCacheKey(
+    docId: String,
+    source: File,
+    sourcePage: Int,
+    extraRotation: Int,
+): String = "${docId}:${source.absolutePath}:${source.lastModified()}:$sourcePage:$extraRotation"
+
+private const val LINK_CACHE_MAX = 48
+
 class PdfViewModel(application: Application) : AndroidViewModel(application) {
+    /** Parsed link targets survive page revisits; a full PDF parse per page is expensive. */
+    private val pageLinkCache =
+        LinkedHashMap<String, List<com.hackerdjakodjo.mypdfwriter.pdf.PdfLink>>()
 
     private val repo = PdfRepository(application)
     private val docStore = DocStateStore(application)
@@ -629,8 +642,16 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val docId = state.docId
         linkLoadJob?.cancel()
         linkLoadJob = viewModelScope.launch {
+            val key = linkCacheKey(docId, source, sourcePage, spec.extraRotation)
             val raw = withContext(Dispatchers.IO) {
-                PdfLinks.linksForFile(source, sourcePage, spec.extraRotation)
+                synchronized(pageLinkCache) { pageLinkCache[key] }
+                    ?: PdfLinks.linksForFile(source, sourcePage, spec.extraRotation)
+                        .also { parsed ->
+                            synchronized(pageLinkCache) {
+                                if (pageLinkCache.size >= LINK_CACHE_MAX) pageLinkCache.clear()
+                                pageLinkCache[key] = parsed
+                            }
+                        }
             }
             val mapped = PdfLinks.remapToDocument(raw, state.pages)
             if (_viewer.value?.docId == docId && _viewer.value?.pageIndex == pageIndex) {
@@ -1607,6 +1628,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         "${state.docId}:${file.absolutePath}:${file.lastModified()}:${state.pages.size}:${state.revision}"
 
     private fun resetTextLayout() {
+        synchronized(pageLinkCache) { pageLinkCache.clear() }
         textLayoutJob?.cancel()
         textLayoutJob = null
         textLayoutLines = emptyList()

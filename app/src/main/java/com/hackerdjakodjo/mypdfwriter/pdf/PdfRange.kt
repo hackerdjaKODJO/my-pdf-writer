@@ -41,6 +41,30 @@ object PdfRange {
         return pages.toList()
     }
 
+    /** Human-readable preview of a range before the user commits an extract. */
+    data class Description(
+        val pages: List<Int>,
+        val summary: String,
+        val clamped: Boolean,
+    )
+
+    fun describe(spec: String, pageCount: Int): Description {
+        val pages = parse(spec, pageCount)
+        val clamped = spec.split(',').any { token ->
+            val number = token.trim().toIntOrNull() ?: return@any false
+            number !in 1..pageCount
+        }
+        val preview = pages.take(8).map { it + 1 }
+        val suffix = if (pages.size > preview.size) " …" else ""
+        return Description(
+            pages = pages,
+            summary = if (pages.isEmpty()) "선택된 쪽 없음" else {
+                "${preview.joinToString(", ")}$suffix · ${pages.size}쪽"
+            },
+            clamped = clamped,
+        )
+    }
+
     fun chunks(pageCount: Int, every: Int): List<IntRange> {
         require(every > 0) { "묶음 크기는 1 이상이어야 합니다" }
         if (pageCount <= 0) return emptyList()

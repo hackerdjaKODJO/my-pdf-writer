@@ -31,6 +31,7 @@ import com.hackerdjakodjo.mypdfwriter.ui.BackupViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.HelpCenterSheet
 import com.hackerdjakodjo.mypdfwriter.ui.ImportIntentSnapshot
 import com.hackerdjakodjo.mypdfwriter.ui.NoteEditorScreen
+import com.hackerdjakodjo.mypdfwriter.ui.toolHandoffFile
 import com.hackerdjakodjo.mypdfwriter.ui.NoteTraceSheet
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookHomeScreen
 import com.hackerdjakodjo.mypdfwriter.ui.NotebookViewModel
@@ -229,7 +230,12 @@ class MainActivity : ComponentActivity() {
                                 showTools = false
                                 viewModel.openDocument(uri)
                             },
-                            initialSource = viewModel.currentSourceFile(),
+                            // Prefer the assembled working file: after page edits the
+                            // pristine source would silently discard them in tools.
+                            initialSource = toolHandoffFile(
+                                viewModel.currentWorkingFile(),
+                                viewModel.currentSourceFile(),
+                            ),
                             initialName = viewer?.docName.orEmpty(),
                         )
                         viewer == null -> homeStateHolder.SaveableStateProvider("home") {

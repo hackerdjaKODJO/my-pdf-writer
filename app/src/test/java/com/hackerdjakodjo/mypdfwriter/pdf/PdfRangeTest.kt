@@ -54,4 +54,17 @@ class PdfRangeTest {
             PdfRange.chunks(10, 0)
         }
     }
+
+    @Test
+    fun describeShowsResolvedPagesAndFlagsClamping() {
+        val described = PdfRange.describe("1-3,5", 10)
+        assertEquals(listOf(0, 1, 2, 4), described.pages)
+        assertEquals("1, 2, 3, 5 · 4쪽", described.summary)
+        org.junit.Assert.assertFalse(described.clamped)
+
+        val clamped = PdfRange.describe("99", 10)
+        assertEquals(listOf(9), clamped.pages)
+        org.junit.Assert.assertTrue(clamped.clamped)
+        assertEquals("선택된 쪽 없음", PdfRange.describe("", 10).summary)
+    }
 }
