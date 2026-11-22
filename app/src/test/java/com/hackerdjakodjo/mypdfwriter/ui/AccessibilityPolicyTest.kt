@@ -147,4 +147,10 @@ class AccessibilityPolicyTest {
         assertEquals(2, labelMaxLines(120, hintWidth))
         assertEquals(1, labelMaxLines(hintWidth, hintWidth))
     }
+
+    @Test
+    fun expandableHeadersAnnounceTheirState() {
+        assertEquals("펼쳐짐", expandStateDescription(true))
+        assertEquals("접힘", expandStateDescription(false))
+    }
 }

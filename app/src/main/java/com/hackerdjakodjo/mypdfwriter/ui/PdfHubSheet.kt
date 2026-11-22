@@ -34,6 +34,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
@@ -338,7 +341,7 @@ fun PdfHubSubSheet(
         ) {
             item(key = "sub_header") {
                 Column(Modifier.padding(horizontal = 20.dp)) {
-                    Text(title, style = MaterialTheme.typography.titleLarge)
+                    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.sectionHeading())
                     Text(
                         subtitle,
                         style = MaterialTheme.typography.bodySmall,
@@ -366,7 +369,7 @@ private fun HubHeader(
     pageCount: Int,
 ) {
     Column(Modifier.padding(horizontal = 20.dp)) {
-        Text("학습 메뉴", style = MaterialTheme.typography.titleLarge)
+        Text("학습 메뉴", style = MaterialTheme.typography.titleLarge, modifier = Modifier.sectionHeading())
         Text(
             "$docName · ${pageIndex + 1} / $pageCount",
             style = MaterialTheme.typography.labelMedium,
@@ -399,7 +402,8 @@ private fun HubSectionHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
-                .sizeIn(minHeight = MIN_TARGET_DP.dp),
+                .sizeIn(minHeight = MIN_TARGET_DP.dp)
+                .semantics { stateDescription = expandStateDescription(expanded) },
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
@@ -425,7 +429,8 @@ private fun HubSectionHeader(
                 Spacer(Modifier.width(4.dp))
                 Icon(
                     if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                    contentDescription = if (expanded) "${section.title} 접기" else "${section.title} 펼치기",
+                    // State is announced once via the header's stateDescription.
+                    contentDescription = null,
                     modifier = Modifier.size(20.dp),
                     tint = MaterialTheme.colorScheme.primary,
                 )
@@ -441,6 +446,7 @@ private fun HubSectionHeader(
             Text(
                 section.title,
                 style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.sectionHeading(),
                 color = MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.width(10.dp))

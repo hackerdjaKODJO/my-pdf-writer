@@ -167,6 +167,16 @@ class HelpCenterContentTest {
     }
 
     @Test
+    fun helpUsesCurrentToolAndGestureVocabulary() {
+        val all = helpTopics().joinToString("\n") { it.allText() }
+        assertTrue("dock slot is text selection", all.contains("텍스트 선택·노트"))
+        assertTrue("selection bar action", all.contains("복사·노트에 담기"))
+        assertTrue("view tool", all.contains("보기 도구"))
+        assertFalse("no ghost view mode", all.contains("보기 모드"))
+        assertFalse("no 발췌 on the selection bar", all.contains("복사·발췌"))
+    }
+
+    @Test
     fun helpTextNamesShippedLocationsOnly() {
         val all = helpTopics().joinToString("\n") { it.allText() } +
             quickCards().joinToString("\n") { it.sentence }

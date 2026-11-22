@@ -49,6 +49,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.NoteLayer
@@ -188,7 +191,13 @@ fun NoteLayersSheet(
                         onChange(NoteLayers.setOpacity(page, selected.id, draftOpacity))
                     },
                     valueRange = 0.05f..1f,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics {
+                            val valueLabel = "${(draftOpacity * 100).roundToInt()}%"
+                            contentDescription = sliderLabel("불투명도", valueLabel)
+                            stateDescription = valueLabel
+                        },
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(

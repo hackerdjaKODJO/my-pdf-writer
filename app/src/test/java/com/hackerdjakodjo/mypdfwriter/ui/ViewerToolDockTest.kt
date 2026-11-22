@@ -120,4 +120,10 @@ class ViewerToolDockTest {
         assertFalse(isDockAnnotationTool(Tool.ERASER))
         assertFalse(isDockAnnotationTool(Tool.VIEW))
     }
+
+    @Test
+    fun pagePillAnnouncesPositionAndAction() {
+        assertEquals("페이지 3 / 12, 목록 열기", viewerPagePillDescription(2, 12))
+        assertEquals("페이지 1 / 1, 목록 열기", viewerPagePillDescription(0, 1))
+    }
 }

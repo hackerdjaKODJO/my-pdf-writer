@@ -71,6 +71,10 @@ fun disabledReasonLabel(action: String, reason: String): String {
     }
 }
 
+/** Spoken state of an expandable sheet header ("펼쳐짐"/"접힘"). */
+internal fun expandStateDescription(expanded: Boolean): String =
+    if (expanded) "펼쳐짐" else "접힘"
+
 /**
  * How many lines a label may use. A label that fits on one line stays on one
  * line; anything wider wraps to two. Widths below one dp are clamped to one so

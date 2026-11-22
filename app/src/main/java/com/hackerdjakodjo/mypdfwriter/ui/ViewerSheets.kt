@@ -77,6 +77,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -184,7 +188,13 @@ fun DisplaySettingsSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -
                         value = state.brightness,
                         valueRange = DisplayPrefs.MIN_BRIGHTNESS..DisplayPrefs.MAX_BRIGHTNESS,
                         onValueChange = vm::setBrightness,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics {
+                                val valueLabel = "${(state.brightness * 100).roundToInt()}%"
+                                contentDescription = sliderLabel("밝기", valueLabel)
+                                stateDescription = valueLabel
+                            },
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -212,7 +222,8 @@ fun DisplaySettingsSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .sizeIn(minHeight = MIN_TARGET_DP.dp),
+                    .sizeIn(minHeight = MIN_TARGET_DP.dp)
+                    .semantics { stateDescription = expandStateDescription(cropExpanded) },
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -227,7 +238,7 @@ fun DisplaySettingsSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -
                     Spacer(Modifier.width(6.dp))
                     Icon(
                         if (cropExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                        contentDescription = if (cropExpanded) "여백 자르기 접기" else "여백 자르기 펼치기",
+                        contentDescription = null,
                         modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.primary,
                     )
@@ -261,7 +272,13 @@ fun DisplaySettingsSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -
                         value = value.coerceIn(0f, cropMax),
                         valueRange = 0f..cropMax,
                         onValueChange = update,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics {
+                                val valueLabel = "${(value * 100).roundToInt()}%"
+                                contentDescription = sliderLabel("${label} 여백", valueLabel)
+                                stateDescription = valueLabel
+                            },
                     )
                 }
                 FilterChip(
@@ -311,7 +328,7 @@ fun PageSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
                     PageRow(
                         index = index,
                         spec = spec,
-                        selected = index == state.pageIndex,
+                        isSelected = index == state.pageIndex,
                         hasNote = state.notes[index]?.isNotBlank() == true,
                         onClick = { vm.goToPage(index) },
                     )
@@ -383,12 +400,15 @@ fun PageSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun PageRow(index: Int, spec: PageSpec, selected: Boolean, hasNote: Boolean, onClick: () -> Unit) {
+private fun PageRow(index: Int, spec: PageSpec, isSelected: Boolean, hasNote: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        modifier = Modifier.fillMaxWidth(),
+        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        modifier = Modifier
+            .fillMaxWidth()
+            // "Current page" was colour-only; expose it as a real state.
+            .semantics { selected = isSelected },
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -410,7 +430,12 @@ private fun PageRow(index: Int, spec: PageSpec, selected: Boolean, hasNote: Bool
                 }
             }
             if (hasNote) {
-                Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.secondary, CircleShape))
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .background(MaterialTheme.colorScheme.secondary, CircleShape)
+                        .semantics { contentDescription = "페이지 메모 있음" },
+                )
             }
         }
     }
@@ -855,6 +880,7 @@ fun AnnotationSheet(
                         selected = filter == option,
                         onClick = { filter = option },
                         label = { Text(option.label) },
+                        modifier = Modifier.sizeIn(minHeight = MIN_TARGET_DP.dp),
                     )
                 }
             }
@@ -1077,6 +1103,7 @@ fun StampDialog(
                             selected = value == preset,
                             onClick = { value = preset },
                             label = { Text(preset) },
+                            modifier = Modifier.sizeIn(minHeight = MIN_TARGET_DP.dp),
                         )
                     }
                 }
@@ -1585,6 +1612,7 @@ private fun LocationsAnnotationsTab(
                 selected = filter == option,
                 onClick = { onFilterChange(option) },
                 label = { Text("${option.label} ${counts[option] ?: 0}") },
+                modifier = Modifier.sizeIn(minHeight = MIN_TARGET_DP.dp),
             )
         }
     }

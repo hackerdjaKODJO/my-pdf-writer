@@ -86,7 +86,7 @@ fun NoteSearchSheet(
                 }
                 TextButton(
                     onClick = onDismiss,
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                 ) {
                     Text("닫기")
                 }

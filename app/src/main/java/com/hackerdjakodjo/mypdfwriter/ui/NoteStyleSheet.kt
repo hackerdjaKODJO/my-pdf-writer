@@ -61,7 +61,7 @@ internal val NOTE_PALETTE = listOf(
 
 /** Spoken names paired with [NOTE_PALETTE], so every swatch is identifiable. */
 internal val NOTE_PALETTE_LABELS = listOf(
-    "검정", "남색", "빨강", "주황", "초록", "보라", "청록", "노랑",
+    "검정", "파랑", "빨강", "주황", "초록", "보라", "청록", "노랑",
 )
 
 internal fun noteColorName(color: Int): String =

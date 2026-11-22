@@ -88,6 +88,10 @@ val annotationPalette = listOf(
     0xFFF9A825.toInt(),
 )
 
+/** TalkBack label for the floating page pill: position plus its action. */
+internal fun viewerPagePillDescription(pageIndex: Int, pageCount: Int): String =
+    "페이지 ${pageIndex + 1} / $pageCount, 목록 열기"
+
 /** Spoken names for the fixed annotation swatches; OCR and custom colours fall back. */
 internal fun annotationColorName(color: Int): String = when (color) {
     annotationPalette[0] -> "검정"
@@ -361,8 +365,12 @@ fun ViewerPageNavigator(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
                 modifier = Modifier
                     .sizeIn(minHeight = MIN_TARGET_DP.dp)
+                    // Declaring onClick with a null action replaced the real
+                    // click contribution from Surface, leaving a TalkBack node
+                    // that could be read but not activated. Use a description
+                    // instead and let Surface provide the action.
                     .semantics {
-                        onClick(label = "페이지 목록 열기", action = null)
+                        contentDescription = viewerPagePillDescription(pageIndex, pageCount)
                     },
             ) {
                 Text(
