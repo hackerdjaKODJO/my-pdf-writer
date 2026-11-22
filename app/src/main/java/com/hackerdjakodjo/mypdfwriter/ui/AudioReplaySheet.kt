@@ -466,7 +466,7 @@ private fun AudioReplayTransport(
                 FilledIconButton(
                     onClick = onPlayPause,
                     enabled = !missing && !state.preparing,
-                    modifier = Modifier.size(44.dp),
+                    modifier = Modifier.size(MIN_TARGET_DP.dp),
                 ) {
                     if (state.preparing) {
                         CircularProgressIndicator(
@@ -672,7 +672,7 @@ private fun AudioReplayNoteRow(
                 FilledIconButton(
                     onClick = onPlayPause,
                     enabled = !missing && !preparing,
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(MIN_TARGET_DP.dp),
                 ) {
                     if (preparing) {
                         CircularProgressIndicator(

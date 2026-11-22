@@ -704,7 +704,7 @@ private fun AudioNoteRow(
                 FilledIconButton(
                     onClick = onPlayPause,
                     enabled = !missing && !preparing,
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(MIN_TARGET_DP.dp),
                 ) {
                     if (preparing) {
                         CircularProgressIndicator(

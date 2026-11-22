@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -1317,6 +1318,14 @@ fun NoteEditorScreen(
                                 NoteTopBarAction.FAVORITE, NoteTopBarAction.EXPORT -> Unit
                             }
                         }
+                        // One-tap help: the note menu's HELP row stays for the
+                        // existing E2E selectors, but is last of eleven rows.
+                        IconButton(onClick = onOpenHelp) {
+                            Icon(
+                                Icons.Outlined.HelpOutline,
+                                contentDescription = "도움말",
+                            )
+                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface,
@@ -1512,6 +1521,8 @@ fun NoteEditorScreen(
                         }
                     },
                     onOpenPages = { showPageSheet = true },
+                    showAdd = notePagePillShowsAdd(wide, compact),
+                    onAdd = { addPage() },
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(start = 12.dp, bottom = 12.dp),
@@ -2847,6 +2858,8 @@ private fun NotePagePill(
     onNext: () -> Unit,
     onOpenPages: () -> Unit,
     compact: Boolean = false,
+    showAdd: Boolean = false,
+    onAdd: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val buttonSize = MIN_TARGET_DP.dp
@@ -2909,6 +2922,20 @@ private fun NotePagePill(
                     },
                     modifier = Modifier.size(iconSize),
                 )
+            }
+            // On phones the page rail is not composed, so the pill is the only
+            // one-tap route to the most common writing action: a new page.
+            if (showAdd) {
+                IconButton(
+                    onClick = onAdd,
+                    modifier = Modifier.size(buttonSize),
+                ) {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = "새 페이지 추가",
+                        modifier = Modifier.size(iconSize),
+                    )
+                }
             }
         }
     }

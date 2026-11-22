@@ -45,7 +45,7 @@ class OnboardingContentTest {
     @Test
     fun cardsCoverTheRequestedFeatureAreas() {
         val expectedKeywords = mapOf(
-            OnboardingTopicKey.HOME_QUICK_ACTIONS to listOf("홈", "이어서 읽기", "새 노트", "백업"),
+            OnboardingTopicKey.HOME_QUICK_ACTIONS to listOf("홈", "PDF 가져오기", "새 노트", "백업"),
             OnboardingTopicKey.SELECT_HIGHLIGHT to listOf("PDF", "형광펜", "한 번에"),
             OnboardingTopicKey.NOTE_PANE to listOf("노트", "링크"),
         )

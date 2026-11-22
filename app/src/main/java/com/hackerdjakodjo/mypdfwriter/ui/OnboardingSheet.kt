@@ -93,7 +93,7 @@ private fun onboardingCardsByKey(): Map<OnboardingTopicKey, OnboardingCard> = ma
     OnboardingTopicKey.HOME_QUICK_ACTIONS to OnboardingCard(
         key = OnboardingTopicKey.HOME_QUICK_ACTIONS,
         title = "홈에서 바로 시작",
-        body = "홈의 이어서 읽기와 새 노트 두 버튼으로 바로 시작하고, 백업은 설정에 있어요.",
+        body = "홈의 PDF 가져오기와 새 노트 두 버튼으로 바로 시작하고, 백업은 설정에 있어요.",
     ),
     OnboardingTopicKey.OPEN_READ_PDF to OnboardingCard(
         key = OnboardingTopicKey.OPEN_READ_PDF,

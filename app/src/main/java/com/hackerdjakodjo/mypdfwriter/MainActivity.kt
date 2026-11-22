@@ -289,6 +289,7 @@ class MainActivity : ComponentActivity() {
                                             text,
                                             page,
                                         )
+                                        true
                                     } else {
                                         appendToOpenPane(text, page)
                                     }

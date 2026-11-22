@@ -234,7 +234,7 @@ fun ViewerScreen(
     onOpenTools: () -> Unit,
     onCreateStudyNote: (Notebook) -> Unit = {},
     /** Optional integration hook used by drag-and-drop capture; must not open the notebook. */
-    onAppendStudyExcerpt: (text: String, pageIndex: Int) -> Unit = { _, _ -> },
+    onAppendStudyExcerpt: (text: String, pageIndex: Int) -> Boolean = { _, _ -> true },
     /**
      * Optional hub entry point for the live study-note pane. When present, the
      * PDF hub offers "스터디 노트"; the host resolves or creates the notebook
@@ -299,9 +299,12 @@ fun ViewerScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val appendStudyExcerpt: (String, Int) -> Unit = { text, page ->
-        onAppendStudyExcerpt(text, page)
-        scope.launch { snackbarHostState.showSnackbar(STUDY_NOTE_ADDED_MESSAGE) }
+    val appendStudyExcerpt: (String, Int) -> Boolean = { text, page ->
+        val added = onAppendStudyExcerpt(text, page)
+        if (added) {
+            scope.launch { snackbarHostState.showSnackbar(STUDY_NOTE_ADDED_MESSAGE) }
+        }
+        added
     }
     var showPages by remember { mutableStateOf(false) }
     var showNotes by remember { mutableStateOf(false) }
@@ -1347,7 +1350,7 @@ fun ViewerScreen(
 
                     if (chromePolicy.showPageDropTarget && selectedText.isNotBlank()) {
                         StudyNoteDropTarget(
-                            onDrop = appendStudyExcerpt,
+                            onDrop = { text, page -> appendStudyExcerpt(text, page) },
                             caption = "선택한 텍스트를 여기로 끌어다 놓으세요",
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -1590,8 +1593,7 @@ fun ViewerScreen(
                 showStudyNote = true
             },
             onDropExcerpt = { excerpt ->
-                onAppendStudyExcerpt(excerpt.text, excerpt.pageIndex)
-                Toast.makeText(context, STUDY_NOTE_ADDED_MESSAGE, Toast.LENGTH_SHORT).show()
+                appendStudyExcerpt(excerpt.text, excerpt.pageIndex)
             },
             onDismiss = { showExcerpts = false },
         )

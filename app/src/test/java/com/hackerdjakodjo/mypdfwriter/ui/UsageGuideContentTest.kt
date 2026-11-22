@@ -7,7 +7,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Pure JVM checks that the offline HTML guide matches the shipped 0.8.45 app
+ * Pure JVM checks that the offline HTML guide matches the shipped 0.8.49 app
  * and leads with a short quick start. No network or Android runtime required.
  */
 class UsageGuideContentTest {
@@ -25,7 +25,7 @@ class UsageGuideContentTest {
             "5분 빠른 시작",
             "안내 5장",
             "홈의 <b>백업/복원</b>",
-            "PDF 상단의 <b>노트</b>",
+            "PDF 상단의 <b>노트</b>", "확대 메뉴는 없고", "1x로 돌아갑니다", "0.8.45", "0.8.48",
         ).forEach { stale ->
             assertFalse("guide must not use stale '$stale'", guide.contains(stale))
         }
@@ -40,6 +40,9 @@ class UsageGuideContentTest {
         assertTrue(guide.contains("복습 카드"))
         assertTrue(guide.contains("하단 도구 독의"))
         assertTrue(guide.contains("설정 → PDF 내보내기"))
+        assertTrue(guide.contains("± 버튼"))
+        assertTrue(guide.contains("스와이프"))
+        assertTrue(guide.contains("최근 수정순"))
     }
 
     @Test

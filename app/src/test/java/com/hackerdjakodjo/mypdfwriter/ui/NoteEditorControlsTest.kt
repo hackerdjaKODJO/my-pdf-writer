@@ -271,4 +271,12 @@ class NoteEditorControlsTest {
         assertEquals(1, studentLabelMaxLines(300, 80, 3f))
         assertEquals(STUDENT_LABEL_MAX_LINES, minOf(labelMaxLines(1, 2), STUDENT_LABEL_MAX_LINES))
     }
+
+    @Test
+    fun `one tap add page lives on the pill only on phones`() {
+        assertTrue("phone full editor", notePagePillShowsAdd(wide = false, compact = false))
+        assertFalse("phone compact dock owns add", notePagePillShowsAdd(wide = false, compact = true))
+        assertFalse("wide rail owns add", notePagePillShowsAdd(wide = true, compact = false))
+        assertFalse("wide compact", notePagePillShowsAdd(wide = true, compact = true))
+    }
 }

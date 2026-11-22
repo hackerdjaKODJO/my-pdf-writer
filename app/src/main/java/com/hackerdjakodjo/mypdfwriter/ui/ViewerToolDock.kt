@@ -64,6 +64,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -358,6 +359,11 @@ fun ViewerPageNavigator(
                 onClick = onOpenPages,
                 shape = RoundedCornerShape(50),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier
+                    .sizeIn(minHeight = MIN_TARGET_DP.dp)
+                    .semantics {
+                        onClick(label = "페이지 목록 열기", action = null)
+                    },
             ) {
                 Text(
                     "${pageIndex + 1} / $pageCount",

@@ -375,7 +375,7 @@ private fun StudyPaneFloatingHeader(
                 // excerpt drop target; this button never starts a resize gesture.
                 IconButton(
                     onClick = onToggleNoteTools,
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(MIN_TARGET_DP.dp),
                 ) {
                     Icon(
                         Icons.Outlined.Tune,
@@ -391,7 +391,7 @@ private fun StudyPaneFloatingHeader(
 
                 IconButton(
                     onClick = onOpenLinks,
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(MIN_TARGET_DP.dp),
                 ) {
                     Icon(
                         Icons.Outlined.Link,
@@ -407,7 +407,7 @@ private fun StudyPaneFloatingHeader(
 
                 IconButton(
                     onClick = onClose,
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(MIN_TARGET_DP.dp),
                 ) {
                     Icon(
                         Icons.Outlined.Close,

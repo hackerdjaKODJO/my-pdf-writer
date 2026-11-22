@@ -483,11 +483,9 @@ fun NotebookHomeScreen(
                             horizontalPadding = horizontalPadding,
                             actions = actions,
                             onClearFilters = {
-                                val updated = filterState.copy(
-                                    folder = null,
-                                    tag = null,
-                                    query = "",
-                                )
+                                // Same semantics as the filter chip row: clear the
+                                // scope too, so "필터 초기화" in Trash really resets.
+                                val updated = filterState.cleared()
                                 scope = updated.scope
                                 selectedFolder = updated.folder
                                 selectedTag = updated.tag
@@ -1638,6 +1636,7 @@ private fun PdfSection(
                         query = query,
                         hasAnyPdf = hasAnyPdf,
                         onImportPdf = onImportPdf,
+                        onClearQuery = onClearQuery,
                     )
                 }
             } else {
@@ -1691,6 +1690,7 @@ private fun PdfSection(
                         query = query,
                         hasAnyPdf = hasAnyPdf,
                         onImportPdf = onImportPdf,
+                        onClearQuery = onClearQuery,
                     )
                 }
             } else {
@@ -1918,6 +1918,7 @@ private fun EmptyPdfState(
     query: String,
     hasAnyPdf: Boolean,
     onImportPdf: () -> Unit,
+    onClearQuery: () -> Unit,
 ) {
     val filtered = pdfEmptyStateIsFiltered(hasAnyPdf, query)
     EmptyState(
@@ -1928,8 +1929,8 @@ private fun EmptyPdfState(
         } else {
             "기기에서 PDF를 가져오면 최근 PDF와 주석 작업을 이곳에서 이어갈 수 있습니다."
         },
-        actionLabel = if (filtered) null else "PDF 가져오기",
-        onAction = onImportPdf,
+        actionLabel = if (filtered) "검색 지우기" else "PDF 가져오기",
+        onAction = if (filtered) onClearQuery else onImportPdf,
     )
 }
 

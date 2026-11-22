@@ -173,12 +173,13 @@ class HelpCenterContentTest {
         listOf(
             "5분 빠른 시작", "PDF 상단의 노트", "홈의 백업/복원",
             "학습·도구·보기", "학습 메뉴의 기타",
+            "설정 → 파일 도구에 페이지 잠금·문서 정보·PDF 내보내기가",
         ).forEach { stale ->
             assertFalse("stale help path '$stale'", all.contains(stale))
         }
         listOf(
             "60초 빠른 시작", "하단 도구 독의 노트", "홈 설정의 백업/복원",
-            "읽기·필기·담기·설정", "설정 → PDF 내보내기",
+            "읽기·필기·담기·설정", "설정 → PDF 내보내기", "± 버튼", "스와이프",
         ).forEach { current ->
             assertTrue("missing current help path '$current'", all.contains(current))
         }

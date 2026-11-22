@@ -261,6 +261,14 @@ internal fun noteCompactToolLabel(tool: Tool): String = noteToolLabel(tool)
 internal fun noteCompactHintVisible(tool: Tool): Boolean =
     tool != Tool.PEN && tool != Tool.HIGHLIGHT
 
+/**
+ * The page rail (with its own add button) is only composed on wide layouts.
+ * On phones the floating page pill is the natural one-tap home for "new page",
+ * except in compact mode where the floating dock owns that action.
+ */
+internal fun notePagePillShowsAdd(wide: Boolean, compact: Boolean): Boolean =
+    !wide && !compact
+
 /** One short, single-line hint for the compact canvas overlay. */
 internal fun noteCompactHint(
     tool: Tool,

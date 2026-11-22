@@ -23,6 +23,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -107,7 +109,7 @@ internal fun ChecklistOverlayLayer(
                     )
                     Box(
                         modifier = Modifier
-                            .size(20.dp)
+                            .size(MIN_TARGET_DP.dp)
                             .clip(RoundedCornerShape(5.dp))
                             .clickable(onClick = onHide),
                         contentAlignment = Alignment.Center,
@@ -134,6 +136,9 @@ internal fun ChecklistOverlayLayer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onToggleItem(card.id, item.id) }
+                            .semantics {
+                                stateDescription = if (item.done) "완료" else "미완료"
+                            }
                             .padding(vertical = 1.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {

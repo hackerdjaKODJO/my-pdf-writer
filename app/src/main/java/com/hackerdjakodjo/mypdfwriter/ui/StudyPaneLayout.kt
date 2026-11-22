@@ -33,7 +33,7 @@ internal val STUDY_PANE_PRESETS = listOf(0.50f, 0.70f, 0.85f)
  * close actions. The whole header is the drop target, so a separate capture
  * toggle and strip are unnecessary.
  */
-internal const val STUDY_PANE_HEADER_ROW_HEIGHT_DP = 40
+internal const val STUDY_PANE_HEADER_ROW_HEIGHT_DP = MIN_TARGET_DP
 internal const val STUDY_PANE_HEADER_VERTICAL_PADDING_DP = 2
 internal const val STUDY_PANE_HEADER_SIDE_MARGIN_DP = 8
 internal const val STUDY_PANE_HEADER_TOP_MARGIN_DP = 4
