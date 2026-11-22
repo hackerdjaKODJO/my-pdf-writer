@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -1311,6 +1312,15 @@ fun NoteEditorScreen(
                                 ) {
                                     Icon(
                                         Icons.Filled.MoreVert,
+                                        contentDescription = noteTopBarActionLabel(action),
+                                    )
+                                }
+
+                                NoteTopBarAction.SEARCH -> IconButton(
+                                    onClick = { showSearch = true },
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.Search,
                                         contentDescription = noteTopBarActionLabel(action),
                                     )
                                 }

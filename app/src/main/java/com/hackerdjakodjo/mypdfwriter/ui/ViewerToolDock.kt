@@ -181,7 +181,7 @@ internal fun viewerDockSlotLabel(slot: ViewerDockSlot): String = when (slot) {
     ViewerDockSlot.HIGHLIGHT -> "형광펜"
     ViewerDockSlot.PEN -> "펜"
     ViewerDockSlot.ERASER -> "지우개"
-    ViewerDockSlot.TEXT_SELECT -> "텍스트"
+    ViewerDockSlot.TEXT_SELECT -> "텍스트 선택"
     ViewerDockSlot.NOTE -> "노트"
 }
 

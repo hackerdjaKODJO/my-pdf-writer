@@ -166,7 +166,7 @@ class PdfSheetBackE2ETest {
             MaterialTheme {
                 PdfHubSubSheet(
                     title = "파일 도구",
-                    subtitle = "쪽 편집·쪽 관리, PDF 도구, 내보내기와 문서 설정",
+                    subtitle = "쪽 편집·쪽 관리, PDF 도구, 인쇄·공유, 문서 정보·페이지 잠금 · 내보내기는 설정에서",
                     actions = actions,
                     onDismiss = {},
                 )

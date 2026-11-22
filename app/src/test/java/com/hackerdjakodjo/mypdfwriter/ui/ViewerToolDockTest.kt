@@ -30,7 +30,7 @@ class ViewerToolDockTest {
     @Test
     fun dockLabelsMatchTheStudySlotOrder() {
         assertEquals(
-            listOf("보기", "형광펜", "펜", "지우개", "텍스트", "노트"),
+            listOf("보기", "형광펜", "펜", "지우개", "텍스트 선택", "노트"),
             viewerDockSlots.map { viewerDockSlotLabel(it) },
         )
         // Undo/redo/style left the dock for the 학습 메뉴 quick chips.

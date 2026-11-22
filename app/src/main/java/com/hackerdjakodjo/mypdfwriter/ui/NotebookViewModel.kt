@@ -87,7 +87,9 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             ?: _notebooks.value.firstOrNull { it.id == id }
             ?: return
         _current.value = notebook
-        _pageIndex.value = 0
+        // Match PDF resume: reopening a lecture notebook returns to the page the
+        // student was writing instead of silently resetting to page 1.
+        _pageIndex.value = notebook.resumePageIndex()
     }
 
     fun close() {
@@ -315,7 +317,11 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
 
     fun setPageIndex(index: Int) {
         val current = _current.value ?: return
-        _pageIndex.value = index.coerceIn(0, (current.pages.size - 1).coerceAtLeast(0))
+        val safe = index.coerceIn(0, (current.pages.size - 1).coerceAtLeast(0))
+        _pageIndex.value = safe
+        // Remembered in memory now; close()/saveNow() flushes it to disk without
+        // touching updatedAt, so Home continuation ordering is unchanged.
+        _current.value = current.copy(lastPageIndex = safe)
     }
 
     fun addPage(template: PaperTemplate? = null) {

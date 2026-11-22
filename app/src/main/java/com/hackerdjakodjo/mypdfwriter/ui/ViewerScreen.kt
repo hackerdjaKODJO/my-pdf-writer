@@ -1061,7 +1061,7 @@ fun ViewerScreen(
                                 hasWords = pageTextWords.isNotEmpty(),
                                 wordCount = pageTextWords.size,
                                 onCopy = { copySelection(context, selectedText) },
-                                onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
+                                onExcerpt = captureToNote,
                                 onHighlight = {
                                     vm.addTextMarkup(
                                         selectedWords,
@@ -1407,7 +1407,7 @@ fun ViewerScreen(
                                 hasWords = pageTextWords.isNotEmpty(),
                                 wordCount = pageTextWords.size,
                                 onCopy = { copySelection(context, selectedText) },
-                                onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
+                                onExcerpt = captureToNote,
                                 onHighlight = {
                                     vm.addTextMarkup(
                                         selectedWords,
@@ -1769,7 +1769,7 @@ fun ViewerScreen(
     if (showFileTools) {
         PdfHubSubSheet(
             title = "파일 도구",
-            subtitle = "쪽 편집·쪽 관리, PDF 도구, 내보내기와 문서 설정",
+            subtitle = "쪽 편집·쪽 관리, PDF 도구, 인쇄·공유, 문서 정보·페이지 잠금 · 내보내기는 설정에서",
             actions = fileToolsSheetActions,
             onDismiss = { showFileTools = false },
         )
@@ -1859,7 +1859,7 @@ fun ViewerScreen(
             canAddToPane = studyPane != null,
             onTranslate = { TextActions.translate(context, selectedText) },
             onDictionary = { TextActions.define(context, selectedText) },
-            onExcerpt = { vm.addExcerptFromSelection(state.pageIndex, selectedText) },
+            onExcerpt = captureToNote,
             onEditText = { showTextEditDialog = true },
             onShare = { TextActions.shareText(context, selectedText) },
             onAddToPane = if (studyPane != null) {

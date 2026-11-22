@@ -363,7 +363,7 @@ internal fun NoteMenuSheet(
 
                         NoteMenuEntry.HELP -> NoteMenuRow(
                             icon = Icons.AutoMirrored.Outlined.HelpOutline,
-                            title = "사용법/도움말",
+                            title = "도움말",
                             supporting = "오프라인 사용 가이드 · 문제 해결",
                             onClick = onOpenHelp,
                         )

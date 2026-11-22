@@ -257,4 +257,25 @@ class NotebookTest {
         assertEquals(1, restored.pages[0].layers.size)
         assertEquals(restored.pages[0].layers[0].id, restored.pages[0].annotations[0].layerId)
     }
+
+    @Test
+    fun `last page resumes in place and survives JSON round trip`() {
+        val notebook = Notebook(
+            title = "생물학",
+            pages = listOf(NotePage(), NotePage(), NotePage()),
+            lastPageIndex = 2,
+        )
+        assertEquals(2, notebook.resumePageIndex())
+        val restored = Notebook.fromJson(notebook.toJson())
+        assertEquals(2, restored.lastPageIndex)
+        assertEquals(2, restored.resumePageIndex())
+
+        val legacy = notebook.toJson().apply { remove("lastPageIndex") }
+        assertEquals(0, Notebook.fromJson(legacy).resumePageIndex())
+        assertEquals(
+            "out-of-range position is clamped",
+            2,
+            notebook.copy(lastPageIndex = 99).resumePageIndex(),
+        )
+    }
 }

@@ -103,7 +103,7 @@ internal enum class PdfMenuAction(val group: PdfMenuGroup, val label: String) {
 
     // 담기
     CAPTURE(PdfMenuGroup.CAPTURE, PDF_HUB_CAPTURE_LABEL),
-    EXCERPTS(PdfMenuGroup.CAPTURE, "담은 목록"),
+    EXCERPTS(PdfMenuGroup.CAPTURE, "발췌 목록"),
     COPY_TEXT(PdfMenuGroup.CAPTURE, "텍스트 복사"),
 
     // 설정

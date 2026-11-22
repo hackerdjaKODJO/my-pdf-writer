@@ -52,7 +52,7 @@ class PdfHubSheetTest {
             pdfMenuActions(PdfMenuGroup.WRITE).map { it.label },
         )
         assertEquals(
-            listOf(PDF_HUB_CAPTURE_LABEL, "담은 목록", "텍스트 복사"),
+            listOf(PDF_HUB_CAPTURE_LABEL, "발췌 목록", "텍스트 복사"),
             pdfMenuActions(PdfMenuGroup.CAPTURE).map { it.label },
         )
         assertEquals(PdfMenuGroup.WRITE, PdfMenuAction.MEMO_CARDS.group)

@@ -274,8 +274,13 @@ data class Notebook(
     val sourceDocumentName: String = "",
     /** Best-effort local URI of the source PDF; never required to open the notebook. */
     val sourceDocumentUri: String = "",
+    /** Last page the student was writing, so reopening resumes in place. */
+    val lastPageIndex: Int = 0,
 ) {
     val pageCount: Int get() = pages.size
+
+    /** Clamped resume target; legacy notebooks with no saved page open at 0. */
+    fun resumePageIndex(): Int = lastPageIndex.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
 
     fun normalized(): Notebook {
         val safePages = pages.ifEmpty { listOf(NotePage()) }
@@ -301,6 +306,7 @@ data class Notebook(
         put("bookmarks", JSONArray().apply { bookmarks.forEach { put(it.toJson()) } })
         put("sourceDocumentName", sourceDocumentName)
         put("sourceDocumentUri", sourceDocumentUri)
+        put("lastPageIndex", lastPageIndex)
         put("createdAt", createdAt)
         put("updatedAt", updatedAt)
         put("favorite", favorite)
@@ -337,6 +343,7 @@ data class Notebook(
                 bookmarks = bookmarks,
                 sourceDocumentName = o.optString("sourceDocumentName"),
                 sourceDocumentUri = o.optString("sourceDocumentUri"),
+                lastPageIndex = o.optInt("lastPageIndex", 0),
                 createdAt = o.optLong("createdAt", System.currentTimeMillis()),
                 updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
                 favorite = o.optBoolean("favorite"),

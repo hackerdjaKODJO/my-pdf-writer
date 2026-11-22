@@ -181,7 +181,7 @@ class HomeStartE2ETest {
         composeRule.onNodeWithContentDescription("홈 설정").performClick()
         composeRule.waitForIdle()
 
-        listOf("백업/복원", "휴지통", "태그", "PDF 도구", "사용법/도움말", "정보").forEach { label ->
+        listOf("백업/복원", "휴지통", "태그", "PDF 도구", "도움말", "정보").forEach { label ->
             val matches = composeRule.onAllNodesWithText(label).fetchSemanticsNodes()
             assertTrue("settings must expose '$label'", matches.isNotEmpty())
         }
@@ -202,7 +202,7 @@ class HomeStartE2ETest {
 
         composeRule.onNodeWithText("필터").performClick()
         composeRule.waitForIdle()
-        listOf("보기", "폴더", "태그", "초기화", "적용").forEach { label ->
+        listOf("노트 범위", "폴더", "태그", "초기화", "적용").forEach { label ->
             val matches = composeRule.onAllNodesWithText(label).fetchSemanticsNodes()
             assertTrue("filter sheet must expose '$label'", matches.isNotEmpty())
         }

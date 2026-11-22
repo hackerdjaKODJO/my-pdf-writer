@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.50`** — `versionCode = 59`.
-- **Next version is `0.8.51` — `versionCode = 60`.**
+- Current delivered version: **`0.8.51`** — `versionCode = 60`.
+- **Next version is `0.8.52` — `versionCode = 61`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.51` | 60 | 2026-11-22 | `v0.8.51` | Four-agent UX benchmark against Flexcil/GoodNotes (official sites): make 노트에 담기 really open the note, one-tap note search, notebook last-page resume, clearer menu labels, benchmark doc; 1 JVM regression |
 | `0.8.50` | 59 | 2026-11-22 | `v0.8.50` | Three-agent performance pass: cache derived ink contexts per annotation, cache PDF text layouts, merge saves into the in-memory library instead of rescanning, defer cold-start library parse, skip cache-hit mutex/redundant version bump/per-entry fsync, hoist per-frame page filters, disable release tracing; 5 JVM regressions |
 | `0.8.49` | 58 | 2026-11-22 | `v0.8.49` | Four-agent UX pass: one-tap add-page pill and note help, truthful first-run card, filtered PDF empty-state action, single-channel study-note feedback, consistent filter reset, 48dp overlay targets + state labels, help/guide corrected and new viewer features documented; 2 JVM + 2 test guard updates |
 | `0.8.48` | 57 | 2026-11-22 | `v0.8.48` | Commercial ink feel: pen-style renderers restored for stylus strokes (no more generic outline), WYSIWYG note preview shares commit geometry, PDF captures stylus pressure and pen style in preview+commit; 7 JVM regressions |

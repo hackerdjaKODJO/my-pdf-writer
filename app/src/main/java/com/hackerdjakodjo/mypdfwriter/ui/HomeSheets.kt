@@ -124,7 +124,7 @@ internal fun HomeFilterSheet(
                 }
             }
 
-            FilterSection(title = "보기") {
+            FilterSection(title = "노트 범위") {
                 NoteScope.entries.forEach { option ->
                     val active = scope == option
                     FilterChip(
@@ -361,7 +361,7 @@ internal fun HomeSettingsSheet(
 
             SettingsRow(
                 icon = Icons.AutoMirrored.Outlined.HelpOutline,
-                title = "사용법/도움말",
+                title = "도움말",
                 body = "오프라인 사용 안내",
                 onClick = onOpenHelp,
             )

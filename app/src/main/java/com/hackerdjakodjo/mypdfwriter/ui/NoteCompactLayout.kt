@@ -73,6 +73,7 @@ internal val NOTE_FULL_DOCK_ACTION_SLOTS = listOf(NoteDockActionSlot.STYLE)
  * the top bar never offers a second copy of either action.
  */
 internal enum class NoteTopBarAction {
+    SEARCH,
     UNDO,
     REDO,
     MENU,
@@ -89,11 +90,13 @@ internal enum class NoteTopBarAction {
  */
 internal val NOTE_TOP_BAR_ACTIONS = listOf(
     NoteTopBarAction.MENU,
+    NoteTopBarAction.SEARCH,
     NoteTopBarAction.UNDO,
     NoteTopBarAction.REDO,
 )
 
 internal fun noteTopBarActionLabel(action: NoteTopBarAction): String = when (action) {
+    NoteTopBarAction.SEARCH -> "노트 검색"
     NoteTopBarAction.UNDO -> "실행 취소"
     NoteTopBarAction.REDO -> "다시 실행"
     NoteTopBarAction.MENU -> "노트 메뉴"

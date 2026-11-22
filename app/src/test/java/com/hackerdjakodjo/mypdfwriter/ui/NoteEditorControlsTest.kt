@@ -128,14 +128,14 @@ class NoteEditorControlsTest {
     @Test
     fun `top bar has undo redo menu and no duplicate favourite or export`() {
         assertEquals(
-            listOf(NoteTopBarAction.MENU, NoteTopBarAction.UNDO, NoteTopBarAction.REDO),
+            listOf(NoteTopBarAction.MENU, NoteTopBarAction.SEARCH, NoteTopBarAction.UNDO, NoteTopBarAction.REDO),
             NOTE_TOP_BAR_ACTIONS,
         )
-        assertEquals(3, NOTE_TOP_BAR_ACTIONS.toSet().size)
+        assertEquals(4, NOTE_TOP_BAR_ACTIONS.toSet().size)
         assertTrue(NoteTopBarAction.FAVORITE !in NOTE_TOP_BAR_ACTIONS)
         assertTrue(NoteTopBarAction.EXPORT !in NOTE_TOP_BAR_ACTIONS)
         val labels = NOTE_TOP_BAR_ACTIONS.map(::noteTopBarActionLabel)
-        assertEquals(listOf("노트 메뉴", "실행 취소", "다시 실행"), labels)
+        assertEquals(listOf("노트 메뉴", "노트 검색", "실행 취소", "다시 실행"), labels)
         assertFalse("즐겨찾기" in labels)
         assertFalse("PDF로 내보내기" in labels)
     }
