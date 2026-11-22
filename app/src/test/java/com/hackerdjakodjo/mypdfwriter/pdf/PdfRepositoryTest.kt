@@ -5,6 +5,7 @@ import com.hackerdjakodjo.mypdfwriter.data.PageSpec
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -17,7 +18,8 @@ import java.io.File
 
 /**
  * Pure-JVM coverage for the document-open helpers: identity page-layout detection,
- * single-load document info and the session source-cache reuse decision.
+ * single-load document info, the session source-cache reuse decision and the
+ * on-disk restored-source fallback used when the original URI is unreadable.
  */
 class PdfRepositoryTest {
 
@@ -119,5 +121,49 @@ class PdfRepositoryTest {
         cached.writeBytes(byteArrayOf(0x25, 0x50, 0x44, 0x46)) // "%PDF"
 
         assertSame(cached, reusableCachedSource(cached))
+    }
+
+    // -------------------------------------------------------- restored source fallback
+
+    @Test
+    fun validRestoredSourceIsReusedWithItsOriginalBytes() {
+        val restored = temp.newFile("restored-${System.nanoTime()}.pdf")
+        PDDocument().use { doc ->
+            doc.addPage(PDPage(PDRectangle(200f, 400f)))
+            doc.save(restored)
+        }
+        val bytes = restored.readBytes()
+
+        val reused = reusableRestoredSource(restored)
+
+        assertSame(restored, reused)
+        assertArrayEquals(bytes, reused!!.readBytes())
+    }
+
+    @Test
+    fun missingEmptyGarbageOrZeroPageRestoredSourceIsNotReused() {
+        val missing = File(temp.root, "missing-restored-${System.nanoTime()}.pdf")
+        val empty = temp.newFile("empty-restored-${System.nanoTime()}.pdf")
+        val garbage = temp.newFile("garbage-restored-${System.nanoTime()}.pdf").also {
+            it.writeText("this is not a PDF at all")
+        }
+        val zeroPages = temp.newFile("zero-pages-${System.nanoTime()}.pdf")
+        PDDocument().use { it.save(zeroPages) }
+
+        assertNull(reusableRestoredSource(null))
+        assertNull(reusableRestoredSource(missing))
+        assertNull(reusableRestoredSource(empty))
+        assertNull(reusableRestoredSource(garbage))
+        assertNull(reusableRestoredSource(zeroPages))
+    }
+
+    @Test
+    fun truncatedPdfHeaderIsNotReused() {
+        val truncated = temp.newFile("truncated-${System.nanoTime()}.pdf")
+        truncated.writeBytes("%PDF-1.4".toByteArray(Charsets.US_ASCII))
+
+        // Header is right but the document cannot be parsed: parse failures must
+        // be contained as a miss instead of crashing the open path.
+        assertNull(reusableRestoredSource(truncated))
     }
 }

@@ -12,7 +12,11 @@ class PageOpsTest {
         annotations: List<Annotation> = emptyList(),
         notes: Map<Int, String> = emptyMap(),
         currentPage: Int = 0,
-    ) = PageEdit(pages, annotations, notes, currentPage)
+        bookmarks: List<PdfBookmark> = emptyList(),
+    ) = PageEdit(pages, annotations, notes, currentPage, bookmarks)
+
+    private fun bookmark(id: String, page: Int) =
+        PdfBookmark(id = id, pageIndex = page, title = "$id title", createdAt = 10L)
 
     private fun annotation(
         id: String,
@@ -356,6 +360,111 @@ class PageOpsTest {
 
         assertEquals(listOf(PageSpec(null)), result.pages)
         assertEquals(0, result.currentPage)
+    }
+
+    // ------------------------------------------------------------- bookmarks
+
+    @Test
+    fun delete_earlierPageMovesBookmarkDownLikeAnnotations() {
+        val original = edit(
+            pages = pages(0, 1, 2),
+            annotations = listOf(annotation("ink", page = 2)),
+            bookmarks = listOf(bookmark("b", 2)),
+            currentPage = 2,
+        )
+
+        val result = PageOps.delete(original, setOf(0))
+
+        assertEquals(1, result.annotations.single().page)
+        assertEquals(1, result.bookmarks.single().pageIndex)
+        assertEquals("b", result.bookmarks.single().id)
+        assertEquals("b title", result.bookmarks.single().title)
+    }
+
+    @Test
+    fun delete_removesBookmarksOnDeletedPagesAndRemapsSurvivors() {
+        val original = edit(
+            pages = pages(0, 1, 2, 3),
+            bookmarks = listOf(
+                bookmark("a", 0),
+                bookmark("b", 1),
+                bookmark("c", 2),
+                bookmark("d", 3),
+            ),
+        )
+
+        val result = PageOps.delete(original, setOf(1))
+
+        assertEquals(listOf("a", "c", "d"), result.bookmarks.map { it.id })
+        assertEquals(listOf(0, 1, 2), result.bookmarks.map { it.pageIndex })
+        assertEquals("c title", result.bookmarks[1].title)
+    }
+
+    @Test
+    fun delete_everything_dropsAllBookmarks() {
+        val original = edit(
+            pages = pages(0, 1, 2),
+            bookmarks = listOf(bookmark("a", 0), bookmark("c", 2)),
+        )
+
+        val result = PageOps.delete(original, setOf(0, 1, 2))
+
+        assertTrue(result.bookmarks.isEmpty())
+    }
+
+    @Test
+    fun duplicate_copiesBookmarksWithFreshIdsAndShiftsOriginals() {
+        val original = edit(
+            pages = pages(0, 1, 2),
+            bookmarks = listOf(bookmark("a", 0), bookmark("c", 2)),
+        )
+
+        val result = PageOps.duplicate(original, setOf(0))
+
+        assertEquals(listOf("a", "c"), result.bookmarks.take(2).map { it.id })
+        assertEquals(listOf(0, 3), result.bookmarks.take(2).map { it.pageIndex })
+        val copies = result.bookmarks.drop(2)
+        assertEquals(1, copies.size)
+        assertEquals(1, copies[0].pageIndex)
+        assertEquals("a title", copies[0].title)
+        assertNotEquals("a", copies[0].id)
+        assertEquals(3, result.bookmarks.map { it.id }.toSet().size)
+    }
+
+    @Test
+    fun move_remapsBookmarksWithTheirPages() {
+        val original = edit(
+            pages = pages(0, 1, 2, 3),
+            bookmarks = listOf(bookmark("b", 1), bookmark("c", 2)),
+        )
+
+        val result = PageOps.move(original, setOf(1, 2), -1)
+
+        assertEquals(mapOf("b" to 0, "c" to 1), result.bookmarks.associate { it.id to it.pageIndex })
+    }
+
+    @Test
+    fun insertBlank_shiftsBookmarksAfterInsertion() {
+        val original = edit(
+            pages = pages(0, 1, 2),
+            bookmarks = listOf(bookmark("a", 0), bookmark("c", 2)),
+        )
+
+        val result = PageOps.insertBlank(original, afterIndex = 0, count = 2)
+
+        assertEquals(mapOf("a" to 0, "c" to 4), result.bookmarks.associate { it.id to it.pageIndex })
+    }
+
+    @Test
+    fun rotate_keepsBookmarksOnTheirPages() {
+        val original = edit(
+            pages = listOf(PageSpec(0)),
+            bookmarks = listOf(bookmark("a", 0)),
+        )
+
+        val result = PageOps.rotate(original, setOf(0), 90) { _, _ -> 1f }
+
+        assertEquals(original.bookmarks, result.bookmarks)
     }
 
     // ------------------------------------------------------------- select all

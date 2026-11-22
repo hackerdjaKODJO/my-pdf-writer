@@ -1162,13 +1162,17 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
      * markers back to remap memo cards with the *same* page permutation PageOps used
      * for ink. This keeps delete/move/duplicate/insert in sync without copying their
      * index rules, and duplicated cards get fresh ids just like duplicated strokes.
+     * Bookmarks ride along inside [PageEdit] itself, so PageOps remaps them with the
+     * identical old-to-new source-page map it uses for annotations.
      */
     private fun pageEditWithMemos(
         state: ViewerUiState,
         block: (PageEdit) -> PageEdit,
     ): Pair<PageEdit, List<MemoCard>> {
         if (state.memoCards.isEmpty()) {
-            return block(PageEdit(state.pages, state.annotations, state.notes, state.pageIndex)) to emptyList()
+            return block(
+                PageEdit(state.pages, state.annotations, state.notes, state.pageIndex, _bookmarks.value),
+            ) to emptyList()
         }
         // A per-call marker makes a collision with real user text impossible.
         val marker = "$MEMO_SENTINEL_MARKER${UUID.randomUUID()}:"
@@ -1184,7 +1188,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         val edit = block(
-            PageEdit(state.pages, state.annotations + markers, state.notes, state.pageIndex),
+            PageEdit(state.pages, state.annotations + markers, state.notes, state.pageIndex, _bookmarks.value),
         )
         val cleanAnnotations = edit.annotations.filterNot { it.text.startsWith(marker) }
         val mapped = ArrayList<MemoCard>()
@@ -1319,12 +1323,17 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         if (edit.pages == state.pages &&
             edit.annotations == state.annotations &&
             edit.notes == state.notes &&
+            edit.bookmarks == _bookmarks.value &&
             memoCards == state.memoCards &&
             edit.currentPage == state.pageIndex
         ) {
             return
         }
         pushHistory(state)
+        // Publish the remapped bookmarks together with the page edit, then flush
+        // the reading sidecar so close/reopen cannot restore a stale page index.
+        _bookmarks.value = edit.bookmarks
+        saveReadingNow()
         rebuild(
             state.copy(
                 pages = edit.pages,
@@ -1379,7 +1388,17 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 if (sourcePage !in specs.indices) return@mapNotNull null
                 card.copy(page = sourcePage).normalized()
             }
+            // Bookmarks follow the same source page as annotations/notes/cards.
+            // Ones on inserted blank pages have no source and are dropped.
+            val bookmarks = _bookmarks.value.mapNotNull { bookmark ->
+                val sourcePage = state.pages.getOrNull(bookmark.pageIndex)?.sourcePage
+                    ?: return@mapNotNull null
+                if (sourcePage !in specs.indices) return@mapNotNull null
+                bookmark.copy(pageIndex = sourcePage)
+            }.distinctBy { it.pageIndex }
             pushHistory(state)
+            _bookmarks.value = bookmarks
+            saveReadingNow()
             rebuild(
                 state.copy(
                     pages = specs,

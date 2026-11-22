@@ -6,21 +6,25 @@ import java.util.UUID
  * Immutable page-editing state used by [PageOps].
  *
  * [currentPage] is the zero-based page index the viewer should show after the
- * operation. All page-indexed data (annotations and notes) uses the same
- * zero-based indexing as [pages].
+ * operation. All page-indexed data (annotations, notes and bookmarks) uses the
+ * same zero-based indexing as [pages]. Bookmarks are remapped with the exact
+ * same old-to-new source-page mapping as annotations: a bookmark on a deleted
+ * page is removed, one on a duplicated page is copied with a fresh id, and
+ * every surviving bookmark keeps its id/title while following its logical page.
  */
 data class PageEdit(
     val pages: List<PageSpec>,
     val annotations: List<Annotation>,
     val notes: Map<Int, String>,
     val currentPage: Int,
+    val bookmarks: List<PdfBookmark> = emptyList(),
 )
 
 /**
  * Pure page-list operations shared by the viewer and the organize screen.
  *
- * The functions never mutate their input and keep annotations, notes and the
- * current page attached to the same logical page unless the operation
+ * The functions never mutate their input and keep annotations, notes, bookmarks
+ * and the current page attached to the same logical page unless the operation
  * explicitly creates or removes a page.
  */
 object PageOps {
@@ -75,6 +79,7 @@ object PageOps {
                 annotations = emptyList(),
                 notes = emptyMap(),
                 currentPage = 0,
+                bookmarks = emptyList(),
             )
         }
 
@@ -100,17 +105,25 @@ object PageOps {
                 put(mapped, value)
             }
         }
+        // Same rule as annotations: a bookmark on a removed page is dropped,
+        // every other one keeps its identity and follows its logical page.
+        val bookmarks = edit.bookmarks.mapNotNull { bookmark ->
+            val mapped = oldToNew.getOrNull(bookmark.pageIndex)?.takeIf { it >= 0 }
+                ?: return@mapNotNull null
+            bookmark.copy(pageIndex = mapped)
+        }
         return PageEdit(
             pages = kept.map { edit.pages[it] },
             annotations = annotations,
             notes = notes,
             currentPage = newCurrent,
+            bookmarks = bookmarks,
         )
     }
 
     /**
      * Inserts a copy of every selected page directly after that page. Each
-     * copied annotation receives a fresh id, while original annotations keep
+     * copied annotation and bookmark receives a fresh id, while originals keep
      * their ids.
      */
     fun duplicate(edit: PageEdit, indices: Set<Int>): PageEdit {
@@ -149,6 +162,27 @@ object PageOps {
             }
         }
 
+        // Bookmarks mirror annotations: originals keep their ids on their mapped
+        // pages, while a bookmark on a duplicated page is copied with a fresh id
+        // so delete/rename by id can never affect two bookmarks at once.
+        val originalBookmarks = ArrayList<PdfBookmark>(edit.bookmarks.size)
+        val copiedBookmarks = ArrayList<PdfBookmark>(edit.bookmarks.size)
+        edit.bookmarks.forEach { bookmark ->
+            val mapped = oldToNew.getOrNull(bookmark.pageIndex)?.takeIf { it >= 0 }
+            if (mapped != null) {
+                originalBookmarks.add(bookmark.copy(pageIndex = mapped))
+                val copyPage = copyOfOld[bookmark.pageIndex]
+                if (copyPage != null) {
+                    copiedBookmarks.add(
+                        bookmark.copy(
+                            id = UUID.randomUUID().toString(),
+                            pageIndex = copyPage,
+                        ),
+                    )
+                }
+            }
+        }
+
         val notes = buildMap {
             edit.notes.forEach { (page, value) ->
                 val mapped = oldToNew.getOrNull(page)?.takeIf { it >= 0 } ?: return@forEach
@@ -162,6 +196,7 @@ object PageOps {
             annotations = originalAnnotations + copiedAnnotations,
             notes = notes,
             currentPage = oldToNew[safeCurrent].coerceIn(0, pages.lastIndex),
+            bookmarks = originalBookmarks + copiedBookmarks,
         )
     }
 
@@ -219,19 +254,25 @@ object PageOps {
                 put(mapped, value)
             }
         }
+        val bookmarks = edit.bookmarks.mapNotNull { bookmark ->
+            val mapped = oldToNew.getOrNull(bookmark.pageIndex)?.takeIf { it >= 0 }
+                ?: return@mapNotNull null
+            bookmark.copy(pageIndex = mapped)
+        }
         val safeCurrent = edit.currentPage.coerceIn(0, edit.pages.lastIndex)
         return PageEdit(
             pages = pages,
             annotations = annotations,
             notes = notes,
             currentPage = oldToNew[safeCurrent].coerceIn(0, pages.lastIndex),
+            bookmarks = bookmarks,
         )
     }
 
     /**
      * Inserts [count] blank pages after [afterIndex] (use -1 to insert at the
-     * beginning). Existing annotations, notes and the current page shift to
-     * keep pointing at the same content.
+     * beginning). Existing annotations, notes, bookmarks and the current page
+     * shift to keep pointing at the same content.
      */
     fun insertBlank(edit: PageEdit, afterIndex: Int, count: Int = 1): PageEdit {
         val insertCount = count.coerceAtLeast(0)
@@ -252,6 +293,13 @@ object PageOps {
                 put(if (page >= insertAt) page + insertCount else page, value)
             }
         }
+        val bookmarks = edit.bookmarks.map { bookmark ->
+            if (bookmark.pageIndex >= insertAt) {
+                bookmark.copy(pageIndex = bookmark.pageIndex + insertCount)
+            } else {
+                bookmark
+            }
+        }
         val current = if (edit.pages.isEmpty()) {
             0
         } else if (edit.currentPage >= insertAt) {
@@ -264,6 +312,7 @@ object PageOps {
             annotations = annotations,
             notes = notes,
             currentPage = current.coerceIn(0, pages.lastIndex),
+            bookmarks = bookmarks,
         )
     }
 

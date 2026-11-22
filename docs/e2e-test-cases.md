@@ -1,18 +1,44 @@
-# E2E test cases — My PDF Writer 0.8.39
+# E2E test cases — My PDF Writer 0.8.42
 
 The app is intentionally offline. These tests run on a connected Android device
-or emulator; the build machine has no adb device attached, so only JVM tests are
-executed here. Instrumentation APKs are compiled with
+or emulator. On the Windows PC the existing `myreader_pixel7` AVD
+(API 36 / x86_64) is used; launch it headless and run
+`:app:connectedDebugAndroidTest` (do **not** pass `-Parm64Only=true`).
+Instrumentation APKs can also be compiled without a device via
 `:app:assembleDebugAndroidTest`.
 
 ## Current results
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 879 | **Passing** on this phone |
-| Instrumentation/E2E | 16 classes, 85 cases (see below) | **Compiled**; on-device run pending |
+| JVM unit tests | 879+ | **Passing** |
+| Instrumentation/E2E (existing component suites) | 16 classes, 86 cases | **Passing** on PC emulator |
+| Instrumentation/E2E (new real-file suites) | 4 classes, 18 cases | **Passing** on PC emulator |
+| **Total instrumentation** | **104 cases** | **104/104 passing** on `myreader_pixel7` (API 36) |
 | Debug build | 1 | Passing |
-| R8 release build | 1 | Passing (unsigned locally) |
+| R8 release build | 1 | Passing (signed with the upload key) |
+
+### Real-file E2E suites (added in 0.8.42)
+
+These drive the actual `MainActivity`, `PdfViewModel`, `BackupViewModel` and
+`NotebookViewModel` against on-disk state — not synthetic composables:
+
+- `e2e/PdfRealFileE2ETest.kt` (9): ACTION_VIEW/ACTION_SEND import, pen/highlight/text
+  persistence across close+reopen, undo/redo id stability, page ops + rotation
+  persistence, reset, real-PDF text search, flattened export + reopen, bookmark
+  remap after page deletion.
+- `e2e/BackupRealFileE2ETest.kt` (5): backup ZIP contains the latest PDF state,
+  restore round-trip, "PDF 원본 포함" restore with an unreadable original URI,
+  ACTION_SEND recents persistence, redelivered intent dedupe.
+- `e2e/NotebookRealFileE2ETest.kt` (4): two-page stroke persistence, masking-card
+  reveal/score persistence, finger-writing undo/redo, TEXT/RECT annotation round-trip.
+- `e2e/PdfFixture.kt`: PDFBox-generated 3-page fixture, FileProvider URIs,
+  deadline polling, state reset, flattened-export verification.
+
+Bugs found and fixed by these tests: bookmark indices were not remapped by page
+operations (`PageOps.kt` / `PdfViewModel.kt`), and restored
+`files/sources/<docId>.pdf` was never reused when the original URI was gone
+(`PdfRepository.kt`).
 
 ## E2E cases
 

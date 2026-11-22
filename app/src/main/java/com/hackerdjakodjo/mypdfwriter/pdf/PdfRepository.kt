@@ -54,6 +54,25 @@ fun isIdentityPageSpecs(pages: List<PageSpec>, sourceCount: Int): Boolean {
 fun reusableCachedSource(cached: File?): File? =
     cached?.takeIf { it.exists() && it.length() > 0L }
 
+private val PDF_HEADER = "%PDF-".toByteArray(Charsets.US_ASCII)
+
+/**
+ * Pure disk-fallback decision used by [PdfRepository.sourceFileFor]: a source
+ * restored to disk (e.g. by a backup that included the originals) is reusable
+ * only when it has bytes, carries a PDF header and parses as a document with at
+ * least one page. A missing, truncated or unparseable file is a miss, never a
+ * crash — every IO/parse failure is contained here.
+ */
+fun reusableRestoredSource(file: File?): File? {
+    val candidate = file?.takeIf { it.exists() && it.length() > 0L } ?: return null
+    val header = ByteArray(PDF_HEADER.size)
+    val read = runCatching { candidate.inputStream().use { it.read(header) } }.getOrNull() ?: 0
+    if (read < header.size || !header.contentEquals(PDF_HEADER)) return null
+    return runCatching {
+        if (readDocumentInfo(candidate).pageCount >= 1) candidate else null
+    }.getOrNull()
+}
+
 /**
  * Blocking implementation shared by [PdfRepository.documentInfo]. Kept as a
  * top-level function so the count/size extraction can be exercised by plain JVM
@@ -101,28 +120,54 @@ class PdfRepository(private val context: Context) {
     }
 
     suspend fun copyFromUri(uri: Uri, target: File) = withContext(Dispatchers.IO) {
-        target.parentFile?.mkdirs()
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            target.outputStream().use { output -> input.copyTo(output) }
-        } ?: error("문서를 읽을 수 없습니다.")
-        target
+        val parent = target.absoluteFile.parentFile
+        parent?.mkdirs()
+        // Copy through a same-directory temp file: a failed/interrupted read must
+        // not truncate a valid source that a backup may have restored at [target],
+        // and the rename is atomic once all bytes have arrived.
+        val temp = File.createTempFile("src-", ".part", parent)
+        try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                temp.outputStream().use { output -> input.copyTo(output) }
+            } ?: error("문서를 읽을 수 없습니다.")
+            if (!temp.renameTo(target)) {
+                // Some filesystems refuse an atomic replace; stream the complete
+                // temp file into place instead (target has not been touched yet).
+                temp.inputStream().use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                }
+            }
+            target
+        } finally {
+            runCatching { if (temp.exists()) temp.delete() }
+        }
     }
 
     /**
-     * Returns the local source file for [uri], copying it into [target] only when
-     * this session has no existing, non-empty copy. See [sourceCache] for the
-     * session-only lifetime and the page-edit/working-copy distinction. Any copy
-     * failure drops the entry so the next attempt starts clean.
+     * Returns the local source file for [uri], reusing this session's copy when
+     * available. Otherwise the live URI is copied first, so a replaced original
+     * always refreshes [target] and a stale file is never served. Only when that
+     * copy fails (e.g. the original was deleted after a backup restore) do we fall
+     * back to [target] itself, and only if it is a valid on-disk PDF. An
+     * unrecoverable copy failure drops the cache entry and throws as before.
      */
     suspend fun sourceFileFor(uri: Uri, target: File): File = withContext(Dispatchers.IO) {
         val key = uri.toString()
         val cached = synchronized(sourceCache) { reusableCachedSource(sourceCache[key]) }
         if (cached != null) return@withContext cached
+
         val copied = runCatching { copyFromUri(uri, target) }
-            .onFailure { synchronized(sourceCache) { sourceCache.remove(key) } }
-            .getOrThrow()
-        synchronized(sourceCache) { sourceCache[key] = copied }
-        copied
+        val result = copied.getOrNull() ?: run {
+            // Original unreadable (deleted/moved/permission revoked). A backup
+            // with sources may have restored [target]; reuse it only after full
+            // validation so a truncated/garbage file can never be served.
+            reusableRestoredSource(target) ?: run {
+                synchronized(sourceCache) { sourceCache.remove(key) }
+                copied.getOrThrow() // rethrow the original copy error
+            }
+        }
+        synchronized(sourceCache) { sourceCache[key] = result }
+        result
     }
 
     /** Drops the session-only source copy for a URI (e.g. after a failed open or a delete). */
