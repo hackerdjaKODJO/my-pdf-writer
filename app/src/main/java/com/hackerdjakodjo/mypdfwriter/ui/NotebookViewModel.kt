@@ -30,13 +30,36 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+/**
+ * Replaces (or inserts) one notebook in the loaded library and keeps the same
+ * descending `updatedAt` order as [NotebookStore.loadAll]. Avoids a full
+ * directory scan + JSON parse on every settled stroke.
+ */
+internal fun mergeNotebookIntoLibrary(
+    library: List<Notebook>,
+    updated: Notebook,
+): List<Notebook> {
+    val merged = library.filterNot { it.id == updated.id }.toMutableList()
+    merged.add(updated)
+    return merged.sortedByDescending { it.updatedAt }
+}
+
 class NotebookViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = NotebookStore(application)
     private val resolver = application.contentResolver
     private val customTemplateStore = CustomTemplateStore(application)
-    private val _notebooks = MutableStateFlow(store.loadAll())
+    // Parsing every notebook used to block the first frame. Publish an empty
+    // library immediately and load it off Main; open() already falls back to a
+    // single-file read when the list has not arrived yet.
+    private val _notebooks = MutableStateFlow(emptyList<Notebook>())
     val notebooks: StateFlow<List<Notebook>> = _notebooks.asStateFlow()
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            _notebooks.value = store.loadAll()
+        }
+    }
 
     private val _current = MutableStateFlow<Notebook?>(null)
     val current: StateFlow<Notebook?> = _current.asStateFlow()
@@ -275,7 +298,9 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
     private fun persistSnapshot(notebook: Notebook): List<Notebook> = saveLock.locked {
         val startedAt = System.currentTimeMillis()
         saveLocked(notebook)
-        val loaded = store.loadAll()
+        // Only the edited notebook changed: merge it into the in-memory library
+        // instead of re-reading and re-parsing every notebook on every save.
+        val loaded = mergeNotebookIntoLibrary(_notebooks.value, notebook)
         NoteTrace.event(
             "NOTE_VM",
             "save_done",
@@ -416,7 +441,7 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         // disk before the screen closes.
         val loaded = saveLock.locked {
             saveLocked(notebook)
-            store.loadAll()
+            mergeNotebookIntoLibrary(_notebooks.value, notebook)
         }
         NoteTrace.event(
             "NOTE_VM",

@@ -62,8 +62,29 @@ data class PdfTextLine(
  */
 object PdfTextLayout {
 
+    private data class TextCacheKey(
+        val path: String,
+        val lastModified: Long,
+        val length: Long,
+    )
+
+    /** Small LRU: search highlights otherwise re-parse the whole PDF on every keystroke. */
+    private const val LINE_CACHE_MAX = 6
+    private val lineCache = object :
+        LinkedHashMap<TextCacheKey, List<PdfTextLine>>(LINE_CACHE_MAX, 0.75f, true) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<TextCacheKey, List<PdfTextLine>>?,
+        ): Boolean = size > LINE_CACHE_MAX
+    }
+
+    /** Drops cached layouts after a document rewrite. */
+    @Synchronized
+    fun clearLineCache() = lineCache.clear()
+
     suspend fun lines(source: File): List<PdfTextLine> = withContext(Dispatchers.IO) {
-        PDDocument.load(source).use { document ->
+        val key = TextCacheKey(source.absolutePath, source.lastModified(), source.length())
+        synchronized(lineCache) { lineCache[key] }?.let { return@withContext it }
+        val lines = PDDocument.load(source).use { document ->
             val stripper = LayoutStripper().apply {
                 sortByPosition = true
                 lineSeparator = "\n"
@@ -73,6 +94,8 @@ object PdfTextLayout {
             stripper.getText(document)
             stripper.collectedLines()
         }
+        synchronized(lineCache) { lineCache[key] = lines }
+        lines
     }
 
     suspend fun words(source: File): List<PdfTextWord> = lines(source).flatMap { it.words }

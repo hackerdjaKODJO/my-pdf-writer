@@ -408,8 +408,10 @@ internal object BackupArchive {
         zip.getInputStream(entry).use { input ->
             FileOutputStream(target).use { output ->
                 input.copyTo(output, COPY_BUFFER)
+                // The archive is synced once before extraction and the staged
+                // tree is installed with atomic renames. Syncing every small
+                // notebook entry dominated restore time on flash storage.
                 output.flush()
-                output.fd.sync()
             }
         }
     }

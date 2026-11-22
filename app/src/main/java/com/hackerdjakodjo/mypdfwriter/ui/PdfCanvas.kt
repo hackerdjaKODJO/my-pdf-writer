@@ -205,6 +205,13 @@ fun PdfCanvas(
     var selectionEnd by remember { mutableStateOf<NormalizedPoint?>(null) }
     val eraserTrail = remember { mutableStateListOf<NormalizedPoint>() }
     val selectedWordSet = remember(selectedWords) { selectedWords.toSet() }
+    // Filtering per page used to allocate two new lists on every draw frame.
+    val pageAnnotations = remember(annotations, pageIndex) {
+        annotations.filter { it.page == pageIndex }
+    }
+    val pageWords = remember(textWords, pageIndex) {
+        textWords.filter { it.pageIndex == pageIndex }
+    }
     val transform = remember { CanvasTransform() }
     // The VIEW-mode pointer handler uses a stable key, so read the host callback
     // through a live state to avoid capturing a stale page/selection snapshot.
@@ -683,7 +690,7 @@ fun PdfCanvas(
                 )
                 AnnotationPainter.draw(
                     native,
-                    annotations.filter { it.page == pageIndex },
+                    pageAnnotations,
                     pageW,
                     pageH,
                     progress = annotationProgress,
@@ -703,7 +710,7 @@ fun PdfCanvas(
                         this.color = android.graphics.Color.argb(190, 31, 78, 121)
                         this.strokeWidth = (1.2f / total).coerceAtLeast(0.2f)
                     }
-                    textWords.filter { it.pageIndex == pageIndex }.forEach { word ->
+                    pageWords.forEach { word ->
                         val left = word.rect.left * pageW
                         val top = word.rect.top * pageH
                         val right = word.rect.right * pageW

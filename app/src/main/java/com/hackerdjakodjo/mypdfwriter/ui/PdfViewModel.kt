@@ -367,10 +367,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 val displayPrefs = saved?.displayPrefs ?: DisplayPrefs()
                 val reading = (readingStore.load(docId) ?: PdfReadingState()).normalized(pages.size)
                 // An unchanged layout needs no load+save pass: render the source directly.
-                // newVersion() keeps the per-open bitmap-cache invalidation assemble() used to do.
+                // Cache keys already include lastModified, so reopening an unchanged
+                // document must not evict bitmaps for every other open document.
                 val working: File
                 if (isIdentityPageSpecs(pages, sourceCount)) {
-                    repo.newVersion()
                     working = source
                 } else {
                     working = File(workingDir, "$docId.pdf")

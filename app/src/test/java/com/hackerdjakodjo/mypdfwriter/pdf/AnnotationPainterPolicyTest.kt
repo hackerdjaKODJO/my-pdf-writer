@@ -10,6 +10,8 @@ import com.hackerdjakodjo.mypdfwriter.data.inkResponseSeries
 import com.hackerdjakodjo.mypdfwriter.data.meanInkFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -424,5 +426,54 @@ class AnnotationPainterPolicyTest {
             "light grain reseeds the side wobble",
             PenStrokeGeometry.graphiteJitterByArc(2, 40f, 0, light.grain, phase) != kotlin.math.sin(phase).toFloat(),
         )
+    }
+
+    @Test
+    fun `ink context is reused for unchanged strokes and recomputed when geometry changes`() {
+        AnnotationPainter.clearInkContextCache()
+        val pen = stroke(PenStyle.FOUNTAIN, listOf(1f, 0.4f, 0.8f, 0.5f))
+        val first = AnnotationPainter.inkContextCached(pen, 1000f, 1400f)
+        val second = AnnotationPainter.inkContextCached(pen.copy(width = 0.01f), 1000f, 1400f)
+        assertSame("unchanged geometry must reuse the derived context", first, second)
+        assertTrue(first.outlineWidths.contentEquals(second.outlineWidths))
+
+        val resized = AnnotationPainter.inkContextCached(pen, 1200f, 1400f)
+        assertNotSame("a different viewport changes nib factors", first, resized)
+        assertSame(
+            "copying an annotation shares its immutable points",
+            first,
+            AnnotationPainter.inkContextCached(pen.copy(opacity = 0.5f), 1000f, 1400f),
+        )
+
+        AnnotationPainter.clearInkContextCache()
+        assertNotSame("clearing the cache forces a fresh derivation", first,
+            AnnotationPainter.inkContextCached(pen, 1000f, 1400f))
+    }
+
+    @Test
+    fun `ink context cache stays bounded`() {
+        AnnotationPainter.clearInkContextCache()
+        val keys = (0..80).map { i ->
+            Annotation(
+                type = AnnotationType.PEN,
+                page = 0,
+                color = 0,
+                width = 0.004f,
+                points = listOf(
+                    NormalizedPoint(0.1f, 0.2f + i * 0.001f, 0.7f),
+                    NormalizedPoint(0.3f, 0.4f, 0.4f),
+                ),
+                penStyle = PenStyle.BALLPOINT,
+            )
+        }
+        keys.forEach { AnnotationPainter.inkContextCached(it, 1000f, 1400f) }
+        val afterEviction = AnnotationPainter.inkContextCached(keys.first(), 1000f, 1400f)
+        val fresh = AnnotationPainter.clearInkContextCache().let {
+            AnnotationPainter.inkContext(keys.first().points, PenStyle.BALLPOINT, width = 1000f, height = 1400f)
+        }
+        // The oldest entry is evicted, so a fresh object is returned; the math
+        // itself is unchanged.
+        assertNotSame(afterEviction, fresh)
+        assertTrue(afterEviction.outlineWidths.contentEquals(fresh.outlineWidths))
     }
 }

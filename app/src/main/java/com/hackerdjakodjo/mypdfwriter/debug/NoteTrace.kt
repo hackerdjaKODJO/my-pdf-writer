@@ -1,5 +1,6 @@
 package com.hackerdjakodjo.mypdfwriter.debug
 
+import com.hackerdjakodjo.mypdfwriter.BuildConfig
 import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
@@ -37,8 +38,10 @@ object NoteTrace {
     private val entries = ArrayDeque<NoteTraceEntry>()
     private val sequence = AtomicLong(0)
 
+    // The trace sheet is debug-only; recording events in release wastes a
+    // synchronized lock and eager field evaluation on every save/stroke.
     @Volatile
-    var enabled: Boolean = true
+    var enabled: Boolean = BuildConfig.DEBUG
 
     @Synchronized
     fun event(tag: String, event: String, vararg fields: Pair<String, Any?>) {

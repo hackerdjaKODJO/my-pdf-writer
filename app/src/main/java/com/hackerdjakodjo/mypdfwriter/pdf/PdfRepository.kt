@@ -236,13 +236,15 @@ class PdfRepository(private val context: Context) {
         // A non-finite or non-positive scale would produce an invalid bitmap and
         // a poisoned cache entry, so normalize it before it reaches either.
         val safeScale = if (scale.isFinite() && scale > 0f) scale else 1f
+        // The scale is part of the identity: the same page at two zoom-driven
+        // scales must never share a cached bitmap. Format it so equal floats
+        // always produce an equal key.
+        val scaleKey = String.format(Locale.US, "%.4f", safeScale)
+        val key = "${version.get()}:${file.lastModified()}:$pageIndex:$scaleKey"
+        // LruCache is already synchronized. Checking it outside the render mutex
+        // keeps cache hits from queueing behind unrelated page renders.
+        pageCache.get(key)?.let { return@withContext it }
         renderMutex.withLock {
-            // The scale is part of the identity: the same page at two zoom-driven
-            // scales must never share a cached bitmap. Format it so equal floats
-            // always produce an equal key.
-            val scaleKey = String.format(Locale.US, "%.4f", safeScale)
-            val key = "${version.get()}:${file.lastModified()}:$pageIndex:$scaleKey"
-            pageCache.get(key)?.let { return@withLock it }
             var descriptor: ParcelFileDescriptor? = null
             var renderer: PdfRenderer? = null
             try {

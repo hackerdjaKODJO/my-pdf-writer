@@ -286,17 +286,83 @@ object AnnotationPainter {
         )
     }
 
+    /**
+     * Identity key for a derived ink context. Points lists are immutable and
+     * shared across `Annotation.copy`, so identity (not structural equality)
+     * is both correct and O(1) — structural equality on a 10k-point stroke
+     * would defeat the purpose of the cache.
+     */
+    private class InkContextKey(
+        val points: List<NormalizedPoint>,
+        val penStyle: PenStyle,
+        val isHighlight: Boolean,
+        val width: Float,
+        val height: Float,
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is InkContextKey) return false
+            return points === other.points &&
+                penStyle == other.penStyle &&
+                isHighlight == other.isHighlight &&
+                width == other.width &&
+                height == other.height
+        }
+
+        override fun hashCode(): Int {
+            var hash = System.identityHashCode(points)
+            hash = 31 * hash + penStyle.hashCode()
+            hash = 31 * hash + isHighlight.hashCode()
+            hash = 31 * hash + width.toBits()
+            hash = 31 * hash + height.toBits()
+            return hash
+        }
+    }
+
+    /** Bounded, thread-safe cache; the hot draw loop reuses unchanged ink. */
+    private const val INK_CONTEXT_CACHE_MAX = 64
+    private val inkContextCache = object :
+        LinkedHashMap<InkContextKey, InkContext>(INK_CONTEXT_CACHE_MAX, 0.75f, true) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<InkContextKey, InkContext>?,
+        ): Boolean = size > INK_CONTEXT_CACHE_MAX
+    }
+
+    /** Test/document-switch hook: drops all derived ink contexts. */
+    @Synchronized
+    internal fun clearInkContextCache() = inkContextCache.clear()
+
+    /** Cache-backed entry point; pure-JVM tests use it to assert reuse. */
+    internal fun inkContextCached(
+        annotation: Annotation,
+        width: Float = 1f,
+        height: Float = 1f,
+    ): InkContext = inkContextFor(annotation, width, height)
+
     private fun inkContextFor(
         annotation: Annotation,
         width: Float,
         height: Float,
-    ): InkContext = inkContext(
-        points = annotation.points,
-        penStyle = annotation.penStyle,
-        isHighlight = annotation.type == AnnotationType.HIGHLIGHT,
-        width = width,
-        height = height,
-    )
+    ): InkContext {
+        val key = InkContextKey(
+            points = annotation.points,
+            penStyle = annotation.penStyle,
+            isHighlight = annotation.type == AnnotationType.HIGHLIGHT,
+            width = width,
+            height = height,
+        )
+        return synchronized(inkContextCache) {
+            inkContextCache.getOrPut(key) {
+                inkContext(
+                    points = annotation.points,
+                    penStyle = annotation.penStyle,
+                    isHighlight = annotation.type == AnnotationType.HIGHLIGHT,
+                    width = width,
+                    height = height,
+                )
+            }
+        }
+    }
 
     /**
      * Fountain nib response over the whole stroke, including the neighbour
