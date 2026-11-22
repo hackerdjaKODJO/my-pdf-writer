@@ -38,6 +38,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.ChecklistCard
 import com.hackerdjakodjo.mypdfwriter.data.DEFAULT_INK_PRESSURE
+import com.hackerdjakodjo.mypdfwriter.data.MAX_INK_PRESSURE
 import com.hackerdjakodjo.mypdfwriter.data.MaskingCard
 import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
@@ -56,6 +57,16 @@ import kotlin.math.min
 private const val NOTE_PAGE_SCALE = 2.5f
 private const val MAX_NOTE_ZOOM = 6f
 private const val CANVAS_TRACE_TAG = "NoteCanvas"
+
+/** Layered drop shadow alphas for a floating sheet (screen only, never exported). */
+internal fun sheetShadowAlphas(base: Int, layers: Int): List<Int> {
+    val safeBase = base.coerceIn(0, 255)
+    if (layers <= 1) return listOf(safeBase)
+    return (0 until layers).map { index ->
+        val t = 1f - index.toFloat() / layers
+        (safeBase * t * t).toInt().coerceIn(0, 255)
+    }
+}
 
 /**
  * A template page plus its annotation layer.
@@ -225,7 +236,7 @@ fun NoteCanvas(
             // One calibrator per input session (this coroutine is recreated when
             // the page/tool/pressure keys above change). It adapts to the pen's
             // reported range across strokes and is never persisted to JSON.
-            val pressureCalibrator = PressureCalibrator()
+            val pressureCalibrator = PressureCalibrator(bootstrapSamples = 3)
 
             fun normalize(position: Offset, pressure: Float = 1f): NormalizedPoint {
                 val scale = (fit * zoom).coerceAtLeast(0.0001f)
@@ -309,6 +320,7 @@ fun NoteCanvas(
                 // so it must not teach the calibrator anything either. Sampling those
                 // pointers used to drag the learned minimum toward the pointer-up
                 // pressure of zero and make every later stroke render too bold.
+                if (canDraw) pressureCalibrator.reset()
                 val downPressure = if (canDraw) capturePressure(down) else DEFAULT_INK_PRESSURE
 
                 if (canDraw) {
@@ -602,11 +614,21 @@ fun NoteCanvas(
                 native.scale(total, total)
                 native.translate(-pageWidth / 2f, -pageHeight / 2f)
 
-                val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    this.color = android.graphics.Color.argb(34, 0, 0, 0)
-                    style = Paint.Style.FILL
+                sheetShadowAlphas(34, 3).forEachIndexed { layer, alpha ->
+                    val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        this.color = android.graphics.Color.argb(alpha, 0, 0, 0)
+                        style = Paint.Style.FILL
+                    }
+                    val offsetX = 6f + 2f * layer
+                    val offsetY = 8f + 2f * layer
+                    native.drawRect(
+                        offsetX,
+                        offsetY,
+                        pageWidth + offsetX,
+                        pageHeight + offsetY,
+                        shadow,
+                    )
                 }
-                native.drawRect(6f, 8f, pageWidth + 6f, pageHeight + 8f, shadow)
 
                 PaperBackground.draw(
                     canvas = native,
@@ -908,7 +930,14 @@ internal fun effectiveInkPressure(
 ): Float {
     if (!pressureEnabled || pointerType != PointerType.Stylus) return DEFAULT_INK_PRESSURE
     val calibrated = if (calibrator != null && pressed) {
-        calibrator.map(rawPressure)
+        if (rawPressure.isFinite() && rawPressure >= MAX_INK_PRESSURE) {
+            // A true full-press sample still stores neutral 1f, but it teaches
+            // the upper bound so the next light sample maps correctly.
+            calibrator.observeExtreme(rawPressure)
+            DEFAULT_INK_PRESSURE
+        } else {
+            calibrator.map(rawPressure)
+        }
     } else {
         clampInkPressure(rawPressure)
     }

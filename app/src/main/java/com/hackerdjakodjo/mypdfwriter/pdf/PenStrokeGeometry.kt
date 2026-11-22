@@ -3,6 +3,7 @@ package com.hackerdjakodjo.mypdfwriter.pdf
 import com.hackerdjakodjo.mypdfwriter.data.MIN_PRESSURE_WIDTH_FACTOR
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.PI
@@ -20,6 +21,16 @@ import kotlin.math.sin
  * finger ink byte-for-byte identical to the pre-pressure renderer.
  */
 object PenStrokeGeometry {
+    /** One floor for every outline builder; different values made equal pressure ink
+     *  render at different minimum thickness in different pen styles. */
+    const val MIN_INK_HALF_WIDTH_PX = 0.05f
+
+    /**
+     * Below this contact level the nib has lifted: a slow movement must not
+     * resurrect a dead-zone sample into ink. Well under the 0.4 used by existing
+     * policy tests, so their expectations are unchanged.
+     */
+    private const val MIN_CONTACT_FOR_SPEED = 0.12f
 
     /** Legacy pencil constants, shared by the whole-path and per-segment paths. */
     const val PENCIL_WIDTH_FACTOR = 0.62f
@@ -195,6 +206,7 @@ object PenStrokeGeometry {
     fun simulatedPressure(pressure: Float, speed: Float, reference: Float): Float {
         val safe = safeFactor(pressure)
         if (safe >= 1f) return 1f
+        if (safe <= MIN_CONTACT_FOR_SPEED) return safe
         if (!speed.isFinite() || !reference.isFinite() || reference <= 0f) return safe
         val ratio = (speed.coerceAtLeast(0f) / reference).coerceIn(0f, 8f)
         // +1 at a standstill, 0 at the reference pace, negative when flicking.
@@ -305,7 +317,7 @@ object PenStrokeGeometry {
         val w = if (widthPx.isFinite() && widthPx > 0f) widthPx else 1f
         val h = if (heightPx.isFinite() && heightPx > 0f) heightPx else 1f
         val caps = capSegments.coerceIn(2, MAX_OUTLINE_CAP_SEGMENTS)
-        val floor = if (minHalfWidth.isFinite()) minHalfWidth.coerceAtLeast(0.05f) else 0.05f
+        val floor = if (minHalfWidth.isFinite()) minHalfWidth.coerceAtLeast(MIN_INK_HALF_WIDTH_PX) else MIN_INK_HALF_WIDTH_PX
         val ceiling = w + h
 
         fun normalize(px: Float, py: Float): NormalizedPoint = NormalizedPoint(
@@ -432,6 +444,22 @@ object PenStrokeGeometry {
         val unit = (hash ushr 11).toFloat() / (1L shl 53).toFloat()
         val wave = unit * 2f - 1f
         return (wave * (0.55f + 0.45f * factor)).coerceIn(-1f, 1f)
+    }
+
+    /**
+     * Per-sample graphite deposit density in 0.82..1. Light grain breaks a
+     * uniform grey band into speckles; full grain (legacy/neutral) is identity.
+     */
+    fun graphiteDeposit(
+        arcLength: Float,
+        pass: Int,
+        grain: Float,
+        wave: Float,
+    ): Float {
+        val factor = if (grain.isFinite()) grain.coerceIn(0f, 1f) else 1f
+        if (factor >= 1f) return 1f
+        val w = if (wave.isFinite()) wave.coerceIn(-1f, 1f) else 0f
+        return (1f - 0.18f * factor * abs(w)).coerceIn(0.82f, 1f)
     }
 
     /** Fixed lateral offset of one graphite pass, softened by grain. */

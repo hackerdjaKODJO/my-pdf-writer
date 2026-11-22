@@ -245,4 +245,36 @@ class InkPressureTest {
             assertTrue("bounded for $value: $mapped", mapped in 0f..1f)
         }
     }
+
+    @Test
+    fun `bootstrap sets the range immediately so the first stroke has no ramp`() {
+        val calibrator = PressureCalibrator(alpha = 0.08f, bootstrapSamples = 3)
+        calibrator.map(0.2f)
+        calibrator.map(0.2f)
+        calibrator.map(0.7f)
+        assertEquals(0.2f, calibrator.observedMin, 1e-6f)
+        assertEquals(0.7f, calibrator.observedMax, 1e-6f)
+        assertEquals(0.4898f, calibrator.map(0.45f), 0.01f)
+
+        calibrator.reset()
+        assertFalse(calibrator.hasRange)
+    }
+
+    @Test
+    fun `full press teaches the upper bound without changing neutral output`() {
+        val calibrator = PressureCalibrator(alpha = 0.5f)
+        repeat(8) { calibrator.map(0.2f) }
+        calibrate1f(calibrator)
+        assertEquals(1f, calibrator.observedMax, 1e-6f)
+        assertEquals("full press stays neutral", 1f, calibrator.map(1f), 0f)
+        assertTrue("mid pressure uses the learned full range", calibrator.map(0.6f) > 0.45f)
+
+        calibrator.observeExtreme(Float.NaN)
+        assertEquals("non-finite does not spoil the range", 1f, calibrator.observedMax, 1e-6f)
+    }
+
+    private fun calibrate1f(calibrator: PressureCalibrator) {
+        // map(1f) intentionally stays neutral; the capture path teaches it.
+        calibrator.observeExtreme(1f)
+    }
 }

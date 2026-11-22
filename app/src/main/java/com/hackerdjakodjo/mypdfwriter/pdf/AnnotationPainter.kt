@@ -468,7 +468,7 @@ object AnnotationPainter {
     ) {
         val base = (annotation.width * width).coerceAtLeast(1.1f)
         val halfWidths = FloatArray(ink.outlineWidths.size) { index ->
-            (ink.outlineWidths[index] * base).coerceAtLeast(0.05f)
+            (ink.outlineWidths[index] * base).coerceAtLeast(PenStrokeGeometry.MIN_INK_HALF_WIDTH_PX)
         }
         val ring = PenStrokeGeometry.variableWidthOutline(
             points = annotation.points,
@@ -476,7 +476,7 @@ object AnnotationPainter {
             widthPx = width,
             heightPx = height,
             capSegments = 10,
-            minHalfWidth = 0.05f,
+            minHalfWidth = PenStrokeGeometry.MIN_INK_HALF_WIDTH_PX,
         )
         if (ring.size < 3) return
         val outline = if (ring.size > 1 && ring.first() == ring.last()) ring.dropLast(1) else ring
@@ -939,12 +939,31 @@ object AnnotationPainter {
                 val jittered = pencilJitter(points, width, height, pass) { index ->
                     series[index].grain
                 }
+                val arcs = FloatArray(points.size)
+                for (index in 1 until points.size) {
+                    val previous = points[index - 1]
+                    val current = points[index]
+                    arcs[index] = arcs[index - 1] + hypot(
+                        (current.x - previous.x) * width,
+                        (current.y - previous.y) * height,
+                    )
+                }
                 for (index in 1 until points.size) {
                     val local = series[index]
                     paint.strokeWidth = pencilStrokeWidth(base, local.width)
+                    val wave = PenStrokeGeometry.graphiteJitterByArc(
+                        index = index,
+                        arcLength = arcs[index],
+                        pass = pass,
+                        grain = local.grain,
+                        legacyPhase = index * 2.3 + 7.1,
+                    )
+                    val deposit = PenStrokeGeometry.graphiteDeposit(
+                        arcs[index], pass, local.grain, wave,
+                    )
                     paint.alpha = scaledInkAlpha(
                         alpha,
-                        PenStrokeGeometry.pencilSegmentAlpha(pass, local.flow),
+                        PenStrokeGeometry.pencilSegmentAlpha(pass, local.flow) * deposit,
                         min = 1,
                     )
                     canvas.drawPath(segmentPath(jittered, index, width, height), paint)
@@ -981,7 +1000,7 @@ object AnnotationPainter {
             }
             val nx = -dy / length
             val ny = dx / length
-            val half = halfWidthAt(i).coerceAtLeast(0.15f)
+            val half = halfWidthAt(i).coerceAtLeast(PenStrokeGeometry.MIN_INK_HALF_WIDTH_PX)
             leftX[i] = xs[i] + nx * half
             leftY[i] = ys[i] + ny * half
             rightX[i] = xs[i] - nx * half

@@ -94,6 +94,22 @@ object PaperBackground {
         val colors = colors(tint, dark)
         canvas.drawRect(0f, 0f, width, height, fillPaint(colors.paper))
 
+        // A faint, deterministic fibre layer is the strongest "this is paper"
+        // cue. It lives in the shared painter so editor, thumbnails, studio and
+        // export all show the same sheet.
+        val toothAlpha = PaperTooth.alpha(tint, dark)
+        if (toothAlpha > 0) {
+            val toothPaint = fillPaint(colors.shade).apply { alpha = toothAlpha }
+            PaperTooth.marks().forEach { mark ->
+                canvas.drawCircle(
+                    mark.x * width,
+                    mark.y * height,
+                    mark.radius,
+                    toothPaint,
+                )
+            }
+        }
+
         when (template) {
             PaperTemplate.BLANK -> Unit
             PaperTemplate.LINED -> drawLined(canvas, width, height, colors)

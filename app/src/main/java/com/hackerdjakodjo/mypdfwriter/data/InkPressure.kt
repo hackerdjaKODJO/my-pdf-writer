@@ -152,7 +152,10 @@ fun pressureCurveRange(
 class PressureCalibrator(
     private val alpha: Float = 0.08f,
     private val deadZone: Float = 0.02f,
+    /** First samples set the bounds directly, removing the initial width ramp. */
+    private val bootstrapSamples: Int = 0,
 ) {
+    private var learnedCount = 0
     /** Smoothed lowest finite stylus sample seen in this session. */
     var observedMin: Float = Float.POSITIVE_INFINITY
         private set
@@ -163,6 +166,41 @@ class PressureCalibrator(
 
     /** True once at least one finite, non-full sample has been observed. */
     val hasRange: Boolean get() = observedMin.isFinite() && observedMax.isFinite()
+
+    private fun learn(raw: Float) {
+        if (!hasRange) {
+            observedMin = raw
+            observedMax = raw
+        } else if (learnedCount < bootstrapSamples) {
+            observedMin = minOf(observedMin, raw)
+            observedMax = maxOf(observedMax, raw)
+        } else {
+            // EWMA on each extreme. Moving both bounds by the same alpha keeps
+            // the span from decaying when many in-range samples arrive, while
+            // still smoothing out an isolated outlier at either end.
+            if (raw < observedMin) observedMin += alpha * (raw - observedMin)
+            if (raw > observedMax) observedMax += alpha * (raw - observedMax)
+        }
+        learnedCount++
+    }
+
+    /**
+     * Lets a genuine full-pressure stylus sample teach the upper bound. A pen
+     * whose usable range ends at exactly 1.0 otherwise never calibrates and
+     * light/heavy samples jump at that boundary. `map(1f)` stays neutral.
+     */
+    fun observeExtreme(rawPressure: Float) {
+        if (!rawPressure.isFinite()) return
+        val raw = clampInkPressure(rawPressure)
+        if (!hasRange) {
+            observedMin = raw
+            observedMax = raw
+        } else {
+            // A full-press sample is the device ceiling, not an outlier.
+            observedMin = minOf(observedMin, raw)
+            observedMax = maxOf(observedMax, raw)
+        }
+    }
 
     /**
      * Maps one stylus sample into 0..1 using the learned range. Out-of-range
@@ -175,16 +213,7 @@ class PressureCalibrator(
             return DEFAULT_INK_PRESSURE
         }
         val raw = clampInkPressure(rawPressure)
-        if (!hasRange) {
-            observedMin = raw
-            observedMax = raw
-        } else {
-            // EWMA on each extreme. Moving both bounds by the same alpha keeps
-            // the span from decaying when many in-range samples arrive, while
-            // still smoothing out an isolated outlier at either end.
-            if (raw < observedMin) observedMin += alpha * (raw - observedMin)
-            if (raw > observedMax) observedMax += alpha * (raw - observedMax)
-        }
+        learn(raw)
 
         val span = observedMax - observedMin
         if (span <= MIN_CALIBRATION_SPAN) return raw
@@ -201,6 +230,7 @@ class PressureCalibrator(
     fun reset() {
         observedMin = Float.POSITIVE_INFINITY
         observedMax = Float.NEGATIVE_INFINITY
+        learnedCount = 0
     }
 
     private companion object {

@@ -565,7 +565,7 @@ fun PdfCanvas(
                         // One calibrator per stroke: stylus pressure is now a real
                         // sample instead of the neutral 1f every PDF stroke used
                         // to carry. Finger/mouse stay neutral by construction.
-                        val calibrator = PressureCalibrator()
+                        val calibrator = PressureCalibrator(bootstrapSamples = 3)
                         fun capture(change: PointerInputChange): Float = effectiveInkPressure(
                             pointerType = change.type,
                             rawPressure = change.pressure,

@@ -267,4 +267,24 @@ class PenStrokeGeometryTest {
             }
         }
     }
+
+    @Test
+    fun `graphite deposit breaks light grain into speckles but keeps legacy identity`() {
+        assertEquals(1f, PenStrokeGeometry.graphiteDeposit(12f, 0, 1f, -0.8f), 0f)
+        val light = PenStrokeGeometry.graphiteDeposit(12f, 0, 0.3f, -0.8f)
+        assertTrue("deposit $light", light in 0.82f..1f)
+        assertTrue("speckled", light < 1f)
+        assertEquals(light, PenStrokeGeometry.graphiteDeposit(12f, 0, 0.3f, -0.8f), 0f)
+        assertEquals(1f, PenStrokeGeometry.graphiteDeposit(12f, 0, 0.3f, Float.NaN), 0f)
+    }
+
+    @Test
+    fun `a lifted nib cannot be boosted back into ink by slow movement`() {
+        assertEquals(0f, PenStrokeGeometry.simulatedPressure(0f, 0f, 12f), 0f)
+        assertEquals(0.1f, PenStrokeGeometry.simulatedPressure(0.1f, 0f, 12f), 0f)
+        assertTrue(
+            "genuine light contact still gains contact when slow",
+            PenStrokeGeometry.simulatedPressure(0.4f, 2f, 12f) > 0.4f,
+        )
+    }
 }
