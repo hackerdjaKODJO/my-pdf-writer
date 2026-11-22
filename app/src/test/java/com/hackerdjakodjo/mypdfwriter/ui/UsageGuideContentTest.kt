@@ -7,7 +7,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Pure JVM checks that the offline HTML guide matches the shipped 0.8.36 app
+ * Pure JVM checks that the offline HTML guide matches the shipped 0.8.45 app
  * and leads with a short quick start. No network or Android runtime required.
  */
 class UsageGuideContentTest {
@@ -21,6 +21,11 @@ class UsageGuideContentTest {
             "꺼져 있는지",
             "읽기 · 페이지 · 보기 · 내보내기",
             "텍스트 선택 · 주석",
+            "학습 · 위치 · 보기 · 내보내기 · 기타",
+            "5분 빠른 시작",
+            "안내 5장",
+            "홈의 <b>백업/복원</b>",
+            "PDF 상단의 <b>노트</b>",
         ).forEach { stale ->
             assertFalse("guide must not use stale '$stale'", guide.contains(stale))
         }
@@ -29,10 +34,12 @@ class UsageGuideContentTest {
     @Test
     fun guideUsesCurrentMenuGroupsDockAndHideState() {
         val guide = usageGuide()
-        assertTrue(guide.contains("학습 · 위치 · 보기 · 내보내기 · 기타"))
+        assertTrue(guide.contains("읽기 · 필기 · 담기 · 설정"))
         assertTrue(guide.contains("보기 · 형광펜 · 펜 · 지우개 · 텍스트 · 노트"))
         assertTrue(guide.contains("켜져 있는지"))
         assertTrue(guide.contains("복습 카드"))
+        assertTrue(guide.contains("하단 도구 독의"))
+        assertTrue(guide.contains("설정 → PDF 내보내기"))
     }
 
     @Test

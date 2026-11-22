@@ -74,7 +74,7 @@ class OnboardingContentTest {
         assertEquals("60초 빠른 시작", ONBOARDING_QUICK_START_LABEL)
         assertTrue(
             "the last card should point at the help center quick cards",
-            onboardingCards().any { it.body.contains("4단계 빠른 시작") },
+            onboardingCards().any { it.body.contains("60초 빠른 시작") },
         )
     }
 

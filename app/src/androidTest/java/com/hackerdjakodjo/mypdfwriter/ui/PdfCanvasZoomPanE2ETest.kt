@@ -13,6 +13,7 @@ import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.Tool
@@ -132,6 +133,64 @@ class PdfCanvasZoomPanE2ETest {
                 "$afterPinch -> $afterDrag",
             afterPinch.x - afterDrag.x > 0.01f,
         )
+    }
+
+    @Test
+    fun fitZoomSwipeTurnsPageButZoomedDragDoesNot() {
+        var previous = 0
+        var next = 0
+        val zoomState = mutableStateOf(1f)
+        composeRule.setContent {
+            PdfCanvas(
+                bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888),
+                docId = "swipe-page-e2e",
+                pageIndex = 0,
+                displayWidthPt = 595f,
+                displayHeightPt = 595f,
+                annotations = emptyList(),
+                tool = Tool.VIEW,
+                color = 0xFF1F4E79.toInt(),
+                strokeWidth = 0.0035f,
+                fontSize = 0.024f,
+                opacity = 1f,
+                zoom = zoomState.value,
+                cropInsets = CropInsets.NONE,
+                onZoomChange = { zoomState.value = it },
+                onAddStroke = { _, _ -> },
+                onEraseStroke = {},
+                onRequestText = {},
+                onRequestStamp = {},
+                onRequestSignature = {},
+                onRequestSelectionAt = { requested = it },
+                onPreviousPage = { previous++ },
+                onNextPage = { next++ },
+                modifier = Modifier.fillMaxSize().testTag(CANVAS_TAG),
+            )
+        }
+        composeRule.waitForIdle()
+
+        fun swipe(dx: Float) {
+            composeRule.onNodeWithTag(CANVAS_TAG).performTouchInput {
+                down(center)
+                moveTo(center + Offset(dx, 0f), delayMillis = 16)
+                up()
+            }
+            composeRule.waitForIdle()
+        }
+
+        val viewport = composeRule.onRoot().fetchSemanticsNode().size.width
+        swipe(-viewport * 0.35f)
+        assertEquals("swipe left must request the next page", 1, next)
+        assertEquals(0, previous)
+
+        swipe(viewport * 0.35f)
+        assertEquals("swipe right must request the previous page", 1, previous)
+
+        composeRule.onNodeWithTag(CANVAS_TAG).performTouchInput { doubleClick(center) }
+        composeRule.waitForIdle()
+        swipe(-viewport * 0.30f)
+        assertEquals("zoomed swipe must pan, not turn pages", 1, next)
+        assertEquals(1, previous)
     }
 
     private companion object {

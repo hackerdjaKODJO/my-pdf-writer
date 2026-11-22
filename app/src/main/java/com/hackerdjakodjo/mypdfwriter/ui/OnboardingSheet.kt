@@ -108,12 +108,12 @@ private fun onboardingCardsByKey(): Map<OnboardingTopicKey, OnboardingCard> = ma
     OnboardingTopicKey.NOTE_PANE to OnboardingCard(
         key = OnboardingTopicKey.NOTE_PANE,
         title = "노트에 담기",
-        body = "노트 버튼으로 펼쳐 담은 내용을 원본 링크와 함께 저장하고, 도움말의 4단계 빠른 시작으로 다시 볼 수 있어요.",
+        body = "하단 도구 독의 노트로 펼쳐 담은 내용을 원본 링크와 함께 저장하고, 도움말의 60초 빠른 시작으로 다시 볼 수 있어요.",
     ),
     OnboardingTopicKey.HELP_BACKUP to OnboardingCard(
         key = OnboardingTopicKey.HELP_BACKUP,
         title = "도움말과 백업",
-        body = "어려울 때는 도움말의 4단계 빠른 시작을 다시 보고, 홈의 백업·복원으로 작업을 기기 안에 보관할 수 있어요.",
+        body = "어려울 때는 도움말의 60초 빠른 시작을 다시 보고, 홈 설정의 백업·복원으로 작업을 기기 안에 보관할 수 있어요.",
     ),
 )
 

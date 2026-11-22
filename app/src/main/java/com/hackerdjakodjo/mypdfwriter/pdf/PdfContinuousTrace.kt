@@ -110,6 +110,29 @@ object PdfContinuousTrace {
         )
     }
 
+    /** A fit-zoom horizontal swipe that was resolved into a page turn. */
+    fun pageSwipe(
+        fromPage: Int,
+        toPage: Int,
+        direction: Int,
+        totalX: Float,
+        totalY: Float,
+    ) {
+        NoteTrace.event(
+            TRACE_TAG,
+            "pageSwipe",
+            "from" to fromPage,
+            "to" to toPage,
+            "direction" to direction,
+            "totalX" to totalX,
+            "totalY" to totalY,
+        )
+        logDebug(
+            PAN_LOG_TAG,
+            "pageSwipe $fromPage->$toPage dir=$direction dx=$totalX dy=$totalY",
+        )
+    }
+
     private fun logDebug(tag: String, message: String) {
         if (!NoteTrace.enabled) return
         try {

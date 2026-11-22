@@ -576,4 +576,41 @@ class ReaderPinchE2ETest {
             after.left - zoomed.left >= (zoomed.right - zoomed.left) * 0.03f,
         )
     }
+
+    @Test
+    fun fitZoomHorizontalSwipeTurnsPageButZoomedDragDoesNot() {
+        val pageChanges = Collections.synchronizedList(mutableListOf<Int>())
+        composeRule.setContent {
+            ContinuousReaderScreen(
+                title = "swipe-page-test",
+                pageCount = 3,
+                initialPage = 0,
+                loadPage = { _, _ -> Bitmap.createBitmap(80, 112, Bitmap.Config.ARGB_8888) },
+                onBack = {},
+                onOpenPage = {},
+                onPageChange = { pageChanges.add(it) },
+            )
+        }
+        composeRule.waitForIdle()
+        val viewport = viewportWidthPx()
+
+        // Swipe left at fit zoom: next page.
+        composeRule.onRoot().performTouchInput {
+            down(0, center)
+            moveTo(0, center + Offset(-viewport * 0.4f, 0f), delayMillis = 16)
+            up(0)
+        }
+        composeRule.waitForIdle()
+        assertEquals("fit-zoom swipe must request page 2", listOf(1), pageChanges.toList())
+
+        // Once zoomed the same drag pans instead of turning pages.
+        doubleTapToZoom()
+        pageChanges.clear()
+        dragPage(-viewport * 0.30f)
+        composeRule.waitForIdle()
+        assertTrue(
+            "zoomed drag must not turn pages: $pageChanges",
+            pageChanges.isEmpty(),
+        )
+    }
 }

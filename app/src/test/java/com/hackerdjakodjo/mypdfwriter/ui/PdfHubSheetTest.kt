@@ -64,19 +64,19 @@ class PdfHubSheetTest {
     @Test
     fun settingsKeepsChromeToggleAndPushesAdvancedFileOpsOneLevelDown() {
         assertEquals(
-            listOf("파일 도구", "메뉴 자동 숨김", "도움말"),
+            listOf("파일 도구", "메뉴 자동 숨김", "도움말", "PDF 내보내기"),
             pdfMenuActions(PdfMenuGroup.SETTINGS).map { it.label },
         )
         assertEquals(
             listOf(
-                "쪽 편집", "쪽 관리", "PDF 도구", "PDF 내보내기", "인쇄", "공유", "문서 정보", "페이지 잠금",
+                "쪽 편집", "쪽 관리", "PDF 도구", "인쇄", "공유", "문서 정보", "페이지 잠금",
             ),
             pdfMenuActions(PdfMenuGroup.FILE_TOOLS).map { it.label },
         )
         assertEquals("쪽 편집", PdfMenuAction.PAGE_EDIT.label)
         assertEquals(PdfMenuGroup.FILE_TOOLS, PdfMenuAction.PAGE_EDIT.group)
-        assertTrue(PdfMenuAction.EXPORT in pdfMenuActions(PdfMenuGroup.FILE_TOOLS))
-        assertFalse(PdfMenuAction.EXPORT in pdfMenuActions(PdfMenuGroup.SETTINGS))
+        assertTrue(PdfMenuAction.EXPORT in pdfMenuActions(PdfMenuGroup.SETTINGS))
+        assertFalse(PdfMenuAction.EXPORT in pdfMenuActions(PdfMenuGroup.FILE_TOOLS))
     }
 
     @Test
@@ -86,7 +86,7 @@ class PdfHubSheetTest {
             pdfReadModeActions.map { it.label },
         )
         assertEquals(listOf("오디오 노트", "오디오 재생"), pdfAudioActions.map { it.label })
-        assertEquals(8, pdfFileToolsActions.size)
+        assertEquals(7, pdfFileToolsActions.size)
         assertEquals(PdfMenuAction.PAGE_EDIT, pdfFileToolsActions.first())
     }
 

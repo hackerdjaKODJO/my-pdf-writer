@@ -609,6 +609,9 @@ fun ViewerScreen(
                 vm.goToPage(index)
                 showContinuous = false
             },
+            // Swiping at fit zoom turns the page and keeps the ViewModel in sync,
+            // so leaving continuous view returns to the page you were reading.
+            onPageChange = { index -> vm.goToPage(index) },
         )
         return
     }
@@ -1220,6 +1223,8 @@ fun ViewerScreen(
                         onTextSelection = { selectedWords = it },
                         onRequestSelectionAt = requestSelectionAt,
                         onLinkTapped = handleLinkTap,
+                        onPreviousPage = vm::previousPage,
+                        onNextPage = vm::nextPage,
                     )
 
                     // Small, always-visible lock affordance. Bottom-start keeps it
@@ -1454,6 +1459,15 @@ fun ViewerScreen(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .padding(bottom = 14.dp),
+                            )
+                            ViewerZoomPill(
+                                zoom = state.zoom,
+                                onStep = { steps ->
+                                    vm.setZoom(stepReaderZoom(state.zoom, steps))
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(end = 10.dp, bottom = 14.dp),
                             )
                         }
                     }

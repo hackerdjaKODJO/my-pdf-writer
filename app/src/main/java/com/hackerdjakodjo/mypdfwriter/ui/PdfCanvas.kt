@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -52,6 +53,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.PdfLink
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfLinks
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
+import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -155,6 +157,9 @@ fun PdfCanvas(
     onRequestSelectionAt: (NormalizedPoint) -> Unit = {},
     /** Called only when a short VIEW-mode tap lands on a link rectangle. */
     onLinkTapped: (PdfLink) -> Unit = {},
+    /** Fit-zoom horizontal swipe in VIEW mode turns the page. */
+    onPreviousPage: () -> Unit = {},
+    onNextPage: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val pageW = (bitmap?.width?.toFloat() ?: (displayWidthPt * 2f)).coerceAtLeast(1f)
@@ -166,6 +171,9 @@ fun PdfCanvas(
     // Set by the overlay while a card strip/handle is being dragged, so a VIEW-mode
     // pan/zoom gesture cannot also move the page under the user's finger.
     val memoGestureActive = remember { mutableStateOf(false) }
+    val currentOnPreviousPage by rememberUpdatedState(onPreviousPage)
+    val currentOnNextPage by rememberUpdatedState(onNextPage)
+    val currentZoom by rememberUpdatedState(zoom)
 
     val pageKey = CanvasPageKey(docId, pageIndex)
     // Pan is transient per *document page*, not just per index: switching to
@@ -409,6 +417,38 @@ fun PdfCanvas(
                             }
                         },
                     )
+                }
+                // Fit-zoom page swipe. Observe only (never consume): the tap,
+                // long-press and transform detectors above stay untouched, and
+                // zoomed pages keep using the same drag for panning.
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        if (currentMemoHitTest(down.position) || memoGestureActive.value ||
+                            currentZoom > 1f
+                        ) return@awaitEachGesture
+                        val id = down.id.value
+                        var totalX = 0f
+                        var totalY = 0f
+                        var delivered = false
+                        val slop = viewConfiguration.touchSlop
+                        val threshold = PageSwipe.thresholdPx(
+                            size.width.toFloat(), memoDensity.density,
+                        )
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val pointer = event.changes.firstOrNull { it.id.value == id }
+                            if (pointer == null || !pointer.pressed) break
+                            if (event.changes.count { it.pressed } > 1) return@awaitEachGesture
+                            totalX += pointer.position.x - pointer.previousPosition.x
+                            totalY += pointer.position.y - pointer.previousPosition.y
+                            val dir = PageSwipe.direction(totalX, totalY, slop)
+                            if (!delivered && dir != 0 && abs(totalX) >= threshold) {
+                                delivered = true
+                                if (dir > 0) currentOnNextPage() else currentOnPreviousPage()
+                            }
+                        }
+                    }
                 }
         } else {
             Modifier.pointerInput(tool) {

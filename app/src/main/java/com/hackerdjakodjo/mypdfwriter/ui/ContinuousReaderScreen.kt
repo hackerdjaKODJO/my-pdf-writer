@@ -108,6 +108,8 @@ fun ContinuousReaderScreen(
     loadPage: suspend (Int, Float) -> Bitmap?,
     onBack: () -> Unit,
     onOpenPage: (Int) -> Unit,
+    /** 0-based page selected by a horizontal swipe at fit zoom. */
+    onPageChange: (Int) -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
 
@@ -131,6 +133,8 @@ fun ContinuousReaderScreen(
     // Modifier.offset { }, so dragging does not recompose every visible page.
     val panX = remember { mutableFloatStateOf(0f) }
     val latestZoom = rememberUpdatedState(zoom)
+    val currentOnPageChange by rememberUpdatedState(onPageChange)
+    val density = LocalDensity.current.density
     val viewportWidthPx = listState.layoutInfo.viewportSize.width.toFloat()
     val setZoom: (Float, Float, String) -> Unit = { value, focalX, reason ->
         val zoomBefore = latestZoom.value
@@ -276,6 +280,11 @@ fun ContinuousReaderScreen(
                                 var panPointerId = -1L
                                 var panTotalX = 0f
                                 var panStarted = false
+                                // Fit-zoom page swipe: observe only, never consume.
+                                var swipePointerId = -1L
+                                var swipeTotalX = 0f
+                                var swipeTotalY = 0f
+                                var swipeDelivered = false
                                 while (true) {
                                     val event = awaitPointerEvent(PointerEventPass.Initial)
                                     event.changes.forEach { change ->
@@ -304,6 +313,9 @@ fun ContinuousReaderScreen(
                                             panPointerId = -1L
                                             panTotalX = 0f
                                             panStarted = false
+                                            swipeDelivered = false
+                                            swipeTotalX = 0f
+                                            swipeTotalY = 0f
                                             lastTracedRenderZoom =
                                                 readerRenderZoom(latestZoom.value)
                                             PdfContinuousTrace.pinch(
@@ -409,10 +421,62 @@ fun ContinuousReaderScreen(
                                                     }
                                                 }
                                             }
+                                        } else {
+                                            // At fit zoom a horizontal swipe turns
+                                            // the page. Observe only: the LazyColumn
+                                            // keeps its native vertical fling.
+                                            val change = event.changes.firstOrNull {
+                                                it.pressed
+                                            }
+                                            if (change != null) {
+                                                val id = change.id.value
+                                                if (swipePointerId != id) {
+                                                    swipePointerId = id
+                                                    swipeTotalX = 0f
+                                                    swipeTotalY = 0f
+                                                    swipeDelivered = false
+                                                }
+                                                swipeTotalX += change.position.x -
+                                                    change.previousPosition.x
+                                                swipeTotalY += change.position.y -
+                                                    change.previousPosition.y
+                                                if (!swipeDelivered &&
+                                                    abs(swipeTotalX) > touchSlop &&
+                                                    abs(swipeTotalX) > abs(swipeTotalY) *
+                                                        PageSwipe.AXIS_DOMINANCE
+                                                ) {
+                                                    swipeDelivered = true
+                                                    // Prevent the page tap detector
+                                                    // from opening the single-page view.
+                                                    suppressPageTap.value = true
+                                                }
+                                            }
                                         }
                                     }
 
                                     if (event.changes.none { it.pressed }) {
+                                        if (swipeDelivered) {
+                                            val width = listState.layoutInfo
+                                                .viewportSize.width.toFloat()
+                                            if (abs(swipeTotalX) >=
+                                                PageSwipe.thresholdPx(width, density)
+                                            ) {
+                                                val dir = PageSwipe.direction(
+                                                    swipeTotalX, swipeTotalY, touchSlop,
+                                                )
+                                                val current0 = currentPage - 1
+                                                val target = PageSwipe.target(
+                                                    current0, dir, pageCount,
+                                                )
+                                                if (target != current0) {
+                                                    PdfContinuousTrace.pageSwipe(
+                                                        current0, target, dir,
+                                                        swipeTotalX, swipeTotalY,
+                                                    )
+                                                    currentOnPageChange(target)
+                                                }
+                                            }
+                                        }
                                         if (panStarted) {
                                             PdfContinuousTrace.pan(
                                                 "end", panPointerId, 0f, panTotalX,
@@ -433,6 +497,10 @@ fun ContinuousReaderScreen(
                                         panPointerId = -1L
                                         panTotalX = 0f
                                         panStarted = false
+                                        swipePointerId = -1L
+                                        swipeTotalX = 0f
+                                        swipeTotalY = 0f
+                                        swipeDelivered = false
                                     }
                                 }
                             }
@@ -487,6 +555,20 @@ fun ContinuousReaderScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp),
+                )
+
+                ViewerZoomPill(
+                    zoom = zoom,
+                    onStep = { steps ->
+                        setZoom(
+                            stepReaderZoom(latestZoom.value, steps),
+                            viewportWidthPx / 2f,
+                            "button",
+                        )
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 12.dp, bottom = 16.dp),
                 )
 
                 if (BuildConfig.DEBUG) {

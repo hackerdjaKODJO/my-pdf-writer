@@ -259,8 +259,18 @@ class HomeAndHelpE2ETest {
                 onboardingCards().map { "${it.title}\n${it.body}" }
             ).joinToString("\n")
 
-        listOf("고급", "스터디", "발췌로 저장", "꺼져 있는지").forEach { stale ->
+        listOf(
+            "고급", "스터디", "발췌로 저장", "꺼져 있는지",
+            "5분 빠른 시작", "4단계 빠른 시작", "PDF 상단의 노트",
+            "홈의 백업/복원", "홈의 백업·복원",
+        ).forEach { stale ->
             assertFalse("in-app guidance must not use stale '$stale'", corpus.contains(stale))
+        }
+        listOf(
+            "60초 빠른 시작", "하단 도구 독의 노트", "홈 설정의 백업/복원",
+            "홈 설정의 백업·복원",
+        ).forEach { current ->
+            assertTrue("in-app guidance must mention '$current'", corpus.contains(current))
         }
         assertTrue("the hide-state hint must read 켜져 있는지", corpus.contains("켜져 있는지"))
     }

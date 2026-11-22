@@ -54,6 +54,7 @@ import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.LocalOffer
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MoreVert
@@ -397,6 +398,12 @@ fun NotebookHomeScreen(
                                     Icon(
                                         if (searchOpen) Icons.Outlined.Close else Icons.Outlined.Search,
                                         contentDescription = if (searchOpen) "검색 닫기" else "검색",
+                                    )
+                                }
+                                IconButton(onClick = onOpenHelp) {
+                                    Icon(
+                                        Icons.Outlined.HelpOutline,
+                                        contentDescription = "도움말",
                                     )
                                 }
                                 IconButton(onClick = { showSettings = true }) {

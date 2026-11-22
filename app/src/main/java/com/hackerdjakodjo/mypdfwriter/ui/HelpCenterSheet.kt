@@ -93,16 +93,16 @@ internal data class HelpTopic(
 internal fun helpTopics(): List<HelpTopic> = listOf(
     HelpTopic(
         key = HelpTopicKey.QUICK_START,
-        chip = "5분 빠른 시작",
-        title = "5분 빠른 시작",
-        subtitle = "처음 5분이면 읽기·표시·필기·백업까지 한 번에",
+        chip = "60초 빠른 시작",
+        title = "60초 빠른 시작",
+        subtitle = "처음 60초면 읽기·표시·노트·복습까지 한 번에",
         steps = listOf(
-            "홈에서 PDF 가져오기로 강의자료를 엽니다.",
+            "홈에서 PDF 가져오기 또는 이어서 읽기로 강의자료를 엽니다.",
             "하단의 텍스트 선택을 누르고 중요한 문장을 드래그합니다.",
             "플로팅 바에서 형광펜을 눌러 표시를 PDF에 저장합니다.",
-            "PDF 상단의 노트를 눌러 아래에 노트 영역을 엽니다.",
+            "하단 도구 독의 노트를 눌러 아래에 노트 패널을 엽니다.",
             "가운데 손잡이를 위로 올려 노트를 넓히고 펜으로 필기합니다.",
-            "노트 헤더 링크로 원본 페이지를 오가고, 홈의 백업/복원으로 작업을 보관합니다.",
+            "노트 헤더 링크로 원본 페이지를 오가고, 홈 설정의 백업/복원으로 작업을 보관합니다.",
         ),
         note = "광고·계정·인터넷 없이 기기 안에서만 동작합니다.",
     ),
@@ -116,13 +116,13 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
             "다른 앱에서 PDF를 공유하면 공유 시트에서 My PDF Writer를 선택해 바로 가져올 수 있습니다.",
             "홈의 정렬 버튼으로 이름·최근 열기·페이지 수순을 바꿀 수 있습니다.",
             "두 손가락으로 벌려 확대하고, 한 손가락으로 페이지를 이동합니다.",
-            "상단 검색 아이콘은 PDF 검색을 바로 열고, 학습 메뉴는 학습·도구·보기·페이지·내보내기·기타로 묶여 있습니다.",
-            "학습 메뉴의 기타를 펼치면 페이지 잠금·텍스트 복사·화면 맞추기·문서 정보 등 나머지 도구가 나옵니다.",
+            "상단 검색 아이콘은 PDF 검색을 바로 열고, 학습 메뉴는 읽기·필기·담기·설정 네 묶음으로 정리되어 있습니다.",
+            "학습 메뉴의 설정 → 파일 도구에 페이지 잠금·문서 정보·PDF 내보내기가, 담기에 텍스트 복사가 들어 있습니다.",
             "화면 설정에서 야간 모드와 문서별 밝기를 조절할 수 있습니다.",
             "페이지 잠금을 켜면 실수로 페이지가 넘어가지 않습니다. 아래 잠금 배지의 해제로 풉니다.",
             "내부 링크가 있는 PDF는 보기 모드에서 링크를 탭하면 해당 페이지로 이동합니다.",
         ),
-        note = "학습 메뉴 그룹: 학습 · 도구 · 보기·페이지 · 내보내기 · 기타, 기타는 접혀 있습니다.",
+        note = "학습 메뉴 그룹: 읽기 · 필기 · 담기 · 설정, 파일 도구는 설정 안에서 따로 열립니다.",
     ),
     HelpTopic(
         key = HelpTopicKey.TEXT_SELECTION,
@@ -136,7 +136,7 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
             "같은 바의 복사·발췌를 쓰거나 더보기에서 번역·사전·공유를 실행할 수 있습니다.",
         ),
         note = "표시가 안 보이면 학습 메뉴의 주석 숨기기가 켜져 있는지 확인하세요. 숨김은 화면에만 적용되고 주석은 유지됩니다.",
-        caution = "이미지(스캔) PDF는 텍스트 레이어가 없어 선택할 수 없습니다. PDF 도구의 OCR을 먼저 사용하세요.",
+        caution = "이미지(스캔) PDF는 텍스트 레이어가 없어 선택할 수 없습니다. 홈 설정의 PDF 도구에서 OCR을 먼저 사용하세요.",
     ),
     HelpTopic(
         key = HelpTopicKey.STUDY_NOTE,
@@ -144,7 +144,7 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
         title = "PDF 위 노트에 담기 + 높이 드래그",
         subtitle = "PDF를 닫지 않고 노트를 펼치고 두 영역의 높이를 조절하기",
         steps = listOf(
-            "PDF 상단의 노트를 누르면 아래에 노트가 열리고 위에는 PDF가 남습니다.",
+            "하단 도구 독의 노트를 누르면 아래에 노트 패널이 열리고 위에는 PDF가 남습니다.",
             "기본 높이는 85%입니다. 두 영역 사이의 가운데 손잡이를 위아래로 드래그하세요.",
             "위로 드래그하면 노트가 커지고(최대 85%), 아래로 드래그하면 PDF가 커집니다(노트 최소 35%).",
             "노트 헤더의 크기 팝업에서 50/70/85%를 고를 수도 있습니다.",
@@ -187,10 +187,10 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
         title = "백업/내보내기",
         subtitle = "작업을 ZIP으로 보관하고 PDF로 내보내기",
         steps = listOf(
-            "홈의 백업/복원을 누르고 백업을 선택해 ZIP 저장 위치를 고릅니다.",
+            "홈 설정의 백업/복원을 누르고 백업을 선택해 ZIP 저장 위치를 고릅니다.",
             "PDF 원본 포함 여부를 선택할 수 있고, 커스텀 템플릿도 백업에 포함됩니다.",
             "복원은 같은 화면에서 ZIP을 선택하면 기존 데이터가 안전하게 교체됩니다.",
-            "학습 메뉴의 PDF 내보내기는 화면에 보이는 주석을 평탄화해 저장합니다.",
+            "학습 메뉴의 설정 → PDF 내보내기는 화면에 보이는 주석을 평탄화해 저장합니다.",
             "노트의 PDF로 내보내기는 전체/현재/선택 페이지와 숨긴 레이어 포함 여부를 고를 수 있습니다.",
         ),
         caution = "백업 ZIP은 암호화되지 않습니다. 개인 정보가 들어 있을 수 있으니 신뢰하는 저장소에 보관하세요.",
@@ -201,7 +201,7 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
         title = "문제 해결",
         subtitle = "자주 막히는 상황과 확인 순서",
         steps = listOf(
-            "텍스트가 선택되지 않으면: 스캔 PDF일 수 있습니다. PDF 도구의 OCR로 검색 가능한 PDF를 만든 뒤 다시 여세요.",
+            "텍스트가 선택되지 않으면: 스캔 PDF일 수 있습니다. 홈 설정의 PDF 도구에서 OCR로 검색 가능한 PDF를 만든 뒤 다시 여세요.",
             "하이라이트가 안 보이면: 학습 메뉴의 주석 숨기기를 확인하세요. 숨김은 화면 표시만 바꾸며 데이터는 유지됩니다.",
             "노트가 너무 작으면: 가운데 손잡이를 위로 드래그하거나 노트 헤더의 85% 크기 프리셋을 누르세요.",
             "필기가 사라졌으면: 0.8.2에서 다중 획 유실 버그를 수정했습니다. 백업이 있으면 백업/복원으로 되살릴 수 있습니다.",
@@ -250,7 +250,7 @@ internal fun quickCards(): List<QuickCard> = listOf(
         label = "1 PDF 열기",
         sentence = "홈에서 PDF 가져오기를 눌러 강의자료를 엽니다.",
         destination = QuickDestination.OPEN_PDF,
-        actionLabel = "열기",
+        actionLabel = "자세히",
         topicKey = HelpTopicKey.OPEN_PDF,
     ),
     QuickCard(
@@ -258,15 +258,15 @@ internal fun quickCards(): List<QuickCard> = listOf(
         label = "2 표시하며 읽기",
         sentence = "하단의 텍스트 선택으로 문장을 고르고 형광펜으로 표시합니다.",
         destination = QuickDestination.MARKUP_TOOLS,
-        actionLabel = "표시",
+        actionLabel = "자세히",
         topicKey = HelpTopicKey.TEXT_SELECTION,
     ),
     QuickCard(
         key = QuickCardKey.CAPTURE_TO_NOTE,
         label = "3 노트에 담기",
-        sentence = "PDF 상단의 노트를 눌러 발췌와 필기를 함께 담습니다.",
+        sentence = "하단 도구 독의 노트를 눌러 발췌와 필기를 함께 담습니다.",
         destination = QuickDestination.NOTE_PANE,
-        actionLabel = "노트",
+        actionLabel = "자세히",
         topicKey = HelpTopicKey.STUDY_NOTE,
     ),
     QuickCard(
@@ -274,7 +274,7 @@ internal fun quickCards(): List<QuickCard> = listOf(
         label = "4 복습하기",
         sentence = "노트 메뉴의 복습 카드에서 가리기 카드로 스스로 확인합니다.",
         destination = QuickDestination.REVIEW_CARDS,
-        actionLabel = "복습",
+        actionLabel = "자세히",
         topicKey = HelpTopicKey.WRITE_TOOLS,
     ),
 )
@@ -456,7 +456,7 @@ private fun QuickCardRow(card: QuickCard, onClick: () -> Unit) {
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "${card.actionLabel} ›",
+                    "${card.actionLabel} ▾",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )

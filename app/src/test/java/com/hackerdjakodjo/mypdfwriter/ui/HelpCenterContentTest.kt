@@ -15,7 +15,7 @@ class HelpCenterContentTest {
     fun containsAllEightRequestedTopicsInOrder() {
         assertEquals(
             listOf(
-                "5분 빠른 시작",
+                "60초 빠른 시작",
                 "PDF 열기/읽기",
                 "텍스트 선택·형광펜",
                 "PDF 위 노트에 담기 + 높이 드래그",
@@ -164,6 +164,24 @@ class HelpCenterContentTest {
             ),
             visibleLegacyTopics(true).map { it.key }.toSet(),
         )
+    }
+
+    @Test
+    fun helpTextNamesShippedLocationsOnly() {
+        val all = helpTopics().joinToString("\n") { it.allText() } +
+            quickCards().joinToString("\n") { it.sentence }
+        listOf(
+            "5분 빠른 시작", "PDF 상단의 노트", "홈의 백업/복원",
+            "학습·도구·보기", "학습 메뉴의 기타",
+        ).forEach { stale ->
+            assertFalse("stale help path '$stale'", all.contains(stale))
+        }
+        listOf(
+            "60초 빠른 시작", "하단 도구 독의 노트", "홈 설정의 백업/복원",
+            "읽기·필기·담기·설정", "설정 → PDF 내보내기",
+        ).forEach { current ->
+            assertTrue("missing current help path '$current'", all.contains(current))
+        }
     }
 
     private fun containsKorean(value: String): Boolean =
