@@ -87,4 +87,38 @@ class ReaderPanTest {
         assertFloat("Infinity pan", 0f,
             clampReaderPan(Float.POSITIVE_INFINITY, 2f, 1000f))
     }
+
+    @Test
+    fun `zoom centred reanchors pan so rightward drag can move the page`() {
+        // The actual bug: a fresh zoom left pan at 0 with the page pinned left,
+        // so pushing right clamped straight back to 0 (no visible movement).
+        val anchored = panAfterZoom(0f, 1f, 2f, 500f, 1000f)
+        assertFloat("centred zoom gains left-side headroom", 500f, anchored)
+        assertFloat("rightward drag now moves the page", 400f,
+            panReaderAfterDrag(anchored, +100f, 2f, 1000f))
+    }
+
+    @Test
+    fun `zoom at the left edge keeps the page pinned left`() {
+        assertFloat("left-edge focal", 0f, panAfterZoom(0f, 1f, 2f, 0f, 1000f))
+        assertFloat("left-of-viewport focal", 0f,
+            panAfterZoom(0f, 1f, 2f, -100f, 1000f))
+    }
+
+    @Test
+    fun `zoom out reanchors and clamps to the new range`() {
+        assertFloat("panned zoom-out clamps at new max", 500f,
+            panAfterZoom(1000f, 2f, 1.5f, 500f, 1000f))
+        assertFloat("unpanned zoom-out clamps at zero", 0f,
+            panAfterZoom(0f, 2f, 1.5f, 500f, 1000f))
+        assertFloat("zoom to fit resets pan", 0f,
+            panAfterZoom(500f, 2f, 1f, 500f, 1000f))
+    }
+
+    @Test
+    fun `non finite focal falls back to viewport centre`() {
+        assertFloat("NaN focal", 500f, panAfterZoom(0f, 1f, 2f, Float.NaN, 1000f))
+        assertFloat("Infinity focal", 500f,
+            panAfterZoom(0f, 1f, 2f, Float.POSITIVE_INFINITY, 1000f))
+    }
 }

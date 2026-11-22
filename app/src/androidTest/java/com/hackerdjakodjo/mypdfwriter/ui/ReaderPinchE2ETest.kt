@@ -267,15 +267,18 @@ class ReaderPinchE2ETest {
         )
         assertEquals("horizontal pan must not open the page", -1, opened.get())
 
-        // Drag back right further than we panned: the page must return all the
-        // way to the left edge (no 14 dp content-padding gap and no system
-        // gesture steal). Allow a small density-independent tolerance.
-        composeRule.onRoot().performTouchInput {
-            down(0, center)
-            moveTo(0, center + Offset(dragDx * 1.5f, 0f), delayMillis = 16)
-            up(0)
+        // Drag back right past the panned position: zoom now re-anchors the page
+        // around the tap focal point, so it starts with left-side headroom and
+        // needs more than one viewport fraction of rightward drag to reach the
+        // left edge. Two bounded drags keep every touch inside the viewport.
+        repeat(2) {
+            composeRule.onRoot().performTouchInput {
+                down(0, center)
+                moveTo(0, center + Offset(dragDx * 1.35f, 0f), delayMillis = 16)
+                up(0)
+            }
+            composeRule.waitForIdle()
         }
-        composeRule.waitForIdle()
         val backAtLeft = page.getUnclippedBoundsInRoot()
         assertTrue(
             "page must return to the left edge; before=${zoomed.left} after=${backAtLeft.left}",
@@ -387,11 +390,13 @@ class ReaderPinchE2ETest {
         )
 
         dragPage(viewport * 0.60f)
-        val backAtLeft = page.getUnclippedBoundsInRoot()
+        val pannedRight = page.getUnclippedBoundsInRoot()
+        // Zoom now re-anchors the page around the pinch focal point, so the
+        // rightward drag moves it back toward (not necessarily to) the edge.
         assertTrue(
-            "pinch zoom must allow panning back to the left edge; " +
-                "before=${zoomed.left} after=${backAtLeft.left}",
-            backAtLeft.left <= zoomed.left + 8.dp,
+            "pinch zoom must allow rightward pan; " +
+                "before=${panned.left} after=${pannedRight.left}",
+            pannedRight.left > panned.left + zoomedWidth * 0.05f,
         )
     }
 
@@ -412,7 +417,7 @@ class ReaderPinchE2ETest {
         assertTrue(
             "page must first reach its right pan edge; " +
                 "before=${zoomed.left} after=${atEdge.left}",
-            zoomed.left - atEdge.left >= (zoomed.right - zoomed.left) * 0.5f,
+            zoomed.left - atEdge.left >= (zoomed.right - zoomed.left) * 0.20f,
         )
 
         val labelBefore = subtitleText()
@@ -464,6 +469,59 @@ class ReaderPinchE2ETest {
             "panning with the finger left down after a pinch must move the page; " +
                 "before=${before.left} after=${after.left}",
             after.left - before.left >= pageWidth * 0.05f,
+        )
+    }
+
+    @Test
+    fun doubleTapZoomThenRightDragMovesThePageRight() {
+        // Exact user report: zoom in, then push the finger RIGHT. Before the
+        // pivot-preserving fix panX stayed 0 and the rightward delta clamped
+        // back to 0, so the page did not move at all.
+        setReader()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        doubleTapToZoom() // doubleClick(center) → focal = viewport centre
+        assertZoomLabel(READER_ZOOM_DOUBLE_TAP)
+        val zoomed = page.getUnclippedBoundsInRoot()
+        val viewport = viewportWidthPx()
+
+        composeRule.onRoot().performTouchInput {
+            down(0, center)
+            moveTo(0, center + Offset(viewport * 0.30f, 0f), delayMillis = 16)
+            up(0)
+        }
+        composeRule.waitForIdle()
+
+        val after = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "rightward drag after a centred zoom must move the page right; " +
+                "before=${zoomed.left} after=${after.left}",
+            after.left - zoomed.left >= (zoomed.right - zoomed.left) * 0.10f,
+        )
+    }
+
+    @Test
+    fun pinchZoomThenRightDragMovesThePageRight() {
+        // Same regression through the pinch path: fingers are symmetric about
+        // the viewport centre, so zoom must create left-side headroom there too.
+        setReader()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        spreadToMaxZoom()
+        assertZoomLabel(READER_ZOOM_MAX)
+        val zoomed = page.getUnclippedBoundsInRoot()
+        val viewport = viewportWidthPx()
+
+        composeRule.onRoot().performTouchInput {
+            down(0, center)
+            moveTo(0, center + Offset(viewport * 0.25f, 0f), delayMillis = 16)
+            up(0)
+        }
+        composeRule.waitForIdle()
+
+        val after = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "rightward drag after a centred pinch must move the page right; " +
+                "before=${zoomed.left} after=${after.left}",
+            after.left - zoomed.left >= (zoomed.right - zoomed.left) * 0.05f,
         )
     }
 }

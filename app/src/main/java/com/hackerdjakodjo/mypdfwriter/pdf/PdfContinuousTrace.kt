@@ -15,6 +15,7 @@ object PdfContinuousTrace {
     private const val TRACE_TAG = "PDF_CONTINUOUS"
     private const val PINCH_LOG_TAG = "PdfContinuousPinch"
     private const val RENDER_LOG_TAG = "PdfContinuousRender"
+    private const val PAN_LOG_TAG = "PdfContinuousPan"
 
     fun pinch(zoom: Float, renderZoom: Float, distance: Float) {
         NoteTrace.event(
@@ -48,6 +49,64 @@ object PdfContinuousTrace {
             RENDER_LOG_TAG,
             "page=$page zoom=$zoom renderZoom=$renderZoom scale=$scale " +
                 "bitmap=${bitmapWidth}x${bitmapHeight}",
+        )
+    }
+
+    /** One pointer frame of horizontal panning, including the applied clamp. */
+    fun pan(
+        phase: String,
+        pointerId: Long,
+        deltaX: Float,
+        panTotalX: Float,
+        panBefore: Float,
+        panAfter: Float,
+        zoom: Float,
+        maxPan: Float,
+    ) {
+        NoteTrace.event(
+            TRACE_TAG,
+            "pan",
+            "phase" to phase,
+            "pointerId" to pointerId,
+            "deltaX" to deltaX,
+            "panTotalX" to panTotalX,
+            "panBefore" to panBefore,
+            "panAfter" to panAfter,
+            "zoom" to zoom,
+            "maxPan" to maxPan,
+        )
+        logDebug(
+            PAN_LOG_TAG,
+            "$phase id=$pointerId dx=$deltaX total=$panTotalX " +
+                "pan=$panBefore->$panAfter zoom=$zoom maxPan=$maxPan",
+        )
+    }
+
+    /** Pan re-anchoring caused by a zoom change or viewport change. */
+    fun zoomPan(
+        reason: String,
+        zoomBefore: Float,
+        zoomAfter: Float,
+        panBefore: Float,
+        panAfter: Float,
+        maxPan: Float,
+        focalX: Float,
+    ) {
+        NoteTrace.event(
+            TRACE_TAG,
+            "zoomPan",
+            "reason" to reason,
+            "zoomBefore" to zoomBefore,
+            "zoomAfter" to zoomAfter,
+            "panBefore" to panBefore,
+            "panAfter" to panAfter,
+            "maxPan" to maxPan,
+            "focalX" to focalX,
+        )
+        logDebug(
+            PAN_LOG_TAG,
+            "zoomPan reason=$reason zoom=$zoomBefore->$zoomAfter " +
+                "pan=$panBefore->$panAfter maxPan=$maxPan focal=$focalX",
         )
     }
 

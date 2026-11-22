@@ -72,6 +72,9 @@ operations (`PageOps.kt` / `PdfViewModel.kt`), and restored
 | READ-08 | Previous bitmap stays visible while next zoom render is pending | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | READ-09 | Pinch zoom then pan both ways; pan to edge, zoom out, first right drag reveals the left side | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | READ-10 | Pan with the finger retained after a pinch (sticky multi-touch latch) | Instrumentation `ReaderPinchE2ETest` | Compiled |
+| READ-11 | Centred double-tap zoom then rightward drag moves the page right | Instrumentation `ReaderPinchE2ETest` | Compiled |
+| READ-12 | Centred pinch zoom then rightward drag moves the page right | Instrumentation `ReaderPinchE2ETest` | Compiled |
+| READ-13 | Pivot-preserving pan re-anchoring on zoom and non-finite focal fallback | JVM `ReaderPanTest` | Passing |
 | HOME-09 | Persistent create FAB is present on Home | Instrumentation `HomeStartE2ETest` | Compiled |
 | HOME-10 | Tag search filters the tag overview; empty-PDF search keeps import copy | JVM `HomeLibraryPolicyTest` | Passing |
 | HOME-11 | Home tab survives leaving Home and returning | Instrumentation `HomeStartE2ETest` | Compiled |

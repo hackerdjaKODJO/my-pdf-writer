@@ -105,6 +105,34 @@ fun panReaderAfterDrag(
     viewportWidthPx: Float,
 ): Float = clampReaderPan(panPx - deltaX, zoom, viewportWidthPx)
 
+/**
+ * Re-anchors the horizontal pan when zoom changes so the page content under
+ * [focalX] stays under the same screen position.
+ *
+ * Without this, zooming always left [panPx] at 0: the enlarged page is pinned to
+ * the viewport's left edge, so a rightward drag produced a negative pan that
+ * clamped straight back to 0 and the page could not be moved right at all.
+ *
+ * Derivation: with page left edge at -pan and content fraction t,
+ * `screenX = t * W * zoom - pan`. Holding t fixed at the focal point gives
+ * `panAfter = panBefore * (z1/z0) + focalX * (z1/z0 - 1)`.
+ */
+fun panAfterZoom(
+    panPx: Float,
+    oldZoom: Float,
+    newZoom: Float,
+    focalX: Float,
+    viewportWidthPx: Float,
+): Float {
+    val z0 = clampReaderZoom(oldZoom)
+    val z1 = clampReaderZoom(newZoom)
+    val width = if (viewportWidthPx.isFinite()) viewportWidthPx.coerceAtLeast(1f) else 1f
+    val focus = if (focalX.isFinite()) focalX.coerceIn(0f, width) else width / 2f
+    val before = clampReaderPan(panPx, z0, width)
+    val ratio = z1 / z0
+    return clampReaderPan(before * ratio + focus * (ratio - 1f), z1, width)
+}
+
 /** Rendering scale used when a continuous page fits the viewport width. */
 const val READER_BASE_RENDER_SCALE = 1.25f
 
