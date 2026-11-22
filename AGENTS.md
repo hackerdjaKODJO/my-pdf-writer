@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.41`** — `versionCode = 50`.
-- **Next version is `0.8.42` — `versionCode = 51`.**
+- Current delivered version: **`0.8.43`** — `versionCode = 52`.
+- **Next version is `0.8.44` — `versionCode = 53`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.43` | 52 | 2026-11-22 | `v0.8.43` | Fix continuous-reader left pan after zoom: re-clamp pan on every zoom/viewport change (no invisible dead zone), remove sticky multi-touch latch so the retained finger can pan, unify max-pan math, add 6 JVM + 3 E2E regressions |
 | `0.8.42` | 51 | 2026-11-22 | — | Full-flow E2E (104/104 pass): real PDF open/annotate/page-ops/search/export/reopen, backup+restore, notebook disk round-trip; fix bookmark remap and restored-source reuse |
 | `0.8.41` | 50 | 2026-11-22 | — | PC emulator E2E run (86/86 pass): fix 15 flaky cases, release backup gate on throwing flush with regression test |
 | `0.8.40` | 49 | 2026-11-22 | — | Play closed-beta release build from latest main |

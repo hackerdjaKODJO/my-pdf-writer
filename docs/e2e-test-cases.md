@@ -64,12 +64,14 @@ operations (`PageOps.kt` / `PdfViewModel.kt`), and restored
 | DICT-01 | Dictionary query normalization and fallback | JVM `TextActionsDictionaryTest` | Passing |
 | UX-01 | Onboarding topic order/one-time flag | JVM `OnboardingStoreTest`, `OnboardingContentTest` | Passing |
 | UX-02 | PDF hint state policy and no duplicate chips | JVM `PdfContextHintsTest` | Passing |
-| READ-01 | Continuous zoom clamp/pinch/toggle and label; pinch pointer tracking | JVM `ReaderZoomTest`, `ReaderPinchTrackerTest` | Passing |
+| READ-01 | Continuous zoom clamp/pinch/toggle and label; pinch pointer tracking; pan clamp/drag math | JVM `ReaderZoomTest`, `ReaderPinchTrackerTest`, `ReaderPanTest` | Passing |
 | READ-02 | Two-finger pinch changes document-wide zoom label | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | READ-05 | Pointer-count gate + gated zoom composition | JVM `ContinuousPinchGateTest`, `ContinuousPinchCompositionTest` | Passing |
 | READ-06 | Zoom enlarges page layout past viewport, not only the % label | Instrumentation `ReaderPinchE2ETest` (bounds assertion) | Compiled |
 | READ-07 | Horizontal pan moves the enlarged page, returns to the left edge, and does not open it | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | READ-08 | Previous bitmap stays visible while next zoom render is pending | Instrumentation `ReaderPinchE2ETest` | Compiled |
+| READ-09 | Pinch zoom then pan both ways; pan to edge, zoom out, first right drag reveals the left side | Instrumentation `ReaderPinchE2ETest` | Compiled |
+| READ-10 | Pan with the finger retained after a pinch (sticky multi-touch latch) | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | HOME-09 | Persistent create FAB is present on Home | Instrumentation `HomeStartE2ETest` | Compiled |
 | HOME-10 | Tag search filters the tag overview; empty-PDF search keeps import copy | JVM `HomeLibraryPolicyTest` | Passing |
 | HOME-11 | Home tab survives leaving Home and returning | Instrumentation `HomeStartE2ETest` | Compiled |

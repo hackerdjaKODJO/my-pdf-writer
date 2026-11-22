@@ -334,4 +334,136 @@ class ReaderPinchE2ETest {
             afterWidth > beforeWidth * 1.5f,
         )
     }
+
+    /** One-finger horizontal drag by [dx] pixels, ending with the pointer lifted. */
+    private fun dragPage(dx: Float) {
+        composeRule.onRoot().performTouchInput {
+            down(0, center)
+            moveTo(0, center + Offset(dx, 0f), delayMillis = 16)
+            up(0)
+        }
+        composeRule.waitForIdle()
+    }
+
+    /** Measured viewport width in pixels, used to scale gesture offsets. */
+    private fun viewportWidthPx(): Float =
+        composeRule.onRoot().fetchSemanticsNode().size.width.toFloat()
+
+    /** A gentle ~20% pinch-in that stays above fit instead of returning to 100%. */
+    private fun pinchInOneStep() {
+        composeRule.onRoot().performTouchInput {
+            val cx = width / 2f
+            val cy = height * 0.6f
+            val near = width * 0.24f
+            val far = width * 0.30f
+            down(0, Offset(cx - far, cy))
+            down(1, Offset(cx + far, cy))
+            moveTo(0, Offset(cx - near, cy), delayMillis = 16)
+            moveTo(1, Offset(cx + near, cy), delayMillis = 16)
+            up(0)
+            up(1)
+        }
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    fun pinchZoomThenPanInBothDirectionsMovesThePage() {
+        // Regression guard for the ordinary flow: zooming with a pinch must not
+        // disable the one-finger pan that used to be verified only after a
+        // double tap (READ-07).
+        setReader()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        spreadToMaxZoom()
+        assertZoomLabel(READER_ZOOM_MAX)
+        val zoomed = page.getUnclippedBoundsInRoot()
+        val zoomedWidth = zoomed.right - zoomed.left
+        val viewport = viewportWidthPx()
+
+        dragPage(-viewport * 0.35f)
+        val panned = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "pinch zoom must allow leftward pan; before=${zoomed.left} after=${panned.left}",
+            zoomed.left - panned.left >= zoomedWidth * 0.10f,
+        )
+
+        dragPage(viewport * 0.60f)
+        val backAtLeft = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "pinch zoom must allow panning back to the left edge; " +
+                "before=${zoomed.left} after=${backAtLeft.left}",
+            backAtLeft.left <= zoomed.left + 8.dp,
+        )
+    }
+
+    @Test
+    fun panToEdgeThenZoomOutLetsTheFirstRightDragMoveThePage() {
+        // Regression for the invisible dead zone: panX used to be re-clamped
+        // only in the layout's displayed offset, so after zooming out the first
+        // rightward drags did nothing and the left side looked unreachable.
+        setReader()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        spreadToMaxZoom()
+        assertZoomLabel(READER_ZOOM_MAX)
+        val zoomed = page.getUnclippedBoundsInRoot()
+        val viewport = viewportWidthPx()
+
+        dragPage(-viewport * (READER_ZOOM_MAX - READER_ZOOM_MIN) * 1.1f)
+        val atEdge = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "page must first reach its right pan edge; " +
+                "before=${zoomed.left} after=${atEdge.left}",
+            zoomed.left - atEdge.left >= (zoomed.right - zoomed.left) * 0.5f,
+        )
+
+        val labelBefore = subtitleText()
+        pinchInOneStep()
+        val labelAfter = subtitleText()
+        assertTrue(
+            "pinch-in must change zoom but stay above fit; before=$labelBefore after=$labelAfter",
+            labelAfter != labelBefore && !isFitLabel(),
+        )
+        val afterZoomOut = page.getUnclippedBoundsInRoot()
+
+        dragPage(viewport * 0.30f)
+        val afterDrag = page.getUnclippedBoundsInRoot()
+        val pageWidth = afterDrag.right - afterDrag.left
+        assertTrue(
+            "first rightward drag after zoom-out must reveal the left side; " +
+                "before=${afterZoomOut.left} after=${afterDrag.left}",
+            afterDrag.left - afterZoomOut.left >= pageWidth * 0.05f,
+        )
+    }
+
+    @Test
+    fun pinchThenPanWithRetainedFingerMovesThePage() {
+        // Regression for the sticky multiTouchGesture latch: after a pinch the
+        // user often lifts one thumb and keeps dragging with the other. Pan was
+        // disabled until *every* pointer was up.
+        setReader()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        doubleTapToZoom()
+        assertZoomLabel(READER_ZOOM_DOUBLE_TAP)
+        val before = page.getUnclippedBoundsInRoot()
+
+        composeRule.onRoot().performTouchInput {
+            val cx = width / 2f
+            val cy = height * 0.6f
+            val first = Offset(cx - width * 0.10f, cy)
+            down(0, first)
+            down(1, Offset(cx + width * 0.10f, cy))
+            moveTo(1, Offset(cx + width * 0.30f, cy), delayMillis = 16)
+            up(1) // finger 0 stays down: this used to freeze panning
+            moveTo(0, first + Offset(width * 0.35f, 0f), delayMillis = 16)
+            up(0)
+        }
+        composeRule.waitForIdle()
+
+        val after = page.getUnclippedBoundsInRoot()
+        val pageWidth = after.right - after.left
+        assertTrue(
+            "panning with the finger left down after a pinch must move the page; " +
+                "before=${before.left} after=${after.left}",
+            after.left - before.left >= pageWidth * 0.05f,
+        )
+    }
 }

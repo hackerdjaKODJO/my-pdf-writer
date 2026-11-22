@@ -68,6 +68,43 @@ fun zoomFromPinch(
     return clampReaderZoom(base * currentDistance / startDistance)
 }
 
+/**
+ * Largest horizontal pan in pixels for a viewport width and zoom.
+ *
+ * The zoomed page is left-aligned and overflows to the right, so pan 0 shows the
+ * left edge and [readerMaxPanPx] shows the right edge. Keeping this math here
+ * (instead of duplicating it in the gesture observer and the page layout) makes
+ * it impossible for the stored pan and the displayed offset to disagree.
+ */
+fun readerMaxPanPx(viewportWidthPx: Float, zoom: Float): Float {
+    val width = if (viewportWidthPx.isFinite()) viewportWidthPx.coerceAtLeast(1f) else 1f
+    return (width * (clampReaderZoom(zoom) - READER_ZOOM_MIN)).coerceAtLeast(0f)
+}
+
+/**
+ * Re-clamps a stored pan after a zoom or viewport change.
+ *
+ * A zoom decrease shrinks the available pan range. Without this clamp the
+ * stored value stays at the old (larger) maximum while the layout silently
+ * clamps it for display, so the first rightward drags produce no visible
+ * movement — the page appears stuck and the left side is unreachable.
+ */
+fun clampReaderPan(panPx: Float, zoom: Float, viewportWidthPx: Float): Float {
+    if (!panPx.isFinite()) return 0f
+    return panPx.coerceIn(0f, readerMaxPanPx(viewportWidthPx, zoom))
+}
+
+/**
+ * Applies one pointer frame of horizontal panning. A positive [deltaX] means
+ * the finger moved right, which reveals the LEFT part of the zoomed page.
+ */
+fun panReaderAfterDrag(
+    panPx: Float,
+    deltaX: Float,
+    zoom: Float,
+    viewportWidthPx: Float,
+): Float = clampReaderPan(panPx - deltaX, zoom, viewportWidthPx)
+
 /** Rendering scale used when a continuous page fits the viewport width. */
 const val READER_BASE_RENDER_SCALE = 1.25f
 

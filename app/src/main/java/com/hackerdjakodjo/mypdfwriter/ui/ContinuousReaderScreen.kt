@@ -131,11 +131,24 @@ fun ContinuousReaderScreen(
     // Modifier.offset { }, so dragging does not recompose every visible page.
     val panX = remember { mutableFloatStateOf(0f) }
     val latestZoom = rememberUpdatedState(zoom)
+    val viewportWidthPx = listState.layoutInfo.viewportSize.width.toFloat()
     val setZoom: (Float) -> Unit = { value ->
         zoom = clampReaderZoom(value)
-        if (zoom <= READER_ZOOM_MIN) panX.floatValue = 0f
+        // Re-clamp on EVERY zoom change, not just at fit: zooming out while
+        // panned used to leave a stale pan that the layout only hid visually,
+        // so rightward drags did nothing until the stale offset was worked off.
+        // At fit the new maximum is 0, which also restores the old reset.
+        panX.floatValue = clampReaderPan(
+            panX.floatValue,
+            zoom,
+            listState.layoutInfo.viewportSize.width.toFloat(),
+        )
     }
     val toggleZoom: () -> Unit = { setZoom(toggleReaderZoom(latestZoom.value)) }
+    // Rotation or window resize can shrink the pan range without a zoom change.
+    LaunchedEffect(viewportWidthPx, zoom) {
+        panX.floatValue = clampReaderPan(panX.floatValue, zoom, viewportWidthPx)
+    }
 
     // True only while the companion observer (below) sees 2+ pointers down.
     // detectTransformGestures also fires for one-finger drags, so this gate is
@@ -229,7 +242,6 @@ fun ContinuousReaderScreen(
                                 val seen = HashSet<Long>()
                                 var lastTracedRenderZoom = readerRenderZoom(latestZoom.value)
                                 var pinchWasActive = false
-                                var multiTouchGesture = false
                                 var panPointerId = -1L
                                 var panTotalX = 0f
                                 var panStarted = false
@@ -250,10 +262,15 @@ fun ContinuousReaderScreen(
                                     }
 
                                     if (gate.twoFinger) {
-                                        multiTouchGesture = true
                                         pinchActive = true
                                         if (!pinchWasActive) {
                                             pinchWasActive = true
+                                            // A second finger invalidates any one-finger
+                                            // pan tracking; a retained finger must start
+                                            // a fresh drag once the pinch is over.
+                                            panPointerId = -1L
+                                            panTotalX = 0f
+                                            panStarted = false
                                             lastTracedRenderZoom =
                                                 readerRenderZoom(latestZoom.value)
                                             PdfContinuousTrace.pinch(
@@ -290,15 +307,22 @@ fun ContinuousReaderScreen(
                                             if (change.pressed) change.consume()
                                         }
                                     } else {
+                                        if (pinchWasActive) {
+                                            // The pinch ended (one finger lifted). Do
+                                            // not keep pan disabled just because a
+                                            // pointer from the pinch is still down:
+                                            // start a clean pan with the retained finger.
+                                            panPointerId = -1L
+                                            panTotalX = 0f
+                                            panStarted = false
+                                        }
                                         pinchWasActive = false
                                         pinchActive = false
 
                                         // One-finger horizontal pan is observed but
                                         // not consumed. Vertical movement continues to
                                         // the LazyColumn, so diagonal drags work.
-                                        if (!multiTouchGesture && latestZoom.value >
-                                            READER_ZOOM_MIN
-                                        ) {
+                                        if (latestZoom.value > READER_ZOOM_MIN) {
                                             val change = event.changes.firstOrNull {
                                                 it.pressed
                                             }
@@ -320,18 +344,14 @@ fun ContinuousReaderScreen(
                                                         suppressPageTap.value = true
                                                     }
                                                     if (panStarted) {
-                                                        val viewportWidth =
+                                                        panX.floatValue = panReaderAfterDrag(
+                                                            panX.floatValue,
+                                                            deltaX,
+                                                            latestZoom.value,
                                                             listState.layoutInfo
                                                                 .viewportSize.width
-                                                                .toFloat()
-                                                        val basePageWidth =
-                                                            viewportWidth.coerceAtLeast(1f)
-                                                        val maxPan = basePageWidth *
-                                                            (latestZoom.value -
-                                                                READER_ZOOM_MIN)
-                                                        panX.floatValue =
-                                                            (panX.floatValue - deltaX)
-                                                                .coerceIn(0f, maxPan)
+                                                                .toFloat(),
+                                                        )
                                                     }
                                                 }
                                             }
@@ -343,7 +363,6 @@ fun ContinuousReaderScreen(
                                         seen.clear()
                                         pinchActive = false
                                         pinchWasActive = false
-                                        multiTouchGesture = false
                                         panPointerId = -1L
                                         panTotalX = 0f
                                         panStarted = false
@@ -524,7 +543,7 @@ private fun ReaderPageCard(
     ) {
         val pageWidth = maxWidth * zoom
         val maxPan = with(LocalDensity.current) {
-            (pageWidth - maxWidth).toPx().coerceAtLeast(0f)
+            readerMaxPanPx(maxWidth.toPx(), zoom)
         }
         Box(
             modifier = Modifier
