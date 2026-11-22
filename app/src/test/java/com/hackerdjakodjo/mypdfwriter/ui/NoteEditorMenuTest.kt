@@ -34,18 +34,30 @@ class NoteEditorMenuTest {
     }
 
     @Test
-    fun `quick actions are three slots above the indexed rows`() {
+    fun `ink settings split into basic and advanced without losing any switch`() {
+        val advanced = NOTE_INK_SETTINGS.filter(::noteInkSettingIsAdvanced)
+        val basic = NOTE_INK_SETTINGS.filterNot(::noteInkSettingIsAdvanced)
+        assertEquals(5, advanced.size)
+        assertEquals(5, basic.size)
+        assertEquals(NOTE_INK_SETTINGS.size, advanced.size + basic.size)
+        assertTrue(NoteInkSetting.PRESSURE_INK in advanced)
+        assertTrue(NoteInkSetting.PRESSURE_CURVE in advanced)
+        assertTrue(NoteInkSetting.FINGER_WRITING in basic)
+        assertTrue(NoteInkSetting.ZOOM_LOCK in basic)
+    }
+
+    @Test
+    fun `quick actions are two slots above the indexed rows`() {
         assertEquals(
             listOf(
                 NoteMenuQuickAction.UNDO,
                 NoteMenuQuickAction.REDO,
-                NoteMenuQuickAction.STYLE,
             ),
             NOTE_MENU_QUICK_ACTIONS,
         )
-        assertEquals(3, NOTE_MENU_QUICK_ACTIONS.toSet().size)
+        assertEquals(2, NOTE_MENU_QUICK_ACTIONS.toSet().size)
         assertEquals(
-            listOf("실행 취소", "다시 실행", "스타일"),
+            listOf("실행 취소", "다시 실행"),
             NOTE_MENU_QUICK_ACTIONS.map(::noteMenuQuickActionLabel),
         )
         // Quick actions are pinned outside the sectioned index: they must not

@@ -30,6 +30,12 @@ internal fun filterTagCounts(
 internal fun pdfEmptyStateIsFiltered(hasAnyPdf: Boolean, query: String): Boolean =
     hasAnyPdf && query.isNotBlank()
 
+/** Filters/sort/view controls add no value to a student with no notes yet. */
+internal fun homeShowsLibraryControls(
+    visibleCount: Int,
+    hasActiveFilters: Boolean,
+): Boolean = visibleCount > 0 || hasActiveFilters
+
 /**
  * Returns a sorted copy of [items]. Notes have no separate "last opened"
  * timestamp, so both time-based options use [Notebook.updatedAt], which is also

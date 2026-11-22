@@ -195,8 +195,10 @@ class HomeStartE2ETest {
 
     @Test
     fun filterSheetAppliesAndClearsOneCompactActiveRow() {
+        // Filters are intentionally hidden on an empty library; add one note so
+        // the sheet under test is actually reachable.
         composeRule.setContent {
-            MyPdfWriterTheme { home() }
+            MyPdfWriterTheme { home(notebooks = listOf(Notebook(title = "시험 노트"))) }
         }
         composeRule.waitForIdle()
 

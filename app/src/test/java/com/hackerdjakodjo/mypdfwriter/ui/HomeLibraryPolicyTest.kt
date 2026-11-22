@@ -278,4 +278,12 @@ class HomeLibraryPolicyTest {
     fun homeSectionsAreThreeCompactTopSegments() {
         assertEquals(listOf("노트", "PDF", "태그"), homeSectionLabels())
     }
+
+    @Test
+    fun `library controls are hidden until there is something to filter`() {
+        assertFalse(homeShowsLibraryControls(0, false))
+        assertTrue(homeShowsLibraryControls(0, true))
+        assertTrue(homeShowsLibraryControls(1, false))
+        assertTrue(homeShowsLibraryControls(3, true))
+    }
 }

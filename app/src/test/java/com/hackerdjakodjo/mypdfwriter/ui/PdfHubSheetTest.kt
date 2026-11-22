@@ -48,7 +48,7 @@ class PdfHubSheetTest {
     @Test
     fun writeAndCaptureGroupsKeepEveryStudentAction() {
         assertEquals(
-            listOf("주석 도구", "포스트잇", "주석 숨기기/표시", "페이지 메모", "텍스트 선택", "문서 꾸미기"),
+            listOf("주석 도구", "포스트잇", "주석 숨기기/표시", "페이지 메모", "문서 꾸미기"),
             pdfMenuActions(PdfMenuGroup.WRITE).map { it.label },
         )
         assertEquals(

@@ -2049,10 +2049,6 @@ fun NoteEditorScreen(
                 showMenu = false
                 redo()
             },
-            onOpenStyle = {
-                showMenu = false
-                showStyle = true
-            },
             onRename = {
                 showMenu = false
                 showRename = true

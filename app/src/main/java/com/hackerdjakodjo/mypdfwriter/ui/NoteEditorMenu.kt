@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.AutoFixNormal
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Checklist
@@ -50,7 +51,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -96,19 +100,16 @@ internal const val NOTE_SIMPLIFY_POINTS_DEFAULT = false
 internal enum class NoteMenuQuickAction {
     UNDO,
     REDO,
-    STYLE,
 }
 
 internal val NOTE_MENU_QUICK_ACTIONS = listOf(
     NoteMenuQuickAction.UNDO,
     NoteMenuQuickAction.REDO,
-    NoteMenuQuickAction.STYLE,
 )
 
 internal fun noteMenuQuickActionLabel(action: NoteMenuQuickAction): String = when (action) {
     NoteMenuQuickAction.UNDO -> "실행 취소"
     NoteMenuQuickAction.REDO -> "다시 실행"
-    NoteMenuQuickAction.STYLE -> "스타일"
 }
 
 /** Every menu row is tall enough for TalkBack and large fonts. */
@@ -194,6 +195,17 @@ internal enum class NoteInkSetting {
 
 internal val NOTE_INK_SETTINGS = NoteInkSetting.entries
 
+/** Frequent, easy-to-understand switches stay first; fine ink tuning is folded. */
+internal fun noteInkSettingIsAdvanced(setting: NoteInkSetting): Boolean = when (setting) {
+    NoteInkSetting.STROKE_STABILIZATION,
+    NoteInkSetting.SMOOTH_HANDWRITING,
+    NoteInkSetting.SIMPLIFY_POINTS,
+    NoteInkSetting.PRESSURE_INK,
+    NoteInkSetting.PRESSURE_CURVE,
+    -> true
+    else -> false
+}
+
 /** Supporting line for the ink-settings row; the count must track the enum. */
 internal fun noteInkSettingsSupportingLabel(): String =
     "손가락 필기·보정·필압 등 ${NOTE_INK_SETTINGS.size}가지"
@@ -213,7 +225,6 @@ internal fun NoteMenuSheet(
     canRedo: Boolean,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
-    onOpenStyle: () -> Unit,
     onRename: (() -> Unit)?,
     onPages: () -> Unit,
     onTemplates: () -> Unit,
@@ -278,7 +289,6 @@ internal fun NoteMenuSheet(
                     canRedo = canRedo,
                     onUndo = onUndo,
                     onRedo = onRedo,
-                    onOpenStyle = onOpenStyle,
                 )
             }
 
@@ -381,7 +391,6 @@ private fun NoteMenuQuickActions(
     canRedo: Boolean,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
-    onOpenStyle: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -395,24 +404,20 @@ private fun NoteMenuQuickActions(
             val enabled = when (action) {
                 NoteMenuQuickAction.UNDO -> canUndo
                 NoteMenuQuickAction.REDO -> canRedo
-                NoteMenuQuickAction.STYLE -> true
             }
             val icon = when (action) {
                 NoteMenuQuickAction.UNDO -> Icons.AutoMirrored.Filled.Undo
                 NoteMenuQuickAction.REDO -> Icons.AutoMirrored.Filled.Redo
-                NoteMenuQuickAction.STYLE -> Icons.Filled.Palette
             }
             val description = when (action) {
                 NoteMenuQuickAction.UNDO ->
                     if (canUndo) label else disabledReasonLabel(label, "취소할 내용 없음")
                 NoteMenuQuickAction.REDO ->
                     if (canRedo) label else disabledReasonLabel(label, "다시 실행할 내용 없음")
-                NoteMenuQuickAction.STYLE -> label
             }
             val onClick = when (action) {
                 NoteMenuQuickAction.UNDO -> onUndo
                 NoteMenuQuickAction.REDO -> onRedo
-                NoteMenuQuickAction.STYLE -> onOpenStyle
             }
             Surface(
                 onClick = onClick,
@@ -603,7 +608,9 @@ internal fun NoteInkSettingsSheet(
         subtitle = "모든 변경은 이 기기에서 즉시 적용됩니다",
         onDismiss = onDismiss,
     ) {
-        NOTE_INK_SETTINGS.forEach { setting ->
+        var showAdvanced by remember { mutableStateOf(false) }
+        NOTE_INK_SETTINGS.filter { !noteInkSettingIsAdvanced(it) || showAdvanced }
+            .forEach { setting ->
             when (setting) {
                 NoteInkSetting.FINGER_WRITING -> NoteMenuToggleRow(
                     icon = Icons.Filled.Draw,
@@ -707,7 +714,17 @@ internal fun NoteInkSettingsSheet(
                     onCheckedChange = onGestureUndo,
                 )
             }
-        }
+            }
+
+        NoteMenuToggleRow(
+            icon = Icons.Filled.Tune,
+            title = "고급 필기 설정",
+            supporting = "보정·필압 등 ${
+                NOTE_INK_SETTINGS.count(::noteInkSettingIsAdvanced)
+            }가지",
+            checked = showAdvanced,
+            onCheckedChange = { showAdvanced = it },
+        )
 
         if (onOpenTrace != null) {
             NoteMenuDivider()

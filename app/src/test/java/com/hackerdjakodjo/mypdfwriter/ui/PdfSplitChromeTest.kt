@@ -122,7 +122,7 @@ class PdfSplitChromeTest {
             TextSelectionPrimaryAction.EXCERPT.label,
         )
         assertEquals(
-            listOf(PDF_HUB_CAPTURE_LABEL, "텍스트 편집", "공유", "선택 해제"),
+            listOf(PDF_HUB_CAPTURE_LABEL, "텍스트 편집", "공유"),
             TextSelectionSecondaryAction.entries.map { it.label },
         )
         assertEquals(1, TextSelectionSecondaryAction.entries.count { it.label == PDF_HUB_CAPTURE_LABEL })

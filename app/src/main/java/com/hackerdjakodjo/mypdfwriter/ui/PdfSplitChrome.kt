@@ -269,7 +269,6 @@ internal enum class TextSelectionSecondaryAction(val label: String) {
     CAPTURE(PDF_HUB_CAPTURE_LABEL),
     EDIT("텍스트 편집"),
     SHARE("공유"),
-    DISMISS("선택 해제"),
 }
 
 internal val PDF_TEXT_HANDOFF_LABELS = listOf("번역", "사전")
@@ -1022,24 +1021,6 @@ internal fun TextSelectionMoreSheet(
                         modifier = Modifier.sizeIn(minHeight = SPLIT_CHROME_TARGET_DP.dp),
                     ) { Text(label) }
                 }
-            }
-            Spacer(Modifier.height(8.dp))
-            TextButton(
-                onClick = {
-                    onDismiss()
-                    onDismissSelection()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .sizeIn(minHeight = SPLIT_CHROME_TARGET_DP.dp),
-            ) {
-                Text(
-                    if (hasSelection) {
-                        TextSelectionSecondaryAction.DISMISS.label
-                    } else {
-                        "텍스트 선택 종료"
-                    },
-                )
             }
         }
     }

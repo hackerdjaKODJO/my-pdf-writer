@@ -930,17 +930,19 @@ private fun NotesSection(
     onCreate: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        NotesFilters(
-            filterState = filterState,
-            sort = sort,
-            onSortChange = onSortChange,
-            gridMode = gridMode,
-            onToggleGrid = onToggleGrid,
-            onOpenFilters = onOpenFilters,
-            onRemoveFilter = onRemoveFilter,
-            onClearAllFilters = onClearAllFilters,
-            horizontalPadding = horizontalPadding,
-        )
+        if (homeShowsLibraryControls(visible.size, filterState.hasActiveFilters)) {
+            NotesFilters(
+                filterState = filterState,
+                sort = sort,
+                onSortChange = onSortChange,
+                gridMode = gridMode,
+                onToggleGrid = onToggleGrid,
+                onOpenFilters = onOpenFilters,
+                onRemoveFilter = onRemoveFilter,
+                onClearAllFilters = onClearAllFilters,
+                horizontalPadding = horizontalPadding,
+            )
+        }
 
         if (visible.isEmpty()) {
             LazyColumn(
@@ -2132,6 +2134,7 @@ private fun CreateNotebookDialog(
     var template by remember { mutableStateOf(PaperTemplate.LINED) }
     var folder by remember { mutableStateOf("") }
     var tagsText by remember { mutableStateOf("") }
+    var showAdvanced by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2166,82 +2169,87 @@ private fun CreateNotebookDialog(
                     }
                     Spacer(Modifier.height(8.dp))
                 }
-                Text("표지 무늬", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.height(4.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    CoverStyle.entries.forEach { style ->
-                        FilterChip(
-                            selected = coverStyle == style,
-                            onClick = { coverStyle = style },
-                            modifier = Modifier.heightIn(min = 48.dp),
-                            label = { Text(coverStyleLabel(style)) },
-                        )
-                    }
+                TextButton(onClick = { showAdvanced = !showAdvanced }) {
+                    Text(if (showAdvanced) "고급 옵션 접기" else "고급 옵션 더 보기")
                 }
-                Spacer(Modifier.height(10.dp))
-                Text("종이 템플릿", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.height(4.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    PaperTemplate.entries.forEach { paper ->
-                        FilterChip(
-                            selected = template == paper,
-                            onClick = { template = paper },
-                            modifier = Modifier.heightIn(min = 48.dp),
-                            label = { Text(paper.label) },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = folder,
-                    onValueChange = { folder = it },
-                    label = { Text("폴더 (선택)") },
-                    placeholder = { Text("예: 강의 노트") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (folders.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
+                if (showAdvanced) {
+                    Text("표지 무늬", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(4.dp))
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        folders.forEach { existing ->
-                            AssistChip(
-                                onClick = { folder = existing },
-                                label = { Text(existing) },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Outlined.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                },
+                        CoverStyle.entries.forEach { style ->
+                            FilterChip(
+                                selected = coverStyle == style,
+                                onClick = { coverStyle = style },
+                                modifier = Modifier.heightIn(min = 48.dp),
+                                label = { Text(coverStyleLabel(style)) },
                             )
                         }
                     }
+                    Spacer(Modifier.height(10.dp))
+                    Text("종이 템플릿", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(4.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        PaperTemplate.entries.forEach { paper ->
+                            FilterChip(
+                                selected = template == paper,
+                                onClick = { template = paper },
+                                modifier = Modifier.heightIn(min = 48.dp),
+                                label = { Text(paper.label) },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = folder,
+                        onValueChange = { folder = it },
+                        label = { Text("폴더 (선택)") },
+                        placeholder = { Text("예: 강의 노트") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (folders.isNotEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            folders.forEach { existing ->
+                                AssistChip(
+                                    onClick = { folder = existing },
+                                    label = { Text(existing) },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Outlined.Folder,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = tagsText,
+                        onValueChange = { tagsText = it },
+                        label = { Text("태그 (선택)") },
+                        placeholder = { Text("시험, 정리, 아이디어") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "쉼표로 구분해 입력하세요.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = tagsText,
-                    onValueChange = { tagsText = it },
-                    label = { Text("태그 (선택)") },
-                    placeholder = { Text("시험, 정리, 아이디어") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "쉼표로 구분해 입력하세요.",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.height(4.dp))
             }
         },

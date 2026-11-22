@@ -361,7 +361,7 @@ class PdfSplitChromeE2ETest {
             }
         }
 
-        listOf("번역", "사전", "노트에 담기", "텍스트 편집", "공유", "선택 해제")
+        listOf("번역", "사전", "노트에 담기", "텍스트 편집", "공유")
             .forEach { composeRule.onNodeWithText(it).assertExists() }
         composeRule.onNodeWithText("발췌로 저장").assertIsNotDisplayed()
 
@@ -371,7 +371,7 @@ class PdfSplitChromeE2ETest {
         composeRule.onNodeWithText("노트에 담기").performClick()
         composeRule.onNodeWithText("텍스트 편집").performClick()
         composeRule.onNodeWithText("공유").performClick()
-        composeRule.onNodeWithText("선택 해제").performClick()
+        composeRule.onNodeWithContentDescription("선택 해제").performClick()
 
         assertEquals(1, translate)
         assertEquals(1, dictionary)

@@ -98,7 +98,6 @@ internal enum class PdfMenuAction(val group: PdfMenuGroup, val label: String) {
     MEMO_CARDS(PdfMenuGroup.WRITE, "포스트잇"),
     TOGGLE_ANNOTATIONS(PdfMenuGroup.WRITE, "주석 숨기기/표시"),
     PAGE_NOTES(PdfMenuGroup.WRITE, "페이지 메모"),
-    TEXT_SELECT(PdfMenuGroup.WRITE, "텍스트 선택"),
     DECORATE(PdfMenuGroup.WRITE, "문서 꾸미기"),
 
     // 담기

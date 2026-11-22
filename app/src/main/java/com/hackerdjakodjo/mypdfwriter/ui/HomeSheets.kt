@@ -212,26 +212,6 @@ internal fun HomeFilterSheet(
                 }
             }
 
-            FilterSection(title = "검색") {
-                if (query.isBlank()) {
-                    Text(
-                        "검색어 없음",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 8.dp),
-                    )
-                } else {
-                    FilterChip(
-                        selected = true,
-                        onClick = { query = "" },
-                        modifier = Modifier
-                            .heightIn(min = 56.dp)
-                            .semantics { contentDescription = "검색어 지우기: $query" },
-                        label = { Text("검색 · “$query” 지우기") },
-                    )
-                }
-            }
-
             Spacer(Modifier.height(2.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(

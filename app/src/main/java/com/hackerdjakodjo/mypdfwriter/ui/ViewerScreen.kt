@@ -764,13 +764,6 @@ fun ViewerScreen(
             trailing = if (annotationsHidden) "숨김" else "표시 중",
         ) { annotationsHidden = !annotationsHidden }
 
-        PdfMenuAction.TEXT_SELECT -> PdfHubAction(
-            action.label,
-            Icons.AutoMirrored.Outlined.TextSnippet,
-            trailing = if (textSelectMode) "켜짐" else null,
-            onClick = toggleTextSelection,
-        )
-
         PdfMenuAction.DECORATE -> PdfHubAction(action.label, Icons.Outlined.Palette) {
             showStyle = true
         }
@@ -1843,7 +1836,6 @@ fun ViewerScreen(
     if (showToolStyle) {
         ViewerStyleSheet(
             state = state,
-            onSelectTool = selectTool,
             onColor = vm::setColor,
             onStrokeWidth = vm::setStrokeWidth,
             onFontSize = vm::setFontSize,

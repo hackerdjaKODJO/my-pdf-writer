@@ -667,27 +667,11 @@ private fun ToolOptionTile(
     }
 }
 
-private val styleToolOptions = listOf(
-    ToolOption(Tool.PEN, Icons.Outlined.Edit, "펜"),
-    ToolOption(Tool.HIGHLIGHT, Icons.Outlined.Highlight, "형광펜"),
-    ToolOption(Tool.TEXT, Icons.Outlined.TextFields, "글상자"),
-    ToolOption(Tool.RECT, Icons.Outlined.CropSquare, "사각형"),
-    ToolOption(Tool.ARROW, Icons.Outlined.NorthEast, "화살표"),
-    ToolOption(Tool.LINE, Icons.Outlined.HorizontalRule, "직선"),
-    ToolOption(Tool.ELLIPSE, Icons.Outlined.Circle, "타원"),
-    ToolOption(Tool.UNDERLINE, Icons.Outlined.FormatUnderlined, "밑줄"),
-    ToolOption(Tool.STRIKEOUT, Icons.Outlined.FormatStrikethrough, "취소선"),
-    ToolOption(Tool.STAMP, Icons.Outlined.Approval, "스탬프"),
-    ToolOption(Tool.SIGNATURE, Icons.Outlined.Draw, "서명"),
-    ToolOption(Tool.REDACT, Icons.Outlined.VisibilityOff, "가림"),
-)
-
 /** Contextual style sheet: palette, size, opacity and related tools. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViewerStyleSheet(
     state: ViewerUiState,
-    onSelectTool: (Tool) -> Unit,
     onColor: (Int) -> Unit,
     onStrokeWidth: (Float) -> Unit,
     onFontSize: (Float) -> Unit,
@@ -715,30 +699,6 @@ fun ViewerStyleSheet(
                 TextButton(onClick = onDismiss) { Text("완료") }
             }
             Spacer(Modifier.height(10.dp))
-
-            Text("도구", style = MaterialTheme.typography.labelLarge)
-            Spacer(Modifier.height(4.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                styleToolOptions.forEach { option ->
-                    FilterChip(
-                        selected = state.tool == option.tool,
-                        onClick = { onSelectTool(option.tool) },
-                        label = { Text(option.label) },
-                        leadingIcon = {
-                            Icon(
-                                option.icon,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        },
-                    )
-                }
-            }
 
             if (state.tool != Tool.REDACT) {
                 Spacer(Modifier.height(16.dp))
