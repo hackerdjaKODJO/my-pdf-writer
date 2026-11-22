@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.44`** — `versionCode = 53`.
-- **Next version is `0.8.45` — `versionCode = 54`.**
+- Current delivered version: **`0.8.45`** — `versionCode = 54`.
+- **Next version is `0.8.46` — `versionCode = 55`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.45` | 54 | 2026-11-22 | `v0.8.45` | Fix zoom-then-pan in BOTH viewers: 25% headroom band keeps an edge-focal zoom from pinning pan at a clamp edge (continuous), single-page double tap now toggles fit↔200% and pinch/double-tap pan keeps a reserved band; 3 JVM + 4 E2E regressions |
 | `0.8.44` | 53 | 2026-11-22 | `v0.8.44` | Fix continuous-reader right pan after zoom: pivot-preserving zoom re-anchors pan around the pinch/double-tap focal so the page has headroom both ways; add pan/zoomPan debug traces + HUD, 4 JVM + 2 E2E regressions |
 | `0.8.43` | 52 | 2026-11-22 | `v0.8.43` | Fix continuous-reader left pan after zoom: re-clamp pan on every zoom/viewport change (no invisible dead zone), remove sticky multi-touch latch so the retained finger can pan, unify max-pan math, add 6 JVM + 3 E2E regressions |
 | `0.8.42` | 51 | 2026-11-22 | — | Full-flow E2E (104/104 pass): real PDF open/annotate/page-ops/search/export/reopen, backup+restore, notebook disk round-trip; fix bookmark remap and restored-source reuse |

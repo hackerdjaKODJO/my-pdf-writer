@@ -1166,7 +1166,7 @@ fun ViewerScreen(
                                                 chromeHidden = nextChromeHidden(chromeHidden, true)
                                             }
                                         },
-                                        // Double-tap remains the canvas' zoom reset.
+                                        // Double tap toggles fit <-> 200% in the canvas.
                                         onDoubleTap = {},
                                     )
                                 }

@@ -141,7 +141,9 @@ fun ContinuousReaderScreen(
         // left panX = 0 with the enlarged page pinned to the viewport's left
         // edge, so a rightward drag became a negative pan and clamped back to
         // 0: the page could not be moved right at all.
-        panX.floatValue = panAfterZoom(panBefore, zoomBefore, zoomAfter, focalX, width)
+        panX.floatValue = readerPanWithHeadroom(
+            panBefore, zoomBefore, zoomAfter, focalX, width,
+        )
         zoom = zoomAfter
         PdfContinuousTrace.zoomPan(
             reason, zoomBefore, zoomAfter, panBefore, panX.floatValue,

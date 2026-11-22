@@ -75,6 +75,9 @@ operations (`PageOps.kt` / `PdfViewModel.kt`), and restored
 | READ-11 | Centred double-tap zoom then rightward drag moves the page right | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | READ-12 | Centred pinch zoom then rightward drag moves the page right | Instrumentation `ReaderPinchE2ETest` | Compiled |
 | READ-13 | Pivot-preserving pan re-anchoring on zoom and non-finite focal fallback | JVM `ReaderPanTest` | Passing |
+| READ-14 | Headroom band keeps right/left pan available for an edge-focal zoom | JVM `ReaderPanTest` | Passing |
+| READ-15 | Edge-focal double tap / pinch then rightward drag moves the page | Instrumentation `ReaderPinchE2ETest` | Compiled |
+| CANVAS-01 | Single-page double tap toggles fit↔200%; off-centre pinch then right drag pans | Instrumentation `PdfCanvasZoomPanE2ETest` | Compiled |
 | HOME-09 | Persistent create FAB is present on Home | Instrumentation `HomeStartE2ETest` | Compiled |
 | HOME-10 | Tag search filters the tag overview; empty-PDF search keeps import copy | JVM `HomeLibraryPolicyTest` | Passing |
 | HOME-11 | Home tab survives leaving Home and returning | Instrumentation `HomeStartE2ETest` | Compiled |

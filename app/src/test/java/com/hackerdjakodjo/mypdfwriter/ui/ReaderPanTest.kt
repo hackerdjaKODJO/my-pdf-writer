@@ -121,4 +121,32 @@ class ReaderPanTest {
         assertFloat("Infinity focal", 500f,
             panAfterZoom(0f, 1f, 2f, Float.POSITIVE_INFINITY, 1000f))
     }
+
+    @Test
+    fun `headroom keeps rightward pan available for an edge focal`() {
+        // The user's case: a zoom anchored near the left edge used to leave
+        // panX at 0, so pushing the page right clamped straight back to 0.
+        val anchored = readerPanWithHeadroom(0f, 1f, 2f, 0f, 1000f)
+        assertFloat("25% headroom at the left edge", 250f, anchored)
+        assertFloat("rightward drag immediately moves the page", 150f,
+            panReaderAfterDrag(anchored, +100f, 2f, 1000f))
+    }
+
+    @Test
+    fun `headroom keeps leftward pan available for a right edge focal`() {
+        val anchored = readerPanWithHeadroom(0f, 1f, 2f, 1000f, 1000f)
+        assertFloat("25% headroom at the right edge", 750f, anchored)
+        assertFloat("leftward drag immediately moves the page", 850f,
+            panReaderAfterDrag(anchored, -100f, 2f, 1000f))
+    }
+
+    @Test
+    fun `headroom leaves centred focal and fit zoom unchanged`() {
+        assertFloat("centred focal", 500f,
+            readerPanWithHeadroom(0f, 1f, 2f, 500f, 1000f))
+        assertFloat("fit zoom", 0f,
+            readerPanWithHeadroom(0f, 1f, 1f, 0f, 1000f))
+        assertFloat("zoom out from the edge keeps rightward headroom", 750f,
+            readerPanWithHeadroom(1500f, 2.5f, 2f, 0f, 1000f))
+    }
 }

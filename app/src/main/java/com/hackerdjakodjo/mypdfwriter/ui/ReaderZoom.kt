@@ -106,6 +106,36 @@ fun panReaderAfterDrag(
 ): Float = clampReaderPan(panPx - deltaX, zoom, viewportWidthPx)
 
 /**
+ * Minimum share of the pan range kept reachable in BOTH directions after a
+ * zoom change. A focal near the viewport edge otherwise leaves pan at 0 (or at
+ * maxPan), making one drag direction a complete no-op.
+ */
+const val READER_PAN_HEADROOM_FRACTION = 0.25f
+
+/**
+ * Focal-preserving pan with a guaranteed headroom band.
+ *
+ * A zoom anchored near the left edge used to produce panX ≈ 0, and because the
+ * continuous reader clamps pan to [0, maxPan] with the page left-aligned, a
+ * rightward drag immediately clamped back to 0 — the page did not move at all.
+ * Keeping the result inside [25%, 75%] of the range preserves the focal for
+ * ordinary centred zooms while leaving travel in both directions.
+ */
+fun readerPanWithHeadroom(
+    panPx: Float,
+    oldZoom: Float,
+    newZoom: Float,
+    focalX: Float,
+    viewportWidthPx: Float,
+): Float {
+    val maxPan = readerMaxPanPx(viewportWidthPx, newZoom)
+    if (maxPan <= 0f) return 0f
+    val focalPan = panAfterZoom(panPx, oldZoom, newZoom, focalX, viewportWidthPx)
+    val reserve = maxPan * READER_PAN_HEADROOM_FRACTION
+    return focalPan.coerceIn(reserve, maxPan - reserve)
+}
+
+/**
  * Re-anchors the horizontal pan when zoom changes so the page content under
  * [focalX] stays under the same screen position.
  *

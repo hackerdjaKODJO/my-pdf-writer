@@ -524,4 +524,56 @@ class ReaderPinchE2ETest {
             after.left - zoomed.left >= (zoomed.right - zoomed.left) * 0.05f,
         )
     }
+
+    @Test
+    fun doubleTapNearLeftEdgeThenRightDragMovesThePageRight() {
+        // The user's failing gesture: an edge focal used to leave panX at 0,
+        // so pushing right clamped straight back and the page never moved.
+        setReader()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        composeRule.onRoot().performTouchInput {
+            doubleClick(Offset(width * 0.05f, height * 0.6f))
+        }
+        composeRule.waitForIdle()
+        assertZoomLabel(READER_ZOOM_DOUBLE_TAP)
+        val zoomed = page.getUnclippedBoundsInRoot()
+        val viewport = viewportWidthPx()
+
+        dragPage(viewport * 0.25f)
+        val after = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "rightward drag after an edge-focal zoom must move the page; " +
+                "before=${zoomed.left} after=${after.left}",
+            after.left - zoomed.left >= (zoomed.right - zoomed.left) * 0.05f,
+        )
+    }
+
+    @Test
+    fun pinchNearLeftEdgeThenRightDragMovesThePageRight() {
+        // Same headroom guarantee through the pinch path, where a device may
+        // deliver only one finger's move and leave the focal near the edge.
+        setReader()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        composeRule.onRoot().performTouchInput {
+            val cy = height * 0.6f
+            down(0, Offset(width * 0.08f, cy))
+            down(1, Offset(width * 0.15f, cy))
+            moveTo(0, Offset(width * 0.04f, cy), delayMillis = 16)
+            moveTo(1, Offset(width * 0.35f, cy), delayMillis = 16)
+            up(0)
+            up(1)
+        }
+        composeRule.waitForIdle()
+        assertTrue("pinch must zoom in", !isFitLabel())
+        val zoomed = page.getUnclippedBoundsInRoot()
+        val viewport = viewportWidthPx()
+
+        dragPage(viewport * 0.25f)
+        val after = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "rightward drag after an edge-focal pinch must move the page; " +
+                "before=${zoomed.left} after=${after.left}",
+            after.left - zoomed.left >= (zoomed.right - zoomed.left) * 0.03f,
+        )
+    }
 }

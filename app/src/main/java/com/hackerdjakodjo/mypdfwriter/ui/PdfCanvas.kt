@@ -56,6 +56,14 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
+ * Share of the symmetric pan range deliberately left reachable after a zoom
+ * change. A pivot near a viewport edge can park pan exactly on its clamp; the
+ * reserved 25% guarantees that the first drag in either direction still moves
+ * the page. Pure drag frames are not clamped to this band.
+ */
+private const val PAN_HEADROOM_BAND = 0.75f
+
+/**
  * Identity of the page a canvas is showing. A document switch to a new file
  * that happens to be on the same page index must still start with a fresh pan;
  * keying state by page index alone leaked the previous document's pan.
@@ -273,6 +281,22 @@ fun PdfCanvas(
             return Offset(candidate.x.coerceIn(-limitX, limitX), candidate.y.coerceIn(-limitY, limitY))
         }
 
+        /**
+         * Zoom-frame counterpart of [clampPan]. A pivot near a viewport edge
+         * otherwise parks pan on the clamp, so a rightward (or leftward) drag
+         * adds more offset in the same direction and clamps straight back —
+         * the page appears stuck. Reserving an inner band leaves travel in both
+         * directions. Ordinary drag frames must keep using [clampPan] so page
+         * edges remain reachable with a following gesture.
+         */
+        fun clampPanWithHeadroom(candidate: Offset, scale: Float): Offset {
+            val fullX = ((visW * scale - viewW) / 2f).coerceAtLeast(0f)
+            val fullY = ((visH * scale - viewH) / 2f).coerceAtLeast(0f)
+            val limitX = fullX * PAN_HEADROOM_BAND
+            val limitY = fullY * PAN_HEADROOM_BAND
+            return Offset(candidate.x.coerceIn(-limitX, limitX), candidate.y.coerceIn(-limitY, limitY))
+        }
+
         fun wordsInSelection(a: NormalizedPoint, b: NormalizedPoint): List<PdfTextWord> =
             PdfTextLayout.wordsForGesture(
                 words = textWords,
@@ -323,16 +347,25 @@ fun PdfCanvas(
                         val oldTotal = transform.total
                         val newZoom = (transform.zoom * zoomChange).coerceIn(1f, 6f)
                         val newTotal = transform.fit * newZoom
+                        // Capture before mutating transform.zoom below.
+                        val zoomChanged = newZoom != transform.zoom
                         val pivot = centroid - Offset(size.width / 2f, size.height / 2f)
                         val scaledPan = if (oldTotal > 0f) {
                             pivot - (pivot - pan) * (newTotal / oldTotal)
                         } else {
                             pan
                         }
-                        val updated = clampPan(scaledPan + panChange, newTotal)
+                        val candidate = scaledPan + panChange
+                        // Only zoom frames reserve headroom; pure drags keep the
+                        // full clamp so page edges stay reachable.
+                        val updated = if (zoomChanged) {
+                            clampPanWithHeadroom(candidate, newTotal)
+                        } else {
+                            clampPan(candidate, newTotal)
+                        }
                         pan = updated
                         transform.pan = updated
-                        if (newZoom != transform.zoom) {
+                        if (zoomChanged) {
                             transform.zoom = newZoom
                             transform.total = newTotal
                             onZoomChange(newZoom)
@@ -350,9 +383,25 @@ fun PdfCanvas(
                                 if (link != null) currentOnLinkTapped(link)
                             }
                         },
-                        onDoubleTap = {
-                            pan = Offset.Zero
-                            onZoomChange(1f)
+                        onDoubleTap = { tapPosition ->
+                            // Match the continuous reader: double tap TOGGLES
+                            // fit <-> 200%. Resetting to fit here left pan range
+                            // at zero, so "zoom then drag" never moved the page.
+                            val oldZoom = transform.zoom
+                            val newZoom = toggleReaderZoom(oldZoom)
+                            val newTotal = transform.fit * newZoom
+                            val ratio = if (transform.total > 0f) {
+                                newTotal / transform.total
+                            } else 1f
+                            val pivot = tapPosition - Offset(size.width / 2f, size.height / 2f)
+                            val anchored = pivot - (pivot - pan) * ratio
+                            pan = clampPanWithHeadroom(anchored, newTotal)
+                            // Update the cache synchronously: the next gesture
+                            // frame must not read stale zoom/pan before SideEffect.
+                            transform.zoom = newZoom
+                            transform.total = newTotal
+                            transform.pan = pan
+                            onZoomChange(newZoom)
                         },
                         onLongPress = { position ->
                             if (!currentMemoHitTest(position)) {
