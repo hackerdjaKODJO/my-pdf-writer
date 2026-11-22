@@ -177,10 +177,13 @@ class NoteCanvasStrokeE2ETest {
         assertEquals("card body tap must open the editor", 1, opened)
         assertEquals("card body tap must not create a stroke", 0, state.receivedStrokes.size)
 
-        // Holding and dragging the top strip commits exactly one move.
+        // Holding and dragging the top-left grip commits exactly one move. The
+        // grip is only the left portion of the header: the 48dp "닫기" and ⋮
+        // buttons occupy the right ~96dp, so the card centre is NOT draggable.
+        val gripX = rect.left + rect.width * 0.1f
         composeRule.onNodeWithTag(NOTE_CANVAS_TAG).performTouchInput {
-            down(Offset(rect.center.x, rect.top + 10f))
-            moveTo(Offset(rect.center.x + 42f, rect.top + 30f))
+            down(Offset(gripX, rect.top + 10f))
+            moveTo(Offset(gripX + 42f, rect.top + 30f))
             up()
         }
         composeRule.waitForIdle()

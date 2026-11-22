@@ -75,8 +75,10 @@ class StudyPaneE2ETest {
         }
         composeRule.waitForIdle()
 
-        // Favourite moved into the menu header for compact panes.
-        composeRule.onNodeWithContentDescription("즐겨찾기").assertExists()
+        // Favourite moved into the menu header for compact panes. The menu icon is
+        // state-aware (noteStateAwareLabel), so its description carries the suffix
+        // ", 선택 안 됨" — a plain "즐겨찾기" exact match no longer finds it.
+        composeRule.onNodeWithContentDescription("즐겨찾기", substring = true).assertExists()
         composeRule.onNodeWithText("페이지").assertExists()
 
         val menu = composeRule.onNode(hasScrollToIndexAction())

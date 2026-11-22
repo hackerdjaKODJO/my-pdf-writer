@@ -84,8 +84,16 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     fun backup(uri: Uri, includeSources: Boolean) {
         if (!operationGate.tryStart()) return
-        withFlushedSaves(flushPendingSavesBeforeBackup) {
-            _state.update { it.copy(busy = true, progress = 0, message = null, restoredAt = null) }
+        try {
+            withFlushedSaves(flushPendingSavesBeforeBackup) {
+                _state.update { it.copy(busy = true, progress = 0, message = null, restoredAt = null) }
+            }
+        } catch (error: Exception) {
+            // The flush runs synchronously, before the launch below owns gate release
+            // in its finally. Release here too, or a throwing flush escapes with the
+            // gate still active and every later backup/restore silently no-ops.
+            operationGate.finish()
+            throw error
         }
         viewModelScope.launch {
             try {

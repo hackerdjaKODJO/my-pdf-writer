@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -271,13 +272,19 @@ class PdfMenuFlowE2ETest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("A.pdf, 선택됨").assertExists().performClick()
-        composeRule.onNodeWithContentDescription("B.pdf").performClick()
+        // Tap the left side of the tab node: its right half is the nested 48dp
+        // close target, and a centre click either closes or hits nothing.
+        tapTabLeft("A.pdf, 선택됨")
+        assertEquals("doc-a", selected)
+
+        tapTabLeft("B.pdf")
+        assertEquals("the last switch must be reported", "doc-b", selected)
+
         composeRule.onNodeWithContentDescription("탭 닫기: B.pdf").performClick()
         composeRule.onNodeWithContentDescription("탭 메뉴").performClick()
         composeRule.onNodeWithContentDescription("탭 숨기기").performClick()
 
-        assertEquals("doc-a", selected)
+        assertEquals("doc-b", selected)
         assertEquals("doc-b", closed)
         assertEquals(1, menu)
         assertEquals(1, hidden)
@@ -361,12 +368,12 @@ class PdfMenuFlowE2ETest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("B.pdf").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("B.pdf, 선택됨").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("B.pdf, 선택됨").performClick()
-        composeRule.waitForIdle()
+        // Tap the left side of the tab node (the right side is the close button),
+        // then re-tap the already active tab twice; only the first tap may open.
+        tapTabLeft("B.pdf")
+        composeRule.onNodeWithContentDescription("B.pdf, 선택됨").assertExists()
+        tapTabLeft("B.pdf, 선택됨")
+        tapTabLeft("B.pdf, 선택됨")
 
         assertEquals("doc-b", activeDocId)
         assertEquals("the second rapid tap must not reopen the same document", 1, opens)
@@ -378,6 +385,18 @@ class PdfMenuFlowE2ETest {
         val fresh = gate.begin()
         assertFalse(mayPublishOpenResult(true, stale, gate.current))
         assertTrue(mayPublishOpenResult(true, fresh, gate.current))
+    }
+
+    /**
+     * Injects a tap near the left edge of a document tab. The tab node's centre
+     * overlaps the nested 48dp close button, so a plain [performClick] at the
+     * centre does not reach `onSelectTab` for short filenames.
+     */
+    private fun tapTabLeft(contentDescription: String) {
+        composeRule.onNodeWithContentDescription(contentDescription).performTouchInput {
+            click(Offset(width * 0.15f, height / 2f))
+        }
+        composeRule.waitForIdle()
     }
 
     @Composable

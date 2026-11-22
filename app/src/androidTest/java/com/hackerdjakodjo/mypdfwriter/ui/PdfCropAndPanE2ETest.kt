@@ -55,10 +55,13 @@ class PdfCropAndPanE2ETest {
         )
         // Width 0.60 * 1000 = 600px, height 0.40 * 800 = 320px, both centred on
         // the local origin after PdfCanvas translates the kept crop centre there.
-        assertEquals(
-            CanvasClipRect(-300f, -160f, 300f, 160f),
-            PdfCrop.clipRectForCanvas(PdfCrop.visibleRect(cropped), 1000f, 800f),
-        )
+        // The normalized subtraction/scale runs in Float, so compare with a small
+        // tolerance instead of exact equality (e.g. -299.99997 vs -300f).
+        val clippedCrop = PdfCrop.clipRectForCanvas(PdfCrop.visibleRect(cropped), 1000f, 800f)
+        assertEquals(-300f, clippedCrop.left, 0.001f)
+        assertEquals(-160f, clippedCrop.top, 0.001f)
+        assertEquals(300f, clippedCrop.right, 0.001f)
+        assertEquals(160f, clippedCrop.bottom, 0.001f)
 
         // Clamping still leaves a positive window and a centred clip.
         val clamped = PdfCrop.clampInsets(CropInsets(2f, -1f, 2f, Float.NaN))

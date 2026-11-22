@@ -1,5 +1,6 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -107,6 +108,30 @@ class BackupRestoreE2ETest {
     }
 
     // ---------------------------------------------------------- flush before ZIP
+
+    @Test
+    fun throwingFlushReleasesTheBackupGate() {
+        // The flush runs synchronously before `viewModelScope.launch` installs its
+        // finally { gate.finish() }. A throwing flush must not leave the gate held,
+        // otherwise every later backup/restore silently no-ops.
+        val vm = BackupViewModel(composeRule.activity.application)
+        var flushCalls = 0
+        vm.flushPendingSavesBeforeBackup = {
+            flushCalls++
+            if (flushCalls == 1) throw IllegalStateException("simulated flush failure")
+        }
+        val uri = Uri.parse("content://e2e.dummy/backup.zip")
+
+        val thrown = runCatching { vm.backup(uri, includeSources = false) }.exceptionOrNull()
+        assertTrue("a throwing flush must still surface to the caller", thrown is IllegalStateException)
+        assertEquals(1, flushCalls)
+
+        // A second call with a benign flush proves the gate was released: if it were
+        // still held, tryStart() would fail and the flush callback would never run.
+        vm.backup(uri, includeSources = false)
+        assertEquals(2, flushCalls)
+        composeRule.waitForIdle()
+    }
 
     @Test
     fun backupFlushesPendingNotebookSavesBeforeArchiving() {

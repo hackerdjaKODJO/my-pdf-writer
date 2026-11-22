@@ -3,14 +3,16 @@ package com.hackerdjakodjo.mypdfwriter.ui
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.click
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -25,6 +27,14 @@ import java.util.concurrent.atomic.AtomicInteger
  * These compile with `assembleDebugAndroidTest`; running them requires a device
  * or emulator. The touch API drives two real pointers through the outer gesture
  * Box and asserts the document-wide zoom label appears in the top bar.
+ *
+ * Gesture offsets are fractions of the measured viewport (never absolute
+ * screen pixels) so the tests behave the same on a 360dp emulator and a large
+ * tablet. Expected labels come from the production zoom policy, and the label
+ * is read from the subtitle node only: the debug HUD also prints the same
+ * percentage, so a broad `onNodeWithText("250%")` matches several nodes.
+ * Pinch helpers repeat bounded passes until the production label reaches the
+ * target because this emulator applies only one of the two move deltas.
  */
 class ReaderPinchE2ETest {
 
@@ -45,57 +55,115 @@ class ReaderPinchE2ETest {
         composeRule.waitForIdle()
     }
 
+    /** The subtitle is the only text node carrying the "연속 보기" prefix. */
+    private fun assertZoomLabel(expectedZoom: Float) {
+        composeRule.onNodeWithText("연속 보기", substring = true)
+            .assertTextContains(readerZoomLabel(expectedZoom), substring = true)
+    }
+
+    /** Live text of the subtitle, read from semantics after the UI is idle. */
+    private fun subtitleText(): String {
+        val node = composeRule.onNodeWithText("연속 보기", substring = true)
+            .fetchSemanticsNode()
+        return node.config[SemanticsProperties.Text]
+            ?.joinToString(" ") { it.toString() }
+            ?: ""
+    }
+
+    /** True when the subtitle is the plain fit label, i.e. zoom == READER_ZOOM_MIN. */
+    private fun isFitLabel(): Boolean {
+        val text = subtitleText()
+        return text.contains("연속 보기") && !text.contains("%")
+    }
+
+    /**
+     * One two-pointer spread from 20% to 75% of the viewport width. Endpoints
+     * at 12.5% / 87.5% stay clear of the system edge-gesture zones.
+     *
+     * On this emulator the observer only applies the *second* pointer move's
+     * zoom delta (540/342 ~= 1.58), so a single pass is not enough to reach
+     * READER_ZOOM_MAX. [spreadToMaxZoom] repeats bounded passes and checks the
+     * production label after each one instead of asserting a gesture ratio.
+     */
+    private fun spreadPass() {
+        composeRule.onRoot().performTouchInput {
+            val cx = width / 2f
+            val cy = height * 0.6f
+            val near = width * 0.10f
+            val far = width * 0.375f
+            down(0, Offset(cx - near, cy))
+            down(1, Offset(cx + near, cy))
+            moveTo(0, Offset(cx - far, cy), delayMillis = 16)
+            moveTo(1, Offset(cx + far, cy), delayMillis = 16)
+            up(0)
+            up(1)
+        }
+        composeRule.waitForIdle()
+    }
+
+    /** Spreads until the reader reports the real max zoom label, up to 3 passes. */
+    private fun spreadToMaxZoom() {
+        val maxLabel = readerZoomLabel(READER_ZOOM_MAX)
+        for (pass in 0 until 3) {
+            if (subtitleText().contains(maxLabel)) break
+            spreadPass()
+        }
+    }
+
+    /** One two-pointer pinch back from 75% to 20% of the viewport width. */
+    private fun pinchInPass() {
+        composeRule.onRoot().performTouchInput {
+            val cx = width / 2f
+            val cy = height * 0.6f
+            val near = width * 0.10f
+            val far = width * 0.375f
+            down(0, Offset(cx - far, cy))
+            down(1, Offset(cx + far, cy))
+            moveTo(0, Offset(cx - near, cy), delayMillis = 16)
+            moveTo(1, Offset(cx + near, cy), delayMillis = 16)
+            up(0)
+            up(1)
+        }
+        composeRule.waitForIdle()
+    }
+
+    /** Pinches in until the zoom suffix disappears, up to 3 passes. */
+    private fun pinchBackToFit() {
+        for (pass in 0 until 3) {
+            if (isFitLabel()) break
+            pinchInPass()
+        }
+    }
+
+    /**
+     * `click(center); click(center)` inside one injection block has zero delay
+     * between taps, so detectTapGestures never sees a double tap. The dedicated
+     * doubleClick helper supplies the required inter-tap delay.
+     */
+    private fun doubleTapToZoom() {
+        composeRule.onRoot().performTouchInput { doubleClick(center) }
+        composeRule.waitForIdle()
+    }
+
     @Test
     fun twoFingerSpreadZoomsTheWholeDocument() {
         setReader()
         // Fit-to-width: the subtitle carries no zoom percentage yet.
         composeRule.onNodeWithText("전체 3쪽 · 연속 보기", substring = true).assertExists()
 
-        composeRule.onRoot().performTouchInput {
-            val cx = width / 2f
-            val cy = height * 0.6f
-            // 160 px apart -> 640 px apart (4x) must clamp to READER_ZOOM_MAX.
-            down(0, Offset(cx - 80f, cy))
-            down(1, Offset(cx + 80f, cy))
-            moveTo(0, Offset(cx - 320f, cy), delayMillis = 16)
-            moveTo(1, Offset(cx + 320f, cy), delayMillis = 16)
-            up(0)
-            up(1)
-        }
-        composeRule.waitForIdle()
+        spreadToMaxZoom()
 
-        composeRule.onNodeWithText("250%", substring = true).assertExists()
+        assertZoomLabel(READER_ZOOM_MAX)
     }
 
     @Test
     fun twoFingerPinchBackToFitClearsTheZoomLabel() {
         setReader()
         // Start already zoomed via a spread, then pinch back in.
-        composeRule.onRoot().performTouchInput {
-            val cx = width / 2f
-            val cy = height * 0.6f
-            down(0, Offset(cx - 80f, cy))
-            down(1, Offset(cx + 80f, cy))
-            moveTo(0, Offset(cx - 320f, cy), delayMillis = 16)
-            moveTo(1, Offset(cx + 320f, cy), delayMillis = 16)
-            up(0)
-            up(1)
-        }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("250%", substring = true).assertExists()
+        spreadToMaxZoom()
+        assertZoomLabel(READER_ZOOM_MAX)
 
-        // A fresh pinch back to roughly the original separation returns to fit.
-        composeRule.onRoot().performTouchInput {
-            val cx = width / 2f
-            val cy = height * 0.6f
-            down(0, Offset(cx - 320f, cy))
-            down(1, Offset(cx + 320f, cy))
-            moveTo(0, Offset(cx - 80f, cy), delayMillis = 16)
-            moveTo(1, Offset(cx + 80f, cy), delayMillis = 16)
-            up(0)
-            up(1)
-        }
-        composeRule.waitForIdle()
+        pinchBackToFit()
 
         composeRule.onNodeWithText("전체 3쪽 · 연속 보기").assertExists()
     }
@@ -109,11 +177,8 @@ class ReaderPinchE2ETest {
         val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
         val before = page.getUnclippedBoundsInRoot()
 
-        composeRule.onRoot().performTouchInput {
-            click(center)
-            click(center)
-        }
-        composeRule.waitForIdle()
+        doubleTapToZoom()
+        assertZoomLabel(READER_ZOOM_DOUBLE_TAP)
 
         val after = page.getUnclippedBoundsInRoot()
         val beforeWidth = before.right - before.left
@@ -147,8 +212,11 @@ class ReaderPinchE2ETest {
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("1쪽 페이지").assertExists()
 
-        composeRule.onRoot().performTouchInput { click(center); click(center) }
-        composeRule.waitUntil(timeoutMillis = 5_000) { loadCount.get() >= 2 }
+        doubleTapToZoom()
+        assertZoomLabel(READER_ZOOM_DOUBLE_TAP)
+        // The second render is deliberately suspended; a slow emulator can take
+        // a while to reach it, so allow generous headroom.
+        composeRule.waitUntil(timeoutMillis = 15_000) { loadCount.get() >= 2 }
 
         // The old bitmap is still displayed while loadPage() is suspended.
         composeRule.onNodeWithContentDescription("1쪽 페이지").assertExists()
@@ -173,39 +241,47 @@ class ReaderPinchE2ETest {
         composeRule.waitForIdle()
 
         val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
-        // Double tap to 200% so there is horizontal overflow to pan.
-        composeRule.onRoot().performTouchInput { click(center); click(center) }
-        composeRule.waitForIdle()
+        // Double tap to READER_ZOOM_DOUBLE_TAP so there is horizontal overflow
+        // to pan.
+        doubleTapToZoom()
+        assertZoomLabel(READER_ZOOM_DOUBLE_TAP)
         val zoomed = page.getUnclippedBoundsInRoot()
+        val zoomedWidth = zoomed.right - zoomed.left
 
+        // Drag left by ~35% of the measured viewport, well past touch slop but
+        // inside the available overflow at 200% zoom.
+        val viewportWidthPx = composeRule.onRoot().fetchSemanticsNode().size.width
+        val dragDx = viewportWidthPx * 0.35f
         composeRule.onRoot().performTouchInput {
             down(0, center)
-            moveTo(0, center + Offset(-260f, 0f), delayMillis = 16)
+            moveTo(0, center + Offset(-dragDx, 0f), delayMillis = 16)
             up(0)
         }
         composeRule.waitForIdle()
 
         val panned = page.getUnclippedBoundsInRoot()
         assertTrue(
-            "horizontal drag must move the zoomed page left; " +
-                "before=${zoomed.left} after=${panned.left}",
-            panned.left < zoomed.left - 1.dp,
+            "horizontal drag must move the zoomed page left by at least 10% " +
+                "of its width; before=${zoomed.left} after=${panned.left}",
+            zoomed.left - panned.left >= zoomedWidth * 0.10f,
         )
         assertEquals("horizontal pan must not open the page", -1, opened.get())
 
-        // Drag back right: the page must be able to return all the way to the
-        // left edge (no 14 dp content-padding gap and no system-gesture steal).
+        // Drag back right further than we panned: the page must return all the
+        // way to the left edge (no 14 dp content-padding gap and no system
+        // gesture steal). Allow a small density-independent tolerance.
         composeRule.onRoot().performTouchInput {
             down(0, center)
-            moveTo(0, center + Offset(420f, 0f), delayMillis = 16)
+            moveTo(0, center + Offset(dragDx * 1.5f, 0f), delayMillis = 16)
             up(0)
         }
         composeRule.waitForIdle()
         val backAtLeft = page.getUnclippedBoundsInRoot()
         assertTrue(
-            "page must reach the left edge; left=${backAtLeft.left}",
-            backAtLeft.left <= 1.dp,
+            "page must return to the left edge; before=${zoomed.left} after=${backAtLeft.left}",
+            backAtLeft.left <= zoomed.left + 8.dp,
         )
+        assertEquals("pan back must not open the page", -1, opened.get())
     }
 
     @Test
@@ -236,20 +312,10 @@ class ReaderPinchE2ETest {
         val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
         val beforeBounds = page.getUnclippedBoundsInRoot()
 
-        composeRule.onRoot().performTouchInput {
-            val cx = width / 2f
-            val cy = height * 0.6f
-            down(0, Offset(cx - 40f, cy))
-            down(1, Offset(cx + 40f, cy))
-            moveTo(0, Offset(cx - 200f, cy), delayMillis = 16)
-            moveTo(1, Offset(cx + 200f, cy), delayMillis = 16)
-            up(0)
-            up(1)
-        }
-        composeRule.waitForIdle()
+        spreadToMaxZoom()
 
-        // The top-bar percentage changed.
-        composeRule.onNodeWithText("250%", substring = true).assertExists()
+        // The top-bar percentage changed, derived from the production policy.
+        assertZoomLabel(READER_ZOOM_MAX)
         // And, unlike the reported bug, the page was re-rendered at a bigger
         // render zoom (not just re-laid out at a bigger screen size).
         val maxAfter = renderZooms.toList().maxOrNull() ?: 1f

@@ -91,23 +91,36 @@ class PdfSheetBackE2ETest {
         composeRule.setContent {
             MaterialTheme {
                 // The exact gate ViewerScreen registers around its BackHandler.
+                // A disabled BackHandler does NOT consume the dispatcher event, so
+                // without an enabled callback while a sheet is open the activity's
+                // default back handling would finish it. Mirror the real sheet by
+                // keeping an always-enabled interceptor for that phase.
+                BackHandler(enabled = flags.anyOpen) { /* the open sheet consumes Back */ }
                 BackHandler(enabled = !flags.anyOpen) { closed += 1 }
                 Text("viewer")
             }
         }
 
-        composeRule.activity.onBackPressedDispatcher.onBackPressed()
-        composeRule.waitForIdle()
+        // onBackPressed() must run on the activity's main thread (the test body
+        // itself runs on the instrumentation thread). runOnIdle dispatches the
+        // lambda on the UI thread after Compose is idle; wait again afterwards so
+        // any state update from the BackHandler callback is published.
+        fun dispatchBack() {
+            composeRule.runOnIdle {
+                composeRule.activity.onBackPressedDispatcher.onBackPressed()
+            }
+            composeRule.waitForIdle()
+        }
+
+        dispatchBack()
         assertEquals("위치 sheet is open", 0, closed)
 
         composeRule.runOnIdle { flags = ViewerSheetFlags(showFileTools = true) }
-        composeRule.activity.onBackPressedDispatcher.onBackPressed()
-        composeRule.waitForIdle()
+        dispatchBack()
         assertEquals("파일 도구 sheet is open", 0, closed)
 
         composeRule.runOnIdle { flags = ViewerSheetFlags() }
-        composeRule.activity.onBackPressedDispatcher.onBackPressed()
-        composeRule.waitForIdle()
+        dispatchBack()
         assertEquals("idle viewer", 1, closed)
     }
 

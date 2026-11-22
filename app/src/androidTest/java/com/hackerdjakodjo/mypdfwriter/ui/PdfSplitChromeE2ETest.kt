@@ -2,13 +2,18 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -22,6 +27,18 @@ class PdfSplitChromeE2ETest {
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    /**
+     * Injects a tap near the left edge of a document tab. The tab node's centre
+     * overlaps the nested 48dp close button, so a centre click does not reach
+     * `onSelectTab` for short filenames.
+     */
+    private fun tapTabLeft(contentDescription: String) {
+        composeRule.onNodeWithContentDescription(contentDescription).performTouchInput {
+            click(Offset(width * 0.15f, height / 2f))
+        }
+        composeRule.waitForIdle()
+    }
 
     @Test
     fun floatingToolbarRoutesEveryPdfControl() {
@@ -200,9 +217,19 @@ class PdfSplitChromeE2ETest {
         }
 
         composeRule
-            .onNodeWithContentDescription("노트 크기 조절 핸들, 현재 70%, 탭하면 크기 선택")
+            .onNodeWithContentDescription(studyPaneDividerDescription(0.70f))
             .performClick()
-        composeRule.onNodeWithContentDescription("노트 크기 50%").performClick()
+        // The pill uses detectTapGestures with both onTap and onDoubleTap, so the
+        // single-tap action is only committed after the double-tap timeout. The
+        // Popup then lives in its own window; poll until its preset row is in the
+        // semantics tree instead of querying immediately after touch injection.
+        val preset50 = studyPanePresetDescription(STUDY_PANE_PRESETS.first())
+        composeRule.waitUntil("preset popup", 2_000L) {
+            composeRule.onAllNodesWithContentDescription(preset50)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription(preset50).performClick()
+        composeRule.waitForIdle()
         assertEquals(0.50f, selected, 0.0001f)
     }
 
@@ -376,11 +403,17 @@ class PdfSplitChromeE2ETest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("1.pdf, 선택됨").assertExists().performClick()
+        // Tap the left side of the tab node; its centre overlaps the nested 48dp
+        // close target, so a centre click would invoke onCloseTab instead.
+        tapTabLeft("1.pdf, 선택됨")
+        assertEquals("doc1", selected)
+
         composeRule.onNodeWithContentDescription("탭 닫기: 1.pdf").performClick()
         composeRule.onNodeWithContentDescription("숨겨진 탭 1개").assertExists().performClick()
-        composeRule.onNodeWithContentDescription("탭 메뉴").performClick()
-        composeRule.onNodeWithContentDescription("탭 숨기기").performClick()
+        // With four tabs the strip scrolls horizontally; the menu/hide targets
+        // can be outside the viewport, so scroll each into view before tapping.
+        composeRule.onNodeWithContentDescription("탭 메뉴").performScrollTo().performClick()
+        composeRule.onNodeWithContentDescription("탭 숨기기").performScrollTo().performClick()
 
         assertEquals("doc1", selected)
         assertEquals("doc1", closed)
@@ -419,16 +452,21 @@ class PdfSplitChromeE2ETest {
             }
         }
 
+        // ModalBottomSheet animates in and its scrollable content can extend past
+        // the visible window on a small AVD. Settle the sheet, then scroll every
+        // row into view before injecting a click at its centre.
+        composeRule.waitForIdle()
         composeRule.onNodeWithText("문서 탭").assertExists()
         listOf("다른 탭 닫기", "모든 탭 닫기", "탭 표시/숨기기", "메뉴 자동 숨김", "최근 문서", "위치")
             .forEach { composeRule.onNodeWithText(it).assertExists() }
-        composeRule.onNodeWithContentDescription("문서 탭 열기: 4.pdf").performClick()
-        composeRule.onNodeWithText("다른 탭 닫기").performClick()
-        composeRule.onNodeWithText("모든 탭 닫기").performClick()
-        composeRule.onNodeWithText("탭 표시/숨기기").performClick()
-        composeRule.onNodeWithText("메뉴 자동 숨김").performClick()
-        composeRule.onNodeWithText("최근 문서").performClick()
-        composeRule.onNodeWithText("위치").performClick()
+        composeRule.onNodeWithContentDescription("문서 탭 열기: 4.pdf")
+            .performScrollTo().performClick()
+        composeRule.onNodeWithText("다른 탭 닫기").performScrollTo().performClick()
+        composeRule.onNodeWithText("모든 탭 닫기").performScrollTo().performClick()
+        composeRule.onNodeWithText("탭 표시/숨기기").performScrollTo().performClick()
+        composeRule.onNodeWithText("메뉴 자동 숨김").performScrollTo().performClick()
+        composeRule.onNodeWithText("최근 문서").performScrollTo().performClick()
+        composeRule.onNodeWithText("위치").performScrollTo().performClick()
 
         assertEquals("doc4", switched)
         assertEquals(1, others)

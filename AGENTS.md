@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.39`** — `versionCode = 48`.
-- **Next version is `0.8.40` — `versionCode = 49`.**
+- Current delivered version: **`0.8.40`** — `versionCode = 49`.
+- **Next version is `0.8.41` — `versionCode = 50`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.41` | 50 | 2026-11-22 | — | PC emulator E2E run (86/86 pass): fix 15 flaky cases, release backup gate on throwing flush with regression test |
 | `0.8.40` | 49 | 2026-11-22 | — | Play closed-beta release build from latest main |
 | `0.8.39` | 48 | 2026-11-22 | `v0.8.39` | E2E expansion: 48 new instrumentation cases across PDF, notes, data/backup/help |
 | `0.8.38` | 47 | 2026-11-22 | `v0.8.38` | Latent bug pass: save/open/export races, pressure calibration, crop clip, backup/notebook concurrency, replay parity |
