@@ -69,6 +69,7 @@ import com.hackerdjakodjo.mypdfwriter.audio.AudioNoteControllerState
 import com.hackerdjakodjo.mypdfwriter.data.AudioMarker
 import com.hackerdjakodjo.mypdfwriter.data.AudioNote
 import com.hackerdjakodjo.mypdfwriter.data.AudioNoteStore
+import com.hackerdjakodjo.mypdfwriter.data.audioNoteStartedAt
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -164,6 +165,7 @@ fun AudioNotesSheet(
             pageIndex = recordingPage,
             filePath = result.filePath,
             durationMs = result.durationMs,
+            createdAt = audioNoteStartedAt(System.currentTimeMillis(), result.durationMs),
             markers = draftMarkers,
         )
         val updated = (notes.filterNot { it.id == note.id } + note)

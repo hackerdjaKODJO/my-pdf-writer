@@ -30,6 +30,23 @@ class AudioReplayTest {
     )
 
     @Test
+    fun `a saved note backdates its createdAt to the recording start`() {
+        val stoppedAt = 1_010_000L
+        val start = com.hackerdjakodjo.mypdfwriter.data.audioNoteStartedAt(stoppedAt, 10_000L)
+        assertEquals(1_000_000L, start)
+        val saved = note(start)
+        assertEquals(1_000_000L, audioReplayCutoffMs(saved, 0L))
+        assertFalse(
+            "a stroke from the middle of the recording is hidden at position 0",
+            annotationVisibleDuringReplay(annotation(1_003_000L), saved, 0L),
+        )
+        assertTrue(
+            "the same stroke appears at its recorded position",
+            annotationVisibleDuringReplay(annotation(1_003_000L), saved, 3_000L),
+        )
+    }
+
+    @Test
     fun cutoffUsesRecordingStartPlusPosition() {
         assertEquals(1_004_500L, audioReplayCutoffMs(note(), 4_500L))
         assertEquals(1_000_000L, audioReplayCutoffMs(note(), -500L))

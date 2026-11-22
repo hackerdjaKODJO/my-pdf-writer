@@ -47,7 +47,51 @@ data class NotePageManagerResult(
  * Every operation returns a new notebook and leaves its input untouched so the
  * editor can commit the whole result as one undo step.
  */
+/** Confirmation copy is count-aware; multi-page delete is just as destructive. */
+internal fun noteDeleteConfirmMessage(selectedCount: Int): String =
+    if (selectedCount <= 1) {
+        "이 페이지를 삭제할까요? 삭제한 페이지는 실행 취소로 되돌릴 수 있습니다."
+    } else {
+        "선택한 ${selectedCount}쪽을 삭제할까요? 삭제한 페이지는 실행 취소로 되돌릴 수 있습니다."
+    }
+
 object NotePageManager {
+    /** Deletes one page and keeps bookmarks pointing at the same logical pages. */
+    fun deletePage(notebook: Notebook, index: Int): Pair<Notebook, Int> {
+        val pages = notebook.pages
+        if (pages.size <= 1 || index !in pages.indices) {
+            return notebook to index.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+        }
+        val remaining = pages.toMutableList().apply { removeAt(index) }
+        val bookmarks = notebook.bookmarks.mapNotNull { bookmark ->
+            when {
+                bookmark.pageIndex == index -> null
+                bookmark.pageIndex > index -> bookmark.copy(pageIndex = bookmark.pageIndex - 1)
+                else -> bookmark
+            }
+        }
+        return notebook.copy(pages = remaining, bookmarks = bookmarks) to
+            (index - 1).coerceAtLeast(0)
+    }
+
+    /** Moves one page and remaps bookmarks that shifted with it. */
+    fun movePage(notebook: Notebook, from: Int, to: Int): Pair<Notebook, Int> {
+        val pages = notebook.pages
+        if (from !in pages.indices || to !in pages.indices) return notebook to from
+        val reordered = pages.toMutableList()
+        reordered.add(to, reordered.removeAt(from))
+        val bookmarks = notebook.bookmarks.map { bookmark ->
+            val index = bookmark.pageIndex
+            val mapped = when {
+                index == from -> to
+                from < index && index <= to -> index - 1
+                to <= index && index < from -> index + 1
+                else -> index
+            }
+            bookmark.copy(pageIndex = mapped)
+        }
+        return notebook.copy(pages = reordered, bookmarks = bookmarks) to to
+    }
 
     fun annotatedCount(pages: List<NotePage>): Int = pages.count { it.annotations.isNotEmpty() }
 

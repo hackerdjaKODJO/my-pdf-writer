@@ -278,8 +278,8 @@ fun NoteEditorScreen(
     var selection by remember(workingNotebook.id, page.id) {
         mutableStateOf<Set<String>>(emptySet())
     }
-    val selectedIds = remember(selection, page.annotations) {
-        selection.intersect(page.annotations.map { it.id }.toSet())
+    val selectedIds = remember(selection, page) {
+        NoteLayers.editableSelection(page, selection)
     }
     val selectedAnnotations = remember(selectedIds, page.annotations) {
         page.annotations.filter { it.id in selectedIds }
@@ -339,6 +339,7 @@ fun NoteEditorScreen(
     var showStudio by remember { mutableStateOf(false) }
     var showQuickTemplates by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
+    var editingTextId by remember { mutableStateOf<String?>(null) }
     // Masking cards are study-only. The on-page tape overlay is small and can be
     // switched off from the note menu or the card sheet so it never blocks writing.
     var showMaskingCards by remember { mutableStateOf(false) }
@@ -358,6 +359,7 @@ fun NoteEditorScreen(
         showMemoCards = true
     }
     var showDeletePage by remember { mutableStateOf(false) }
+    var deleteSelectionConfirmed by remember { mutableStateOf(false) }
     var photoImporting by remember { mutableStateOf(false) }
     var photoError by remember { mutableStateOf<String?>(null) }
     var textPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
@@ -621,12 +623,11 @@ fun NoteEditorScreen(
         val currentPages = workingNotebook.pages.ifEmpty { listOf(NotePage()) }
         if (currentPages.size <= 1) return
         val index = safeIndex.coerceIn(0, currentPages.lastIndex)
-        val mutable = currentPages.toMutableList()
-        mutable.removeAt(index)
         val before = workingNotebook
-        applyChange(workingNotebook.copy(pages = mutable))
+        val (updated, newIndex) = NotePageManager.deletePage(before, index)
+        applyChange(updated)
         queueRemovedTemplateAssets(before, workingNotebook)
-        onPageIndexChange((index - 1).coerceAtLeast(0))
+        onPageIndexChange(newIndex)
     }
 
     fun movePage(delta: Int) {
@@ -634,11 +635,9 @@ fun NoteEditorScreen(
         val index = safeIndex.coerceIn(0, currentPages.lastIndex)
         val target = index + delta
         if (target !in currentPages.indices) return
-        val mutable = currentPages.toMutableList()
-        val moved = mutable.removeAt(index)
-        mutable.add(target, moved)
-        applyChange(workingNotebook.copy(pages = mutable))
-        onPageIndexChange(target)
+        val (updated, newIndex) = NotePageManager.movePage(workingNotebook, index, target)
+        applyChange(updated)
+        onPageIndexChange(newIndex)
     }
 
     fun duplicateSelectedPages() {
@@ -1673,14 +1672,25 @@ fun NoteEditorScreen(
 
     if (showDeletePage) {
         AlertDialog(
-            onDismissRequest = { showDeletePage = false },
+            onDismissRequest = {
+                showDeletePage = false
+                deleteSelectionConfirmed = false
+            },
             title = { Text("페이지 삭제") },
-            text = { Text("이 페이지를 삭제할까요? 삭제한 페이지는 실행 취소로 되돌릴 수 있습니다.") },
+            text = {
+                Text(
+                    noteDeleteConfirmMessage(
+                        if (deleteSelectionConfirmed) selectedPageIds.size else 1,
+                    ),
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showDeletePage = false
-                        deletePage()
+                        if (deleteSelectionConfirmed) deleteSelectedPages()
+                        else deletePage()
+                        deleteSelectionConfirmed = false
                     },
                 ) {
                     Text("삭제")
@@ -1713,6 +1723,38 @@ fun NoteEditorScreen(
                         layerId = activeLayer?.id,
                     )
                     updateCurrentPage { it.copy(annotations = it.annotations + annotation) }
+                }
+            },
+        )
+    }
+
+    val editingAnnotation = editingTextId?.let { id ->
+        workingNotebook.pages.getOrNull(safeIndex)?.annotations?.firstOrNull { it.id == id }
+    }
+    if (editingTextId != null && editingAnnotation != null) {
+        val targetId = editingAnnotation.id
+        NoteTextDialog(
+            initial = editingAnnotation.text,
+            confirmLabel = "저장",
+            onDismiss = { editingTextId = null },
+            onConfirm = { value ->
+                editingTextId = null
+                if (value.isNotBlank()) {
+                    applyChange(
+                        workingNotebook.copy(
+                            pages = workingNotebook.pages.mapIndexed { index, page ->
+                                if (index == safeIndex) {
+                                    page.copy(
+                                        annotations = noteReplaceAnnotationText(
+                                            page.annotations, targetId, value,
+                                        ),
+                                    )
+                                } else {
+                                    page
+                                }
+                            },
+                        ),
+                    )
                 }
             },
         )
@@ -1961,6 +2003,11 @@ fun NoteEditorScreen(
                 deleteSelection()
                 showSelectionSheet = false
             },
+            canEditText = noteCanEditText(selectedAnnotations),
+            onEditText = {
+                editingTextId = selectedAnnotations.firstOrNull { it.type == AnnotationType.TEXT }?.id
+                showSelectionSheet = false
+            },
             onDismiss = { showSelectionSheet = false },
         )
     }
@@ -1998,12 +2045,10 @@ fun NoteEditorScreen(
                 if (selectedPageIds.isEmpty()) duplicatePage() else duplicateSelectedPages()
             },
             onDelete = {
-                if (selectedPageIds.isEmpty()) {
-                    showPageSheet = false
-                    showDeletePage = true
-                } else {
-                    deleteSelectedPages()
-                }
+                // Multi-page delete is just as destructive; always confirm.
+                deleteSelectionConfirmed = selectedPageIds.isNotEmpty()
+                showPageSheet = false
+                showDeletePage = true
             },
             onMovePageUp = { movePage(-1) },
             onMovePageDown = { movePage(1) },
@@ -3980,10 +4025,12 @@ private fun NoteRenameDialog(
 
 @Composable
 private fun NoteTextDialog(
+    initial: String = "",
+    confirmLabel: String = "추가",
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var value by remember { mutableStateOf("") }
+    var value by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("글상자 입력") },
@@ -3999,7 +4046,7 @@ private fun NoteTextDialog(
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(value) }) {
-                Text("추가")
+                Text(confirmLabel)
             }
         },
         dismissButton = {

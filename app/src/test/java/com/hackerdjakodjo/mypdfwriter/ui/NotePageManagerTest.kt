@@ -369,4 +369,37 @@ class NotePageManagerTest {
         assertEquals(source, deleted.notebook)
         assertEquals(0, deleted.currentIndex)
     }
+
+    @Test
+    fun deleteConfirmationNamesTheNumberOfPages() {
+        assertTrue("single page keeps the original copy", noteDeleteConfirmMessage(1).startsWith("이 페이지"))
+        assertTrue("multi page names the count", noteDeleteConfirmMessage(3).contains("3쪽"))
+        assertTrue(noteDeleteConfirmMessage(0).startsWith("이 페이지"))
+    }
+
+    @Test
+    fun singlePageDeleteAndMoveKeepBookmarksOnTheirLogicalPages() {
+        val pages = listOf(NotePage(), NotePage(), NotePage())
+        val notebook = Notebook(
+            pages = pages,
+            bookmarks = listOf(
+                PageBookmark(pageIndex = 0, title = "A"),
+                PageBookmark(pageIndex = 2, title = "C"),
+            ),
+        )
+        val (afterDelete, newIndex) = NotePageManager.deletePage(notebook, 1)
+        assertEquals(2, afterDelete.pages.size)
+        assertEquals(0, newIndex)
+        assertEquals(
+            listOf(0, 1),
+            afterDelete.bookmarks.map { it.pageIndex },
+        )
+
+        val (afterMove, movedIndex) = NotePageManager.movePage(notebook, 0, 2)
+        assertEquals(2, movedIndex)
+        assertEquals(
+            listOf(2, 1),
+            afterMove.bookmarks.map { it.pageIndex },
+        )
+    }
 }

@@ -332,7 +332,7 @@ internal fun NoteMenuSheet(
                         NoteMenuEntry.SEARCH -> NoteMenuRow(
                             icon = Icons.Filled.Search,
                             title = "노트 검색",
-                            supporting = "메모·글상자·도장·서명에서 찾기",
+                            supporting = "메모·글상자·도장·서명·포스트잇·카드에서 찾기",
                             onClick = onSearch,
                         )
 

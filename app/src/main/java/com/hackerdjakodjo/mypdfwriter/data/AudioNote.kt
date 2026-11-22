@@ -47,6 +47,14 @@ data class AudioMarker(
  * directory. Audio never leaves the device. [markers] are page bookmarks into
  * this recording, not separate audio files.
  */
+/**
+ * Replay treats [AudioNote.createdAt] as the recording START. A stopped note
+ * only knows its end time, so backdate it by its duration; otherwise every
+ * stroke is already fully revealed at playback position zero.
+ */
+internal fun audioNoteStartedAt(stoppedAt: Long, durationMs: Long): Long =
+    stoppedAt - durationMs.coerceAtLeast(0L)
+
 data class AudioNote(
     val id: String = UUID.randomUUID().toString(),
     val ownerId: String,

@@ -87,9 +87,10 @@ class MaskingCardTest {
         assertEquals("질문", parsed.prompt)
         assertEquals("정답", parsed.answer)
         assertEquals(0f, parsed.x)
-        assertEquals(1f, parsed.y)
+        assertEquals(1f - MaskingCard.MIN_H, parsed.y, 0.0001f)
         assertEquals(1f, parsed.w)
         assertEquals(MaskingCard.MIN_H, parsed.h)
+        assertTrue("whole rect on page", parsed.x + parsed.w <= 1f && parsed.y + parsed.h <= 1f)
         assertEquals(MaskingCardState.HIDDEN, parsed.state)
         assertTrue(parsed.createdAt > 0L)
 
@@ -169,9 +170,10 @@ class MaskingCardTest {
     fun normalizedKeepsRectInsidePageAndNeverReturnsBlankId() {
         val card = MaskingCard(id = "  ", x = 0.95f, y = -0.2f, w = 2f, h = -1f).normalized()
         assertTrue(card.id.isNotBlank())
-        assertEquals(0.95f, card.x)
+        assertEquals(0f, card.x)
         assertEquals(0f, card.y)
         assertEquals(1f, card.w)
         assertEquals(MaskingCard.MIN_H, card.h)
+        assertTrue("whole rect stays on page", card.x + card.w <= 1f && card.y + card.h <= 1f)
     }
 }

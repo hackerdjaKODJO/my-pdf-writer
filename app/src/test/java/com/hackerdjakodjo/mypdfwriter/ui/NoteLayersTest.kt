@@ -294,4 +294,25 @@ class NoteLayersTest {
         assertEquals("base", NoteLayers.activeLayer(page, "missing")?.id)
         assertEquals(null, NoteLayers.activeLayer(page(layers = emptyList()), "top"))
     }
+
+    @Test
+    fun lockedOrHiddenLayerInkIsNotEditable() {
+        val page = NotePage(
+            layers = listOf(
+                layer("base"),
+                layer("locked").copy(locked = true),
+                layer("hidden").copy(visible = false),
+            ),
+            annotations = listOf(
+                ink("a", "base"),
+                ink("b", "locked"),
+                ink("c", "hidden"),
+                ink("d", null),
+            ),
+        )
+        assertEquals(
+            setOf("a", "d"),
+            NoteLayers.editableSelection(page, setOf("a", "b", "c", "d", "missing")),
+        )
+    }
 }

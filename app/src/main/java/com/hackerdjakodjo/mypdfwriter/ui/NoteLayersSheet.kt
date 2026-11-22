@@ -42,7 +42,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +79,8 @@ fun NoteLayersSheet(
     val active = NoteLayers.activeLayer(page, activeLayerId) ?: layers.first()
     val selected = layers.firstOrNull { it.id == active.id } ?: layers.first()
     val selectedIndex = layers.indexOfFirst { it.id == selected.id }
+    // One slider drag must be one undo step, not dozens of frames.
+    var draftOpacity by remember(selected.id) { mutableFloatStateOf(selected.opacity) }
     val defaultLayerId = layers.first().id
 
     var renameLayerId by remember { mutableStateOf<String?>(null) }
@@ -171,15 +176,16 @@ fun NoteLayersSheet(
                     Text("불투명도", style = MaterialTheme.typography.labelMedium)
                     Spacer(Modifier.weight(1f))
                     Text(
-                        "${(selected.opacity * 100).roundToInt()}%",
+                        "${(draftOpacity * 100).roundToInt()}%",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Slider(
-                    value = selected.opacity,
-                    onValueChange = {
-                        onChange(NoteLayers.setOpacity(page, selected.id, it))
+                    value = draftOpacity,
+                    onValueChange = { draftOpacity = it },
+                    onValueChangeFinished = {
+                        onChange(NoteLayers.setOpacity(page, selected.id, draftOpacity))
                     },
                     valueRange = 0.05f..1f,
                     modifier = Modifier.fillMaxWidth(),

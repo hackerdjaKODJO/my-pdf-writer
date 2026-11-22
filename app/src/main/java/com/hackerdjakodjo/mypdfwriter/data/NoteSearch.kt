@@ -6,6 +6,9 @@ enum class NoteSearchType(val label: String) {
     TEXT("텍스트"),
     STAMP("도장"),
     SIGNATURE("서명"),
+    POSTIT("포스트잇"),
+    MASKING("가리기 카드"),
+    CHECKLIST("체크리스트"),
 }
 
 /**
@@ -63,7 +66,7 @@ object NoteSearch {
                     NoteSearchType.TEXT -> annotation.text
                     NoteSearchType.STAMP -> annotation.stamp
                     NoteSearchType.SIGNATURE -> annotation.text.ifBlank { annotation.stamp }
-                    NoteSearchType.MEMO -> ""
+                    else -> ""
                 }
                 if (text.isNotBlank() && text.contains(needle, ignoreCase = true)) {
                     results.add(
@@ -73,6 +76,42 @@ object NoteSearch {
                             type = type,
                             annotationId = annotation.id,
                             snippet = snippet(text, needle),
+                        ),
+                    )
+                }
+            }
+            // Study cards are typed content too: a post-it IS a memo to a
+            // student, and flashcard/checklist text was previously invisible.
+            page.memoCards.forEach { card ->
+                if (card.text.contains(needle, ignoreCase = true)) {
+                    results.add(
+                        NoteSearchResult(
+                            pageIndex, page.id, NoteSearchType.POSTIT, card.id,
+                            snippet(card.text, needle),
+                        ),
+                    )
+                }
+            }
+            page.maskingCards.forEach { card ->
+                val text = listOf(card.prompt, card.answer)
+                    .filter { it.isNotBlank() }.joinToString(" ")
+                if (text.contains(needle, ignoreCase = true)) {
+                    results.add(
+                        NoteSearchResult(
+                            pageIndex, page.id, NoteSearchType.MASKING, card.id,
+                            snippet(text, needle),
+                        ),
+                    )
+                }
+            }
+            page.checklists.forEach { card ->
+                val text = (listOf(card.title) + card.items.map { it.text })
+                    .filter { it.isNotBlank() }.joinToString(" ")
+                if (text.contains(needle, ignoreCase = true)) {
+                    results.add(
+                        NoteSearchResult(
+                            pageIndex, page.id, NoteSearchType.CHECKLIST, card.id,
+                            snippet(text, needle),
                         ),
                     )
                 }

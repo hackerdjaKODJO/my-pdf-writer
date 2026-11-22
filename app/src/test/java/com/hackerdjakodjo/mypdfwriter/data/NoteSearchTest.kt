@@ -84,6 +84,33 @@ class NoteSearchTest {
     }
 
     @Test
+    fun studyCardTextIsSearchable() {
+        val source = notebook(
+            NotePage(
+                memoCards = listOf(MemoCard(id = "postit", text = "시험 범위 1~3장")),
+                maskingCards = listOf(
+                    MaskingCard(id = "mask", prompt = "세포분열 단계", answer = "간기·유사분열"),
+                ),
+                checklists = listOf(
+                    ChecklistCard(id = "check", title = "오답 정리", items = listOf(ChecklistItem(text = "2번 다시"))),
+                ),
+            ),
+        )
+        assertEquals(
+            NoteSearchType.POSTIT,
+            NoteSearch.search(source, "시험 범위").single().type,
+        )
+        assertEquals(
+            NoteSearchType.MASKING,
+            NoteSearch.search(source, "세포분열").single().type,
+        )
+        assertEquals(
+            NoteSearchType.CHECKLIST,
+            NoteSearch.search(source, "오답 정리").single().type,
+        )
+    }
+
+    @Test
     fun resultsAreDeterministicByPageThenMemoThenAnnotationOrder() {
         val source = notebook(
             NotePage(

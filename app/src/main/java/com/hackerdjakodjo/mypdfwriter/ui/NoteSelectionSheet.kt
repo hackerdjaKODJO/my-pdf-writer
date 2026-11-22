@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -59,6 +60,8 @@ internal fun NoteSelectionSheet(
     onPaste: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
+    canEditText: Boolean = false,
+    onEditText: () -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -93,6 +96,18 @@ internal fun NoteSelectionSheet(
                     )
                 }
                 TextButton(onClick = onDismiss) { Text("닫기") }
+            }
+
+            if (canEditText) {
+                TextButton(
+                    onClick = onEditText,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                ) {
+                    Text("텍스트 편집")
+                }
+                HorizontalDivider(Modifier.padding(vertical = 12.dp))
             }
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))

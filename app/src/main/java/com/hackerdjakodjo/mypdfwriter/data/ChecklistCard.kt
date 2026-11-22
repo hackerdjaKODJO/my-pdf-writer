@@ -72,14 +72,19 @@ data class ChecklistCard(
         }
         var safeId = id.trim()
         if (safeId.isBlank()) safeId = UUID.randomUUID().toString()
+        val safeW = finite(w, CHECK_DEFAULT_W).coerceIn(CHECK_MIN_W, 1f)
+        val safeH = finite(h, CHECK_DEFAULT_H).coerceIn(CHECK_MIN_H, 1f)
+        val (safeX, safeY) = clampCardOrigin(
+            finite(x, CHECK_DEFAULT_X), finite(y, CHECK_DEFAULT_Y), safeW, safeH,
+        )
         return copy(
             id = safeId,
             title = title.trim().take(Checklists.MAX_TITLE_TEXT).ifBlank { Checklists.DEFAULT_TITLE },
             items = safeItems,
-            x = finite(x, CHECK_DEFAULT_X).coerceIn(0f, 1f),
-            y = finite(y, CHECK_DEFAULT_Y).coerceIn(0f, 1f),
-            w = finite(w, CHECK_DEFAULT_W).coerceIn(CHECK_MIN_W, 1f),
-            h = finite(h, CHECK_DEFAULT_H).coerceIn(CHECK_MIN_H, 1f),
+            x = safeX,
+            y = safeY,
+            w = safeW,
+            h = safeH,
             createdAt = if (createdAt > 0L) createdAt else System.currentTimeMillis(),
         )
     }

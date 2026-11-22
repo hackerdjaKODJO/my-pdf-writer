@@ -23,6 +23,19 @@ private const val MASK_MIN_H = 0.04f
  * A4 page box (0..1), matching [Annotation] coordinates. H/W are clamped to a small
  * minimum so a card stays tappable on a phone.
  */
+/** Keeps a card's whole rectangle on the page, matching [MemoCard.normalized]. */
+internal fun clampCardOrigin(
+    x: Float,
+    y: Float,
+    w: Float,
+    h: Float,
+): Pair<Float, Float> {
+    val safeW = w.coerceIn(0f, 1f)
+    val safeH = h.coerceIn(0f, 1f)
+    return x.coerceIn(0f, (1f - safeW).coerceAtLeast(0f)) to
+        y.coerceIn(0f, (1f - safeH).coerceAtLeast(0f))
+}
+
 data class MaskingCard(
     val id: String = UUID.randomUUID().toString(),
     val prompt: String = "",
@@ -35,16 +48,23 @@ data class MaskingCard(
     val createdAt: Long = System.currentTimeMillis(),
 ) {
     /** Clamps geometry and repairs missing ids/state. Safe for old or hand-edited JSON. */
-    fun normalized(): MaskingCard = copy(
-        id = id.ifBlank { UUID.randomUUID().toString() },
-        prompt = prompt.trim(),
-        answer = answer.trim(),
-        x = finite(x, MASK_DEFAULT_X).coerceIn(0f, 1f),
-        y = finite(y, MASK_DEFAULT_Y).coerceIn(0f, 1f),
-        w = finite(w, MASK_DEFAULT_W).coerceIn(MASK_MIN_W, 1f),
-        h = finite(h, MASK_DEFAULT_H).coerceIn(MASK_MIN_H, 1f),
-        createdAt = if (createdAt > 0L) createdAt else System.currentTimeMillis(),
-    )
+    fun normalized(): MaskingCard {
+        val safeW = finite(w, MASK_DEFAULT_W).coerceIn(MASK_MIN_W, 1f)
+        val safeH = finite(h, MASK_DEFAULT_H).coerceIn(MASK_MIN_H, 1f)
+        val (safeX, safeY) = clampCardOrigin(
+            finite(x, MASK_DEFAULT_X), finite(y, MASK_DEFAULT_Y), safeW, safeH,
+        )
+        return copy(
+            id = id.ifBlank { UUID.randomUUID().toString() },
+            prompt = prompt.trim(),
+            answer = answer.trim(),
+            x = safeX,
+            y = safeY,
+            w = safeW,
+            h = safeH,
+            createdAt = if (createdAt > 0L) createdAt else System.currentTimeMillis(),
+        )
+    }
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)

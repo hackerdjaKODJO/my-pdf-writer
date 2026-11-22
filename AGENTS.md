@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.54`** — `versionCode = 63`.
-- **Next version is `0.8.55` — `versionCode = 64`.**
+- Current delivered version: **`0.8.55`** — `versionCode = 64`.
+- **Next version is `0.8.56` — `versionCode = 65`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.55` | 64 | 2026-11-23 | `v0.8.55` | Three-agent full note review: fix audio replay start time, bookmark remap on single-page delete/move, locked-layer selection gate, study-card pen hit-test, card rect clamping, opacity undo flood, multi-page delete confirmation; text-box editing and card-content search; 9 JVM tests |
 | `0.8.54` | 63 | 2026-11-23 | `v0.8.54` | Three-agent latent-bug review: flush PDF saves before backup/restore, keep study-pane page on capture, preserve lastPageIndex across editor saves, cancel stale reading saves, durable preference writes and restore fsync, fix stamp crash/replay off-by-one/cache monitor mismatch/stale-zoom swipe; 5 JVM tests |
 | `0.8.53` | 62 | 2026-11-22 | `v0.8.53` | Three-agent simplicity review vs Flexcil/GoodNotes: remove redundant tool picker, duplicate dismiss/hub/menu entries, two-tier ink settings, hide filters on empty library, collapse create-dialog options; 3 JVM tests |
 | `0.8.52` | 61 | 2026-11-22 | `v0.8.52` | Open-source ink review (three agents, perfect-freehand/libmypaint): full-press calibration + bootstrap, lifted-nib contact gate, deterministic paper tooth, layered sheet shadow, granular graphite, one ink-width floor; 7 JVM tests |

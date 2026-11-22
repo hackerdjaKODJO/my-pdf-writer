@@ -17,6 +17,20 @@ import com.hackerdjakodjo.mypdfwriter.data.NotePage
  * ink. Annotations with a null `layerId` belong to the first layer.
  */
 object NoteLayers {
+    /**
+     * Locked (or hidden) layer ink may be drawn and exported, but selection
+     * edits must not move, recolour, duplicate or delete it. Unknown layer ids
+     * fall back to the default visible/unlocked layer, matching [visibleAnnotations].
+     */
+    fun editableSelection(page: NotePage, ids: Set<String>): Set<String> {
+        if (ids.isEmpty()) return emptySet()
+        val layers = page.layers.associateBy { it.id }
+        return ids.filter { id ->
+            val annotation = page.annotations.firstOrNull { it.id == id } ?: return@filter false
+            val layer = annotation.layerId?.let { layers[it] }
+            layer?.locked != true && layer?.visible != false
+        }.toSet()
+    }
 
     const val DEFAULT_LAYER_NAME = "새 레이어"
 

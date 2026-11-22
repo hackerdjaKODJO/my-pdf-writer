@@ -217,7 +217,22 @@ fun NoteCanvas(
                     ).contains(position)
                 }
         }
-        val currentMemoHitTest by rememberUpdatedState(memoHitTest)
+        val studyOverlayHitTest: (Offset) -> Boolean = { position ->
+            memoHitTest(position) ||
+                (showMaskingCards && maskingCards.any { card ->
+                    studyOverlayScreenRect(
+                        card.x, card.y, card.w, card.h, total, pan,
+                        viewW, viewH, pageWidth, pageHeight,
+                    ).contains(position)
+                }) ||
+                (showChecklists && checklists.any { card ->
+                    studyOverlayScreenRect(
+                        card.x, card.y, card.w, card.h, total, pan,
+                        viewW, viewH, pageWidth, pageHeight,
+                    ).contains(position)
+                })
+        }
+        val currentMemoHitTest by rememberUpdatedState(studyOverlayHitTest)
 
         val gestureModifier = Modifier.pointerInput(
             page.id,
