@@ -98,6 +98,9 @@ fun NoteCanvas(
     pressureEnabled: Boolean = true,
     pressureCurve: PressureCurve = PressureCurve.DEFAULT,
     gestureUndoEnabled: Boolean = NOTE_GESTURE_UNDO_DEFAULT,
+    /** Preview-only refinement settings; commit keeps the editor's own policy. */
+    smoothHandwriting: Boolean = NOTE_SMOOTH_HANDWRITING_DEFAULT,
+    simplifyPoints: Boolean = NOTE_SIMPLIFY_POINTS_DEFAULT,
     selectionBounds: NoteSelectionBounds? = null,
     annotationProgress: (Annotation) -> Float = { 1f },
     // Study-only overlay. Defaults keep every existing caller byte-for-byte intact.
@@ -634,7 +637,11 @@ fun NoteCanvas(
 
                 selectionBounds?.let { drawSelectionBounds(native, it, pageWidth, pageHeight) }
 
-                val previewPoints = livePoints.toList()
+                val previewPoints = notePreviewPoints(
+                    livePoints.toList(),
+                    smoothHandwriting = smoothHandwriting,
+                    simplifyPoints = simplifyPoints,
+                )
                 if (previewPoints.isNotEmpty()) {
                     val previewType = if (tool == Tool.HIGHLIGHT) {
                         AnnotationType.HIGHLIGHT

@@ -2,6 +2,7 @@ package com.hackerdjakodjo.mypdfwriter.pdf
 
 import com.hackerdjakodjo.mypdfwriter.data.MIN_PRESSURE_WIDTH_FACTOR
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
+import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.PI
@@ -152,6 +153,36 @@ object PenStrokeGeometry {
         if (points.size < 2) return false
         if (isNeutralPressureStroke(points)) return false
         return pressureVariation(points) > 0f
+    }
+
+    /** Which renderer draws a pen annotation. */
+    enum class PenRenderer { PRESSURE_OUTLINE, BALLPOINT, FOUNTAIN, BRUSH, PENCIL }
+
+    /**
+     * Picks the pen renderer from the style and the FULL stroke's pressure flag.
+     *
+     * The generic filled outline used to swallow every pressure-varied stroke,
+     * which meant fountain/brush/pencil dynamics were unreachable for stylus
+     * input — exactly the input they were designed for. Only the default
+     * ballpoint keeps the outline; every other style renders with its own nib.
+     *
+     * [fullStrokeVariableOutline] must come from the complete annotation (never
+     * a replay prefix) so an audio reveal cannot change the renderer mid-stroke.
+     * Neutral/legacy strokes are unaffected: their outline flag is false.
+     */
+    fun selectPenRenderer(
+        penStyle: PenStyle,
+        fullStrokeVariableOutline: Boolean,
+    ): PenRenderer {
+        if (penStyle == PenStyle.BALLPOINT && fullStrokeVariableOutline) {
+            return PenRenderer.PRESSURE_OUTLINE
+        }
+        return when (penStyle) {
+            PenStyle.BALLPOINT -> PenRenderer.BALLPOINT
+            PenStyle.FOUNTAIN -> PenRenderer.FOUNTAIN
+            PenStyle.BRUSH -> PenRenderer.BRUSH
+            PenStyle.PENCIL -> PenRenderer.PENCIL
+        }
     }
 
     /**

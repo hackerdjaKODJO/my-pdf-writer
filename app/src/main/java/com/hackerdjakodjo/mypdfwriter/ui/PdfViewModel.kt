@@ -26,6 +26,7 @@ import com.hackerdjakodjo.mypdfwriter.data.PageOps
 import com.hackerdjakodjo.mypdfwriter.data.PageSize
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
 import com.hackerdjakodjo.mypdfwriter.data.PageTransforms
+import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.PdfBookmark
 import com.hackerdjakodjo.mypdfwriter.data.PdfReadingState
 import com.hackerdjakodjo.mypdfwriter.data.PdfReadingStore
@@ -76,6 +77,7 @@ data class ViewerUiState(
     /** Post-it cards pinned to pages; [MemoCard.page] is the zero-based page index. */
     val memoCards: List<MemoCard> = emptyList(),
     val tool: Tool = Tool.VIEW,
+    val penStyle: PenStyle = PenStyle.BALLPOINT,
     val color: Int = 0xFF1F4E79.toInt(),
     val strokeWidth: Float = 0.0035f,
     val fontSize: Float = 0.024f,
@@ -775,6 +777,9 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------------------------------------------------------------- tools
 
+    /** Nib style for new PDF pen annotations. */
+    fun setPenStyle(style: PenStyle) = _viewer.update { it?.copy(penStyle = style) }
+
     fun setTool(tool: Tool) {
         _viewer.update {
             it?.copy(
@@ -842,6 +847,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 else -> state.strokeWidth
             },
             points = usablePoints,
+            penStyle = if (type == AnnotationType.PEN) state.penStyle else PenStyle.BALLPOINT,
             opacity = when (type) {
                 AnnotationType.HIGHLIGHT, AnnotationType.REDACT -> 1f
                 else -> state.opacity

@@ -282,6 +282,7 @@ fun ViewerScreen(
         vm.setStrokeWidth(preset.width)
         vm.setOpacity(preset.opacity)
         viewerPenStyle = preset.penStyle
+        vm.setPenStyle(preset.penStyle)
     }
 
     val state = stateFlow.value ?: return
@@ -1214,6 +1215,8 @@ fun ViewerScreen(
                         onMemoCardChange = vm::upsertMemoCard,
                         onHideMemoCardOverlay = { showMemoCardsOnPage = false },
                         onDeleteMemoCard = vm::deleteMemoCard,
+                        penStyle = state.penStyle,
+                        pressureEnabled = true,
                         onZoomChange = vm::setZoom,
                         onAddStroke = vm::addStroke,
                         onEraseStroke = vm::eraseStroke,

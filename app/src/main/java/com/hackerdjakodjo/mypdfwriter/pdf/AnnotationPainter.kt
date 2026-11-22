@@ -357,23 +357,32 @@ object AnnotationPainter {
         height: Float,
         ink: InkContext,
     ) {
-        // The gate is derived from the full stroke in inkContext; the second term
-        // keeps direct calls honest. A replay prefix cannot flip it on or off.
-        if (ink.variableOutline || PenStrokeGeometry.useVariableWidthOutline(annotation.points)) {
-            drawVariableWidthOutline(canvas, annotation, width, height, ink)
-            return
-        }
-        when (annotation.penStyle) {
-            PenStyle.BALLPOINT -> {
+        // The decision uses the FULL stroke's flag carried by InkContext, never
+        // a replay prefix, and only the default ballpoint uses the generic
+        // outline. Fountain/brush/pencil keep their own nib dynamics even when
+        // the stylus varied pressure — that is exactly their purpose.
+        when (
+            PenStrokeGeometry.selectPenRenderer(
+                annotation.penStyle,
+                ink.variableOutline,
+            )
+        ) {
+            PenStrokeGeometry.PenRenderer.PRESSURE_OUTLINE -> {
+                drawVariableWidthOutline(canvas, annotation, width, height, ink)
+            }
+            PenStrokeGeometry.PenRenderer.BALLPOINT -> {
                 if (ink.neutral) {
                     drawStroke(canvas, annotation, width, height, baseAlpha = 255, response = ink.mean)
                 } else {
                     drawBallpoint(canvas, annotation, width, height, ink.series)
                 }
             }
-            PenStyle.FOUNTAIN -> drawFountain(canvas, annotation, width, height, ink)
-            PenStyle.BRUSH -> drawBrush(canvas, annotation, width, height, ink)
-            PenStyle.PENCIL -> drawPencil(canvas, annotation, width, height, ink.mean, ink.series, ink.neutral)
+            PenStrokeGeometry.PenRenderer.FOUNTAIN ->
+                drawFountain(canvas, annotation, width, height, ink)
+            PenStrokeGeometry.PenRenderer.BRUSH ->
+                drawBrush(canvas, annotation, width, height, ink)
+            PenStrokeGeometry.PenRenderer.PENCIL ->
+                drawPencil(canvas, annotation, width, height, ink.mean, ink.series, ink.neutral)
         }
     }
 

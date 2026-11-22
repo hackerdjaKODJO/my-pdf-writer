@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.47`** — `versionCode = 56`.
-- **Next version is `0.8.48` — `versionCode = 57`.**
+- Current delivered version: **`0.8.48`** — `versionCode = 57`.
+- **Next version is `0.8.49` — `versionCode = 58`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.48` | 57 | 2026-11-22 | `v0.8.48` | Commercial ink feel: pen-style renderers restored for stylus strokes (no more generic outline), WYSIWYG note preview shares commit geometry, PDF captures stylus pressure and pen style in preview+commit; 7 JVM regressions |
 | `0.8.47` | 56 | 2026-11-22 | `v0.8.47` | Play closed-beta delivery bundling the user-first PDF viewer UX pass (horizontal swipe page turn at fit zoom, one-tap ± zoom pill, Home help button, export promoted to the first-level settings row, stale help/guide copy corrected, quick cards relabelled as disclosures) with the v0.8.43–0.8.45 zoom/pan fixes (re-clamp pan on every zoom/viewport change, pivot-preserving zoom, 25% headroom band, double-tap fit↔200% toggle) across both continuous and single-page viewers; 3 JVM + 2 E2E regressions |
 | `0.8.46` | 55 | 2026-11-22 | `v0.8.46` | UX pass from three user-journey agents: horizontal swipe page turning in both viewers at fit zoom, one-tap ± zoom pill, Home help button, export promoted to the first-level settings row, stale help/guide paths corrected, quick cards relabelled as disclosures; 3 JVM + 2 E2E regressions |
 | `0.8.45` | 54 | 2026-11-22 | `v0.8.45` | Fix zoom-then-pan in BOTH viewers: 25% headroom band keeps an edge-focal zoom from pinning pan at a clamp edge (continuous), single-page double tap now toggles fit↔200% and pinch/double-tap pan keeps a reserved band; 3 JVM + 4 E2E regressions |

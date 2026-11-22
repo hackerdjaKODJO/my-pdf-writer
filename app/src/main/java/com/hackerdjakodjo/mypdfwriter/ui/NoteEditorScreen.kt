@@ -1380,6 +1380,8 @@ fun NoteEditorScreen(
                         pressureEnabled = pressureInk,
                         pressureCurve = pressureCurve,
                         gestureUndoEnabled = gestureUndo,
+                        smoothHandwriting = smoothHandwriting,
+                        simplifyPoints = simplifyPoints,
                         selectionBounds = selectionBounds,
                         annotationProgress = annotationProgress,
                         maskingCards = page.maskingCards,
@@ -1450,6 +1452,8 @@ fun NoteEditorScreen(
                     pressureEnabled = pressureInk,
                     pressureCurve = pressureCurve,
                     gestureUndoEnabled = gestureUndo,
+                    smoothHandwriting = smoothHandwriting,
+                    simplifyPoints = simplifyPoints,
                     selectionBounds = selectionBounds,
                     annotationProgress = annotationProgress,
                     maskingCards = page.maskingCards,
@@ -2184,6 +2188,8 @@ private fun NoteCanvasPane(
     pressureEnabled: Boolean,
     pressureCurve: PressureCurve,
     gestureUndoEnabled: Boolean,
+    smoothHandwriting: Boolean = NOTE_SMOOTH_HANDWRITING_DEFAULT,
+    simplifyPoints: Boolean = NOTE_SIMPLIFY_POINTS_DEFAULT,
     selectionBounds: NoteSelectionBounds?,
     annotationProgress: (Annotation) -> Float,
     maskingCards: List<MaskingCard> = emptyList(),
@@ -2228,6 +2234,8 @@ private fun NoteCanvasPane(
             pressureEnabled = pressureEnabled,
             pressureCurve = pressureCurve,
             gestureUndoEnabled = gestureUndoEnabled,
+            smoothHandwriting = smoothHandwriting,
+            simplifyPoints = simplifyPoints,
             selectionBounds = selectionBounds,
             annotationProgress = annotationProgress,
             maskingCards = maskingCards,
@@ -4002,6 +4010,33 @@ internal fun noteRefineForCommit(
         simplifyTolerance = if (simplifyPoints) NOTE_SIMPLIFY_TOLERANCE else 0f,
         chaikinIterations = if (smoothHandwriting) 1 else 0,
     )
+}
+
+/**
+ * Samples kept "behind the finger" are refined with the same policy as the
+ * committed stroke, so the ink no longer snaps into shape on pointer-up. Only
+ * a short guarded tail stays raw; [NOTE_PREVIEW_STABLE_GUARD] samples are the
+ * maximum that lazy-brush, Chaikin and stabilization can rewrite when a new
+ * point arrives. The commit path is untouched.
+ */
+internal const val NOTE_PREVIEW_STABLE_GUARD = 2
+
+internal fun notePreviewPoints(
+    raw: List<NormalizedPoint>,
+    stabilizeStrength: Float = NOTE_STABILIZE_STRENGTH,
+    smoothHandwriting: Boolean = NOTE_SMOOTH_HANDWRITING_DEFAULT,
+    simplifyPoints: Boolean = NOTE_SIMPLIFY_POINTS_DEFAULT,
+    guard: Int = NOTE_PREVIEW_STABLE_GUARD,
+): List<NormalizedPoint> {
+    if (raw.size <= guard + 5) return raw
+    val split = raw.size - guard
+    var stable = raw.take(split)
+    if (stabilizeStrength > 0f) {
+        stable = NoteInk.stabilize(stable, stabilizeStrength)
+    }
+    val refined = noteRefineForCommit(stable, smoothHandwriting, simplifyPoints)
+    val emit = if (smoothHandwriting) refined.dropLast(guard) else refined
+    return emit + raw.drop(split)
 }
 
 internal fun notebookAnnotationCount(notebook: Notebook): Int =

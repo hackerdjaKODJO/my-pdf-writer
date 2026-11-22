@@ -31,6 +31,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -38,9 +40,13 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.data.DEFAULT_INK_PRESSURE
 import com.hackerdjakodjo.mypdfwriter.data.DocumentStyle
 import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
+import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import com.hackerdjakodjo.mypdfwriter.data.PressureCalibrator
+import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
@@ -91,11 +97,18 @@ private class CanvasTransform {
      * display space, then [PdfCrop.displayToPage] inverse-maps it into page
      * space. With zero insets this is exactly the old page-centred formula.
      */
-    fun normalize(position: Offset): NormalizedPoint {
+    fun normalize(
+        position: Offset,
+        pressure: Float = DEFAULT_INK_PRESSURE,
+    ): NormalizedPoint {
         val displayX = (position.x - viewW / 2f - pan.x) / (visibleW * total) + 0.5f
         val displayY = (position.y - viewH / 2f - pan.y) / (visibleH * total) + 0.5f
         val page = PdfCrop.displayToPage(displayX, displayY, insets)
-        return NormalizedPoint(page.x.coerceIn(0f, 1f), page.y.coerceIn(0f, 1f))
+        return NormalizedPoint(
+            page.x.coerceIn(0f, 1f),
+            page.y.coerceIn(0f, 1f),
+            pressure,
+        )
     }
 }
 
@@ -119,6 +132,11 @@ fun PdfCanvas(
     nightMode: Boolean = false,
     /** Screen dimming factor in 0.4..1.0; 1f draws no scrim. */
     brightness: Float = 1f,
+    /** Nib style for new pen annotations and the live preview. */
+    penStyle: PenStyle = PenStyle.BALLPOINT,
+    /** Stylus pressure capture; false keeps finger/mouse ink neutral. */
+    pressureEnabled: Boolean = false,
+    pressureCurve: PressureCurve = PressureCurve.DEFAULT,
     /**
      * View-only crop margins in normalized page fractions. Applied uniformly to
      * the rendered page and every overlay (ink, markup, text, search, links and
@@ -537,6 +555,19 @@ fun PdfCanvas(
                     }
 
                     else -> awaitEachGesture {
+                        // One calibrator per stroke: stylus pressure is now a real
+                        // sample instead of the neutral 1f every PDF stroke used
+                        // to carry. Finger/mouse stay neutral by construction.
+                        val calibrator = PressureCalibrator()
+                        fun capture(change: PointerInputChange): Float = effectiveInkPressure(
+                            pointerType = change.type,
+                            rawPressure = change.pressure,
+                            pressureEnabled = pressureEnabled,
+                            pressureCurve = pressureCurve,
+                            calibrator = calibrator,
+                            pressed = change.pressed,
+                        )
+
                         val down = awaitFirstDown(requireUnconsumed = false)
                         if (currentMemoHitTest(down.position)) {
                             down.consume()
@@ -545,7 +576,8 @@ fun PdfCanvas(
                         down.consume()
                         val strokeStartMs = SystemClock.elapsedRealtime()
                         livePoints.clear()
-                        livePoints.add(transform.normalize(down.position))
+                        calibrator.reset()
+                        livePoints.add(transform.normalize(down.position, capture(down)))
                         var pressed = true
                         while (pressed) {
                             val event = awaitPointerEvent()
@@ -554,7 +586,7 @@ fun PdfCanvas(
                                 change.consume()
                                 pressed = false
                             } else if (change.positionChanged()) {
-                                livePoints.add(transform.normalize(change.position))
+                                livePoints.add(transform.normalize(change.position, capture(change)))
                                 change.consume()
                             }
                         }
@@ -732,6 +764,7 @@ fun PdfCanvas(
                             color = color,
                             width = if (type == AnnotationType.HIGHLIGHT) 0.02f else strokeWidth,
                             points = previewPoints,
+                            penStyle = if (type == AnnotationType.PEN) penStyle else PenStyle.BALLPOINT,
                             opacity = if (type == AnnotationType.HIGHLIGHT) 1f else opacity,
                         ),
                         pageW,

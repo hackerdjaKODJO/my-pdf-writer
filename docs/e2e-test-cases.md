@@ -80,6 +80,8 @@ operations (`PageOps.kt` / `PdfViewModel.kt`), and restored
 | CANVAS-01 | Single-page double tap toggles fit↔200%; off-centre pinch then right drag pans | Instrumentation `PdfCanvasZoomPanE2ETest` | Compiled |
 | UX-03 | Fit-zoom horizontal swipe turns pages in both viewers; zoomed drag pans only | Instrumentation `ReaderPinchE2ETest`, `PdfCanvasZoomPanE2ETest` | Compiled |
 | UX-04 | Swipe threshold, axis dominance and page-target clamping | JVM `PageSwipeTest` | Passing |
+| INK-01 | Pen renderer selection keeps stylus style; neutral strokes unchanged | JVM `PenRendererSelectionTest` | Passing |
+| INK-02 | Prefix-stable note preview geometry (no snap on pointer-up) | JVM `NotePreviewGeometryTest` | Passing |
 | HOME-09 | Persistent create FAB is present on Home | Instrumentation `HomeStartE2ETest` | Compiled |
 | HOME-10 | Tag search filters the tag overview; empty-PDF search keeps import copy | JVM `HomeLibraryPolicyTest` | Passing |
 | HOME-11 | Home tab survives leaving Home and returning | Instrumentation `HomeStartE2ETest` | Compiled |
