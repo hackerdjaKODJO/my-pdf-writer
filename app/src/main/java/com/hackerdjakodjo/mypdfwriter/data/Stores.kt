@@ -57,7 +57,7 @@ class LibraryStore(context: Context) {
     fun save(docs: List<RecentDoc>) {
         val array = JSONArray()
         docs.forEach { array.put(it.toJson()) }
-        prefs.edit().putString(KEY, array.toString()).apply()
+        prefs.edit().putString(KEY, array.toString()).commit()
     }
 
     fun upsert(doc: RecentDoc): List<RecentDoc> {

@@ -408,10 +408,11 @@ internal object BackupArchive {
         zip.getInputStream(entry).use { input ->
             FileOutputStream(target).use { output ->
                 input.copyTo(output, COPY_BUFFER)
-                // The archive is synced once before extraction and the staged
-                // tree is installed with atomic renames. Syncing every small
-                // notebook entry dominated restore time on flash storage.
+                // Flush alone only reaches the OS page cache: an abrupt power
+                // loss right after a "restore complete" could leave truncated
+                // JSON. Keep one sync per extracted entry for durability.
                 output.flush()
+                output.fd.sync()
             }
         }
     }

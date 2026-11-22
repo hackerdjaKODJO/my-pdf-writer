@@ -48,6 +48,13 @@ import com.hackerdjakodjo.mypdfwriter.ui.resolveImportUri
 import com.hackerdjakodjo.mypdfwriter.ui.theme.MyPdfWriterTheme
 import kotlinx.coroutines.delay
 
+/** Reopening the same study notebook keeps the page (e.g. a just-captured excerpt). */
+internal fun studyPanePageIndexAfterOpen(
+    currentId: String?,
+    incomingId: String,
+    currentIndex: Int,
+): Int = if (currentId == incomingId) currentIndex.coerceAtLeast(0) else 0
+
 class MainActivity : ComponentActivity() {
 
     private val viewModel: PdfViewModel by viewModels()
@@ -103,7 +110,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        backupViewModel.flushPendingSavesBeforeBackup = { notebookViewModel.saveNow() }
+        backupViewModel.flushPendingSavesBeforeBackup = {
+            notebookViewModel.saveNow()
+            // PDF doc-state writes are normally debounced on IO; drain them now
+            // so the backup ZIP cannot miss the newest annotation/page state.
+            viewModel.flushPdfSavesNow()
+        }
         handleViewIntent(intent)
 
         setContent {
@@ -167,8 +179,15 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 val openStudyPane: (Notebook) -> Unit = { notebook ->
+                    // Capturing to an already-open pane appends a page and moves
+                    // the pane there. Reopening the same notebook must not snap
+                    // back to page 1 and hide the excerpt the user just added.
+                    studyPanePageIndex = studyPanePageIndexAfterOpen(
+                        studyPaneNotebook?.id,
+                        notebook.id,
+                        studyPanePageIndex,
+                    )
                     studyPaneNotebook = notebook
-                    studyPanePageIndex = 0
                     studyPaneDocId = viewer?.docId
                 }
                 val closeStudyPane: () -> Unit = {

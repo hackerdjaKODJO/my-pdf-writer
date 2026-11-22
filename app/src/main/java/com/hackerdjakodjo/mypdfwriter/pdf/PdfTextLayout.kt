@@ -78,8 +78,7 @@ object PdfTextLayout {
     }
 
     /** Drops cached layouts after a document rewrite. */
-    @Synchronized
-    fun clearLineCache() = lineCache.clear()
+    fun clearLineCache() = synchronized(lineCache) { lineCache.clear() }
 
     suspend fun lines(source: File): List<PdfTextLine> = withContext(Dispatchers.IO) {
         val key = TextCacheKey(source.absolutePath, source.lastModified(), source.length())

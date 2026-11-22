@@ -26,7 +26,7 @@ class PenBoxStore(context: Context) {
         val safe = presets.ifEmpty { defaultPenPresets() }
         val array = JSONArray()
         safe.forEach { array.put(it.toJson()) }
-        prefs.edit().putString(KEY, array.toString()).apply()
+        prefs.edit().putString(KEY, array.toString()).commit()
         // A deleted preset must not leave a dangling favorite id behind. When the
         // key is absent we deliberately do not create it: first-run defaults apply.
         pruneFavoritesIfPresent(safe)
@@ -39,7 +39,7 @@ class PenBoxStore(context: Context) {
     fun loadFavorites(): List<PenPreset> = FavoritePens.fromRaw(favoritesRaw(), load())
 
     fun saveFavorites(ids: List<String>) {
-        prefs.edit().putString(FavoritePens.KEY, FavoritePens.encode(ids)).apply()
+        prefs.edit().putString(FavoritePens.KEY, FavoritePens.encode(ids)).commit()
     }
 
     fun toggleFavorite(presetId: String) {

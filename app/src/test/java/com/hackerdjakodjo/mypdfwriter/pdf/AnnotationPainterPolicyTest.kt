@@ -429,6 +429,27 @@ class AnnotationPainterPolicyTest {
     }
 
     @Test
+    fun `replay reveal count does not overshoot from float rounding`() {
+        val points = (0 until 10).map { NormalizedPoint(it / 9f, 0.5f, 1f) }
+        assertEquals(3, AnnotationPainter.revealedPoints(points, 0.3f).size)
+        assertEquals(1, AnnotationPainter.revealedPoints(points, 0.0001f).size)
+        assertEquals(10, AnnotationPainter.revealedPoints(points, 1f).size)
+        assertEquals(5, AnnotationPainter.revealedPoints(points, 0.5f).size)
+    }
+
+    @Test
+    fun `stamp border never throws on a tiny text box`() {
+        listOf(0.1f, 1f, 9f, 9.375f, 96f).forEach { boxHeight ->
+            val border = stampBorderWidth(0.004f, 500f, boxHeight)
+            assertTrue("border $border for box $boxHeight", border >= 1.5f)
+            assertTrue("finite for box $boxHeight", border.isFinite())
+        }
+        val tiny = stampBorderWidth(0.004f, 500f, 0.1f)
+        assertEquals(1.5f, tiny, 0f)
+        assertTrue(stampBorderWidth(Float.NaN, Float.NaN, Float.NaN).isFinite())
+    }
+
+    @Test
     fun `ink context is reused for unchanged strokes and recomputed when geometry changes`() {
         AnnotationPainter.clearInkContextCache()
         val pen = stroke(PenStyle.FOUNTAIN, listOf(1f, 0.4f, 0.8f, 0.5f))

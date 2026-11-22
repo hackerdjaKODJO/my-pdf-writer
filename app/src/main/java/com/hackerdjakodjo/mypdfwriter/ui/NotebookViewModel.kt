@@ -44,6 +44,16 @@ internal fun mergeNotebookIntoLibrary(
     return merged.sortedByDescending { it.updatedAt }
 }
 
+/**
+ * The ViewModel owns the current page index; the editor's working notebook may
+ * still hold an older value. Keep the newer page when merging an editor save so
+ * a "swipe then write" flow does not lose the resume position.
+ */
+internal fun mergeResumePage(incoming: Notebook, previous: Notebook?): Notebook {
+    if (previous == null || previous.id != incoming.id) return incoming
+    return incoming.copy(lastPageIndex = previous.lastPageIndex)
+}
+
 class NotebookViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = NotebookStore(application)
@@ -210,7 +220,10 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
      * close, back press or drag-dismiss cannot lose the last stroke.
      */
     fun saveDetached(notebook: Notebook): Notebook {
-        val updated = notebook.normalized().copy(updatedAt = System.currentTimeMillis())
+        val updated = mergeResumePage(
+            notebook.normalized().copy(updatedAt = System.currentTimeMillis()),
+            _current.value,
+        )
         val startedAt = System.currentTimeMillis()
         saveLocked(updated)
         NoteTrace.event(
@@ -238,7 +251,10 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             "updatedAt" to notebook.updatedAt,
         )
 
-        val updated = notebook.normalized().copy(updatedAt = System.currentTimeMillis())
+        val updated = mergeResumePage(
+            notebook.normalized().copy(updatedAt = System.currentTimeMillis()),
+            _current.value,
+        )
         if (previous != null && previous.id == updated.id) {
             logAnnotationDecreases(previous, updated)
         }

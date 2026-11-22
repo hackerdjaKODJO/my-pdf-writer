@@ -506,6 +506,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         }
         docSaveJob?.cancel()
         docSaveJob = null
+        // A pending reading-save must not land after a restore replaces the
+        // sidecar with the backed-up last page/bookmarks.
+        readingSaveJob?.cancel()
+        readingSaveJob = null
         _viewer.value = null
         _pageBitmap.value = null
         _pageLinks.value = emptyList()
@@ -2032,6 +2036,24 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         // One drain loop owns the tmp file; never cancel it mid-write. Close/error
         // paths keep calling persistNow(), so their final state is always written.
         if (startWriter) docSaveJob = viewModelScope.launch(Dispatchers.IO) { drainDocSaves() }
+    }
+
+    /**
+     * Synchronous barrier used before creating a backup. The normal writer is
+     * asynchronous, so a ZIP created immediately after a stroke could miss the
+     * newest annotation state. Draining the queue here makes the archive see it.
+     */
+    fun flushPdfSavesNow() {
+        while (true) {
+            val next: DocState?
+            synchronized(docSaveLock) {
+                val (updated, state) = docSaveQueue.take()
+                docSaveQueue = updated
+                next = state
+            }
+            if (next == null) return
+            docStore.save(next)
+        }
     }
 
     /** Writes the newest pending state in a loop until nothing remains queued. */

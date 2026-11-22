@@ -320,7 +320,9 @@ fun NoteCanvas(
                 // so it must not teach the calibrator anything either. Sampling those
                 // pointers used to drag the learned minimum toward the pointer-up
                 // pressure of zero and make every later stroke render too bold.
-                if (canDraw) pressureCalibrator.reset()
+                // Do NOT reset here: the calibrator is scoped to the pointerInput
+                // session and must keep the pen's learned range across strokes,
+                // otherwise every stroke starts with the wrong ink weight.
                 val downPressure = if (canDraw) capturePressure(down) else DEFAULT_INK_PRESSURE
 
                 if (canDraw) {

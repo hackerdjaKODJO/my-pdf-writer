@@ -31,6 +31,24 @@ import kotlin.math.sin
  * and redaction blackouts). [progress] lets replay reveal each annotation gradually;
  * callers that want the normal result keep the default of `1f`.
  */
+/**
+ * Non-throwing stamp border width. A very long stamp (or a tiny thumbnail)
+ * shrinks the text box below 1.5px; `coerceIn(1.5f, smaller)` used to throw and
+ * abort the whole annotation layer / PDF export.
+ */
+internal fun stampBorderWidth(
+    annotationWidth: Float,
+    widthPx: Float,
+    boxHeight: Float,
+): Float {
+    val width = if (annotationWidth.isFinite()) annotationWidth.coerceAtLeast(0f) else 0f
+    val canvas = if (widthPx.isFinite()) widthPx.coerceAtLeast(1f) else 1f
+    val max = if (boxHeight.isFinite()) boxHeight * 0.16f else 0f
+    return (width * canvas * 1.4f)
+        .coerceAtLeast(1.5f)
+        .coerceAtMost(maxOf(1.5f, max))
+}
+
 object AnnotationPainter {
 
     fun draw(
@@ -168,8 +186,13 @@ object AnnotationPainter {
         }
     }
 
-    private fun revealedPoints(points: List<NormalizedPoint>, fraction: Float): List<NormalizedPoint> {
-        val count = ceil(points.size * fraction).toInt().coerceIn(1, points.size)
+    internal fun revealedPoints(
+        points: List<NormalizedPoint>,
+        fraction: Float,
+    ): List<NormalizedPoint> {
+        // ceil(0.3f * 10) can be 4 because 0.3f is 0.30000001f; rounding to
+        // nearest keeps replay aligned with the audio timeline.
+        val count = (points.size * fraction + 0.5f).toInt().coerceIn(1, points.size)
         return if (count >= points.size) points else points.subList(0, count).toList()
     }
 
@@ -329,8 +352,9 @@ object AnnotationPainter {
     }
 
     /** Test/document-switch hook: drops all derived ink contexts. */
-    @Synchronized
-    internal fun clearInkContextCache() = inkContextCache.clear()
+    internal fun clearInkContextCache() = synchronized(inkContextCache) {
+        inkContextCache.clear()
+    }
 
     /** Cache-backed entry point; pure-JVM tests use it to assert reuse. */
     internal fun inkContextCached(
@@ -1178,7 +1202,7 @@ object AnnotationPainter {
 
         val border = Paint(paint).apply {
             style = Paint.Style.STROKE
-            strokeWidth = (annotation.width * width * 1.4f).coerceIn(1.5f, boxHeight * 0.16f)
+            strokeWidth = stampBorderWidth(annotation.width, width, boxHeight)
             alpha = opacityAlpha(annotation)
         }
         canvas.drawRoundRect(-boxWidth / 2f, -boxHeight / 2f, boxWidth / 2f, boxHeight / 2f, radius, radius, border)

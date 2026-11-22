@@ -43,7 +43,7 @@ class OnboardingStore(context: Context) {
     fun hasSeen(): Boolean = prefs.getBoolean(KEY_SEEN, false)
 
     fun markSeen() {
-        prefs.edit().putBoolean(KEY_SEEN, true).apply()
+        prefs.edit().putBoolean(KEY_SEEN, true).commit()
     }
 
     companion object {

@@ -449,8 +449,11 @@ fun PdfCanvas(
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        // transform.zoom is the synchronous source of truth: a
+                        // double tap writes it immediately while the parent's
+                        // `zoom` prop only updates on the next composition.
                         if (currentMemoHitTest(down.position) || memoGestureActive.value ||
-                            currentZoom > 1f
+                            currentZoom > 1f || transform.zoom > 1f
                         ) return@awaitEachGesture
                         val id = down.id.value
                         var totalX = 0f

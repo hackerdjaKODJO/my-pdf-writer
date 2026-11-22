@@ -144,7 +144,21 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     fun restore(uri: Uri) {
         if (!operationGate.tryStart()) return
-        _state.update { it.copy(busy = true, progress = 0, message = null, restoredAt = null) }
+        // Land all pending writes BEFORE replacing files, otherwise an in-flight
+        // debounced save can land after the restore and overwrite restored data.
+        try {
+            withFlushedSaves(flushPendingSavesBeforeBackup) {
+                _state.update {
+                    it.copy(busy = true, progress = 0, message = null, restoredAt = null)
+                }
+            }
+        } catch (error: Exception) {
+            operationGate.finish()
+            _state.update {
+                it.copy(busy = false, message = "복원하지 못했습니다: ${error.readableMessage()}")
+            }
+            return
+        }
         viewModelScope.launch {
             try {
                 var lastPercent = -1
