@@ -90,7 +90,7 @@ ViewModel update/save timings, and annotation-count decreases). Use `복사` to
 copy the text into a bug report, or `비우기` to clear it. The trace is in-memory
 only and is never written to disk or sent over the network.
 
-## 0.8.8 E2E matrix
+## 0.8.68 E2E matrix
 
 Current JVM suite: 879 tests, 0 failures. Instrumentation suite: 85 cases, compiled. The full case matrix, per-suite
 status and on-device manual checklist are in

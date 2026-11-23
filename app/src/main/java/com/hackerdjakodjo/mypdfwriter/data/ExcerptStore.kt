@@ -9,15 +9,12 @@ class ExcerptStore(context: Context) {
 
     private val dir = File(context.filesDir, "excerpts").apply { mkdirs() }
 
-    fun load(docId: String): List<Excerpt> {
-        val file = File(dir, "$docId.json")
-        if (!file.exists()) return emptyList()
-        return runCatching {
-            Excerpt.listFromJson(JSONArray(file.readText()))
-                .filter { it.text.isNotBlank() }
-                .sortedByDescending { it.createdAt }
-        }.getOrDefault(emptyList())
-    }
+    fun load(docId: String): List<Excerpt> =
+        readWithTmpRecovery(File(dir, "$docId.json")) {
+            Excerpt.listFromJson(JSONArray(it))
+                .filter { entry -> entry.text.isNotBlank() }
+                .sortedByDescending { entry -> entry.createdAt }
+        } ?: emptyList()
 
     fun save(docId: String, excerpts: List<Excerpt>) {
         dir.mkdirs()

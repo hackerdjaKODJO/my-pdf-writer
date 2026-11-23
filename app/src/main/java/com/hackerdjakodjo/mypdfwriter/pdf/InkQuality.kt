@@ -15,7 +15,9 @@ object InkQuality {
     const val PRESSURE_EPSILON = 0.01f
 
     /** Stationary samples must not be emitted faster than this (ms). */
-    const val MIN_STATIONARY_SAMPLE_MS = 8L
+    const val MIN_STATIONARY_SAMPLE_MS = 32L
+    /** A long dwell must not grow the stroke without bound. */
+    const val MAX_STATIONARY_SAMPLES = 24
 
     const val DEPOSIT_INFLUENCE = 0.22f
     const val DEPOSIT_GAIN_MIN = 0.85f
@@ -37,8 +39,10 @@ object InkQuality {
         positionChanged: Boolean,
         elapsedMs: Long = MIN_STATIONARY_SAMPLE_MS,
         eps: Float = PRESSURE_EPSILON,
+        emitted: Int = 0,
     ): Boolean {
         if (positionChanged) return false
+        if (emitted >= MAX_STATIONARY_SAMPLES) return false
         if (elapsedMs < MIN_STATIONARY_SAMPLE_MS) return false
         val previous = clampPressure(previousPressure)
         val next = clampPressure(nextPressure)

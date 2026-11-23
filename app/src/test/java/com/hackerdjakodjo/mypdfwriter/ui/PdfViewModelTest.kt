@@ -80,6 +80,35 @@ class PdfViewModelTest {
     }
 
     @Test
+    fun undoOfAPageEditRestoresItsOriginalNotesAndCards() {
+        val before = listOf(PageSpec(0), PageSpec(1), PageSpec(2))
+        val notesBefore = mapOf(1 to "b", 2 to "c")
+        val cardsBefore = listOf(card("c", 1))
+        val state = ViewerUiState(
+            docId = "doc",
+            pages = before.dropLast(1),
+            pageCount = 2,
+            pageIndex = 0,
+            notes = mapOf(1 to "c"),
+            memoCards = emptyList(),
+        )
+        val snapshot = DocSnapshot(
+            pages = before,
+            annotations = emptyList(),
+            pageIndex = 1,
+            notes = notesBefore,
+            memoCards = cardsBefore,
+            bookmarks = listOf(com.hackerdjakodjo.mypdfwriter.data.PdfBookmark(pageIndex = 1, title = "b")),
+        )
+        val restored = restoreSnapshotInto(state, snapshot, true, false)
+        assertEquals(notesBefore, restored.notes)
+        assertEquals(cardsBefore, restored.memoCards)
+        assertEquals("b", restored.noteDraft)
+        assertEquals(3, restored.pageCount)
+        assertEquals(1, snapshot.bookmarks?.size)
+    }
+
+    @Test
     fun undoToAPageWithoutANoteClearsTheDraft() {
         val pages = listOf(PageSpec(0))
         val state = ViewerUiState(

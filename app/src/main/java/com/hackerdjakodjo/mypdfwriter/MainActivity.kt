@@ -47,6 +47,7 @@ import com.hackerdjakodjo.mypdfwriter.ui.ViewerScreen
 import com.hackerdjakodjo.mypdfwriter.ui.MULTI_IMPORT_NOTICE
 import com.hackerdjakodjo.mypdfwriter.ui.clampStudyPaneFraction
 import com.hackerdjakodjo.mypdfwriter.ui.isMultiImport
+import com.hackerdjakodjo.mypdfwriter.ui.pdfImportActions
 import com.hackerdjakodjo.mypdfwriter.ui.resolveImportUri
 import com.hackerdjakodjo.mypdfwriter.ui.theme.MyPdfWriterTheme
 import kotlinx.coroutines.delay
@@ -501,8 +502,7 @@ internal fun clearIntentCarriers(sink: IntentCarrierSink) {
 }
 
 /** Every supported import path joins local recents so resume works everywhere. */
-internal fun shouldAddToRecents(action: String?): Boolean =
-    action == "android.intent.action.SEND" || action == "android.intent.action.VIEW"
+internal fun shouldAddToRecents(action: String?): Boolean = action in pdfImportActions
 
 /**
  * A PDF opened *during* a restore must survive its completion. Only discard the

@@ -1,7 +1,6 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.activity.ComponentActivity
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -57,7 +56,9 @@ class ToolsScreenE2ETest {
 
     @Test
     fun allFifteenCardsExistUnderSixOrderedSections() {
-        render()
+        val file = File(ApplicationProvider.getApplicationContext<android.content.Context>().cacheDir, "tools-inventory.pdf")
+        PdfFixture.writeFixture(file)
+        render(source = file, name = "lecture.pdf")
         composeRule.onNodeWithText("PDF 도구").assertExists()
         val cards = listOf(
             "PDF 합치기", "이미지 → PDF", "PDF → 이미지",
@@ -78,13 +79,18 @@ class ToolsScreenE2ETest {
     }
 
     @Test
-    fun withoutASourceEveryToolIsDisabled() {
+    fun withoutASourceShowsOnlyImportToolsAndACallout() {
         render()
-        composeRule.onNodeWithText("도구를 쓰려면 먼저 PDF를 여세요").assertExists()
+        composeRule.onNodeWithText("PDF 파일을 선택하면 페이지·OCR·보안·양식·공유 도구가 열립니다.").assertExists()
+        listOf("PDF 합치기", "이미지 → PDF").forEach { label ->
+            composeRule.onNodeWithText(label).assertExists()
+        }
         listOf("페이지 추출", "문서 분할", "최적화", "문서 정보", "암호 설정", "양식 채우기")
             .forEach { label ->
-                composeRule.onNodeWithText(label).performScrollTo().assertIsNotEnabled()
-                composeRule.waitForIdle()
+                assertTrue(
+                    "$label must not be shown before a source is selected",
+                    composeRule.onAllNodesWithText(label).fetchSemanticsNodes().isEmpty(),
+                )
             }
     }
 

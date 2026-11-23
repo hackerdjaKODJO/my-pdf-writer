@@ -18,7 +18,10 @@ class PdfHubSheetTest {
             pdfMenuTopLevelGroups.map { it.title },
         )
         assertEquals(4, pdfMenuTopLevelGroups.size)
-        assertEquals(pdfMenuTopLevelGroups.toSet(), pdfMenuTopLevelGroups.toSet())
+        assertEquals(
+            setOf("읽기", "필기", "담기", "설정"),
+            pdfMenuTopLevelGroups.map { it.title }.toSet(),
+        )
         // Nothing at the first level collapses: students should see every group.
         assertTrue(pdfMenuTopLevelGroups.none { it.expandable })
     }

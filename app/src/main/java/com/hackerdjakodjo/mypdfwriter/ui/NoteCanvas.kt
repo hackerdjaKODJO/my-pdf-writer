@@ -342,6 +342,7 @@ fun NoteCanvas(
                 val downPressure = if (canDraw) capturePressure(down) else DEFAULT_INK_PRESSURE
                 var lastPressure = downPressure
                 var lastPressureAtMs = SystemClock.elapsedRealtime()
+                var stationaryEmitted = 0
 
                 if (canDraw) {
                     down.consume()
@@ -452,8 +453,10 @@ fun NoteCanvas(
                                     nextPressure = primaryPressure,
                                     positionChanged = false,
                                     elapsedMs = SystemClock.elapsedRealtime() - lastPressureAtMs,
+                                    emitted = stationaryEmitted,
                                 )
                             ) {
+                                stationaryEmitted++
                                 // Leaning on a stationary nib must still darken/widen
                                 // the ink instead of being discarded as "no movement".
                                 livePoints.add(normalize(lastPosition, primaryPressure))

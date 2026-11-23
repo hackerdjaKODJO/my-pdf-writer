@@ -120,8 +120,10 @@ import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
 import com.hackerdjakodjo.mypdfwriter.pdf.SummarySafWriter
 import com.hackerdjakodjo.mypdfwriter.pdf.TextActions
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 import kotlin.math.roundToInt
 
@@ -502,7 +504,15 @@ fun ViewerScreen(
             searchHighlights = emptyList()
             return@LaunchedEffect
         }
-        val lines = runCatching { PdfTextLayout.lines(file) }.getOrDefault(emptyList())
+        val lines = withContext(Dispatchers.IO) {
+            try {
+                PdfTextLayout.lines(file)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                emptyList()
+            }
+        }
         searchHighlights = SearchMatchLayout.matchesForPage(lines, state.pageIndex, query)
     }
 
@@ -1253,7 +1263,7 @@ fun ViewerScreen(
                         onHideMemoCardOverlay = { showMemoCardsOnPage = false },
                         onDeleteMemoCard = vm::deleteMemoCard,
                         penStyle = state.penStyle,
-                        pressureEnabled = true,
+                        pressureEnabled = state.pressureInk,
                         pressureCurve = remember(inkStore) { inkStore.load().pressureCurve },
                         onZoomChange = vm::setZoom,
                         onAddStroke = vm::addStroke,
@@ -1837,7 +1847,7 @@ fun ViewerScreen(
     if (showFileTools) {
         PdfHubSubSheet(
             title = "파일 도구",
-            subtitle = "쪽 편집·쪽 관리, PDF 도구, 인쇄·공유, 문서 정보·페이지 잠금 · 내보내기는 설정에서",
+            subtitle = "페이지 이동·페이지 편집, PDF 도구, 인쇄·공유, 문서 정보·페이지 잠금 · 내보내기는 설정에서",
             actions = fileToolsSheetActions,
             onDismiss = { showFileTools = false },
         )

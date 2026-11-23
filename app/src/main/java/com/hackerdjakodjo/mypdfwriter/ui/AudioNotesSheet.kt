@@ -173,6 +173,8 @@ fun AudioNotesSheet(
         if (store.save(ownerId, updated)) {
             notes = updated
         } else {
+            // Do not leave an .m4a that no index entry can ever reach.
+            store.deleteAudioFile(ownerId, result.filePath)
             errorMessage = "녹음 파일은 만들어졌지만 목록을 저장하지 못했습니다. 잠시 후 다시 시도하세요."
         }
         draftMarkers = emptyList()

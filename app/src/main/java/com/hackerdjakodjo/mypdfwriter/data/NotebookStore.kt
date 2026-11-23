@@ -10,17 +10,15 @@ class NotebookStore(context: Context) {
     private val dir = File(context.filesDir, "notebooks").apply { mkdirs() }
 
     fun loadAll(): List<Notebook> {
-        val files = dir.listFiles { file -> file.isFile && file.name.endsWith(".json") }
+        val ids = dir.listFiles { file -> file.isFile && sidecarId(file) != null }
+            ?.mapNotNull(::sidecarId)
+            ?.toSet()
             ?: return emptyList()
-        return files.mapNotNull { file ->
-            runCatching { Notebook.fromJson(JSONObject(file.readText())) }.getOrNull()
-        }.sortedByDescending { it.updatedAt }
+        return ids.mapNotNull(::load).sortedByDescending { it.updatedAt }
     }
 
-    fun load(id: String): Notebook? {
-        val file = File(dir, "$id.json")
-        if (!file.exists()) return null
-        return runCatching { Notebook.fromJson(JSONObject(file.readText())) }.getOrNull()
+    fun load(id: String): Notebook? = readWithTmpRecovery(File(dir, "$id.json")) {
+        Notebook.fromJson(JSONObject(it))
     }
 
     fun save(notebook: Notebook) {

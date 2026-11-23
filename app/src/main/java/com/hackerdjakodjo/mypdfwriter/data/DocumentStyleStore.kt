@@ -9,12 +9,10 @@ class DocumentStyleStore(context: Context) {
 
     private val dir = File(context.filesDir, "docstyles").apply { mkdirs() }
 
-    fun load(docId: String): DocumentStyle {
-        val file = File(dir, "$docId.json")
-        if (!file.exists()) return DocumentStyle()
-        return runCatching { DocumentStyle.fromJson(JSONObject(file.readText())) }
-            .getOrDefault(DocumentStyle())
-    }
+    fun load(docId: String): DocumentStyle =
+        readWithTmpRecovery(File(dir, "$docId.json")) {
+            DocumentStyle.fromJson(JSONObject(it))
+        } ?: DocumentStyle()
 
     fun save(docId: String, style: DocumentStyle) {
         val target = File(dir, "$docId.json")

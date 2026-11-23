@@ -157,6 +157,8 @@ class IntentImportPolicyTest {
     fun sendAndViewIntentsJoinRecentsSoResumeWorks() {
         assertTrue(shouldAddToRecents(send))
         assertTrue("opening from another app must join recents", shouldAddToRecents(view))
+        assertTrue("multiple shared PDFs must join recents too",
+            shouldAddToRecents("android.intent.action.SEND_MULTIPLE"))
         assertFalse(shouldAddToRecents(null))
         assertFalse(shouldAddToRecents("android.intent.action.MAIN"))
     }

@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.42
+# E2E test cases — My PDF Writer 0.8.68
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator. On the Windows PC the existing `myreader_pixel7` AVD
@@ -11,14 +11,14 @@ Instrumentation APKs can also be compiled without a device via
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 879+ | **Passing** |
+| JVM unit tests | 1009 | **Passing** |
 | Instrumentation/E2E (existing component suites) | 16 classes, 86 cases | **Passing** on PC emulator |
 | Instrumentation/E2E (new real-file suites) | 4 classes, 18 cases | **Passing** on PC emulator |
-| **Total instrumentation** | **104 cases** | **104/104 passing** on `myreader_pixel7` (API 36) |
+| **Total instrumentation** | **127 cases** | **127/127 passing** on `myreader_pixel7` (API 36) |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (signed with the upload key) |
 
-### Real-file E2E suites (added in 0.8.42)
+### Real-file E2E suites (added in 0.8.68)
 
 These drive the actual `MainActivity`, `PdfViewModel`, `BackupViewModel` and
 `NotebookViewModel` against on-disk state — not synthetic composables:

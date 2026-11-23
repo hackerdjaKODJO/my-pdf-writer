@@ -10,12 +10,8 @@ class DocStateStore(context: Context) {
 
     private val dir = File(context.filesDir, "docstates").apply { mkdirs() }
 
-    fun load(docId: String): DocState? {
-        val file = File(dir, "$docId.json")
-        if (!file.exists()) return null
-        return runCatching {
-            DocState.fromJson(docId, JSONObject(file.readText()))
-        }.getOrNull()
+    fun load(docId: String): DocState? = readWithTmpRecovery(File(dir, "$docId.json")) {
+        DocState.fromJson(docId, JSONObject(it))
     }
 
     fun save(state: DocState, dirty: Boolean = false) {

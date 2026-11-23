@@ -93,7 +93,7 @@ class PdfSplitChromeE2ETest {
     }
 
     @Test
-    fun compactToolbarKeepsSearchAndPageNavigationButHidesSecondaryTools() {
+    fun compactToolbarKeepsStudyActionsButHidesSecondaryChrome() {
         var previous = 0
         var next = 0
         var pages = 0
@@ -129,9 +129,11 @@ class PdfSplitChromeE2ETest {
         composeRule.onNodeWithContentDescription("이전 페이지").performClick()
         composeRule.onNodeWithContentDescription("다음 페이지").performClick()
         composeRule.onNodeWithContentDescription("페이지 선택").performClick()
-        // The default 85% study pane is ESSENTIAL/compact; search must survive it.
+        // The default 85% study pane keeps the actions the pane exists for.
         composeRule.onNodeWithContentDescription("검색").performClick()
-        listOf("텍스트 선택", "현재 페이지 북마크", "주석", "학습 메뉴").forEach {
+        composeRule.onNodeWithContentDescription("텍스트 선택").performClick()
+        composeRule.onNodeWithContentDescription("주석").performClick()
+        listOf("현재 페이지 북마크", "학습 메뉴").forEach {
             composeRule.onNodeWithContentDescription(it).assertIsNotDisplayed()
         }
 
@@ -139,9 +141,9 @@ class PdfSplitChromeE2ETest {
         assertEquals(1, next)
         assertEquals(1, pages)
         assertEquals(1, search)
-        assertEquals(0, selection)
+        assertEquals(1, selection)
         assertEquals(0, bookmark)
-        assertEquals(0, tools)
+        assertEquals(1, tools)
         assertEquals(0, hub)
     }
 

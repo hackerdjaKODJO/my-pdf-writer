@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.data.AudioNoteStore
 import com.hackerdjakodjo.mypdfwriter.data.DocState
 import com.hackerdjakodjo.mypdfwriter.data.DocStateStore
 import com.hackerdjakodjo.mypdfwriter.data.DisplayPrefs
@@ -36,6 +37,7 @@ import com.hackerdjakodjo.mypdfwriter.data.PdfReadingStore
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfCrop
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfExporter
@@ -116,6 +118,8 @@ data class ViewerUiState(
      * of the undo snapshot; the UI mirrors this into `setSelectedWords`.
      */
     val selectedWords: List<PdfTextWord> = emptyList(),
+    /** Shared with the note editor: stylus pressure capture can be turned off. */
+    val pressureInk: Boolean = true,
 )
 
 /** Pure memo-card list transitions; JVM-tested without an Android ViewModel. */
@@ -136,19 +140,25 @@ internal fun deleteMemoCardFrom(cards: List<MemoCard>, id: String): List<MemoCar
     cards.filterNot { it.id == id }
 
 /**
- * Undo payload for page layout and ink only. Notes and memo cards are deliberately
- * absent: undoing an annotation must not roll back a later note/card edit.
+ * Undo payload for page layout and ink. Page operations capture notes, memo cards
+ * and bookmarks too, because their page indices were remapped by the edit. Legacy
+ * snapshots without those fields keep the current values for ink-only undo.
  */
 internal data class DocSnapshot(
     val pages: List<PageSpec>,
     val annotations: List<Annotation>,
     val pageIndex: Int,
+    // Null means "legacy snapshot, keep the current values" (ink-only undo).
+    // A page-layout edit captures all three so undo cannot mis-associate them.
+    val notes: Map<Int, String>? = null,
+    val memoCards: List<MemoCard>? = null,
+    val bookmarks: List<PdfBookmark>? = null,
 )
 
 /**
- * Applies a snapshot while keeping the *current* notes and memo cards. The note
- * draft is re-derived from those notes at the restored page, so undo/redo never
- * leaves a draft that no longer matches the page being shown.
+ * Applies a snapshot, restoring captured notes/cards when the page layout changed
+ * and keeping current ones for ink-only undo. The note draft is re-derived from
+ * the notes at the restored page.
  */
 internal fun restoreSnapshotInto(
     state: ViewerUiState,
@@ -160,11 +170,11 @@ internal fun restoreSnapshotInto(
     return state.copy(
         pages = snapshot.pages,
         annotations = snapshot.annotations,
-        notes = state.notes,
-        memoCards = state.memoCards,
+        notes = snapshot.notes ?: state.notes,
+        memoCards = snapshot.memoCards ?: state.memoCards,
         pageIndex = page,
         pageCount = snapshot.pages.size,
-        noteDraft = state.notes[page] ?: "",
+        noteDraft = (snapshot.notes ?: state.notes)[page] ?: "",
         canUndo = canUndo,
         canRedo = canRedo,
     )
@@ -351,6 +361,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private var docSaveJob: Job? = null
     private var docSaveQueue = DocSaveQueue()
     private val docSaveLock = Any()
+    /** Serialises the two docstate writers (drain + pre-backup flush). */
+    private val docWriteLock = Any()
 
     private val undoStack = ArrayDeque<DocSnapshot>()
     private val redoStack = ArrayDeque<DocSnapshot>()
@@ -430,6 +442,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     strokeWidth = ink.width,
                     highlightWidth = ink.highlightWidth,
                     opacity = ink.opacity,
+                    pressureInk = ink.pressureInk,
                     docName = displayName,
                     pageCount = pages.size,
                     pageIndex = restoredPage,
@@ -505,6 +518,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closeDocument() {
+        AnnotationPainter.clearInkContextCache()
         openJob?.cancel()
         openGate.invalidate()
         renderJob?.cancel()
@@ -535,6 +549,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
      * stale viewer here would immediately overwrite the restored annotations.
      */
     fun discardDocument() {
+        AnnotationPainter.clearInkContextCache()
         openJob?.cancel()
         openGate.invalidate()
         renderJob?.cancel()
@@ -831,15 +846,16 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     /** Persists the active ink so the note editor keeps the same pen. */
     private fun persistInk() {
         val state = _viewer.value ?: return
-        val curve = inkStore.load().pressureCurve
+        val ink = inkStore.load()
         inkStore.save(
             com.hackerdjakodjo.mypdfwriter.data.InkSettings(
                 penStyle = state.penStyle,
                 color = state.color,
                 width = state.strokeWidth,
                 opacity = state.opacity,
-                pressureCurve = curve,
+                pressureCurve = ink.pressureCurve,
                 highlightWidth = state.highlightWidth,
+                pressureInk = ink.pressureInk,
             ),
         )
     }
@@ -1159,10 +1175,13 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         return kotlin.math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
     }
 
-    private fun snapshot(state: ViewerUiState) = DocSnapshot(
+    private fun snapshot(state: ViewerUiState, bookmarks: List<PdfBookmark> = _bookmarks.value) = DocSnapshot(
         pages = state.pages,
         annotations = state.annotations,
         pageIndex = state.pageIndex,
+        notes = state.notes,
+        memoCards = state.memoCards,
+        bookmarks = bookmarks,
     )
 
     private fun pushHistory(state: ViewerUiState) {
@@ -1181,6 +1200,14 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             canRedo = redoStack.isNotEmpty(),
         )
         if (pagesChanged) {
+            // Page edits remap notes/cards/bookmarks; undo must roll all of them
+            // back together or page 2 ends up showing page 4's note.
+            snapshot.bookmarks?.let { restoredBookmarks ->
+                if (_bookmarks.value != restoredBookmarks) {
+                    _bookmarks.value = restoredBookmarks
+                    saveReadingNow()
+                }
+            }
             rebuild(restored)
         } else {
             _viewer.value = restored
@@ -2081,6 +2108,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         _library.value = libraryStore.remove(uri)
         if (deleteAnnotations) {
             val id = docIdFor(Uri.parse(uri))
+            // A just-closed document may still have an in-flight docstate write
+            // that would resurrect its JSON after deletion.
+            flushPdfSavesNow()
+            readingSaveJob?.cancel()
+            readingSaveJob = null
+            AudioNoteStore(getApplication()).audioDirectory(id).deleteRecursively()
             docStore.delete(id)
             docStyleStore.delete(id)
             excerptStore.delete(id)
@@ -2132,29 +2165,36 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
      * newest annotation state. Draining the queue here makes the archive see it.
      */
     fun flushPdfSavesNow() {
-        while (true) {
-            val next: DocState?
-            synchronized(docSaveLock) {
-                val (updated, state) = docSaveQueue.take()
-                docSaveQueue = updated
-                next = state
+        // Hold the same lock the drain uses while writing: this both waits for an
+        // in-flight save and prevents the drain from taking another entry until
+        // the queue is empty. Otherwise the ZIP could capture a half-written tmp.
+        synchronized(docWriteLock) {
+            while (true) {
+                val next: DocState?
+                synchronized(docSaveLock) {
+                    val (updated, state) = docSaveQueue.take()
+                    docSaveQueue = updated
+                    next = state
+                }
+                if (next == null) return
+                docStore.save(next)
             }
-            if (next == null) return
-            docStore.save(next)
         }
     }
 
     /** Writes the newest pending state in a loop until nothing remains queued. */
     private fun drainDocSaves() {
-        while (true) {
-            val next: DocState?
-            synchronized(docSaveLock) {
-                val (updated, state) = docSaveQueue.take()
-                docSaveQueue = updated
-                next = state
+        synchronized(docWriteLock) {
+            while (true) {
+                val next: DocState?
+                synchronized(docSaveLock) {
+                    val (updated, state) = docSaveQueue.take()
+                    docSaveQueue = updated
+                    next = state
+                }
+                if (next == null) return
+                docStore.save(next)
             }
-            if (next == null) return
-            docStore.save(next)
         }
     }
 
@@ -2181,7 +2221,9 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             lastPage = state.pageIndex.coerceIn(0, (state.pageCount - 1).coerceAtLeast(0)),
             bookmarks = _bookmarks.value,
         ).normalized(state.pageCount)
-        viewModelScope.launch(Dispatchers.IO) { readingStore.save(state.docId, reading) }
+        readingSaveJob = viewModelScope.launch(Dispatchers.IO) {
+            readingStore.save(state.docId, reading)
+        }
     }
 
     private fun text(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)

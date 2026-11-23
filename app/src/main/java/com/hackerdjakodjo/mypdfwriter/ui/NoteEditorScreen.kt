@@ -1132,9 +1132,15 @@ fun NoteEditorScreen(
     fun applyPenPreset(preset: PenPreset) {
         tool = preset.tool
         color = preset.color
-        strokeWidth = preset.width
-        opacity = preset.opacity
-        penStyle = preset.penStyle
+        if (preset.tool == Tool.HIGHLIGHT) {
+            // The highlighter has its own width; writing it into the pen width
+            // corrupts the pen and leaves the highlight visually unchanged.
+            highlightWidth = HighlightInk.clamp(preset.width)
+        } else {
+            strokeWidth = preset.width
+            opacity = preset.opacity
+            penStyle = preset.penStyle
+        }
         showPenBox = false
     }
 
@@ -1144,7 +1150,7 @@ fun NoteEditorScreen(
             name = name,
             color = color,
             width = if (savedTool == Tool.HIGHLIGHT) {
-                noteStrokeWidth(AnnotationType.HIGHLIGHT, strokeWidth)
+                noteStrokeWidth(AnnotationType.HIGHLIGHT, highlightWidth)
             } else {
                 strokeWidth
             },
@@ -2490,8 +2496,10 @@ private fun NoteDock(
                                     },
                                 )
                             },
-                            onLongClick = onLongPressTool?.let { cb ->
-                                { cb(dockTool) }
+                            onLongClick = if (noteDockLongPressOpensStyle(dockTool)) {
+                                onLongPressTool?.let { cb -> { cb(dockTool) } }
+                            } else {
+                                null
                             },
                             showLabels = showLabels,
                             modifier = Modifier.weight(1f),
@@ -2690,6 +2698,11 @@ private fun NoteFloatingDock(
                                     else -> dockTool
                                 },
                             )
+                        },
+                        onLongClick = if (noteDockLongPressOpensStyle(dockTool)) {
+                            onLongPressTool?.let { cb -> { cb(dockTool) } }
+                        } else {
+                            null
                         },
                         showLabels = showLabels,
                         modifier = Modifier.weight(1f),

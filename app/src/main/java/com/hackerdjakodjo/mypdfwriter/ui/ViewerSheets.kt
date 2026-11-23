@@ -367,7 +367,10 @@ fun PageSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
                         spec = spec,
                         isSelected = index == state.pageIndex,
                         hasNote = state.notes[index]?.isNotBlank() == true,
-                        onClick = { vm.goToPage(index) },
+                        onClick = {
+                            vm.goToPage(index)
+                            onDismiss()
+                        },
                     )
                 }
             }
@@ -1307,7 +1310,9 @@ fun TextEditDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var value by remember(initialText) { mutableStateOf(initialText) }
+    // initialText is only the starting value: a selection cleared while the
+    // dialog is open must not wipe what the student has already typed.
+    var value by remember { mutableStateOf(initialText) }
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {

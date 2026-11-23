@@ -609,10 +609,12 @@ fun PdfCanvas(
                         down.consume()
                         val strokeStartMs = SystemClock.elapsedRealtime()
                         livePoints.clear()
-                        livePoints.add(transform.normalize(down.position, capture(down)))
-                        var lastPressure = capture(down)
+                        val downPressure = capture(down)
+                        livePoints.add(transform.normalize(down.position, downPressure))
+                        var lastPressure = downPressure
                         var lastPressureAtMs = SystemClock.elapsedRealtime()
                         var lastPosition = down.position
+                        var stationaryEmitted = 0
                         var pressed = true
                         while (pressed) {
                             val event = awaitPointerEvent()
@@ -626,18 +628,21 @@ fun PdfCanvas(
                                 lastPressureAtMs = SystemClock.elapsedRealtime()
                                 livePoints.add(transform.normalize(change.position, lastPressure))
                                 change.consume()
-                            } else if (
-                                (tool == Tool.PEN || tool == Tool.HIGHLIGHT) &&
-                                InkQuality.shouldEmitPressureSample(
-                                    previousPressure = lastPressure,
-                                    nextPressure = capture(change),
-                                    positionChanged = false,
-                                    elapsedMs = SystemClock.elapsedRealtime() - lastPressureAtMs,
-                                )
-                            ) {
-                                lastPressure = capture(change)
-                                lastPressureAtMs = SystemClock.elapsedRealtime()
-                                livePoints.add(transform.normalize(lastPosition, lastPressure))
+                            } else if (tool == Tool.PEN || tool == Tool.HIGHLIGHT) {
+                                val nextPressure = capture(change)
+                                if (InkQuality.shouldEmitPressureSample(
+                                        previousPressure = lastPressure,
+                                        nextPressure = nextPressure,
+                                        positionChanged = false,
+                                        elapsedMs = SystemClock.elapsedRealtime() - lastPressureAtMs,
+                                        emitted = stationaryEmitted,
+                                    )
+                                ) {
+                                    stationaryEmitted++
+                                    lastPressure = nextPressure
+                                    lastPressureAtMs = SystemClock.elapsedRealtime()
+                                    livePoints.add(transform.normalize(lastPosition, nextPressure))
+                                }
                                 change.consume()
                             }
                         }

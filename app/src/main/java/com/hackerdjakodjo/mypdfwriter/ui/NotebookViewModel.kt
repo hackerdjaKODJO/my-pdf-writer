@@ -227,7 +227,9 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             _current.value,
         )
         val startedAt = System.currentTimeMillis()
-        saveLocked(updated)
+        // Save and merge into the in-memory library. A full rescan here would
+        // re-parse every notebook on the main thread for every study-pane stroke.
+        _notebooks.value = persistSnapshot(updated)
         NoteTrace.event(
             "NOTE_VM",
             "save_detached",
@@ -237,7 +239,6 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             "updatedAt" to updated.updatedAt,
             "ms" to (System.currentTimeMillis() - startedAt),
         )
-        refresh()
         return updated
     }
 

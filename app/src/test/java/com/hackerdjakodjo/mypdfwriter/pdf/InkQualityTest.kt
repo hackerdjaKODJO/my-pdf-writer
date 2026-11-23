@@ -10,12 +10,16 @@ class InkQualityTest {
 
     @Test
     fun stationaryPressureChangesAreEmittedButJitterIsNot() {
-        assertTrue(InkQuality.shouldEmitPressureSample(0.2f, 0.5f, false, 16L))
-        assertTrue(InkQuality.shouldEmitPressureSample(0.8f, 0.4f, false, 16L))
-        assertFalse(InkQuality.shouldEmitPressureSample(0.2f, 0.205f, false, 16L))
+        assertTrue(InkQuality.shouldEmitPressureSample(0.2f, 0.5f, false, 32L))
+        assertTrue(InkQuality.shouldEmitPressureSample(0.8f, 0.4f, false, 32L))
+        assertFalse(InkQuality.shouldEmitPressureSample(0.2f, 0.205f, false, 32L))
         assertFalse(InkQuality.shouldEmitPressureSample(0.2f, 0.5f, false, 2L))
-        assertFalse(InkQuality.shouldEmitPressureSample(0.2f, 0.9f, true, 16L))
-        assertFalse(InkQuality.shouldEmitPressureSample(0.2f, 0.9f, false, 16L, eps = Float.NaN))
+        assertFalse(InkQuality.shouldEmitPressureSample(0.2f, 0.9f, true, 32L))
+        assertFalse(InkQuality.shouldEmitPressureSample(0.2f, 0.9f, false, 32L, eps = Float.NaN))
+        assertFalse(
+            InkQuality.shouldEmitPressureSample(0.2f, 0.9f, false, 32L,
+                emitted = InkQuality.MAX_STATIONARY_SAMPLES),
+        )
     }
 
     @Test
@@ -53,6 +57,6 @@ class InkQualityTest {
         assertEquals(0, InkQuality.grainCell(0.5f, 0f))
         assertEquals(512, InkQuality.grainCell(1f))
         assertEquals(256, InkQuality.grainCell(0.5f))
-        assertEquals(InkQuality.grainCell(0.25f), InkQuality.grainCell(0.25f))
+        assertEquals(128, InkQuality.grainCell(0.25f))
     }
 }
