@@ -14,9 +14,19 @@ internal enum class NoteBackStep { CLEAR_SELECTION, LEAVE_EDITOR }
 internal fun noteBackStep(hasSelection: Boolean): NoteBackStep =
     if (hasSelection) NoteBackStep.CLEAR_SELECTION else NoteBackStep.LEAVE_EDITOR
 
+/** System Back closes the smallest scope first: pane, then selection, then document. */
+internal enum class ViewerBackTarget { CLOSE_STUDY_PANE, CLEAR_SELECTION, CLOSE_DOCUMENT }
+
+internal fun viewerBackTarget(hasStudyPane: Boolean, hasSelection: Boolean): ViewerBackTarget =
+    when {
+        hasStudyPane -> ViewerBackTarget.CLOSE_STUDY_PANE
+        hasSelection -> ViewerBackTarget.CLEAR_SELECTION
+        else -> ViewerBackTarget.CLOSE_DOCUMENT
+    }
+
 /** One canonical talk-back state name for the four masking-card states. */
 internal fun maskingStateLabel(state: MaskingCardState): String = when (state) {
-    MaskingCardState.HIDDEN -> "가려짐"
+    MaskingCardState.HIDDEN -> "안 봄"
     MaskingCardState.REVEALED -> "정답 확인"
     MaskingCardState.CORRECT -> "정답"
     MaskingCardState.WRONG -> "오답"

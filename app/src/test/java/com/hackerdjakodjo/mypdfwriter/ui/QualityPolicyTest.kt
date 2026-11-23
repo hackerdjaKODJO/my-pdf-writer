@@ -16,11 +16,27 @@ class QualityPolicyTest {
     }
 
     @Test
+    fun viewerBackClosesTheSmallestScopeFirst() {
+        assertEquals(
+            ViewerBackTarget.CLOSE_STUDY_PANE,
+            viewerBackTarget(hasStudyPane = true, hasSelection = true),
+        )
+        assertEquals(
+            ViewerBackTarget.CLEAR_SELECTION,
+            viewerBackTarget(hasStudyPane = false, hasSelection = true),
+        )
+        assertEquals(
+            ViewerBackTarget.CLOSE_DOCUMENT,
+            viewerBackTarget(hasStudyPane = false, hasSelection = false),
+        )
+    }
+
+    @Test
     fun maskingCardStatesHaveDistinctSpokenLabels() {
         val labels = MaskingCardState.entries.map(::maskingStateLabel)
         assertEquals(MaskingCardState.entries.size, labels.toSet().size)
         assertEquals(
-            listOf("가려짐", "정답 확인", "정답", "오답"),
+            listOf("안 봄", "정답 확인", "정답", "오답"),
             labels,
         )
     }

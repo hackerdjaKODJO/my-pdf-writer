@@ -69,11 +69,11 @@ class PdfHubSheetTest {
         )
         assertEquals(
             listOf(
-                "쪽 편집", "쪽 관리", "PDF 도구", "인쇄", "공유", "문서 정보", "페이지 잠금",
+                "페이지 이동", "페이지 편집", "PDF 도구", "인쇄", "공유", "문서 정보", "페이지 잠금",
             ),
             pdfMenuActions(PdfMenuGroup.FILE_TOOLS).map { it.label },
         )
-        assertEquals("쪽 편집", PdfMenuAction.PAGE_EDIT.label)
+        assertEquals("페이지 이동", PdfMenuAction.PAGE_EDIT.label)
         assertEquals(PdfMenuGroup.FILE_TOOLS, PdfMenuAction.PAGE_EDIT.group)
         assertTrue(PdfMenuAction.EXPORT in pdfMenuActions(PdfMenuGroup.SETTINGS))
         assertFalse(PdfMenuAction.EXPORT in pdfMenuActions(PdfMenuGroup.FILE_TOOLS))

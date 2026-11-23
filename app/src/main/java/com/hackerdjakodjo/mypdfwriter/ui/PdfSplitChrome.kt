@@ -293,10 +293,12 @@ internal fun splitPdfToolbarControls(compact: Boolean): List<String> = buildList
     add("페이지 선택")
     add("다음 페이지")
     add("검색")
+    // Selecting text and annotating are the reason the study pane exists; they
+    // must stay reachable even when the note takes 85% of the screen.
+    add("텍스트 선택")
+    add("주석")
     if (!compact) {
-        add("텍스트 선택")
         add("현재 페이지 북마크")
-        add("주석")
         add("학습 메뉴")
     }
 }
@@ -404,21 +406,27 @@ internal fun SplitPdfToolbar(
                 onClick = onOpenSearch,
             )
 
-            if (!compact) {
-                SplitChromeButton(
-                    icon = Icons.AutoMirrored.Outlined.TextSnippet,
-                    contentDescription = when (toggleState) {
-                        SplitSelectionToggleState.IDLE -> "텍스트 선택"
-                        SplitSelectionToggleState.LOADING -> "텍스트 선택 준비 중"
-                        SplitSelectionToggleState.ACTIVE -> "텍스트 선택 끄기"
-                        SplitSelectionToggleState.EMPTY -> "선택할 텍스트 없음"
-                    },
-                    onClick = onToggleTextSelection,
-                    selected = toggleState == SplitSelectionToggleState.ACTIVE,
-                    loading = toggleState == SplitSelectionToggleState.LOADING,
-                    error = toggleState == SplitSelectionToggleState.EMPTY,
-                )
+            SplitChromeButton(
+                icon = Icons.AutoMirrored.Outlined.TextSnippet,
+                contentDescription = when (toggleState) {
+                    SplitSelectionToggleState.IDLE -> "텍스트 선택"
+                    SplitSelectionToggleState.LOADING -> "텍스트 선택 준비 중"
+                    SplitSelectionToggleState.ACTIVE -> "텍스트 선택 끄기"
+                    SplitSelectionToggleState.EMPTY -> "선택할 텍스트 없음"
+                },
+                onClick = onToggleTextSelection,
+                selected = toggleState == SplitSelectionToggleState.ACTIVE,
+                loading = toggleState == SplitSelectionToggleState.LOADING,
+                error = toggleState == SplitSelectionToggleState.EMPTY,
+            )
 
+            SplitChromeButton(
+                icon = Icons.Outlined.Handyman,
+                contentDescription = "주석",
+                onClick = onOpenTools,
+            )
+
+            if (!compact) {
                 SplitChromeButton(
                     icon = if (bookmarked) Icons.Filled.Star else Icons.Outlined.StarBorder,
                     contentDescription = if (bookmarked) {
@@ -429,12 +437,6 @@ internal fun SplitPdfToolbar(
                     onClick = onToggleBookmark,
                     selected = bookmarked,
                     selectedTint = MaterialTheme.colorScheme.primary,
-                )
-
-                SplitChromeButton(
-                    icon = Icons.Outlined.Handyman,
-                    contentDescription = "주석",
-                    onClick = onOpenTools,
                 )
 
                 SplitChromeButton(
@@ -804,8 +806,9 @@ internal fun SplitSelectionActionBar(
                         )
                     } else {
                         Icon(
-                            Icons.AutoMirrored.Outlined.TextSnippet,
-                            contentDescription = null,
+                            if (hasSelection) Icons.Outlined.DragIndicator
+                            else Icons.AutoMirrored.Outlined.TextSnippet,
+                            contentDescription = if (hasSelection) "스터디 노트로 끌기" else null,
                             modifier = Modifier.size(16.dp),
                         )
                     }

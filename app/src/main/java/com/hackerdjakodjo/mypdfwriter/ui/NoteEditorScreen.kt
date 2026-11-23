@@ -1213,7 +1213,13 @@ fun NoteEditorScreen(
 
     val canUndo = remember(workingNotebook.id, historyVersion) { undoStack.isNotEmpty() }
     val canRedo = remember(workingNotebook.id, historyVersion) { redoStack.isNotEmpty() }
-    val fingerMode = if (fingerWriting) "손가락 필기" else "스타일러스 필기 · 손가락 이동"
+    // The hint itself is the one-tap switch: on a touch-only phone a student
+    // must not have to discover a deep ink-setting sheet just to write.
+    val fingerMode = if (fingerWriting) {
+        "손가락 필기 켜짐"
+    } else {
+        "손가락 필기 켜기 · 스타일러스 필기"
+    }
     val hint = buildString {
         append(fingerMode)
         append(" · ")
@@ -1469,6 +1475,7 @@ fun NoteEditorScreen(
                         onDeleteMemoCard = { id -> deleteMemoCard(safeIndex, id) },
                         backgroundBitmap = pageBackground,
                         hint = canvasHint,
+                        onToggleFingerWriting = { fingerWriting = !fingerWriting },
                         compact = compact,
                         compactTopInsetDp = compactTopInsetDp,
                         onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
@@ -1541,6 +1548,7 @@ fun NoteEditorScreen(
                     onDeleteMemoCard = { id -> deleteMemoCard(safeIndex, id) },
                     backgroundBitmap = pageBackground,
                     hint = canvasHint,
+                    onToggleFingerWriting = { fingerWriting = !fingerWriting },
                     compact = compact,
                     compactTopInsetDp = compactTopInsetDp,
                     onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
@@ -2302,6 +2310,7 @@ private fun NoteCanvasPane(
     onDeleteMemoCard: (String) -> Unit = {},
     backgroundBitmap: android.graphics.Bitmap?,
     hint: String,
+    onToggleFingerWriting: (() -> Unit)? = null,
     compact: Boolean = false,
     compactTopInsetDp: Int = 0,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
@@ -2368,7 +2377,18 @@ private fun NoteCanvasPane(
                 shape = RoundedCornerShape(50),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = if (compact) compactTopInsetDp.dp else 10.dp),
+                    .padding(top = if (compact) compactTopInsetDp.dp else 10.dp)
+                    .then(
+                        if (onToggleFingerWriting != null) {
+                            Modifier
+                                .clickable(onClickLabel = "손가락 필기 전환") {
+                                    onToggleFingerWriting()
+                                }
+                                .semantics { contentDescription = "손가락 필기 전환" }
+                        } else {
+                            Modifier
+                        },
+                    ),
             ) {
                 Text(
                     hint,

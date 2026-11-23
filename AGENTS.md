@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.65`** — `versionCode = 74`.
-- **Next version is `0.8.66` — `versionCode = 75`.**
+- Current delivered version: **`0.8.66`** — `versionCode = 75`.
+- **Next version is `0.8.67` — `versionCode = 76`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.66` | 75 | 2026-11-23 | `v0.8.66` | Four-agent intuitive-UI overhaul: study pane keeps text-select/annotate tools, finger-writing one-tap toggle, numeric page jump, page vocabulary unified, Back closes pane first, Tools source-first, truthful gestures and visible drag affordance; 3 JVM tests |
 | `0.8.65` | 74 | 2026-11-23 | `v0.8.65` | Fix overlapping page-turn and zoom pills in paged and continuous PDF viewers: shared measured bottom area stacks them on narrow phones, side-by-side on tablets; 1 JVM test |
 | `0.8.64` | 73 | 2026-11-23 | `v0.8.64` | Four-agent commercial UX/quality audit: consistent Back/selection, bookmark wording and dismiss labels, scrollable sheets, 48dp studio, readable dock labels, SEND_MULTIPLE + corrupt-PDF handling, failed-open keeps current doc, TalkBack long-press action and masking-card states, cancellable photo import; 6 JVM tests |
 | `0.8.63` | 72 | 2026-11-23 | `v0.8.63` | Three-agent PDF text-selection performance pass: dedupe per-frame selection publishes, debounce ViewModel mirror, isolate selection overlay into its own Canvas, prefilter gesture words; 5 JVM + 1 E2E tests |

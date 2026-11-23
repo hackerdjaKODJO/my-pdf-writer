@@ -159,14 +159,14 @@ class PdfSheetBackE2ETest {
     @Test
     fun fileToolsSubSheetIsVisibleWhileItsBackFlagIntercepts() {
         val actions = listOf(
-            PdfHubAction("쪽 편집", Icons.Outlined.EditNote) {},
+            PdfHubAction("페이지 이동", Icons.Outlined.EditNote) {},
             PdfHubAction("PDF 내보내기", Icons.Outlined.FileDownload) {},
         )
         composeRule.setContent {
             MaterialTheme {
                 PdfHubSubSheet(
                     title = "파일 도구",
-                    subtitle = "쪽 편집·쪽 관리, PDF 도구, 인쇄·공유, 문서 정보·페이지 잠금 · 내보내기는 설정에서",
+                    subtitle = "페이지 이동·페이지 편집, PDF 도구, 인쇄·공유, 문서 정보·페이지 잠금 · 내보내기는 설정에서",
                     actions = actions,
                     onDismiss = {},
                 )
@@ -174,7 +174,7 @@ class PdfSheetBackE2ETest {
         }
 
         composeRule.onNodeWithText("파일 도구").assertExists()
-        composeRule.onNodeWithText("쪽 편집").assertExists()
+        composeRule.onNodeWithText("페이지 이동").assertExists()
         composeRule.onNodeWithText("PDF 내보내기").assertExists()
         assertTrue(ViewerSheetFlags(showFileTools = true).anyOpen)
     }

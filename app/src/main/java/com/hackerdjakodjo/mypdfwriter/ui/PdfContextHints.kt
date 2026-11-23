@@ -14,8 +14,8 @@ internal enum class PdfContextHint {
     /** Nothing to teach right now (selection is active, words are absent, ...). */
     NONE,
 
-    /** VIEW mode with word geometry available: tap, drag or long-press. */
-    TAP_DRAG_LONG_PRESS,
+    /** VIEW mode: long-press selects a word; the dock toggle selects a range. */
+    VIEW_SELECTION_HINT,
 
     /** Word geometry is still being extracted. */
     LOADING,
@@ -52,14 +52,14 @@ internal fun pdfContextHint(state: PdfContextHintState): PdfContextHint = when {
         else -> PdfContextHint.SELECTED_HINT
     }
     state.tool == Tool.VIEW -> if (state.hasWords) {
-        PdfContextHint.TAP_DRAG_LONG_PRESS
+        PdfContextHint.VIEW_SELECTION_HINT
     } else {
         PdfContextHint.NONE
     }
     else -> PdfContextHint.TOOL_HINT
 }
 
-internal const val PDF_HINT_VIEW_TEXT = "탭해서 선택 · 드래그해서 범위 선택 · 길게 눌러 단어 선택"
+internal const val PDF_HINT_VIEW_TEXT = "길게 눌러 단어 선택 · 하단 텍스트 선택으로 범위 선택"
 internal const val PDF_HINT_LOADING_TEXT = "텍스트 위치를 읽는 중…"
 internal const val PDF_HINT_NO_TEXT = "선택할 텍스트가 없습니다 · OCR로 텍스트를 추가하세요"
 internal const val PDF_HINT_SELECTED_TEXT = "단어를 탭하거나 드래그해 선택하세요"
@@ -74,7 +74,7 @@ internal const val PDF_SELECTION_REQUIRED_REASON = "선택한 텍스트 없음"
 
 /** Local, offline strings; [toolHint] comes from the existing tool-hint resource. */
 internal fun pdfContextHintText(hint: PdfContextHint, toolHint: String = ""): String = when (hint) {
-    PdfContextHint.TAP_DRAG_LONG_PRESS -> PDF_HINT_VIEW_TEXT
+    PdfContextHint.VIEW_SELECTION_HINT -> PDF_HINT_VIEW_TEXT
     PdfContextHint.LOADING -> PDF_HINT_LOADING_TEXT
     PdfContextHint.NO_TEXT -> PDF_HINT_NO_TEXT
     PdfContextHint.SELECTED_HINT -> PDF_HINT_SELECTED_TEXT

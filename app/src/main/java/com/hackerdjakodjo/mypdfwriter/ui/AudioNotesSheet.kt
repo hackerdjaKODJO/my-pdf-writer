@@ -302,7 +302,7 @@ fun AudioNotesSheet(
                     )
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("음성 메모", style = MaterialTheme.typography.titleLarge)
+                        Text("오디오 노트", style = MaterialTheme.typography.titleLarge)
                         Text(
                             "녹음 · 재생 · 페이지 표시",
                             style = MaterialTheme.typography.labelMedium,
@@ -412,7 +412,7 @@ fun AudioNotesSheet(
                                         "녹음 중 · ${formatAudioDuration(audioState.recordingElapsedMs)}"
                                     audioState.preparing -> "재생 준비 중…"
                                     audioState.playing -> "재생 중"
-                                    else -> "이 페이지에 음성 메모 남기기"
+                                    else -> "이 페이지에 오디오 노트 남기기"
                                 },
                                 style = MaterialTheme.typography.titleSmall,
                                 modifier = Modifier.weight(1f),
@@ -569,7 +569,7 @@ fun AudioNotesSheet(
             if (notes.isEmpty()) {
                 item {
                     Text(
-                        "아직 녹음이 없습니다. 녹음을 시작하면 현재 페이지에 연결된 음성 메모가 여기에 표시됩니다.",
+                        "아직 녹음이 없습니다. 녹음을 시작하면 현재 페이지에 연결된 오디오 노트가 여기에 표시됩니다.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 20.dp),

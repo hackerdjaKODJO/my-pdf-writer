@@ -331,7 +331,7 @@ fun AudioReplaySheet(
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                "음성 메모에서 녹음을 시작하면 이곳에서 필기와 함께 " +
+                                "오디오 노트에서 녹음을 시작하면 이곳에서 필기와 함께 " +
                                     "다시 볼 수 있습니다. 현재 페이지에 연결된 녹음이 " +
                                     "먼저 표시됩니다.",
                                 style = MaterialTheme.typography.bodySmall,
@@ -539,7 +539,7 @@ private fun AudioReplayTransport(
                 if (note.markers.isEmpty()) {
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        "음성 메모에서 페이지 표시를 추가하면 여기서 바로 이동할 수 있습니다.",
+                        "오디오 노트에서 페이지 표시를 추가하면 여기서 바로 이동할 수 있습니다.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

@@ -210,7 +210,7 @@ fun MemoCardsSheet(
 
             item {
                 Text(
-                    "포스트잇는 노트 JSON과 로컬 백업에 저장되며 PDF 내보내기에도 기본적으로 포함됩니다. 페이지에서 숨기기는 보기 전용입니다.",
+                    "포스트잇은 이 기기에 저장되며 PDF 내보내기에도 기본적으로 포함됩니다. 페이지에서 숨기기는 보기 전용입니다.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 10.dp),

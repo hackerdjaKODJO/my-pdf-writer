@@ -331,6 +331,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onOpenHelp = { showHelp = true },
                                 studyPaneFraction = studyPaneFraction,
+                                onCloseStudyPane = closeStudyPane,
                                 onStudyPaneFractionChange = { fraction ->
                                     studyPaneFraction = clampStudyPaneFraction(fraction)
                                 },

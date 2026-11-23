@@ -260,6 +260,8 @@ fun ViewerScreen(
      * tool/selection bar. The host owns the notebook and height state.
      */
     studyPane: (@Composable () -> Unit)? = null,
+    /** Called by system Back so the pane closes before the whole PDF. */
+    onCloseStudyPane: (() -> Unit)? = null,
 ) {
     val stateFlow = vm.viewer.collectAsStateWithLifecycle()
     val bitmap by vm.pageBitmap.collectAsStateWithLifecycle()
@@ -573,11 +575,16 @@ fun ViewerScreen(
     ).anyOpen
 
     BackHandler(enabled = !sheetOpen) {
-        if (textSelectMode || selectedWords.isNotEmpty()) {
-            textSelectMode = false
-            selectedWords = emptyList()
-        } else {
-            vm.closeDocument()
+        when (viewerBackTarget(
+            hasStudyPane = studyPane != null && onCloseStudyPane != null,
+            hasSelection = textSelectMode || selectedWords.isNotEmpty(),
+        )) {
+            ViewerBackTarget.CLOSE_STUDY_PANE -> onCloseStudyPane?.invoke()
+            ViewerBackTarget.CLEAR_SELECTION -> {
+                textSelectMode = false
+                selectedWords = emptyList()
+            }
+            ViewerBackTarget.CLOSE_DOCUMENT -> vm.closeDocument()
         }
     }
 
@@ -2058,6 +2065,16 @@ private fun TextSelectionActionBar(
                         },
                     ),
             ) {
+                if (hasSelection) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Outlined.DragIndicator,
+                            contentDescription = "스터디 노트로 끌기",
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                    }
+                }
                 Text(
                     when {
                         hasSelection -> text

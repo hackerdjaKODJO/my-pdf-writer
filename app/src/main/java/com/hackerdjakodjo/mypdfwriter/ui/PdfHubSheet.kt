@@ -114,8 +114,8 @@ internal enum class PdfMenuAction(val group: PdfMenuGroup, val label: String) {
     HELP(PdfMenuGroup.READ, "도움말"),
 
     // 설정 → 파일 도구 (advanced file operations)
-    PAGE_EDIT(PdfMenuGroup.FILE_TOOLS, "쪽 편집"),
-    PAGE_MANAGE(PdfMenuGroup.FILE_TOOLS, "쪽 관리"),
+    PAGE_EDIT(PdfMenuGroup.FILE_TOOLS, "페이지 이동"),
+    PAGE_MANAGE(PdfMenuGroup.FILE_TOOLS, "페이지 편집"),
     PDF_TOOLS(PdfMenuGroup.FILE_TOOLS, "PDF 도구"),
     EXPORT(PdfMenuGroup.SETTINGS, "PDF 내보내기"),
     PRINT(PdfMenuGroup.FILE_TOOLS, "인쇄"),

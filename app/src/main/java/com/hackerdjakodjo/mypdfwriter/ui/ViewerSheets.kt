@@ -90,6 +90,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -296,6 +297,12 @@ fun DisplaySettingsSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -
     }
 }
 
+/** Parses the student's 1-based page number into a 0-based index, or null. */
+internal fun parsePageJump(input: String, pageCount: Int): Int? {
+    val number = input.trim().toIntOrNull() ?: return null
+    return if (pageCount > 0 && number in 1..pageCount) number - 1 else null
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PageSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
@@ -306,9 +313,8 @@ fun PageSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                // Student-facing name is 쪽 편집: jumping, rotating and deleting
-                // pages, not a text editor. The hub entry uses the same label.
-                Text("쪽 편집", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                // Navigation is the primary purpose; editing lives below.
+                Text("페이지", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 TextButton(onClick = { confirmReset = true }) { Text(stringResource(R.string.reset_pages_short)) }
             }
             Text(
@@ -316,6 +322,37 @@ fun PageSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Spacer(Modifier.size(12.dp))
+
+            // Jump straight to a known page number instead of scrolling a long list.
+            var jumpInput by remember { mutableStateOf("") }
+            val jumpIndex = parsePageJump(jumpInput, state.pages.size)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = jumpInput,
+                    onValueChange = { jumpInput = it },
+                    label = { Text("페이지 번호") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Go,
+                    ),
+                    modifier = Modifier.weight(1f),
+                )
+                Button(
+                    onClick = {
+                        if (jumpIndex != null) {
+                            vm.goToPage(jumpIndex)
+                            onDismiss()
+                        }
+                    },
+                    enabled = jumpIndex != null,
+                ) { Text("이동") }
+            }
             Spacer(Modifier.size(12.dp))
 
             LazyColumn(

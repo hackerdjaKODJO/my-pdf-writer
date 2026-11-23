@@ -122,7 +122,7 @@ fun MaskingCardsSheet(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "전체 ${score.total} · 안 봄 ${score.hidden} · 확인 ${score.revealed} · " +
+                            "전체 ${score.total} · 안 봄 ${score.hidden} · 정답 확인 ${score.revealed} · " +
                                 "정답 ${score.correct} · 오답 ${score.wrong}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -361,8 +361,8 @@ private fun percent(text: String, fallback: Float): Float =
     text.trim().toFloatOrNull()?.div(100f) ?: fallback
 
 private fun maskStateLabel(state: MaskingCardState): String = when (state) {
-    MaskingCardState.HIDDEN -> "안 봄"
-    MaskingCardState.REVEALED -> "확인"
+    MaskingCardState.HIDDEN -> maskingStateLabel(MaskingCardState.HIDDEN)
+    MaskingCardState.REVEALED -> maskingStateLabel(MaskingCardState.REVEALED)
     MaskingCardState.CORRECT -> "정답"
     MaskingCardState.WRONG -> "오답"
 }

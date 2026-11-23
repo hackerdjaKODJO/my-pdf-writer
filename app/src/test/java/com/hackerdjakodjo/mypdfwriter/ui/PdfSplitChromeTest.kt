@@ -131,17 +131,23 @@ class PdfSplitChromeTest {
     }
 
     @Test
-    fun compactSplitStripKeepsNavigationAndSearchOnly() {
+    fun compactSplitStripKeepsEveryStudyAction() {
         assertEquals(
-            listOf("이전 페이지", "페이지 선택", "다음 페이지", "검색"),
+            listOf("이전 페이지", "페이지 선택", "다음 페이지", "검색", "텍스트 선택", "주석"),
             splitPdfToolbarControls(compact = true),
         )
         assertEquals(8, splitPdfToolbarControls(compact = false).size)
-        listOf("텍스트 선택", "현재 페이지 북마크", "주석", "학습 메뉴").forEach {
+        listOf("텍스트 선택", "주석", "현재 페이지 북마크", "학습 메뉴").forEach {
             assertTrue(it in splitPdfToolbarControls(compact = false))
-            assertFalse("compact strip hides $it", it in splitPdfToolbarControls(compact = true))
         }
-        assertTrue("검색 survives the default 85% pane", "검색" in splitPdfToolbarControls(compact = true))
+        // The two actions that justify the study pane must survive the default
+        // 85% pane; only secondary chrome collapses.
+        listOf("검색", "텍스트 선택", "주석").forEach {
+            assertTrue("$it survives the default 85% pane", it in splitPdfToolbarControls(compact = true))
+        }
+        listOf("현재 페이지 북마크", "학습 메뉴").forEach {
+            assertFalse("compact strip drops secondary $it", it in splitPdfToolbarControls(compact = true))
+        }
     }
 
     @Test

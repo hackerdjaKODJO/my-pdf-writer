@@ -34,6 +34,18 @@ class ViewerSheetsTest {
     }
 
     @Test
+    fun pageJumpAcceptsOnlyNumbersInsideTheDocument() {
+        assertEquals(0, parsePageJump("1", 12))
+        assertEquals(41, parsePageJump(" 42 ", 100))
+        assertEquals(11, parsePageJump("12", 12))
+        org.junit.Assert.assertNull(parsePageJump("0", 12))
+        org.junit.Assert.assertNull(parsePageJump("13", 12))
+        org.junit.Assert.assertNull(parsePageJump("abc", 12))
+        org.junit.Assert.assertNull(parsePageJump("", 12))
+        org.junit.Assert.assertNull(parsePageJump("3", 0))
+    }
+
+    @Test
     fun displaySettingsStartWithTheScreenRowAndCollapseCropMargins() {
         assertFalse("여백 자르기 starts collapsed", PDF_DISPLAY_CROP_DEFAULT_EXPANDED)
         assertFalse(displayCropSectionVisible(PDF_DISPLAY_CROP_DEFAULT_EXPANDED))

@@ -11,7 +11,7 @@ class PdfContextHintsTest {
     @Test
     fun viewWithWordsTeachesTapDragAndLongPress() {
         assertEquals(
-            PdfContextHint.TAP_DRAG_LONG_PRESS,
+            PdfContextHint.VIEW_SELECTION_HINT,
             pdfContextHint(
                 PdfContextHintState(tool = Tool.VIEW, hasWords = true),
             ),
@@ -130,9 +130,13 @@ class PdfContextHintsTest {
 
     @Test
     fun hintTextsStayShortAndCarryTheOcrShortcut() {
-        assertTrue(pdfContextHintText(PdfContextHint.TAP_DRAG_LONG_PRESS).contains("탭"))
-        assertTrue(pdfContextHintText(PdfContextHint.TAP_DRAG_LONG_PRESS).contains("드래그"))
-        assertTrue(pdfContextHintText(PdfContextHint.TAP_DRAG_LONG_PRESS).contains("길게"))
+        val viewHint = pdfContextHintText(PdfContextHint.VIEW_SELECTION_HINT)
+        assertTrue(viewHint.contains("길게 눌러 단어 선택"))
+        assertTrue(viewHint.contains("텍스트 선택"))
+        // In VIEW a plain tap follows a link and a drag pans/turns pages, so the
+        // hint must not claim those gestures select text.
+        assertFalse(viewHint.contains("탭해서 선택"))
+        assertFalse(viewHint.contains("드래그해서 범위 선택"))
         assertTrue(pdfContextHintText(PdfContextHint.LOADING).contains("읽는 중"))
         assertTrue(pdfContextHintText(PdfContextHint.NO_TEXT).contains("OCR"))
         assertTrue(pdfContextHintText(PdfContextHint.SELECTED_HINT).contains("탭"))
@@ -164,20 +168,20 @@ class PdfContextHintsTest {
                 pdfStripHeightDp = Float.POSITIVE_INFINITY,
             )
 
-        assertTrue(visible(PdfContextHint.TAP_DRAG_LONG_PRESS, selectionBar = false))
+        assertTrue(visible(PdfContextHint.VIEW_SELECTION_HINT, selectionBar = false))
         assertTrue(visible(PdfContextHint.TOOL_HINT, selectionBar = false))
         // NO_TEXT keeps its OCR shortcut even while the selection bar is up.
         assertTrue(visible(PdfContextHint.NO_TEXT, selectionBar = true))
         assertFalse(visible(PdfContextHint.SELECTED_HINT, selectionBar = true))
         assertFalse(visible(PdfContextHint.LOADING, selectionBar = true))
         assertFalse(visible(PdfContextHint.NONE, selectionBar = false))
-        assertFalse(visible(PdfContextHint.TAP_DRAG_LONG_PRESS, selectionBar = false, searchNav = true))
+        assertFalse(visible(PdfContextHint.VIEW_SELECTION_HINT, selectionBar = false, searchNav = true))
     }
 
     @Test
     fun splitModeSuppressesHintsOnATinyStrip() {
         fun visible(stripDp: Float) = pdfContextHintChipVisible(
-            hint = PdfContextHint.TAP_DRAG_LONG_PRESS,
+            hint = PdfContextHint.VIEW_SELECTION_HINT,
             selectionBarVisible = false,
             searchNavigationVisible = false,
             splitMode = true,

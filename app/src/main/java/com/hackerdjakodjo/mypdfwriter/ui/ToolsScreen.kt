@@ -323,110 +323,125 @@ fun ToolsScreen(
                     )
                 }
 
-                item {
-                    ToolSection(
-                        title = PdfToolSections.PAGES,
-                        items = listOf(
-                            ToolItem("페이지 추출", "원하는 페이지만 새 PDF로", Icons.Outlined.FileDownload, {
-                                if (canUseTools) showExtract = true
-                            }, canUseTools),
-                            ToolItem("문서 분할", "N쪽마다 파일 나누기", Icons.Outlined.CallSplit, {
-                                if (canUseTools) showSplit = true
-                            }, canUseTools),
-                        ),
-                    )
-                }
+                if (!canUseTools) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                        ) {
+                            Text(
+                                "PDF 파일을 선택하면 페이지·OCR·보안·양식·공유 도구가 열립니다.",
+                                modifier = Modifier.padding(16.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                } else {
+                    item {
+                        ToolSection(
+                            title = PdfToolSections.PAGES,
+                            items = listOf(
+                                ToolItem("페이지 추출", "원하는 페이지만 새 PDF로", Icons.Outlined.FileDownload, {
+                                    if (canUseTools) showExtract = true
+                                }, canUseTools),
+                                ToolItem("문서 분할", "N쪽마다 파일 나누기", Icons.Outlined.CallSplit, {
+                                    if (canUseTools) showSplit = true
+                                }, canUseTools),
+                            ),
+                        )
+                    }
 
-                item { OcrLanguageRow(ocrLanguage) { ocrLanguage = it } }
+                    item { OcrLanguageRow(ocrLanguage) { ocrLanguage = it } }
 
-                item {
-                    ToolSection(
-                        title = PdfToolSections.OCR,
-                        items = listOf(
-                            ToolItem("OCR 텍스트", "스캔 PDF에서 글자 추출", Icons.Outlined.DocumentScanner, {
-                                if (canUseTools && source != null) {
-                                    pending = PendingOutput.OcrText(source, ocrLanguage)
-                                    createText.launch("ocr.txt")
-                                }
-                            }, canUseTools),
-                            ToolItem("검색 가능한 PDF", "이미지 위에 보이지 않는 텍스트 레이어", Icons.Outlined.DocumentScanner, {
-                                if (canUseTools && source != null) {
-                                    pending = PendingOutput.OcrPdf(source, ocrLanguage)
-                                    createPdf.launch("searchable.pdf")
-                                }
-                            }, canUseTools),
-                            ToolItem("텍스트 추출", "복사 가능한 TXT로", Icons.Outlined.TextSnippet, {
-                                if (canUseTools && source != null) {
-                                    pending = PendingOutput.ExtractText(source)
-                                    createText.launch("document.txt")
-                                }
-                            }, canUseTools),
-                        ),
-                    )
-                }
+                    item {
+                        ToolSection(
+                            title = PdfToolSections.OCR,
+                            items = listOf(
+                                ToolItem("OCR 텍스트", "스캔 PDF에서 글자 추출", Icons.Outlined.DocumentScanner, {
+                                    if (canUseTools && source != null) {
+                                        pending = PendingOutput.OcrText(source, ocrLanguage)
+                                        createText.launch("ocr.txt")
+                                    }
+                                }, canUseTools),
+                                ToolItem("검색 가능한 PDF", "이미지 위에 보이지 않는 텍스트 레이어", Icons.Outlined.DocumentScanner, {
+                                    if (canUseTools && source != null) {
+                                        pending = PendingOutput.OcrPdf(source, ocrLanguage)
+                                        createPdf.launch("searchable.pdf")
+                                    }
+                                }, canUseTools),
+                                ToolItem("텍스트 추출", "복사 가능한 TXT로", Icons.Outlined.TextSnippet, {
+                                    if (canUseTools && source != null) {
+                                        pending = PendingOutput.ExtractText(source)
+                                        createText.launch("document.txt")
+                                    }
+                                }, canUseTools),
+                            ),
+                        )
+                    }
 
-                item {
-                    ToolSection(
-                        title = PdfToolSections.SECURITY,
-                        items = listOf(
-                            ToolItem("최적화", "메타데이터를 정리해 다시 저장", Icons.Outlined.Compress, {
-                                if (canUseTools && source != null) {
-                                    pending = PendingOutput.Optimize(source)
-                                    createPdf.launch("optimized.pdf")
-                                }
-                            }, canUseTools),
-                            ToolItem("문서 정보", "제목·작성자·페이지 수", Icons.Outlined.Info, {
-                                if (canUseTools && source != null) {
-                                    vm.loadMetadata()
-                                    showMetadata = true
-                                }
-                            }, canUseTools),
-                            ToolItem("암호 설정", "열기 암호로 보호", Icons.Outlined.Lock, {
-                                if (canUseTools) showProtect = true
-                            }, canUseTools),
-                            ToolItem("암호 해제", "암호를 풀어 새 PDF로", Icons.Outlined.LockOpen, {
-                                if (canUseTools) showUnlock = true
-                            }, source != null &&
-                                toolsEnabledFor(state.sourceNeedsPassword, isUnlock = true)),
-                        ),
-                    )
-                }
+                    item {
+                        ToolSection(
+                            title = PdfToolSections.SECURITY,
+                            items = listOf(
+                                ToolItem("최적화", "메타데이터를 정리해 다시 저장", Icons.Outlined.Compress, {
+                                    if (canUseTools && source != null) {
+                                        pending = PendingOutput.Optimize(source)
+                                        createPdf.launch("optimized.pdf")
+                                    }
+                                }, canUseTools),
+                                ToolItem("문서 정보", "제목·작성자·페이지 수", Icons.Outlined.Info, {
+                                    if (canUseTools && source != null) {
+                                        vm.loadMetadata()
+                                        showMetadata = true
+                                    }
+                                }, canUseTools),
+                                ToolItem("암호 설정", "열기 암호로 보호", Icons.Outlined.Lock, {
+                                    if (canUseTools) showProtect = true
+                                }, canUseTools),
+                                ToolItem("암호 해제", "암호를 풀어 새 PDF로", Icons.Outlined.LockOpen, {
+                                    if (canUseTools) showUnlock = true
+                                }, source != null &&
+                                    toolsEnabledFor(state.sourceNeedsPassword, isUnlock = true)),
+                            ),
+                        )
+                    }
 
-                item {
-                    ToolSection(
-                        title = PdfToolSections.FORMS,
-                        items = listOf(
-                            ToolItem("양식 채우기", "AcroForm 입력 후 저장", Icons.Outlined.FactCheck, {
-                                if (canUseTools && source != null) {
-                                    vm.loadForms()
-                                    showForms = true
-                                }
-                            }, canUseTools),
-                        ),
-                    )
-                }
+                    item {
+                        ToolSection(
+                            title = PdfToolSections.FORMS,
+                            items = listOf(
+                                ToolItem("양식 채우기", "AcroForm 입력 후 저장", Icons.Outlined.FactCheck, {
+                                    if (canUseTools && source != null) {
+                                        vm.loadForms()
+                                        showForms = true
+                                    }
+                                }, canUseTools),
+                            ),
+                        )
+                    }
 
-                item {
-                    ToolSection(
-                        title = PdfToolSections.SHARE,
-                        items = listOf(
-                            ToolItem("인쇄", "Android 인쇄로 보내기", Icons.Outlined.Print, {
-                                source?.let(vm::print)
-                            }, canUseTools),
-                            ToolItem("공유", "PDF를 다른 앱으로", Icons.Outlined.Share, {
-                                source?.let(vm::share)
-                            }, canUseTools),
-                        ),
-                    )
-                }
+                    item {
+                        ToolSection(
+                            title = PdfToolSections.SHARE,
+                            items = listOf(
+                                ToolItem("인쇄", "Android 인쇄로 보내기", Icons.Outlined.Print, {
+                                    source?.let(vm::print)
+                                }, canUseTools),
+                                ToolItem("공유", "PDF를 다른 앱으로", Icons.Outlined.Share, {
+                                    source?.let(vm::share)
+                                }, canUseTools),
+                            ),
+                        )
+                    }
 
-                item {
-                    Text(
-                        "도구는 선택한 파일을 임시로 읽고, 결과는 사용자가 고른 위치에만 저장합니다. " +
-                            "OCR은 기기에 포함된 ML Kit 모델로 오프라인 인식합니다.",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    item {
+                        Text(
+                            "도구는 선택한 파일을 임시로 읽고, 결과는 사용자가 고른 위치에만 저장합니다. " +
+                                "OCR은 기기에 포함된 ML Kit 모델로 오프라인 인식합니다.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 

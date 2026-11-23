@@ -179,7 +179,7 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun merge(uris: List<Uri>, out: Uri) {
         if (uris.size < 2) {
-            _state.update { it.copy(message = "PDF를 2개 이상 골라주세요.") }
+            _state.update { it.copy(message = "PDF를 2개 이상 고르세요.") }
             return
         }
         viewModelScope.launch {
@@ -206,7 +206,7 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun extract(source: File, pages: List<Int>, out: Uri) {
         if (pages.isEmpty()) {
-            _state.update { it.copy(message = "페이지 범위를 입력해주세요.") }
+            _state.update { it.copy(message = "페이지 범위를 입력하세요.") }
             return
         }
         viewModelScope.launch {
@@ -307,7 +307,7 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun protect(source: File, userPassword: String, ownerPassword: String, out: Uri) {
         if (userPassword.isBlank()) {
-            _state.update { it.copy(message = "열기 암호를 입력해주세요.") }
+            _state.update { it.copy(message = "열기 암호를 입력하세요.") }
             return
         }
         viewModelScope.launch {
