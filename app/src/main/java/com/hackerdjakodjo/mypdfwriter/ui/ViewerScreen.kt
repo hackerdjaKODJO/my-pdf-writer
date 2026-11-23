@@ -104,6 +104,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.PenBoxStore
+import com.hackerdjakodjo.mypdfwriter.data.InkSettingsStore
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
@@ -268,9 +269,9 @@ fun ViewerScreen(
     val context = LocalContext.current
     val accessibilityScale = chromeScale(widthDp = 360, fontScale = LocalConfiguration.current.fontScale)
     val penBoxStore = remember(context) { PenBoxStore(context) }
+    val inkStore = remember(context) { InkSettingsStore(context) }
     var viewerFavorites by remember(penBoxStore) { mutableStateOf(penBoxStore.loadFavorites()) }
     var showViewerPenBox by remember { mutableStateOf(false) }
-    var viewerPenStyle by remember { mutableStateOf(PenStyle.BALLPOINT) }
 
     fun refreshViewerFavorites() {
         viewerFavorites = penBoxStore.loadFavorites()
@@ -281,7 +282,6 @@ fun ViewerScreen(
         vm.setColor(preset.color)
         vm.setStrokeWidth(preset.width)
         vm.setOpacity(preset.opacity)
-        viewerPenStyle = preset.penStyle
         vm.setPenStyle(preset.penStyle)
     }
 
@@ -293,7 +293,7 @@ fun ViewerScreen(
         color = state.color,
         width = state.strokeWidth,
         opacity = state.opacity,
-        penStyle = viewerPenStyle,
+        penStyle = state.penStyle,
         tool = if (state.tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN,
     )
 
@@ -1213,6 +1213,7 @@ fun ViewerScreen(
                         onDeleteMemoCard = vm::deleteMemoCard,
                         penStyle = state.penStyle,
                         pressureEnabled = true,
+                        pressureCurve = inkStore.load().pressureCurve,
                         onZoomChange = vm::setZoom,
                         onAddStroke = vm::addStroke,
                         onEraseStroke = vm::eraseStroke,
@@ -1840,6 +1841,7 @@ fun ViewerScreen(
             onStrokeWidth = vm::setStrokeWidth,
             onFontSize = vm::setFontSize,
             onOpacity = vm::setOpacity,
+            onPenStyle = vm::setPenStyle,
             onDismiss = { showToolStyle = false },
         )
     }

@@ -18,6 +18,7 @@ import com.hackerdjakodjo.mypdfwriter.data.DocumentStyle
 import com.hackerdjakodjo.mypdfwriter.data.DocumentStyleStore
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.ExcerptStore
+import com.hackerdjakodjo.mypdfwriter.data.InkSettingsStore
 import com.hackerdjakodjo.mypdfwriter.data.LibraryStore
 import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
@@ -283,6 +284,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private val libraryStore = LibraryStore(application)
     private val excerptStore = ExcerptStore(application)
     private val readingStore = PdfReadingStore(application)
+    private val inkStore = InkSettingsStore(application)
     private val resolver = application.contentResolver
 
     private val sourceDir = File(application.filesDir, "sources").apply { mkdirs() }
@@ -412,8 +414,13 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     .coerceIn(0, (pages.size - 1).coerceAtLeast(0))
                 _pageBitmap.value = null
                 _pageLinks.value = emptyList()
+                val ink = inkStore.load()
                 _viewer.value = ViewerUiState(
                     docId = docId,
+                    penStyle = ink.penStyle,
+                    color = ink.color,
+                    strokeWidth = ink.width,
+                    opacity = ink.opacity,
                     docName = displayName,
                     pageCount = pages.size,
                     pageIndex = restoredPage,
@@ -802,8 +809,26 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------------------------------------------------------------- tools
 
+    /** Persists the active ink so the note editor keeps the same pen. */
+    private fun persistInk() {
+        val state = _viewer.value ?: return
+        val curve = inkStore.load().pressureCurve
+        inkStore.save(
+            com.hackerdjakodjo.mypdfwriter.data.InkSettings(
+                penStyle = state.penStyle,
+                color = state.color,
+                width = state.strokeWidth,
+                opacity = state.opacity,
+                pressureCurve = curve,
+            ),
+        )
+    }
+
     /** Nib style for new PDF pen annotations. */
-    fun setPenStyle(style: PenStyle) = _viewer.update { it?.copy(penStyle = style) }
+    fun setPenStyle(style: PenStyle) {
+        _viewer.update { it?.copy(penStyle = style) }
+        persistInk()
+    }
 
     fun setTool(tool: Tool) {
         _viewer.update {
@@ -811,25 +836,30 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 tool = tool,
                 strokeWidth = when (tool) {
                     Tool.HIGHLIGHT -> 0.02f
-                    Tool.PEN -> 0.0035f
+                    Tool.PEN -> inkStore.load().width
                     else -> it.strokeWidth
                 },
             )
         }
     }
 
-    fun setColor(color: Int) = _viewer.update { it?.copy(color = color) }
+    fun setColor(color: Int) {
+        _viewer.update { it?.copy(color = color) }
+        persistInk()
+    }
 
-    fun setStrokeWidth(width: Float) = _viewer.update {
-        it?.copy(strokeWidth = width.coerceIn(0.001f, 0.03f))
+    fun setStrokeWidth(width: Float) {
+        _viewer.update { it?.copy(strokeWidth = width.coerceIn(0.001f, 0.03f)) }
+        persistInk()
     }
 
     fun setFontSize(size: Float) = _viewer.update {
         it?.copy(fontSize = size.coerceIn(0.012f, 0.06f))
     }
 
-    fun setOpacity(opacity: Float) = _viewer.update {
-        it?.copy(opacity = opacity.coerceIn(0.1f, 1f))
+    fun setOpacity(opacity: Float) {
+        _viewer.update { it?.copy(opacity = opacity.coerceIn(0.1f, 1f)) }
+        persistInk()
     }
 
     fun setZoom(zoom: Float) = _viewer.update { it?.copy(zoom = zoom.coerceIn(1f, 6f)) }

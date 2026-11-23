@@ -234,11 +234,11 @@ internal fun NoteStyleSheet(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     PenStyle.entries.forEach { style ->
-                        FilterChip(
+                        PenStyleGlyph(
+                            style = style,
                             selected = penStyle == style,
+                            color = color,
                             onClick = { onPenStyle(style) },
-                            label = { Text(penStyleLabel(style)) },
-                            modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                         )
                     }
                 }

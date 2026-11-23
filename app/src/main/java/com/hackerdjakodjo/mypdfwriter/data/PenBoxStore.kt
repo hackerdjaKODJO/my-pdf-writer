@@ -19,11 +19,11 @@ class PenBoxStore(context: Context) {
             }
             result
         }.getOrDefault(emptyList())
-        return parsed.ifEmpty { defaultPenPresets() }
+        return ensureRequiredPresets(parsed.ifEmpty { defaultPenPresets() })
     }
 
     fun save(presets: List<PenPreset>) {
-        val safe = presets.ifEmpty { defaultPenPresets() }
+        val safe = ensureRequiredPresets(presets.ifEmpty { defaultPenPresets() })
         val array = JSONArray()
         safe.forEach { array.put(it.toJson()) }
         prefs.edit().putString(KEY, array.toString()).commit()
@@ -75,6 +75,30 @@ class PenBoxStore(context: Context) {
  * Sensible first-run pens. These are original presets for the four ink styles and
  * the highlighter; the fixed ids make reloading deterministic.
  */
+/** The four pen styles every student must always have, even after edits. */
+val REQUIRED_PRESET_IDS = listOf(
+    "pen-box-ballpoint",
+    "pen-box-fountain",
+    "pen-box-brush",
+    "pen-box-pencil",
+)
+
+fun isRequiredPreset(id: String): Boolean = id in REQUIRED_PRESET_IDS
+
+/** Re-adds missing required pen styles without changing the order of existing presets. */
+fun ensureRequiredPresets(
+    presets: List<PenPreset>,
+    defaults: List<PenPreset> = defaultPenPresets(),
+): List<PenPreset> {
+    val result = presets.toMutableList()
+    REQUIRED_PRESET_IDS.forEach { id ->
+        if (result.none { it.id == id }) {
+            defaults.firstOrNull { it.id == id }?.let(result::add)
+        }
+    }
+    return result
+}
+
 fun defaultPenPresets(): List<PenPreset> = listOf(
     PenPreset(
         id = "pen-box-ballpoint",

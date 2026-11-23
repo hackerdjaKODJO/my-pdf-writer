@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
+import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import kotlin.math.roundToInt
 
@@ -685,6 +686,7 @@ fun ViewerStyleSheet(
     onFontSize: (Float) -> Unit,
     onOpacity: (Float) -> Unit,
     onDismiss: () -> Unit,
+    onPenStyle: ((PenStyle) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -724,6 +726,27 @@ fun ViewerStyleSheet(
                             name = annotationColorName(swatch),
                             selected = state.color == swatch,
                             onClick = { onColor(swatch) },
+                        )
+                    }
+                }
+            }
+
+            if (state.tool == Tool.PEN && onPenStyle != null) {
+                Spacer(Modifier.height(16.dp))
+                Text("펜 종류", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    PenStyle.entries.forEach { style ->
+                        PenStyleGlyph(
+                            style = style,
+                            selected = state.penStyle == style,
+                            color = state.color,
+                            onClick = { onPenStyle(style) },
                         )
                     }
                 }

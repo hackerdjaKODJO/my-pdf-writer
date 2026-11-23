@@ -1,0 +1,120 @@
+package com.hackerdjakodjo.mypdfwriter.data
+
+import android.content.Context
+import org.json.JSONObject
+
+/**
+ * The active pen ink settings shared by the PDF viewer and the note editor.
+ *
+ * Only ink itself is shared: pen type, colour, width, opacity and pressure
+ * curve. Tools, font size, note-only toggles and persisted strokes are NOT part
+ * of this setting — they stay per surface / per document.
+ */
+data class InkSettings(
+    val penStyle: PenStyle = PenStyle.BALLPOINT,
+    val color: Int = DEFAULT_COLOR,
+    val width: Float = DEFAULT_WIDTH,
+    val opacity: Float = DEFAULT_OPACITY,
+    val pressureCurve: PressureCurve = PressureCurve.DEFAULT,
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("style", penStyle.name)
+        put("color", color)
+        put("width", width.toDouble())
+        put("opacity", opacity.toDouble())
+        put("curve", pressureCurve.name)
+    }
+
+    companion object {
+        /** Stored in pen_box.xml so the existing backup contract keeps working. */
+        const val KEY = "ink_v1"
+        const val DEFAULT_COLOR = 0xFF1B1C19.toInt()
+        const val DEFAULT_WIDTH = 0.004f
+        const val DEFAULT_OPACITY = 1f
+        const val MIN_WIDTH = 0.001f
+        const val MAX_WIDTH = 0.03f
+        const val MIN_OPACITY = 0.1f
+        const val MAX_OPACITY = 1f
+
+        val DEFAULT = InkSettings()
+
+        fun clampWidth(value: Float): Float =
+            if (value.isFinite()) value.coerceIn(MIN_WIDTH, MAX_WIDTH) else DEFAULT_WIDTH
+
+        fun clampOpacity(value: Float): Float =
+            if (value.isFinite()) value.coerceIn(MIN_OPACITY, MAX_OPACITY) else DEFAULT_OPACITY
+
+        fun fromJson(o: JSONObject?): InkSettings {
+            if (o == null) return DEFAULT
+            return InkSettings(
+                penStyle = runCatching {
+                    PenStyle.valueOf(o.optString("style"))
+                }.getOrDefault(DEFAULT.penStyle),
+                color = o.optInt("color", DEFAULT_COLOR),
+                width = clampWidth(o.optDouble("width", DEFAULT_WIDTH.toDouble()).toFloat()),
+                opacity = clampOpacity(
+                    o.optDouble("opacity", DEFAULT_OPACITY.toDouble()).toFloat(),
+                ),
+                pressureCurve = runCatching {
+                    PressureCurve.valueOf(o.optString("curve"))
+                }.getOrDefault(DEFAULT.pressureCurve),
+            )
+        }
+
+        fun fromRaw(raw: String?): InkSettings {
+            if (raw.isNullOrBlank()) return DEFAULT
+            return runCatching { fromJson(JSONObject(raw)) }.getOrDefault(DEFAULT)
+        }
+    }
+}
+
+/** Pure conversions between shared settings and named/synthetic pen presets. */
+object InkPolicy {
+    const val CURRENT_PEN_ID = "current-pen"
+    const val CURRENT_PEN_NAME = "현재 펜"
+
+    /** Applying a preset copies ink fields but keeps the live pressure curve. */
+    fun fromPreset(preset: PenPreset, current: InkSettings = InkSettings.DEFAULT): InkSettings =
+        InkSettings(
+            penStyle = preset.penStyle,
+            color = preset.color,
+            width = InkSettings.clampWidth(preset.width),
+            opacity = InkSettings.clampOpacity(preset.opacity),
+            pressureCurve = current.pressureCurve,
+        )
+
+    /** Transient preset used by the "current pen" strip and save-current action. */
+    fun currentPen(settings: InkSettings, tool: Tool): PenPreset = when (tool) {
+        Tool.HIGHLIGHT -> PenPreset(
+            id = CURRENT_PEN_ID,
+            name = CURRENT_PEN_NAME,
+            color = settings.color,
+            width = maxOf(settings.width, 0.018f),
+            opacity = 1f,
+            penStyle = PenStyle.BALLPOINT,
+            tool = Tool.HIGHLIGHT,
+        )
+        else -> PenPreset(
+            id = CURRENT_PEN_ID,
+            name = CURRENT_PEN_NAME,
+            color = settings.color,
+            width = settings.width,
+            opacity = settings.opacity,
+            penStyle = settings.penStyle,
+            tool = Tool.PEN,
+        )
+    }
+}
+
+/** SharedPreferences wrapper. Reuses pen_box.xml; commits synchronously like PenBoxStore. */
+class InkSettingsStore(context: Context) {
+    private val prefs = context.getSharedPreferences(PenBoxStore.PREFS, Context.MODE_PRIVATE)
+
+    fun load(): InkSettings = InkSettings.fromRaw(prefs.getString(InkSettings.KEY, null))
+
+    fun save(settings: InkSettings) {
+        prefs.edit()
+            .putString(InkSettings.KEY, settings.toJson().toString())
+            .commit()
+    }
+}

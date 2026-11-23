@@ -131,6 +131,9 @@ import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 import com.hackerdjakodjo.mypdfwriter.data.PenBoxStore
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
+import com.hackerdjakodjo.mypdfwriter.data.InkSettings
+import com.hackerdjakodjo.mypdfwriter.data.InkPolicy
+import com.hackerdjakodjo.mypdfwriter.data.InkSettingsStore
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import com.hackerdjakodjo.mypdfwriter.data.Tool
@@ -229,12 +232,15 @@ fun NoteEditorScreen(
         }
     }
 
+    val context = LocalContext.current
+    val inkStore = remember(context) { InkSettingsStore(context) }
+    val initialInk = remember { inkStore.load() }
     var tool by remember { mutableStateOf(Tool.PEN) }
-    var color by remember { mutableStateOf(NOTE_PALETTE.first()) }
-    var strokeWidth by remember { mutableStateOf(0.004f) }
+    var color by remember { mutableStateOf(initialInk.color) }
+    var strokeWidth by remember { mutableStateOf(initialInk.width) }
     var fontSize by remember { mutableStateOf(0.028f) }
-    var opacity by remember { mutableStateOf(1f) }
-    var penStyle by remember { mutableStateOf(PenStyle.BALLPOINT) }
+    var opacity by remember { mutableStateOf(initialInk.opacity) }
+    var penStyle by remember { mutableStateOf(initialInk.penStyle) }
     var fingerWriting by remember { mutableStateOf(false) }
     var zoomLock by remember { mutableStateOf(false) }
     var strokeStabilization by remember { mutableStateOf(true) }
@@ -244,14 +250,24 @@ fun NoteEditorScreen(
     var shapeRecognition by remember { mutableStateOf(false) }
     var partialEraser by remember { mutableStateOf(true) }
     var pressureInk by remember { mutableStateOf(true) }
-    var pressureCurve by remember { mutableStateOf(PressureCurve.DEFAULT) }
+    var pressureCurve by remember { mutableStateOf(initialInk.pressureCurve) }
     var gestureUndo by remember { mutableStateOf(NOTE_GESTURE_UNDO_DEFAULT) }
 
-    val context = LocalContext.current
     val accessibilityScale = chromeScale(widthDp = 360, fontScale = LocalConfiguration.current.fontScale)
     val configuration = LocalConfiguration.current
     // Large fonts hide the secondary dock labels, but never shrink the slots.
     val showDockLabels = noteDockShowLabels(configuration.screenWidthDp, configuration.fontScale)
+    LaunchedEffect(color, strokeWidth, opacity, penStyle, pressureCurve) {
+        inkStore.save(
+            com.hackerdjakodjo.mypdfwriter.data.InkSettings(
+                penStyle = penStyle,
+                color = color,
+                width = strokeWidth,
+                opacity = opacity,
+                pressureCurve = pressureCurve,
+            ),
+        )
+    }
     val penBoxStore = remember(context) { PenBoxStore(context) }
     val customTemplateStore = remember(context) { CustomTemplateStore(context) }
     var penPresets by remember(penBoxStore) { mutableStateOf(penBoxStore.load()) }
@@ -1762,18 +1778,9 @@ fun NoteEditorScreen(
 
     if (showPenBox) {
         val currentTool = if (tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN
-        val currentPen = PenPreset(
-            id = "current-pen",
-            name = "현재 펜",
-            color = color,
-            width = if (currentTool == Tool.HIGHLIGHT) {
-                noteStrokeWidth(AnnotationType.HIGHLIGHT, strokeWidth)
-            } else {
-                strokeWidth
-            },
-            opacity = if (currentTool == Tool.HIGHLIGHT) 1f else opacity,
-            penStyle = if (currentTool == Tool.PEN) penStyle else PenStyle.BALLPOINT,
-            tool = currentTool,
+        val currentPen = InkPolicy.currentPen(
+            InkSettings(penStyle, color, strokeWidth, opacity, pressureCurve),
+            currentTool,
         )
         PenBoxSheet(
             presets = penPresets,
@@ -1958,18 +1965,9 @@ fun NoteEditorScreen(
             },
             onDismiss = { showStyle = false },
             favorites = favoritePens,
-            currentPen = PenPreset(
-                id = "current-pen",
-                name = "현재 펜",
-                color = color,
-                width = if (tool == Tool.HIGHLIGHT) {
-                    noteStrokeWidth(AnnotationType.HIGHLIGHT, strokeWidth)
-                } else {
-                    strokeWidth
-                },
-                opacity = if (tool == Tool.HIGHLIGHT) 1f else opacity,
-                penStyle = if (tool == Tool.PEN) penStyle else PenStyle.BALLPOINT,
-                tool = if (tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN,
+            currentPen = InkPolicy.currentPen(
+                InkSettings(penStyle, color, strokeWidth, opacity, pressureCurve),
+                if (tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN,
             ),
             onApplyFavorite = { applyPenPreset(it) },
             onOpenPenRegistry = {

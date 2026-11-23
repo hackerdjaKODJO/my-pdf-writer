@@ -59,6 +59,7 @@ import com.hackerdjakodjo.mypdfwriter.data.FavoritePens
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import com.hackerdjakodjo.mypdfwriter.data.isRequiredPreset
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.data.samePenStyle
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
@@ -204,7 +205,7 @@ fun PenBoxSheet(
                         position = index + 1,
                         active = samePenStyle(preset, current),
                         favorite = preset.id in localFavorites.map { it.id },
-                        canDelete = presets.size > 1,
+                        canDelete = presets.size > 1 && !isRequiredPreset(preset.id),
                         onApply = { onApply(preset) },
                         onRename = { renameTarget = preset },
                         onDelete = { onDelete(preset) },

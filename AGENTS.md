@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.58`** — `versionCode = 67`.
-- **Next version is `0.8.59` — `versionCode = 68`.**
+- Current delivered version: **`0.8.59`** — `versionCode = 68`.
+- **Next version is `0.8.60` — `versionCode = 69`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.59` | 68 | 2026-11-23 | `v0.8.59` | Three-agent unified pen settings: shared InkSettingsStore (pdf+note), graphic pen-style glyphs in both style sheets, four default pen styles guaranteed, 12 JVM tests |
 | `0.8.58` | 67 | 2026-11-23 | `v0.8.58` | Three-agent PDF tools review: 8 JVM functional tests + 5 ToolsScreen E2E tests; fix text output "열기", permission-only PDF gating, header-only "no text" detection, range clamp preview; 5 JVM regressions |
 | `0.8.57` | 66 | 2026-11-23 | `v0.8.57` | Two-agent UI consistency + accessibility pass: page pill TalkBack action fix, expandable-header state, page-row/slider/sheet semantics, 48dp sheet targets, dock/color/help vocabulary aligned; 4 JVM tests |
 | `0.8.56` | 65 | 2026-11-23 | `v0.8.56` | Three-agent PDF editing review: run heavy tools off Main, prefer edited working file in Tools handoff, select/unlock password-protected PDFs, clear stale tool outputs, parse link targets once per page revisit, preview resolved page ranges; 4 JVM tests |
