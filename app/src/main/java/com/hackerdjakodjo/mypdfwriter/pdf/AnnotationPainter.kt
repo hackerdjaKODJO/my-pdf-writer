@@ -10,6 +10,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.InkResponse
+import com.hackerdjakodjo.mypdfwriter.data.MIN_PRESSURE_WIDTH_FACTOR
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.inkResponseSeries
 import kotlin.math.PI
@@ -137,6 +138,8 @@ object AnnotationPainter {
                             outlineWidths = ink.outlineWidths.copyOf(points.size),
                             fountainSmoothed = ink.fountainSmoothed.copyOf(points.size),
                             brushEnvelope = ink.brushEnvelope.copyOf(points.size),
+                            speeds = ink.speeds.copyOf(points.size),
+                            pools = InkDynamics.poolsForReveal(ink.pools, points.size),
                         ),
                     )
                 } else {
@@ -273,6 +276,25 @@ object AnnotationPainter {
          * already revealed wash on every frame.
          */
         val brushEnvelope: FloatArray,
+        /**
+         * Central-difference speed per sample (page px) from the full stroke.
+         * Replay slices this array; speed dynamics never re-derive from a
+         * truncated prefix.
+         */
+        val speeds: FloatArray,
+        /** Mean of [speeds]; the pace at which speed dynamics are neutral. */
+        val speedReference: Float,
+        /**
+         * Dwelling-nib ink pools from the full stroke. Replay keeps a pool
+         * only once its anchor sample is revealed; its strength never changes.
+         */
+        val pools: List<InkDynamics.InkPool>,
+        /**
+         * Stroke-wide darkness for the ballpoint outline: speed-weighted so a
+         * slow careful stroke reads wetter than a quick scribble. Equal to
+         * `mean.flow` for every other style and for neutral ink.
+         */
+        val depositFlow: Float,
     )
 
     /**
@@ -290,8 +312,18 @@ object AnnotationPainter {
     ): InkContext {
         val series = inkResponseSeries(points, penStyle, isHighlight)
         val variation = PenStrokeGeometry.pressureVariation(points)
+        val mean = meanInkResponse(series)
+        val speeds = InkDynamics.strokeSpeeds(points, width, height)
+        val speedReference = InkDynamics.speedReference(speeds)
+        // A ballpoint's fixed-size ball barely changes width; its pressure
+        // identity is ink flow. Every other style keeps the original band.
+        val minWidthFactor = if (penStyle == PenStyle.BALLPOINT && !isHighlight) {
+            InkDynamics.BALLPOINT_MIN_WIDTH_FACTOR
+        } else {
+            MIN_PRESSURE_WIDTH_FACTOR
+        }
         return InkContext(
-            mean = meanInkResponse(series),
+            mean = mean,
             series = series,
             neutral = PenStrokeGeometry.isNeutralPressureStroke(points),
             variation = variation,
@@ -302,10 +334,24 @@ object AnnotationPainter {
                 variation = variation,
                 baseWidth = 1f,
                 legacyWidth = 1f,
+                minWidthFactor = minWidthFactor,
             ),
             variableOutline = PenStrokeGeometry.useVariableWidthOutline(points),
             fountainSmoothed = fountainSmoothedFactors(points, width, height),
             brushEnvelope = brushEnvelope(points),
+            speeds = speeds,
+            speedReference = speedReference,
+            pools = InkDynamics.dwellPools(points, width, height, variation),
+            depositFlow = if (penStyle == PenStyle.BALLPOINT && !isHighlight) {
+                InkDynamics.ballpointSpeedFlow(
+                    flows = series.map { it.flow },
+                    speeds = speeds,
+                    reference = speedReference,
+                    variation = variation,
+                )
+            } else {
+                mean.flow
+            },
         )
     }
 
@@ -472,7 +518,7 @@ object AnnotationPainter {
             PenStrokeGeometry.PenRenderer.BRUSH ->
                 drawBrush(canvas, annotation, width, height, ink)
             PenStrokeGeometry.PenRenderer.PENCIL ->
-                drawPencil(canvas, annotation, width, height, ink.mean, ink.series, ink.neutral)
+                drawPencil(canvas, annotation, width, height, ink)
         }
     }
 
@@ -506,10 +552,63 @@ object AnnotationPainter {
         val outline = if (ring.size > 1 && ring.first() == ring.last()) ring.dropLast(1) else ring
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = annotation.color
-            alpha = scaledInkAlpha(opacityAlpha(annotation), ink.mean.flow, min = 1)
+            alpha = scaledInkAlpha(opacityAlpha(annotation), ink.depositFlow, min = 1)
             style = Paint.Style.FILL
         }
         canvas.drawPath(smoothClosedPath(outline, width, height), paint)
+        // A real ballpoint leaves a slightly heavier deposit where the ball
+        // first touches paper. Only varied ink gets the blob; the outline path
+        // is never reached by neutral strokes.
+        if (ink.variation > PenStrokeGeometry.PRESSURE_VARIATION_EPSILON &&
+            annotation.points.isNotEmpty()
+        ) {
+            val first = annotation.points.first()
+            val contact = Paint(paint).apply {
+                alpha = scaledInkAlpha(
+                    opacityAlpha(annotation),
+                    ink.series.first().flow * BALLPOINT_CONTACT_GAIN,
+                    min = 1,
+                )
+            }
+            canvas.drawCircle(
+                first.x * width,
+                first.y * height,
+                halfWidths.first() * 0.9f,
+                contact,
+            )
+        }
+    }
+
+    /** Slightly heavier ink at the ballpoint's first contact with paper. */
+    private const val BALLPOINT_CONTACT_GAIN = 1.12f
+
+    /**
+     * Darker ink blobs where the nib dwelled (fountain/brush). Pool anchors and
+     * strengths come from the full stroke; replay draws a pool only once its
+     * anchor sample is revealed, so already visible ink never shifts.
+     */
+    private fun drawDwellPools(
+        canvas: Canvas,
+        annotation: Annotation,
+        width: Float,
+        height: Float,
+        ink: InkContext,
+        halfWidthAt: (Int) -> Float,
+    ) {
+        if (ink.pools.isEmpty()) return
+        val baseAlpha = opacityAlpha(annotation)
+        ink.pools.forEach { pool ->
+            val point = annotation.points.getOrNull(pool.index) ?: return@forEach
+            val flow = ink.series.getOrNull(pool.index)?.flow ?: ink.mean.flow
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = annotation.color
+                alpha = scaledInkAlpha(baseAlpha, 0.30f * pool.strength * flow, min = 1)
+                style = Paint.Style.FILL
+            }
+            val radius = (halfWidthAt(pool.index) * (1f + 0.35f * pool.strength))
+                .coerceAtLeast(PenStrokeGeometry.MIN_INK_HALF_WIDTH_PX)
+            canvas.drawCircle(point.x * width, point.y * height, radius, paint)
+        }
     }
 
     /** Quadratic smoothing around a closed ring, starting at a segment midpoint. */
@@ -777,9 +876,17 @@ object AnnotationPainter {
         val tSpan = (totalSamples - 1).coerceAtLeast(1).toFloat()
         fun halfWidth(index: Int): Float {
             val t = index.toFloat() / tSpan
+            // A fountain nib starves on a fast pull and wets up on a slow one;
+            // the factor is exactly 1f for neutral ink and at the mean pace.
+            val speed = InkDynamics.velocityWidthFactor(
+                speed = ink.speeds.getOrElse(index) { 0f },
+                reference = ink.speedReference,
+                influence = InkDynamics.FOUNTAIN_SPEED_INFLUENCE,
+                variation = variation,
+            )
             return base * smoothed[index] * pressure[index] * 0.5f *
                 PenStrokeGeometry.fountainTaper(t, variation) *
-                InkQuality.nibEndProfile(t, variation)
+                InkQuality.nibEndProfile(t, variation) * speed
         }
         val path = ribbonPath(points, width, height) { index -> halfWidth(index) }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -791,19 +898,16 @@ object AnnotationPainter {
         canvas.drawCircle(
             points.first().x * width,
             points.first().y * height,
-            base * smoothed.first() * pressure.first() * 0.5f *
-                PenStrokeGeometry.fountainTaper(0f, variation) *
-                InkQuality.nibEndProfile(0f, variation),
+            halfWidth(0),
             paint,
         )
         canvas.drawCircle(
             points.last().x * width,
             points.last().y * height,
-            base * smoothed.last() * pressure.last() * 0.5f *
-                PenStrokeGeometry.fountainTaper(1f, variation) *
-                InkQuality.nibEndProfile(1f, variation),
+            halfWidth(points.lastIndex),
             paint,
         )
+        drawDwellPools(canvas, annotation, width, height, ink, ::halfWidth)
     }
 
     /**
@@ -853,22 +957,32 @@ object AnnotationPainter {
             alpha = scaledInkAlpha(opacityAlpha(annotation), response.flow)
             style = Paint.Style.FILL
         }
-        val core = ribbonPath(points, width, height) { index ->
-            base * envelope[index] * pressure[index] * 0.5f
+        // A fast brush flick leaves a thin dry core inside the unchanged halo;
+        // a slow pull swells the core wet. Neutral ink keeps the old 0.5 core.
+        fun coreHalfWidth(index: Int): Float {
+            val speed = InkDynamics.velocityWidthFactor(
+                speed = ink.speeds.getOrElse(index) { 0f },
+                reference = ink.speedReference,
+                influence = InkDynamics.BRUSH_SPEED_INFLUENCE,
+                variation = ink.variation,
+            )
+            return base * envelope[index] * pressure[index] * 0.5f * speed
         }
+        val core = ribbonPath(points, width, height) { index -> coreHalfWidth(index) }
         canvas.drawPath(core, corePaint)
         canvas.drawCircle(
             points.first().x * width,
             points.first().y * height,
-            base * envelope.first() * pressure.first() * 0.5f,
+            coreHalfWidth(0),
             corePaint,
         )
         canvas.drawCircle(
             points.last().x * width,
             points.last().y * height,
-            base * envelope.last() * pressure.last() * 0.5f,
+            coreHalfWidth(points.lastIndex),
             corePaint,
         )
+        drawDwellPools(canvas, annotation, width, height, ink, ::coreHalfWidth)
     }
 
     /**
@@ -922,13 +1036,16 @@ object AnnotationPainter {
         annotation: Annotation,
         width: Float,
         height: Float,
-        response: InkResponse,
-        series: List<InkResponse>,
-        neutral: Boolean,
+        ink: InkContext,
     ) {
+        val response = ink.mean
+        val series = ink.series
+        val neutral = ink.neutral
         val points = annotation.points
         val base = (annotation.width * width).coerceAtLeast(1f)
-        val localVariation = PenStrokeGeometry.pressureVariation(points)
+        // Full-stroke variation: a replay prefix must not re-derive graphite
+        // dynamics from a shorter stroke.
+        val localVariation = ink.variation
         if (points.size == 1) {
             val local = if (neutral) response else series.first()
             drawPenDot(
@@ -984,7 +1101,15 @@ object AnnotationPainter {
                         t = index.toFloat() / (points.size - 1).coerceAtLeast(1).toFloat(),
                         variation = localVariation,
                     )
-                    paint.strokeWidth = pencilStrokeWidth(base, local.width) * tip
+                    // Fast graphite strokes thin subtly; darkness already
+                    // responds to speed through depositGain below.
+                    val speed = InkDynamics.velocityWidthFactor(
+                        speed = ink.speeds.getOrElse(index) { 0f },
+                        reference = ink.speedReference,
+                        influence = InkDynamics.PENCIL_SPEED_INFLUENCE,
+                        variation = localVariation,
+                    )
+                    paint.strokeWidth = pencilStrokeWidth(base, local.width) * tip * speed
                     val wave = PenStrokeGeometry.graphiteJitterByArc(
                         index = index,
                         arcLength = arcs[index],

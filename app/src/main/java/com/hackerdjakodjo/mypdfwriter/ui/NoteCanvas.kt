@@ -46,6 +46,7 @@ import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.PressureCalibrator
 import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
+import com.hackerdjakodjo.mypdfwriter.data.PressureSmoother
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.data.clampInkPressure
 import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
@@ -253,6 +254,9 @@ fun NoteCanvas(
             // the page/tool/pressure keys above change). It adapts to the pen's
             // reported range across strokes and is never persisted to JSON.
             val pressureCalibrator = PressureCalibrator(bootstrapSamples = 3)
+            // Temporal pressure low-pass, reset at every stroke start so each
+            // stroke's first sample is exact. Session-scoped, never persisted.
+            val pressureSmoother = PressureSmoother()
 
             fun normalize(position: Offset, pressure: Float = 1f): NormalizedPoint {
                 val scale = (fit * zoom).coerceAtLeast(0.0001f)
@@ -323,6 +327,7 @@ fun NoteCanvas(
                         pressureCurve = pressureCurve,
                         calibrator = pressureCalibrator,
                         pressed = change.pressed,
+                        smoother = pressureSmoother,
                     )
                     if (pressureEnabled && change.type == PointerType.Stylus && change.pressed) {
                         val raw = clampInkPressure(change.pressure)
@@ -339,6 +344,8 @@ fun NoteCanvas(
                 // Do NOT reset here: the calibrator is scoped to the pointerInput
                 // session and must keep the pen's learned range across strokes,
                 // otherwise every stroke starts with the wrong ink weight.
+                // The temporal smoother, in contrast, starts fresh every stroke.
+                if (canDraw) pressureSmoother.reset()
                 val downPressure = if (canDraw) capturePressure(down) else DEFAULT_INK_PRESSURE
                 var lastPressure = downPressure
                 var lastPressureAtMs = SystemClock.elapsedRealtime()
@@ -959,6 +966,12 @@ internal fun noteEraserPreviewOval(
  * minimum toward zero and make every later stroke render too bold. For an up
  * sample the raw value is still curved (TEXT taps use it) but the calibrator is
  * left untouched.
+ *
+ * An optional [smoother] low-pass filters the final effective value over time
+ * (digitizer noise cannot shimmer the ink). It runs AFTER calibration and the
+ * curve so the learned raw range is never distorted, only sees pressed stylus
+ * samples, and must be reset by the caller at each stroke start. A null
+ * smoother keeps the original behaviour byte-for-byte.
  */
 internal fun effectiveInkPressure(
     pointerType: PointerType,
@@ -967,6 +980,7 @@ internal fun effectiveInkPressure(
     pressureCurve: PressureCurve,
     calibrator: PressureCalibrator? = null,
     pressed: Boolean = true,
+    smoother: PressureSmoother? = null,
 ): Float {
     if (!pressureEnabled || pointerType != PointerType.Stylus) return DEFAULT_INK_PRESSURE
     val calibrated = if (calibrator != null && pressed) {
@@ -981,7 +995,8 @@ internal fun effectiveInkPressure(
     } else {
         clampInkPressure(rawPressure)
     }
-    return pressureCurve.applyTo(calibrated)
+    val curved = pressureCurve.applyTo(calibrated)
+    return if (smoother != null && pressed) smoother.filter(curved) else curved
 }
 
 internal fun noteStrokeWidth(type: AnnotationType, strokeWidth: Float): Float =

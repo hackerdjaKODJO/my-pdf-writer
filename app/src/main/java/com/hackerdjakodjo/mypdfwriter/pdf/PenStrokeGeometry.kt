@@ -246,6 +246,11 @@ object PenStrokeGeometry {
      * [MIN_PRESSURE_WIDTH_FACTOR] in normal use), [variation] is the full-stroke
      * pressure range, and [legacyWidth] is the style's neutral width multiplier.
      * For a neutral stroke every entry is exactly `baseWidth * 0.5 * legacyWidth`.
+     *
+     * [minWidthFactor] is the narrowest the pressure width may become. The
+     * default keeps the original fountain/brush band; a ballpoint passes
+     * [InkDynamics.BALLPOINT_MIN_WIDTH_FACTOR] because its fixed-size ball
+     * barely changes width — pressure there reads as ink flow, not swelling.
      */
     fun outlineWidthSeries(
         points: List<NormalizedPoint>,
@@ -253,6 +258,7 @@ object PenStrokeGeometry {
         variation: Float,
         baseWidth: Float,
         legacyWidth: Float,
+        minWidthFactor: Float = MIN_PRESSURE_WIDTH_FACTOR,
     ): FloatArray {
         val count = points.size
         if (count == 0) return FloatArray(0)
@@ -263,6 +269,11 @@ object PenStrokeGeometry {
             1f
         }
         val range = safeFactor(variation)
+        val minWidth = if (minWidthFactor.isFinite()) {
+            minWidthFactor.coerceIn(MIN_PRESSURE_WIDTH_FACTOR, 1f)
+        } else {
+            MIN_PRESSURE_WIDTH_FACTOR
+        }
 
         // Central-difference speed in normalized units; neighbours are clamped so
         // the first and last samples keep a speed and are never dropped.
@@ -277,14 +288,14 @@ object PenStrokeGeometry {
         speeds.forEach { totalSpeed += it }
         val reference = totalSpeed / count.toFloat()
 
-        val floor = (base * 0.5f * MIN_PRESSURE_WIDTH_FACTOR * legacy).coerceAtLeast(0.02f)
+        val floor = (base * 0.5f * minWidth * legacy).coerceAtLeast(0.02f)
         val ceiling = (base * 2f).coerceAtLeast(floor)
         return FloatArray(count) { index ->
             if (range <= PRESSURE_VARIATION_EPSILON) {
                 (base * 0.5f * legacy).coerceIn(floor, ceiling)
             } else {
                 val effective = simulatedPressure(points[index].pressure, speeds[index], reference)
-                val pressureWidth = MIN_PRESSURE_WIDTH_FACTOR + (1f - MIN_PRESSURE_WIDTH_FACTOR) * effective
+                val pressureWidth = minWidth + (1f - minWidth) * effective
                 val responseWidth = series.getOrNull(index)?.let { value ->
                     if (value.isFinite()) value.coerceIn(MIN_PRESSURE_WIDTH_FACTOR, 1f) else 1f
                 } ?: 1f

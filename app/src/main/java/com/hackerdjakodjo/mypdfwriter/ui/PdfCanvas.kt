@@ -47,6 +47,7 @@ import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.PressureCalibrator
 import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
+import com.hackerdjakodjo.mypdfwriter.data.PressureSmoother
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
@@ -198,6 +199,11 @@ fun PdfCanvas(
     // calibrator per stroke made every PDF stroke restart from raw pressure.
     val inkCalibrator = remember(docId, pageIndex, tool, pressureEnabled, pressureCurve) {
         PressureCalibrator(bootstrapSamples = 3)
+    }
+    // Temporal pressure low-pass shared with the note canvas. Reset at every
+    // stroke start below; never persisted.
+    val inkSmoother = remember(docId, pageIndex, tool, pressureEnabled, pressureCurve) {
+        PressureSmoother()
     }
 
     val pageKey = CanvasPageKey(docId, pageIndex)
@@ -599,6 +605,7 @@ fun PdfCanvas(
                             pressureCurve = pressureCurve,
                             calibrator = inkCalibrator,
                             pressed = change.pressed,
+                            smoother = inkSmoother,
                         )
 
                         val down = awaitFirstDown(requireUnconsumed = false)
@@ -609,6 +616,8 @@ fun PdfCanvas(
                         down.consume()
                         val strokeStartMs = SystemClock.elapsedRealtime()
                         livePoints.clear()
+                        // Each stroke starts with an exact first pressure sample.
+                        inkSmoother.reset()
                         val downPressure = capture(down)
                         livePoints.add(transform.normalize(down.position, downPressure))
                         var lastPressure = downPressure

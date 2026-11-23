@@ -38,6 +38,7 @@
 - [Multi-app review and simpler menus — 0.8.37](app-feature-review-0837.md)
 - [Latent bug review and fixes — 0.8.38](bugfix-review-0838.md)
 - [E2E coverage expansion — 0.8.39](e2e-coverage-0839.md)
+- [Real-pen pressure feel — 0.8.69](ink-realpen-0869.md)
 
 ## 문의
 

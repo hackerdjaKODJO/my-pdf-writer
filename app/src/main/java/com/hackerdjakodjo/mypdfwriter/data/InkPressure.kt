@@ -240,6 +240,71 @@ class PressureCalibrator(
 }
 
 /**
+ * Temporal low-pass filter for one stroke's stylus pressure.
+ *
+ * A digitizer reports pressure 120-240 times a second with ±0.02..0.05 of
+ * sensor noise. Feeding that straight into width/flow makes the ink shimmer
+ * along the stroke — the classic "digital" feel. Real pens cannot change
+ * their contact that fast, so commercial note apps smooth pressure over
+ * time. This is an original asymmetric exponential moving average:
+ *
+ *  - pressing harder uses [attack] (the ink swells promptly),
+ *  - lifting uses the slower [release] (the ink eases out instead of
+ *    snapping thin, like a nib leaving paper).
+ *
+ * Contract:
+ *  - the first sample of a stroke passes through exactly (no startup ramp);
+ *  - a full-press sample (>= 1f) snaps to exactly 1f, so neutral/finger/legacy
+ *    identity is preserved end to end;
+ *  - non-finite input returns the neutral pressure and never teaches the filter;
+ *  - [reset] starts a fresh stroke. The instance is session-scoped like
+ *    [PressureCalibrator] and is never persisted.
+ *
+ * Apply AFTER calibration and the curve preset, to the effective value that
+ * will be stored, so the learned raw range is never distorted.
+ */
+class PressureSmoother(
+    private val attack: Float = DEFAULT_ATTACK,
+    private val release: Float = DEFAULT_RELEASE,
+) {
+    private var level: Float = Float.NaN
+
+    private val safeAttack = if (attack.isFinite()) attack.coerceIn(0.05f, 1f) else DEFAULT_ATTACK
+    private val safeRelease = if (release.isFinite()) release.coerceIn(0.05f, 1f) else DEFAULT_RELEASE
+
+    /** Filters one effective stylus sample of the current stroke. */
+    fun filter(rawPressure: Float): Float {
+        if (!rawPressure.isFinite()) return DEFAULT_INK_PRESSURE
+        val safe = clampInkPressure(rawPressure)
+        if (safe >= MAX_INK_PRESSURE) {
+            // Full press is the neutral identity; never ease away from it.
+            level = MAX_INK_PRESSURE
+            return MAX_INK_PRESSURE
+        }
+        if (!level.isFinite()) {
+            level = safe
+            return safe
+        }
+        val alpha = if (safe > level) safeAttack else safeRelease
+        level = clampInkPressure(level + alpha * (safe - level))
+        return level
+    }
+
+    /** Forgets the filtered level so the next sample starts a new stroke. */
+    fun reset() {
+        level = Float.NaN
+    }
+
+    companion object {
+        /** Press response: ~2-3 samples to converge at 120 Hz. */
+        const val DEFAULT_ATTACK = 0.55f
+
+        /** Lift response: eases out over ~4-5 samples, like a nib leaving paper. */
+        const val DEFAULT_RELEASE = 0.30f
+    }
+}
+
+/**
  * Normalized, per-sample ink response. Every component is a multiplier that is
  * safe to feed straight into rendering: [width] never drops below
  * [MIN_PRESSURE_WIDTH_FACTOR], while [flow] (darkness/opacity) and [grain]
