@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
@@ -64,7 +65,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.selected
@@ -306,6 +309,17 @@ private fun DockItem(
             .semantics {
                 contentDescription = entry.label
                 selected = entry.selected
+                // Long-press opens the pen/highlight style sheet for sighted
+                // users; expose the same path as an explicit TalkBack action.
+                val longClick = entry.onLongClick
+                if (longClick != null) {
+                    customActions = listOf(
+                        CustomAccessibilityAction("필기 설정 열기") {
+                            longClick()
+                            true
+                        },
+                    )
+                }
             }
             .combinedClickable(onClick = entry.onClick, onLongClick = entry.onLongClick)
             .padding(vertical = if (compact) 2.dp else 4.dp),
@@ -334,10 +348,7 @@ private fun DockItem(
         Spacer(Modifier.height(2.dp))
         Text(
             entry.label,
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = if (compact) 9.sp else 10.sp,
-                lineHeight = if (compact) 11.sp else 12.sp,
-            ),
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
             color = contentColor,
             textAlign = TextAlign.Center,
         )
@@ -362,7 +373,7 @@ fun ViewerPageNavigator(
         shadowElevation = 4.dp,
     ) {
         Row(
-            modifier = Modifier.height(48.dp),
+            modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(
@@ -711,6 +722,7 @@ fun ViewerStyleSheet(
         Column(
             Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
         ) {

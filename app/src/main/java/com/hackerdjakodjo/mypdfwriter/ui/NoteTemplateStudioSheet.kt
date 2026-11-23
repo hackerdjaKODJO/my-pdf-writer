@@ -229,7 +229,7 @@ fun NoteTemplateStudioSheet(
                     }
                     TextButton(
                         onClick = closeSheet,
-                        modifier = Modifier.heightIn(min = 44.dp),
+                        modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                     ) {
                         Text("닫기")
                     }
@@ -317,7 +317,7 @@ fun NoteTemplateStudioSheet(
                                         customBackgroundName = ""
                                         importError = null
                                     },
-                                    modifier = Modifier.heightIn(min = 44.dp),
+                                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                                 ) {
                                     Icon(
                                         Icons.Filled.Delete,
@@ -363,7 +363,7 @@ fun NoteTemplateStudioSheet(
                         OutlinedButton(
                             onClick = { pickImage.launch(arrayOf("image/*")) },
                             enabled = !importing,
-                            modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                            modifier = Modifier.weight(1f).heightIn(min = MIN_TARGET_DP.dp),
                         ) {
                             Icon(
                                 Icons.Filled.Image,
@@ -376,7 +376,7 @@ fun NoteTemplateStudioSheet(
                         OutlinedButton(
                             onClick = { pickPdf.launch(arrayOf("application/pdf")) },
                             enabled = !importing,
-                            modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                            modifier = Modifier.weight(1f).heightIn(min = MIN_TARGET_DP.dp),
                         ) {
                             Icon(
                                 Icons.Filled.PictureAsPdf,
@@ -470,7 +470,7 @@ fun NoteTemplateStudioSheet(
                                             ),
                                     )
                                 },
-                                modifier = Modifier.heightIn(min = 44.dp),
+                                modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                             )
                         }
                     }
@@ -492,7 +492,7 @@ fun NoteTemplateStudioSheet(
                                     modifier = Modifier.size(18.dp),
                                 )
                             },
-                            modifier = Modifier.heightIn(min = 44.dp),
+                            modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                         )
                         FilterChip(
                             selected = orientation == PageOrientation.LANDSCAPE,
@@ -505,7 +505,7 @@ fun NoteTemplateStudioSheet(
                                     modifier = Modifier.size(18.dp),
                                 )
                             },
-                            modifier = Modifier.heightIn(min = 44.dp),
+                            modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                         )
                     }
                     Text(
@@ -570,7 +570,7 @@ fun NoteTemplateStudioSheet(
                                 selected = coverStyle == style,
                                 onClick = { coverStyle = style },
                                 label = { Text(studioCoverStyleLabel(style)) },
-                                modifier = Modifier.heightIn(min = 44.dp),
+                                modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                             )
                         }
                     }
@@ -585,13 +585,13 @@ fun NoteTemplateStudioSheet(
                             selected = !applyToAll,
                             onClick = { applyToAll = false },
                             label = { Text("현재 페이지") },
-                            modifier = Modifier.heightIn(min = 44.dp),
+                            modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                         )
                         FilterChip(
                             selected = applyToAll,
                             onClick = { applyToAll = true },
                             label = { Text("모든 페이지 (${pages.size})") },
-                            modifier = Modifier.heightIn(min = 44.dp),
+                            modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                         )
                     }
                     Text(
@@ -612,7 +612,7 @@ fun NoteTemplateStudioSheet(
                 ) {
                     TextButton(
                         onClick = closeSheet,
-                        modifier = Modifier.heightIn(min = 44.dp),
+                        modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                     ) {
                         Text("취소")
                     }
@@ -623,7 +623,7 @@ fun NoteTemplateStudioSheet(
                             onApply(choice)
                         },
                         enabled = !importing,
-                        modifier = Modifier.heightIn(min = 44.dp),
+                        modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
                     ) {
                         Text("적용")
                     }

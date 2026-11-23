@@ -84,6 +84,22 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
                 // A permission-only PDF has /Encrypt but opens with an empty
                 // user password; only a load failure means it must be unlocked.
                 val needsPassword = needsPasswordFromError(loaded.exceptionOrNull()?.message)
+                // A generic parse failure is NOT an empty document. Reporting
+                // "0쪽" as success lets every downstream tool run on garbage bytes.
+                if (loaded.isFailure && !needsPassword) {
+                    _state.update {
+                        it.copy(
+                            sourceName = "",
+                            sourceFile = null,
+                            pageCount = 0,
+                            sourceNeedsPassword = false,
+                            metadata = null,
+                            outline = null,
+                            forms = null,
+                        )
+                    }
+                    return@runTool "PDF를 읽을 수 없습니다. 파일이 손상되었거나 PDF가 아닙니다."
+                }
                 val pages = loaded.getOrDefault(0)
                 _state.update {
                     it.copy(

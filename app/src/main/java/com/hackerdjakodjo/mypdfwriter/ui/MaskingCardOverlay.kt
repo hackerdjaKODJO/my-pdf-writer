@@ -20,6 +20,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -100,7 +103,11 @@ internal fun MaskingTapeLayer(
                 .clip(RoundedCornerShape(3.dp))
                 .background(background)
                 .border(1.dp, edge, RoundedCornerShape(3.dp))
-                .clickable { onReveal(card.id) }
+                .clickable(onClickLabel = "정답 보기") { onReveal(card.id) }
+                .semantics {
+                    contentDescription = "가리기 카드: ${card.prompt}"
+                    stateDescription = maskingStateLabel(card.state)
+                }
                 .padding(horizontal = 6.dp, vertical = 3.dp),
         ) {
             if (card.state == MaskingCardState.HIDDEN) {

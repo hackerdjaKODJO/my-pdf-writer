@@ -90,7 +90,7 @@ internal enum class PdfMenuAction(val group: PdfMenuGroup, val label: String) {
     // 읽기
     SEARCH(PdfMenuGroup.READ, "검색"),
     LOCATIONS(PdfMenuGroup.READ, PDF_HUB_LOCATIONS_LABEL),
-    BOOKMARK_TOGGLE(PdfMenuGroup.READ, "현재 쪽 북마크"),
+    BOOKMARK_TOGGLE(PdfMenuGroup.READ, BOOKMARK_TOGGLE_LABEL),
     READ_MODE(PdfMenuGroup.READ, "읽기 모드"),
     AUDIO(PdfMenuGroup.READ, "오디오"),
     DISPLAY_SETTINGS(PdfMenuGroup.READ, "화면 설정"),
@@ -111,7 +111,7 @@ internal enum class PdfMenuAction(val group: PdfMenuGroup, val label: String) {
     // 설정
     FILE_TOOLS(PdfMenuGroup.SETTINGS, "파일 도구"),
     AUTO_HIDE(PdfMenuGroup.SETTINGS, "메뉴 자동 숨김"),
-    HELP(PdfMenuGroup.SETTINGS, "도움말"),
+    HELP(PdfMenuGroup.READ, "도움말"),
 
     // 설정 → 파일 도구 (advanced file operations)
     PAGE_EDIT(PdfMenuGroup.FILE_TOOLS, "쪽 편집"),
@@ -178,7 +178,7 @@ internal fun pdfMenuActionLabel(
     PdfMenuAction.PAGE_LOCK -> if (pageLocked) "페이지 잠금 해제" else "페이지 잠금"
     PdfMenuAction.TOGGLE_ANNOTATIONS -> if (annotationsHidden) "주석 표시" else "주석 숨기기"
     PdfMenuAction.AUTO_HIDE -> if (autoHideEnabled) "메뉴 자동 숨김 끄기" else "메뉴 자동 숨김 켜기"
-    PdfMenuAction.BOOKMARK_TOGGLE -> if (bookmarked) "현재 쪽 북마크 해제" else "현재 쪽 북마크"
+    PdfMenuAction.BOOKMARK_TOGGLE -> if (bookmarked) BOOKMARK_TOGGLE_REMOVE_LABEL else BOOKMARK_TOGGLE_LABEL
     else -> action.label
 }
 

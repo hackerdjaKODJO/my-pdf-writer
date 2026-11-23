@@ -24,7 +24,7 @@ private const val ACTION_SEND = "android.intent.action.SEND"
  * the incoming intent is not a PDF import.
  */
 internal fun resolveImportUri(intent: ImportIntentSnapshot): String? {
-    if (intent.action != ACTION_VIEW && intent.action != ACTION_SEND) return null
+    if (intent.action !in pdfImportActions) return null
     val candidates = listOfNotNull(intent.dataUri, intent.streamUri) + intent.clipUris
     return candidates.firstOrNull { it.isNotBlank() }?.trim()
 }

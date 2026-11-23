@@ -95,7 +95,6 @@ internal fun NoteSelectionSheet(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                TextButton(onClick = onDismiss) { Text("닫기") }
             }
 
             if (canEditText) {

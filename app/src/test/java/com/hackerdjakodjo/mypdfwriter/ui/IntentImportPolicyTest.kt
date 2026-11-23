@@ -84,6 +84,15 @@ class IntentImportPolicyTest {
     }
 
     @Test
+    fun sendMultipleOpensTheFirstPdfInsteadOfDoingNothing() {
+        val multi = ImportIntentSnapshot(
+            action = "android.intent.action.SEND_MULTIPLE",
+            clipUris = listOf("content://a.pdf", "content://b.pdf"),
+        )
+        assertEquals("content://a.pdf", resolveImportUri(multi))
+    }
+
+    @Test
     fun intentWithoutAnyUriReturnsNull() {
         assertNull(resolveImportUri(ImportIntentSnapshot(action = send)))
         assertNull(

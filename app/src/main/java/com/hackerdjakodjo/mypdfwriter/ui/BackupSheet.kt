@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -41,6 +42,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -129,14 +133,20 @@ fun BackupSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = !busy) { includeSources = !includeSources }
+                    .toggleable(
+                        value = includeSources,
+                        enabled = !busy,
+                        onValueChange = { includeSources = it },
+                    )
+                    .semantics { contentDescription = "PDF 원본 포함" }
                     .padding(vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Checkbox(
                     checked = includeSources,
-                    onCheckedChange = { checked -> if (!busy) includeSources = checked },
+                    onCheckedChange = null,
                     enabled = !busy,
+                    modifier = Modifier.clearAndSetSemantics {},
                 )
                 Spacer(Modifier.width(6.dp))
                 Icon(

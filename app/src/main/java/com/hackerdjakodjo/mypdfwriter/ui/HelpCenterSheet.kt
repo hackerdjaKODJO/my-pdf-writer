@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -328,7 +330,7 @@ fun HelpCenterSheet(
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -422,7 +424,10 @@ fun HelpCenterSheet(
 
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxWidth(),
+                    // Bounded so the outer sheet can scroll as one surface on a
+                    // short phone; programmatic "더보기" jumps still work.
+                    userScrollEnabled = false,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {

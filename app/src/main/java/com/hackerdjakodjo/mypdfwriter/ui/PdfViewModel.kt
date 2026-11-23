@@ -224,6 +224,10 @@ internal class OpenGenerationGate {
 }
 
 /** True only while work tagged with [token] is still the active document open. */
+/** A failed import must not close an unrelated document already on screen. */
+internal fun keepViewerOnFailedOpen(openDocId: String?, openUri: String?): Boolean =
+    openDocId != null || openUri != null
+
 internal fun mayPublishOpenResult(
     isActive: Boolean,
     token: Int?,
@@ -457,6 +461,15 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
                 // A bad/truncated copy must not poison later opens in this session.
                 repo.invalidateSource(uri.toString())
+                if (keepViewerOnFailedOpen(_viewer.value?.docId, currentUriString)) {
+                    // Another document is open and unaffected: report the failure
+                    // but do not bounce the student to Home or clear their state.
+                    _libraryMessage.value = text(
+                        R.string.error_generic,
+                        error.message ?: text(R.string.unsupported_pdf),
+                    )
+                    return@launch
+                }
                 _viewer.value = null
                 _pageBitmap.value = null
                 _pageLinks.value = emptyList()
@@ -2081,6 +2094,11 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearLibraryMessage() {
         _libraryMessage.value = null
+    }
+
+    /** One-shot notice for import intents (e.g. several PDFs shared at once). */
+    fun postLibraryMessage(message: String) {
+        _libraryMessage.value = message
     }
 
     fun reloadLibrary() {

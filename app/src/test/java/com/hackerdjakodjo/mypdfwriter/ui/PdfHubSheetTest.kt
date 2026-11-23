@@ -26,7 +26,7 @@ class PdfHubSheetTest {
     @Test
     fun readGroupFoldsAllNavigationIntoOneLocationRow() {
         assertEquals(
-            listOf("위치", "현재 쪽 북마크", "읽기 모드", "오디오", "화면 설정", "화면에 맞추기"),
+            listOf("위치", "현재 페이지 북마크", "읽기 모드", "오디오", "화면 설정", "화면에 맞추기", "도움말"),
             pdfMenuActions(PdfMenuGroup.READ).map { it.label },
         )
         assertEquals(1, pdfMenuActions(PdfMenuGroup.READ).count { it == PdfMenuAction.LOCATIONS })
@@ -64,7 +64,7 @@ class PdfHubSheetTest {
     @Test
     fun settingsKeepsChromeToggleAndPushesAdvancedFileOpsOneLevelDown() {
         assertEquals(
-            listOf("파일 도구", "메뉴 자동 숨김", "도움말", "PDF 내보내기"),
+            listOf("파일 도구", "메뉴 자동 숨김", "PDF 내보내기"),
             pdfMenuActions(PdfMenuGroup.SETTINGS).map { it.label },
         )
         assertEquals(
@@ -146,7 +146,7 @@ class PdfHubSheetTest {
             pdfMenuActionLabel(PdfMenuAction.AUTO_HIDE, autoHideEnabled = true),
         )
         assertEquals(
-            "현재 쪽 북마크 해제",
+            "현재 페이지 북마크 해제",
             pdfMenuActionLabel(PdfMenuAction.BOOKMARK_TOGGLE, bookmarked = true),
         )
         assertEquals("검색", pdfMenuActionLabel(PdfMenuAction.SEARCH))

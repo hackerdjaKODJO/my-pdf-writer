@@ -44,7 +44,9 @@ import com.hackerdjakodjo.mypdfwriter.ui.StudyPaneSheet
 import com.hackerdjakodjo.mypdfwriter.ui.StudySource
 import com.hackerdjakodjo.mypdfwriter.ui.ToolsScreen
 import com.hackerdjakodjo.mypdfwriter.ui.ViewerScreen
+import com.hackerdjakodjo.mypdfwriter.ui.MULTI_IMPORT_NOTICE
 import com.hackerdjakodjo.mypdfwriter.ui.clampStudyPaneFraction
+import com.hackerdjakodjo.mypdfwriter.ui.isMultiImport
 import com.hackerdjakodjo.mypdfwriter.ui.resolveImportUri
 import com.hackerdjakodjo.mypdfwriter.ui.theme.MyPdfWriterTheme
 import kotlinx.coroutines.delay
@@ -457,6 +459,9 @@ class MainActivity : ComponentActivity() {
             } ?: emptyList(),
         )
         val rawUri = resolveImportUri(snapshot) ?: return
+        if (isMultiImport(snapshot.clipUris.size)) {
+            viewModel.postLibraryMessage(MULTI_IMPORT_NOTICE)
+        }
         // Consume every URI carrier: a redelivered intent (onNewIntent or
         // recreation with the same Intent) must not open the same PDF twice.
         clearIntentCarriers(object : IntentCarrierSink {

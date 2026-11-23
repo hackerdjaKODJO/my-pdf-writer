@@ -208,14 +208,14 @@ private fun QuickStudyLaunchCard(onClick: () -> Unit) {
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 2,
-                    overflow = TextOverflow.Clip,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     "네 단계로 PDF 공부를 시작해 보세요.",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
                     maxLines = 2,
-                    overflow = TextOverflow.Clip,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -392,7 +392,7 @@ private fun QuickAction(
                 label,
                 style = MaterialTheme.typography.labelMedium,
                 maxLines = labelMaxLines,
-                overflow = TextOverflow.Clip,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

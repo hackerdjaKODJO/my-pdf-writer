@@ -148,6 +148,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportPageRange
 import com.hackerdjakodjo.mypdfwriter.pdf.noteExportFileName
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -383,6 +384,7 @@ fun NoteEditorScreen(
     var showDeletePage by remember { mutableStateOf(false) }
     var deleteSelectionConfirmed by remember { mutableStateOf(false) }
     var photoImporting by remember { mutableStateOf(false) }
+    var photoImportJob by remember { mutableStateOf<Job?>(null) }
     var photoError by remember { mutableStateOf<String?>(null) }
     var textPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -836,8 +838,9 @@ fun NoteEditorScreen(
         if (photoImporting) return
         photoError = null
         photoImporting = true
-        scope.launch {
+        photoImportJob = scope.launch {
             val imported = runCatching { customTemplateStore.importImage(uri) }
+            photoImportJob = null
             photoImporting = false
             imported.onSuccess { asset ->
                 val applied = if (forNewPage) {
@@ -1241,7 +1244,15 @@ fun NoteEditorScreen(
         onDispose { cleanupOnDispose() }
     }
 
-    BackHandler(onBack = leaveEditor)
+    // Back clears a live ink selection first, matching the PDF viewer: one press
+    // must not discard the whole editor and its undo stack while text/ink is selected.
+    val handleNoteBack: () -> Unit = {
+        when (noteBackStep(selectedIds.isNotEmpty())) {
+            NoteBackStep.CLEAR_SELECTION -> selection = emptySet()
+            NoteBackStep.LEAVE_EDITOR -> leaveEditor()
+        }
+    }
+    BackHandler(onBack = handleNoteBack)
 
     Scaffold(
         snackbarHost = {
@@ -1285,7 +1296,7 @@ fun NoteEditorScreen(
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = leaveEditor) {
+                        IconButton(onClick = handleNoteBack) {
                             Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "뒤로")
                         }
                     },
@@ -1926,9 +1937,14 @@ fun NoteEditorScreen(
         )
     }
 
+    val cancelPhotoImport: () -> Unit = {
+        photoImportJob?.cancel()
+        photoImportJob = null
+        photoImporting = false
+    }
     if (photoImporting) {
         AlertDialog(
-            onDismissRequest = {},
+            onDismissRequest = cancelPhotoImport,
             title = { Text("사진 가져오는 중") },
             text = {
                 Row(
@@ -1943,6 +1959,9 @@ fun NoteEditorScreen(
                 }
             },
             confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = cancelPhotoImport) { Text("취소") }
+            },
         )
     }
 
@@ -3504,7 +3523,9 @@ private fun NoteManagerPageCard(
                     Checkbox(
                         checked = checked,
                         onCheckedChange = { onCheckedChange() },
-                        modifier = Modifier.size(MIN_TARGET_DP.dp),
+                        modifier = Modifier
+                            .size(MIN_TARGET_DP.dp)
+                            .semantics { contentDescription = "${number + 1}쪽 선택" },
                     )
                 }
             }

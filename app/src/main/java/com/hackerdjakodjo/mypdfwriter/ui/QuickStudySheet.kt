@@ -168,7 +168,7 @@ internal fun QuickStudySheet(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 2,
-                        overflow = TextOverflow.Clip,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.semantics { heading() },
                     )
                     Spacer(Modifier.height(8.dp))
@@ -177,7 +177,7 @@ internal fun QuickStudySheet(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 4,
-                        overflow = TextOverflow.Clip,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     if (step.usesExistingPdfActions) {
                         Spacer(Modifier.height(16.dp))
