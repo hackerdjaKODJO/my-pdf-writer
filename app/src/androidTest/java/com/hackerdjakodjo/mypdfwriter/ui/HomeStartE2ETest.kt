@@ -35,6 +35,8 @@ class HomeStartE2ETest {
     private fun home(
         notebooks: List<Notebook> = emptyList(),
         pdfs: List<RecentDoc> = emptyList(),
+        libraryMessage: String? = null,
+        onDismissLibraryMessage: () -> Unit = {},
     ) {
         NotebookHomeScreen(
             notebooks = notebooks,
@@ -53,6 +55,8 @@ class HomeStartE2ETest {
             onMoveFolder = { _, _ -> },
             onSetTags = { _, _ -> },
             onOpenBackup = {},
+            libraryMessage = libraryMessage,
+            onDismissLibraryMessage = onDismissLibraryMessage,
         )
     }
 
@@ -280,5 +284,24 @@ class HomeStartE2ETest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("내 PDF").assertExists()
+    }
+
+    @Test
+    fun importFailureIsShownAsSnackbarAndThenDismissed() {
+        var dismissals = 0
+        composeRule.setContent {
+            MyPdfWriterTheme {
+                home(
+                    libraryMessage = "PDF를 열 수 없습니다.",
+                    onDismissLibraryMessage = { dismissals++ },
+                )
+            }
+        }
+        composeRule.waitUntil("library error snackbar", 4_000L) {
+            composeRule.onAllNodesWithText("PDF를 열 수 없습니다.").fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.waitForIdle()
+        assertTrue("snackbar must ask the VM to clear the message", dismissals >= 1)
     }
 }

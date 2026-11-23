@@ -43,6 +43,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -372,7 +375,15 @@ private fun MemoCardEditorDialog(
                             selected = tint == option,
                             onClick = { tint = option },
                             label = { Text(option.label) },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = MIN_TARGET_DP.dp)
+                                .semantics {
+                                    contentDescription = colorChoiceLabel(
+                                        option.label,
+                                        tint == option,
+                                    )
+                                },
                         )
                     }
                 }
@@ -398,6 +409,11 @@ private fun MemoCardEditorDialog(
                     value = tilt,
                     valueRange = -MemoCard.MAX_TILT..MemoCard.MAX_TILT,
                     onValueChange = { tilt = it.roundToInt().toFloat() },
+                    modifier = Modifier.semantics {
+                        val tiltLabel = "${tilt.roundToInt()}°"
+                        contentDescription = sliderLabel("기울기", tiltLabel)
+                        stateDescription = tiltLabel
+                    },
                 )
             }
         },

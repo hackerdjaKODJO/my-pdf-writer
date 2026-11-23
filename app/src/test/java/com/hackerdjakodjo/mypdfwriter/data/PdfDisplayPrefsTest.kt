@@ -56,4 +56,30 @@ class PdfDisplayPrefsTest {
         assertEquals(0.42, json.getDouble("bright"), 0.0001)
         assertEquals(original, DisplayPrefs.fromJson(json))
     }
+
+    @Test
+    fun clampZoomKeepsValuesInsideTheSupportedRange() {
+        assertEquals(DisplayPrefs.MIN_ZOOM, DisplayPrefs.clampZoom(0.2f), 0f)
+        assertEquals(DisplayPrefs.MAX_ZOOM, DisplayPrefs.clampZoom(12f), 0f)
+        assertEquals(2.5f, DisplayPrefs.clampZoom(2.5f), 0f)
+        assertEquals(DisplayPrefs.DEFAULT_ZOOM, DisplayPrefs.clampZoom(Float.NaN), 0f)
+        assertEquals(DisplayPrefs.DEFAULT_ZOOM, DisplayPrefs.clampZoom(Float.POSITIVE_INFINITY), 0f)
+    }
+
+    @Test
+    fun zoomIsPersistedOnlyWhenItDiffersFromDefault() {
+        assertEquals(DisplayPrefs.DEFAULT_ZOOM, DisplayPrefs().zoom, 0f)
+        assertTrue(!DisplayPrefs().toJson().has("zoom"))
+        val zoomed = DisplayPrefs(zoom = 3f)
+        assertEquals(3.0, zoomed.toJson().getDouble("zoom"), 0.0001)
+        assertEquals(3f, DisplayPrefs.fromJson(zoomed.toJson()).zoom, 0f)
+    }
+
+    @Test
+    fun fromJsonClampsStoredZoom() {
+        val prefs = DisplayPrefs.fromJson(
+            JSONObject().apply { put("zoom", 99.0) },
+        )
+        assertEquals(DisplayPrefs.MAX_ZOOM, prefs.zoom, 0f)
+    }
 }

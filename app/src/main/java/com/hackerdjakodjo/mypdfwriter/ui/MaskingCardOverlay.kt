@@ -148,7 +148,7 @@ private fun MaskMarkButton(
 ) {
     Box(
         modifier = Modifier
-            .size(24.dp)
+            .size(MIN_TARGET_DP.dp)
             .padding(end = 2.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(edge.copy(alpha = 0.18f))

@@ -105,6 +105,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -1401,7 +1402,12 @@ fun NoteEditorScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                // TalkBack announces the notebook and page on entry instead of an
+                // unlabelled drawing surface.
+                .semantics {
+                    paneTitle = "${notebook.title}, ${safeIndex + 1}/${pages.size} 페이지"
+                },
         ) {
             val wide = maxWidth >= 840.dp && !compact
             val compactDockWidth = noteFloatingDockWidthDp(maxWidth.value.toInt()).dp

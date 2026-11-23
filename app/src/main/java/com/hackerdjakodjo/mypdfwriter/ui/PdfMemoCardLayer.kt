@@ -259,7 +259,7 @@ private fun PdfMemoCardView(
                 IconButton(
                     onClick = { onDelete(card.id) },
                     modifier = Modifier
-                        .size(22.dp)
+                        .size(MIN_TARGET_DP.dp)
                         .testTag("pdf_memo_card_delete_${card.id}"),
                 ) {
                     Icon(
@@ -272,7 +272,7 @@ private fun PdfMemoCardView(
                 IconButton(
                     onClick = onHide,
                     modifier = Modifier
-                        .size(22.dp)
+                        .size(MIN_TARGET_DP.dp)
                         .testTag("pdf_memo_card_close_${card.id}"),
                 ) {
                     Icon(

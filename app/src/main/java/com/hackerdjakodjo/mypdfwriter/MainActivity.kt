@@ -120,6 +120,7 @@ class MainActivity : ComponentActivity() {
         handleViewIntent(intent)
 
         setContent {
+            val libraryMessage by viewModel.libraryMessage.collectAsStateWithLifecycle()
             MyPdfWriterTheme {
                 var showTools by remember { mutableStateOf(false) }
                 var showBackup by remember { mutableStateOf(false) }
@@ -261,6 +262,8 @@ class MainActivity : ComponentActivity() {
                                 onRemovePdfRecent = { uri ->
                                     viewModel.removeRecent(uri, deleteAnnotations = false)
                                 },
+                                libraryMessage = libraryMessage,
+                                onDismissLibraryMessage = { viewModel.clearLibraryMessage() },
                             )
                         }
                         else -> Box(Modifier.fillMaxSize()) {
@@ -471,8 +474,8 @@ class MainActivity : ComponentActivity() {
         })
         val uri = Uri.parse(rawUri)
         notebookViewModel.close()
-        // ACTION_SEND is an import and joins recents; ACTION_VIEW opens without
-        // touching recents (unchanged policy).
+        // Any PDF the student opens (picker, share sheet, or external viewer)
+        // joins recents so Home can resume it at the same page.
         viewModel.openDocument(uri, addToRecents = shouldAddToRecents(intent?.action))
     }
 }
@@ -491,9 +494,9 @@ internal fun clearIntentCarriers(sink: IntentCarrierSink) {
     sink.clearClipData()
 }
 
-/** ACTION_SEND imports a PDF into local recents; ACTION_VIEW does not. */
+/** Every supported import path joins local recents so resume works everywhere. */
 internal fun shouldAddToRecents(action: String?): Boolean =
-    action == "android.intent.action.SEND"
+    action == "android.intent.action.SEND" || action == "android.intent.action.VIEW"
 
 /**
  * A PDF opened *during* a restore must survive its completion. Only discard the

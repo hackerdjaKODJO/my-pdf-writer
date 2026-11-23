@@ -253,6 +253,8 @@ data class DisplayPrefs(
     val cropBottom: Float = 0f,
     /** When true, even (1-based) pages mirror left/right for facing-page reading. */
     val cropOddEven: Boolean = false,
+    /** Last zoom used for this document, restored on reopen. */
+    val zoom: Float = DEFAULT_ZOOM,
 ) {
     /** Convenience conversion for the reader/canvas crop parameters. */
     fun cropInsets(): CropInsets = CropInsets(cropLeft, cropTop, cropRight, cropBottom)
@@ -260,6 +262,7 @@ data class DisplayPrefs(
     fun toJson(): JSONObject = JSONObject().apply {
         put("night", nightMode)
         put("bright", brightness.toDouble())
+        if (zoom != DEFAULT_ZOOM) put("zoom", zoom.toDouble())
         if (cropLeft != 0f || cropTop != 0f || cropRight != 0f ||
             cropBottom != 0f || cropOddEven
         ) {
@@ -280,6 +283,14 @@ data class DisplayPrefs(
         const val MIN_BRIGHTNESS = 0.4f
         const val MAX_BRIGHTNESS = 1f
         const val DEFAULT_BRIGHTNESS = 1f
+        const val MIN_ZOOM = 1f
+        const val MAX_ZOOM = 6f
+        const val DEFAULT_ZOOM = 1f
+
+        fun clampZoom(value: Float): Float {
+            if (!value.isFinite()) return DEFAULT_ZOOM
+            return value.coerceIn(MIN_ZOOM, MAX_ZOOM)
+        }
 
         fun clampBrightness(value: Float): Float {
             if (!value.isFinite()) return DEFAULT_BRIGHTNESS
@@ -304,6 +315,7 @@ data class DisplayPrefs(
                 cropRight = if (crop == null) 0f else readCrop(crop.optDouble("r", 0.0)),
                 cropBottom = if (crop == null) 0f else readCrop(crop.optDouble("b", 0.0)),
                 cropOddEven = crop?.optBoolean("oe", false) ?: false,
+                zoom = clampZoom(o.optDouble("zoom", DEFAULT_ZOOM.toDouble()).toFloat()),
             )
         }
     }

@@ -145,9 +145,9 @@ class IntentImportPolicyTest {
     }
 
     @Test
-    fun sendIntentJoinsRecentsAndViewIntentDoesNot() {
+    fun sendAndViewIntentsJoinRecentsSoResumeWorks() {
         assertTrue(shouldAddToRecents(send))
-        assertFalse(shouldAddToRecents(view))
+        assertTrue("opening from another app must join recents", shouldAddToRecents(view))
         assertFalse(shouldAddToRecents(null))
         assertFalse(shouldAddToRecents("android.intent.action.MAIN"))
     }

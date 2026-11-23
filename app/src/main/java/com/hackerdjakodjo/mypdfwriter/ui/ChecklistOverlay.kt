@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.Modifier
@@ -135,8 +137,10 @@ internal fun ChecklistOverlayLayer(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(min = MIN_TARGET_DP.dp)
                             .clickable { onToggleItem(card.id, item.id) }
                             .semantics {
+                                contentDescription = item.text
                                 stateDescription = if (item.done) "완료" else "미완료"
                             }
                             .padding(vertical = 1.dp),

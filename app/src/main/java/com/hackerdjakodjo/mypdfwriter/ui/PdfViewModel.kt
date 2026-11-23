@@ -254,6 +254,7 @@ internal fun viewerDocState(state: ViewerUiState): DocState = DocState(
         cropRight = state.cropInsets.right,
         cropBottom = state.cropInsets.bottom,
         cropOddEven = state.cropOddEven,
+        zoom = state.zoom,
     ),
     memoCards = state.memoCards,
 )
@@ -443,6 +444,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     brightness = displayPrefs.brightness,
                     cropInsets = displayPrefs.cropInsets(),
                     cropOddEven = displayPrefs.cropOddEven,
+                    zoom = DisplayPrefs.clampZoom(displayPrefs.zoom),
                 )
                 persistNow()
                 if (addToRecents) {
@@ -874,7 +876,11 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         persistInk()
     }
 
-    fun setZoom(zoom: Float) = _viewer.update { it?.copy(zoom = zoom.coerceIn(1f, 6f)) }
+    fun setZoom(zoom: Float) {
+        _viewer.update { it?.copy(zoom = DisplayPrefs.clampZoom(zoom)) }
+        // Zoom is part of DisplayPrefs, which the viewer promises to restore.
+        persistNow()
+    }
 
     // ---------------------------------------------------------------- annotations
 

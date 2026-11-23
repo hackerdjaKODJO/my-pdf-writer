@@ -54,6 +54,8 @@ internal fun mergeResumePage(incoming: Notebook, previous: Notebook?): Notebook 
     return incoming.copy(lastPageIndex = previous.lastPageIndex)
 }
 
+private const val PAGE_SAVE_DELAY_MS = 350L
+
 class NotebookViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = NotebookStore(application)
@@ -331,13 +333,31 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         loaded
     }
 
+    /** Persists a page-only change without touching updatedAt or Home ordering. */
+    private fun schedulePageOnlySave(notebook: Notebook) {
+        saveJob?.cancel()
+        val generation = nextSaveGeneration(saveGeneration)
+        saveGeneration = generation
+        saveJob = viewModelScope.launch {
+            delay(PAGE_SAVE_DELAY_MS)
+            if (!isLatestSaveGeneration(generation, saveGeneration)) return@launch
+            val loaded = withContext(Dispatchers.IO) { persistSnapshot(notebook) }
+            if (isLatestSaveGeneration(generation, saveGeneration)) {
+                _notebooks.value = loaded
+            }
+        }
+    }
+
     fun setPageIndex(index: Int) {
         val current = _current.value ?: return
         val safe = index.coerceIn(0, (current.pages.size - 1).coerceAtLeast(0))
+        if (safe == current.lastPageIndex && _pageIndex.value == safe) return
         _pageIndex.value = safe
-        // Remembered in memory now; close()/saveNow() flushes it to disk without
-        // touching updatedAt, so Home continuation ordering is unchanged.
-        _current.value = current.copy(lastPageIndex = safe)
+        val updated = current.copy(lastPageIndex = safe)
+        _current.value = updated
+        // PDF resume is debounce-saved on page change; notebooks must behave the
+        // same, otherwise process death loses the page a student was reading.
+        schedulePageOnlySave(updated)
     }
 
     fun addPage(template: PaperTemplate? = null) {

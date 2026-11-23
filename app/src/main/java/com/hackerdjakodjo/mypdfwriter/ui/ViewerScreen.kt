@@ -1114,7 +1114,11 @@ fun ViewerScreen(
                 // TalkBack announces the pane name instead of an unlabelled
                 // full-screen canvas when the viewer opens.
                 .semantics {
-                    paneTitle = if (splitMode) "PDF 분할 보기" else "PDF 보기"
+                    // Announce where the student is when the reader gains focus.
+                    paneTitle = buildString {
+                        append(if (splitMode) "PDF 분할 보기" else "PDF 보기")
+                        append(", ${state.pageIndex + 1}/${state.pageCount} 페이지")
+                    }
                 },
         ) {
             // Split mode removes the app bar and bottom dock from layout, so the

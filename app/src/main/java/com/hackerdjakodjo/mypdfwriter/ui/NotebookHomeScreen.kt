@@ -82,12 +82,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -218,6 +221,8 @@ fun NotebookHomeScreen(
     onOpenTrace: (() -> Unit)? = null,
     onOpenHelp: () -> Unit = {},
     onRemovePdfRecent: (String) -> Unit = {},
+    libraryMessage: String? = null,
+    onDismissLibraryMessage: () -> Unit = {},
 ) {
     var section by rememberSaveable(
         stateSaver = Saver(
@@ -355,8 +360,16 @@ fun NotebookHomeScreen(
             LibrarySection.TAGS -> "태그 ${tagCounts.size}개"
         }
 
+        val snackbarHostState = remember { SnackbarHostState() }
+        LaunchedEffect(libraryMessage) {
+            if (libraryMessage != null) {
+                snackbarHostState.showSnackbar(libraryMessage)
+                onDismissLibraryMessage()
+            }
+        }
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             floatingActionButton = {
                 HomeCreateFab(
                     onNewNote = { showCreate = true },
