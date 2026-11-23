@@ -139,14 +139,17 @@ fun ContinuousReaderScreen(
     // A state object, not a composable Float: page offsets read it inside
     // Modifier.offset { }, so dragging does not recompose every visible page.
     val panX = remember { mutableFloatStateOf(0f) }
-    val latestZoom = rememberUpdatedState(zoom)
+    // Zoom for the pointer observer is read via `gestureZoom` (synchronous).
+    // rememberUpdatedState lags one frame behind the very zoom change that a
+    // follow-up drag must react to, so it must NOT be used for gesture routing.
+    val gestureZoom = remember { mutableFloatStateOf(zoom) }
     val currentOnPageChange by rememberUpdatedState(onPageChange)
     val scope = rememberCoroutineScope()
     var showPageJump by remember { mutableStateOf(false) }
     val density = LocalDensity.current.density
     val viewportWidthPx = listState.layoutInfo.viewportSize.width.toFloat()
     val setZoom: (Float, Float, String) -> Unit = { value, focalX, reason ->
-        val zoomBefore = latestZoom.value
+        val zoomBefore = gestureZoom.floatValue
         val zoomAfter = clampReaderZoom(value)
         val width = listState.layoutInfo.viewportSize.width.toFloat()
         val panBefore = panX.floatValue
@@ -157,6 +160,9 @@ fun ContinuousReaderScreen(
         panX.floatValue = readerPanWithHeadroom(
             panBefore, zoomBefore, zoomAfter, focalX, width,
         )
+        // Synchronous snapshot for the pointer observer, written BEFORE the
+        // composable state so the very next pointer frame sees the new mode.
+        gestureZoom.floatValue = zoomAfter
         zoom = zoomAfter
         PdfContinuousTrace.zoomPan(
             reason, zoomBefore, zoomAfter, panBefore, panX.floatValue,
@@ -164,22 +170,32 @@ fun ContinuousReaderScreen(
         )
     }
     val toggleZoom: (Float) -> Unit = { focalX ->
-        setZoom(toggleReaderZoom(latestZoom.value), focalX, "toggle")
+        setZoom(toggleReaderZoom(gestureZoom.floatValue), focalX, "toggle")
     }
     // Zoom survives recreation but pan does not. Seed a centered pan once the
     // viewport is known, then only re-clamp when the viewport shrinks.
     val restorePanSeeded = remember { mutableStateOf(false) }
-    LaunchedEffect(viewportWidthPx) {
+    LaunchedEffect(viewportWidthPx, zoom) {
         if (viewportWidthPx <= 0f) return@LaunchedEffect
-        val currentZoom = latestZoom.value
-        panX.floatValue = clampReaderPan(panX.floatValue, currentZoom, viewportWidthPx)
+        // Keep the gesture snapshot in step with restored/external zoom changes.
+        gestureZoom.floatValue = zoom
+        val currentZoom = gestureZoom.floatValue
+        // Keep a reachable band in BOTH directions when the viewport changes;
+        // parking pan at a clamp edge is what makes rightward drags a no-op.
+        panX.floatValue = if (currentZoom > READER_ZOOM_MIN) {
+            readerPanWithHeadroom(
+                panX.floatValue, currentZoom, currentZoom,
+                viewportWidthPx / 2f, viewportWidthPx,
+            )
+        } else {
+            0f
+        }
         if (!restorePanSeeded.value) {
             restorePanSeeded.value = true
             if (currentZoom > READER_ZOOM_MIN) {
-                val seeded = panAfterZoom(
-                    0f, READER_ZOOM_MIN, currentZoom,
-                    viewportWidthPx / 2f, viewportWidthPx,
-                )
+                // Use the SAME headroom policy as a live zoom — the old bare
+                // panAfterZoom seed could plant pan at 0 and kill right drags.
+                val seeded = readerRestoredPan(currentZoom, viewportWidthPx)
                 panX.floatValue = seeded
                 PdfContinuousTrace.zoomPan(
                     "restore", READER_ZOOM_MIN, currentZoom, 0f, seeded,
@@ -285,7 +301,7 @@ fun ContinuousReaderScreen(
                                     // focal stays at the midpoint of the two fingers
                                     // instead of jumping to whichever changed.
                                     val pressedX = HashMap<Long, Float>()
-                                    var lastTracedRenderZoom = readerRenderZoom(latestZoom.value)
+                                    var lastTracedRenderZoom = readerRenderZoom(gestureZoom.floatValue)
                                     var pinchWasActive = false
                                     var panPointerId = -1L
                                     var panTotalX = 0f
@@ -305,6 +321,15 @@ fun ContinuousReaderScreen(
                                                     gate.onDown(id)
                                                     if (seen.size == 1) {
                                                         suppressPageTap.value = false
+                                                        // A new gesture must not inherit pan or
+                                                        // swipe state from a previous one (a missed
+                                                        // up could otherwise pin the next drag).
+                                                        panPointerId = -1L
+                                                        panTotalX = 0f
+                                                        panStarted = false
+                                                        swipeDelivered = false
+                                                        swipeTotalX = 0f
+                                                        swipeTotalY = 0f
                                                     }
                                                 }
                                             } else if (seen.remove(id)) {
@@ -327,9 +352,9 @@ fun ContinuousReaderScreen(
                                                 swipeTotalX = 0f
                                                 swipeTotalY = 0f
                                                 lastTracedRenderZoom =
-                                                    readerRenderZoom(latestZoom.value)
+                                                    readerRenderZoom(gestureZoom.floatValue)
                                                 PdfContinuousTrace.pinch(
-                                                    latestZoom.value,
+                                                    gestureZoom.floatValue,
                                                     lastTracedRenderZoom,
                                                     event.calculateZoom(),
                                                 )
@@ -345,7 +370,7 @@ fun ContinuousReaderScreen(
                                                     else -> (pressedXs[0] + pressedXs[1]) / 2f
                                                 }
                                                 val nextZoom = gatedPinchZoom(
-                                                    latestZoom.value,
+                                                    gestureZoom.floatValue,
                                                     zoomChange,
                                                     true,
                                                 )
@@ -383,7 +408,7 @@ fun ContinuousReaderScreen(
                                             // One-finger horizontal pan is observed but
                                             // not consumed. Vertical movement continues to
                                             // the LazyColumn, so diagonal drags work.
-                                            if (latestZoom.value > READER_ZOOM_MIN) {
+                                            if (gestureZoom.floatValue > READER_ZOOM_MIN) {
                                                 val change = event.changes.firstOrNull {
                                                     it.pressed
                                                 }
@@ -402,7 +427,7 @@ fun ContinuousReaderScreen(
                                                             .viewportSize.width.toFloat()
                                                         val maxPan = readerMaxPanPx(
                                                             panWidth,
-                                                            latestZoom.value,
+                                                            gestureZoom.floatValue,
                                                         )
                                                         if (!panStarted &&
                                                             abs(panTotalX) > touchSlop
@@ -412,7 +437,7 @@ fun ContinuousReaderScreen(
                                                             PdfContinuousTrace.pan(
                                                                 "start", id, deltaX, panTotalX,
                                                                 panX.floatValue, panX.floatValue,
-                                                                latestZoom.value, maxPan,
+                                                                gestureZoom.floatValue, maxPan,
                                                             )
                                                         }
                                                         if (panStarted) {
@@ -420,13 +445,13 @@ fun ContinuousReaderScreen(
                                                             panX.floatValue = panReaderAfterDrag(
                                                                 panBefore,
                                                                 deltaX,
-                                                                latestZoom.value,
+                                                                gestureZoom.floatValue,
                                                                 panWidth,
                                                             )
                                                             PdfContinuousTrace.pan(
                                                                 "move", id, deltaX, panTotalX,
                                                                 panBefore, panX.floatValue,
-                                                                latestZoom.value, maxPan,
+                                                                gestureZoom.floatValue, maxPan,
                                                             )
                                                         }
                                                     }
@@ -491,11 +516,11 @@ fun ContinuousReaderScreen(
                                                 PdfContinuousTrace.pan(
                                                     "end", panPointerId, 0f, panTotalX,
                                                     panX.floatValue, panX.floatValue,
-                                                    latestZoom.value,
+                                                    gestureZoom.floatValue,
                                                     readerMaxPanPx(
                                                         listState.layoutInfo.viewportSize.width
                                                             .toFloat(),
-                                                        latestZoom.value,
+                                                        gestureZoom.floatValue,
                                                     ),
                                                 )
                                             }

@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.71`** — `versionCode = 80`.
-- **Next version is `0.8.72` — `versionCode = 81`.**
+- Current delivered version: **`0.8.72`** — `versionCode = 81`.
+- **Next version is `0.8.73` — `versionCode = 82`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.72` | 81 | 2026-11-24 | `v0.8.72` | Fix regressed continuous-reader pan: zoom mode for the raw pointer observer now reads a synchronous snapshot instead of `rememberUpdatedState`, so a right drag in the frames right after a pinch is never misrouted to the fit-zoom page-swipe branch; restore seed uses the 25% headroom helper; re-clamp on viewport/zoom change preserves headroom; stale per-gesture drag state reset; 2 JVM + 1 E2E regression tests |
 | `0.8.71` | 80 | 2026-11-24 | `v0.8.71` | Split/study mode: move page navigation out of the floating PDF toolbar into the 48dp divider row below the PDF strip (no control overlaps the page); grip text shrinks on narrow phones; toolbar inventory, JVM/E2E tests and help text updated; no new JVM tests |
 | `0.8.70` | 79 | 2026-11-23 | `v0.8.70` | Unobtrusive PDF navigation: remove the floating zoom pill (pinch/double-tap zoom stays), dock page navigation in a layout row below the canvas/list so it never covers the PDF; continuous reader gains numeric page jump and loses the 60dp floating-label padding; split/immersive chrome contracts unchanged; help/guard vocabulary updated; 4 JVM tests |
 | `0.8.69` | 78 | 2026-11-23 | `v0.8.69` | Real-pen pressure feel: temporal pressure low-pass at capture (asymmetric attack/release, neutral identity), speed-aware brush/fountain/pencil width, fixed-ball ballpoint width band + speed-weighted flow + first-contact dot, dwell ink pooling for fountain/brush; full-stroke replay-stable dynamics; 29 JVM tests |

@@ -156,6 +156,21 @@ fun panAfterZoom(
     return clampReaderPan(before * ratio + focus * (ratio - 1f), z1, width)
 }
 
+/**
+ * Pan to seed when a saved reader zoom is restored (page starts fit, centred
+ * focal). Kept pure so the headroom invariant is covered by JVM tests instead
+ * of living only inside a LaunchedEffect. Without the headroom step this seed
+ * can plant pan at a clamp edge, making the first rightward drag a no-op.
+ */
+fun readerRestoredPan(zoom: Float, viewportWidthPx: Float): Float =
+    readerPanWithHeadroom(
+        panPx = 0f,
+        oldZoom = READER_ZOOM_MIN,
+        newZoom = zoom,
+        focalX = viewportWidthPx / 2f,
+        viewportWidthPx = viewportWidthPx,
+    )
+
 /** Rendering scale used when a continuous page fits the viewport width. */
 const val READER_BASE_RENDER_SCALE = 1.25f
 

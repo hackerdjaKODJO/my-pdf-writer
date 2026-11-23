@@ -149,4 +149,42 @@ class ReaderPanTest {
         assertFloat("zoom out from the edge keeps rightward headroom", 750f,
             readerPanWithHeadroom(1500f, 2.5f, 2f, 0f, 1000f))
     }
+
+    @Test
+    fun `restored zoom seeds a headroom pan so the first rightward drag moves`() {
+        // Regression: the restore path used bare panAfterZoom, which can plant
+        // pan at a clamp edge where a rightward drag is a complete no-op.
+        val seeded = readerRestoredPan(2f, 1000f)
+        assertFloat("centred restore keeps a balanced pan", 500f, seeded)
+        assertFloat("rightward drag moves immediately", 400f,
+            panReaderAfterDrag(seeded, +100f, 2f, 1000f))
+        for (zoom in listOf(1.25f, 1.5f, 2f, 2.5f)) {
+            val maxPan = readerMaxPanPx(1000f, zoom)
+            val p = readerRestoredPan(zoom, 1000f)
+            org.junit.Assert.assertTrue(
+                "restored pan $p must leave both directions reachable at zoom $zoom",
+                p >= maxPan * 0.25f - 0.001f && p <= maxPan * 0.75f + 0.001f,
+            )
+            org.junit.Assert.assertTrue(
+                "rightward drag must move at zoom $zoom",
+                panReaderAfterDrag(p, +10f, zoom, 1000f) < p,
+            )
+        }
+        assertFloat("fit zoom restore stays at zero", 0f, readerRestoredPan(1f, 1000f))
+    }
+
+    @Test
+    fun `reclamping a headroom pan never parks it at a clamp edge`() {
+        // The viewport-change effect re-clamps on every zoom; it must not undo
+        // the headroom that makes rightward drags work.
+        for (focal in listOf(0f, 250f, 500f, 750f, 1000f)) {
+            val headroom = readerPanWithHeadroom(0f, 1f, 2f, focal, 1000f)
+            val reclamped = clampReaderPan(headroom, 2f, 1000f)
+            assertFloat("reclamp preserves headroom for focal $focal", headroom, reclamped)
+            org.junit.Assert.assertTrue(
+                "rightward drag still moves for focal $focal",
+                panReaderAfterDrag(reclamped, +10f, 2f, 1000f) < reclamped,
+            )
+        }
+    }
 }

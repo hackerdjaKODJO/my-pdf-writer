@@ -500,6 +500,56 @@ class ReaderPinchE2ETest {
     }
 
     @Test
+    fun zoomThenImmediateRightDragInOneGesturePansInsteadOfTurningPage() {
+        // Regression: rememberUpdatedState(zoom) only refreshes on composition,
+        // so a right drag beginning in the frames right after a pinch could be
+        // routed to the fit-zoom page-swipe branch. Zoom and drag are injected in
+        // ONE block deliberately — no waitForIdle between them.
+        val pageChanges = Collections.synchronizedList(mutableListOf<Int>())
+        composeRule.setContent {
+            ContinuousReaderScreen(
+                title = "zoom-race",
+                pageCount = 3,
+                initialPage = 0,
+                loadPage = { _, _ -> Bitmap.createBitmap(80, 112, Bitmap.Config.ARGB_8888) },
+                onBack = {},
+                onOpenPage = {},
+                onPageChange = { pageChanges.add(it) },
+            )
+        }
+        composeRule.waitForIdle()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        val viewport = viewportWidthPx()
+
+        composeRule.onRoot().performTouchInput {
+            val cy = height * 0.6f
+            val cx = width / 2f
+            down(0, Offset(cx - width * 0.05f, cy))
+            down(1, Offset(cx + width * 0.05f, cy))
+            moveTo(1, Offset(cx + width * 0.30f, cy), delayMillis = 16) // pinch to zoom
+            up(1)
+            // Retained finger pushes RIGHT immediately — no idle wait.
+            moveTo(0, Offset(cx + width * 0.30f + viewport * 0.30f, cy), delayMillis = 16)
+            up(0)
+        }
+        composeRule.waitForIdle()
+
+        assertTrue("zoom must apply", !isFitLabel())
+        assertTrue(
+            "zoom must not be mistaken for a fit-zoom page swipe: $pageChanges",
+            pageChanges.isEmpty(),
+        )
+        // A correct pan moves the page right; a misclassified swipe leaves it
+        // wherever the zoom anchored it. Compare in Dp to avoid px/Dp mismatch.
+        val after = page.getUnclippedBoundsInRoot()
+        val pageWidthDp = after.right - after.left
+        assertTrue(
+            "immediate rightward drag after zoom must keep the page visible",
+            after.right > pageWidthDp * 0.25f,
+        )
+    }
+
+    @Test
     fun pinchZoomThenRightDragMovesThePageRight() {
         // Same regression through the pinch path: fingers are symmetric about
         // the viewport centre, so zoom must create left-side headroom there too.

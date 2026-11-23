@@ -40,6 +40,7 @@
 - [E2E coverage expansion — 0.8.39](e2e-coverage-0839.md)
 - [Real-pen pressure feel — 0.8.69](ink-realpen-0869.md)
 - [Unobtrusive PDF navigation — 0.8.70](pdf-bottom-nav-0870.md)
+- [Continuous-reader pan-after-zoom regression — 0.8.72](continuous-pan-regression-0872.md)
 
 ## 문의
 
