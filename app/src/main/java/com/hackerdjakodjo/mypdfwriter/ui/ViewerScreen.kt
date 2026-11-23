@@ -1415,15 +1415,10 @@ fun ViewerScreen(
                             // top-end search chip while staying centered. It is an
                             // overlay and reserves no layout height.
                             SplitPdfToolbar(
-                                pageIndex = state.pageIndex,
-                                pageCount = state.pageCount,
                                 bookmarked = currentBookmark != null,
                                 textSelectMode = textSelectMode,
                                 textLoading = state.textLoading,
                                 hasWords = pageTextWords.isNotEmpty(),
-                                onPrevious = vm::previousPage,
-                                onNext = vm::nextPage,
-                                onOpenPages = { showPages = true },
                                 onToggleTextSelection = toggleTextSelection,
                                 onOpenSearch = { showSearch = true },
                                 onToggleBookmark = {
@@ -1518,10 +1513,10 @@ fun ViewerScreen(
                 }
 
                 if (studyPane != null) {
-                    // The divider is the primary resize affordance: a 28dp row
-                    // with a centered grip/percentage pill and a PDF-tool chip.
-                    // The floating pane header keeps its own drag handle and owns
-                    // the dismiss overshoot, exactly as before.
+                    // The divider is the primary resize affordance: a 48dp row
+                    // with page navigation below the PDF, a centered grip/
+                    // percentage pill and a PDF-tool chip. The floating pane
+                    // header keeps its own drag handle and dismiss overshoot.
                     SplitDivider(
                         paneFraction = paneFraction,
                         totalHeightPx = splitAreaHeightPx,
@@ -1531,6 +1526,11 @@ fun ViewerScreen(
                             onStudyPaneFractionChange(clampStudyPaneFraction(fraction))
                         },
                         onTogglePdfTools = { pdfToolsVisible = !pdfToolsVisible },
+                        pageIndex = state.pageIndex,
+                        pageCount = state.pageCount,
+                        onPreviousPage = vm::previousPage,
+                        onNextPage = vm::nextPage,
+                        onOpenPages = { showPages = true },
                     )
                     Box(
                         Modifier

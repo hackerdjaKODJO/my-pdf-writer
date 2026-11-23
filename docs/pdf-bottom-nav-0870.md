@@ -26,6 +26,16 @@ view cover the page itself and get in the way of reading.
    immersive auto-hide removes the bar together with the top app bar and tool
    dock — page swipes still turn pages there.
 
+## Split/study mode follow-up (0.8.71)
+
+The first pass only fixed the full-screen reader — in split mode the
+`SplitPdfToolbar` still floated a page pill over the PDF strip. That pill is
+now removed from the floating toolbar; page navigation moves into the
+48dp control row below the PDF strip (`SplitDivider`), alongside the resize
+grip and PDF-tool chip. A full-width `Row` with `SpaceBetween` and an
+ellipsizing grip label keeps all three controls from overlapping on narrow
+phones. Split toolbar inventory, JVM/E2E tests and the help text were updated.
+
 ## Unchanged
 
 - Split-mode chrome, page sheet, tool dock, selection bars, tab strip, lock

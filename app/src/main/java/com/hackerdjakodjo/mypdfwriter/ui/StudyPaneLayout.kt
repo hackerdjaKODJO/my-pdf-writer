@@ -105,10 +105,14 @@ internal fun studyPanePresetLabel(fraction: Float): String =
 internal fun isStudyPanePresetSelected(currentFraction: Float, presetFraction: Float): Boolean =
     abs(clampStudyPaneFraction(currentFraction) - presetFraction) < 0.001f
 
-/** Height of the resize divider row between the PDF strip and the note pane. */
-internal const val STUDY_PANE_DIVIDER_ROW_HEIGHT_DP = 28
+/**
+ * Height of the control row between the PDF strip and the note pane. It hosts
+ * page navigation (below the PDF, never over it), the resize grip and the
+ * PDF-tool chip, so every target meets the 48 dp minimum.
+ */
+internal const val STUDY_PANE_DIVIDER_ROW_HEIGHT_DP = MIN_TARGET_DP
 
-/** Full 48dp TalkBack target for the size-popup rows; the inline pill fits the 28dp row. */
+/** Full 48dp TalkBack target for the size-popup rows, matching the divider row. */
 internal const val STUDY_PANE_PRESET_ROW_HEIGHT_DP = MIN_TARGET_DP
 
 /** Midpoint between the 50% and 85% presets, used by divider double-tap. */

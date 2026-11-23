@@ -133,10 +133,10 @@ class PdfSplitChromeTest {
     @Test
     fun compactSplitStripKeepsEveryStudyAction() {
         assertEquals(
-            listOf("이전 페이지", "페이지 선택", "다음 페이지", "검색", "텍스트 선택", "주석"),
+            listOf("검색", "텍스트 선택", "주석"),
             splitPdfToolbarControls(compact = true),
         )
-        assertEquals(8, splitPdfToolbarControls(compact = false).size)
+        assertEquals(5, splitPdfToolbarControls(compact = false).size)
         listOf("텍스트 선택", "주석", "현재 페이지 북마크", "학습 메뉴").forEach {
             assertTrue(it in splitPdfToolbarControls(compact = false))
         }

@@ -42,9 +42,6 @@ class PdfSplitChromeE2ETest {
 
     @Test
     fun floatingToolbarRoutesEveryPdfControl() {
-        var previous = 0
-        var next = 0
-        var pages = 0
         var search = 0
         var selection = 0
         var bookmark = 0
@@ -54,15 +51,10 @@ class PdfSplitChromeE2ETest {
         composeRule.setContent {
             MaterialTheme {
                 SplitPdfToolbar(
-                    pageIndex = 2,
-                    pageCount = 12,
                     bookmarked = false,
                     textSelectMode = false,
                     textLoading = false,
                     hasWords = true,
-                    onPrevious = { previous += 1 },
-                    onNext = { next += 1 },
-                    onOpenPages = { pages += 1 },
                     onToggleTextSelection = { selection += 1 },
                     onOpenSearch = { search += 1 },
                     onToggleBookmark = { bookmark += 1 },
@@ -72,19 +64,14 @@ class PdfSplitChromeE2ETest {
             }
         }
 
-        composeRule.onNodeWithText("3 / 12").assertExists()
-        composeRule.onNodeWithContentDescription("이전 페이지").performClick()
-        composeRule.onNodeWithContentDescription("다음 페이지").performClick()
-        composeRule.onNodeWithContentDescription("페이지 선택").performClick()
+        // Page navigation now lives in the divider BELOW the PDF, not here.
+        composeRule.onNodeWithText("3 / 12").assertIsNotDisplayed()
         composeRule.onNodeWithContentDescription("검색").performClick()
         composeRule.onNodeWithContentDescription("텍스트 선택").performClick()
         composeRule.onNodeWithContentDescription("현재 페이지 북마크").performClick()
         composeRule.onNodeWithContentDescription("주석").performClick()
         composeRule.onNodeWithContentDescription("학습 메뉴").performClick()
 
-        assertEquals(1, previous)
-        assertEquals(1, next)
-        assertEquals(1, pages)
         assertEquals(1, search)
         assertEquals(1, selection)
         assertEquals(1, bookmark)
@@ -94,9 +81,6 @@ class PdfSplitChromeE2ETest {
 
     @Test
     fun compactToolbarKeepsStudyActionsButHidesSecondaryChrome() {
-        var previous = 0
-        var next = 0
-        var pages = 0
         var search = 0
         var selection = 0
         var bookmark = 0
@@ -106,15 +90,10 @@ class PdfSplitChromeE2ETest {
         composeRule.setContent {
             MaterialTheme {
                 SplitPdfToolbar(
-                    pageIndex = 3,
-                    pageCount = 9,
                     bookmarked = true,
                     textSelectMode = false,
                     textLoading = false,
                     hasWords = true,
-                    onPrevious = { previous += 1 },
-                    onNext = { next += 1 },
-                    onOpenPages = { pages += 1 },
                     onToggleTextSelection = { selection += 1 },
                     onOpenSearch = { search += 1 },
                     onToggleBookmark = { bookmark += 1 },
@@ -125,10 +104,7 @@ class PdfSplitChromeE2ETest {
             }
         }
 
-        composeRule.onNodeWithText("4 / 9").assertExists()
-        composeRule.onNodeWithContentDescription("이전 페이지").performClick()
-        composeRule.onNodeWithContentDescription("다음 페이지").performClick()
-        composeRule.onNodeWithContentDescription("페이지 선택").performClick()
+        composeRule.onNodeWithText("4 / 9").assertIsNotDisplayed()
         // The default 85% study pane keeps the actions the pane exists for.
         composeRule.onNodeWithContentDescription("검색").performClick()
         composeRule.onNodeWithContentDescription("텍스트 선택").performClick()
@@ -137,9 +113,6 @@ class PdfSplitChromeE2ETest {
             composeRule.onNodeWithContentDescription(it).assertIsNotDisplayed()
         }
 
-        assertEquals(1, previous)
-        assertEquals(1, next)
-        assertEquals(1, pages)
         assertEquals(1, search)
         assertEquals(1, selection)
         assertEquals(0, bookmark)
@@ -156,6 +129,40 @@ class PdfSplitChromeE2ETest {
 
         composeRule.onNodeWithContentDescription("PDF 닫기").assertIsEnabled().performClick()
         assertEquals(1, back)
+    }
+
+    @Test
+    fun dividerDocksPageNavigationBelowThePdf() {
+        var previous = 0
+        var next = 0
+        var pages = 0
+
+        composeRule.setContent {
+            MaterialTheme {
+                SplitDivider(
+                    paneFraction = 0.70f,
+                    totalHeightPx = 1000f,
+                    pdfToolsVisible = true,
+                    onFractionChange = {},
+                    onPresetSelected = {},
+                    onTogglePdfTools = {},
+                    pageIndex = 2,
+                    pageCount = 12,
+                    onPreviousPage = { previous += 1 },
+                    onNextPage = { next += 1 },
+                    onOpenPages = { pages += 1 },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("3 / 12").assertExists()
+        composeRule.onNodeWithContentDescription("이전 페이지").performClick()
+        composeRule.onNodeWithContentDescription("다음 페이지").performClick()
+        composeRule.onNodeWithContentDescription("페이지 선택").performClick()
+
+        assertEquals(1, previous)
+        assertEquals(1, next)
+        assertEquals(1, pages)
     }
 
     @Test

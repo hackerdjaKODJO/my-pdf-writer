@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.70`** — `versionCode = 79`.
-- **Next version is `0.8.71` — `versionCode = 80`.**
+- Current delivered version: **`0.8.71`** — `versionCode = 80`.
+- **Next version is `0.8.72` — `versionCode = 81`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.71` | 80 | 2026-11-24 | `v0.8.71` | Split/study mode: move page navigation out of the floating PDF toolbar into the 48dp divider row below the PDF strip (no control overlaps the page); grip text shrinks on narrow phones; toolbar inventory, JVM/E2E tests and help text updated; no new JVM tests |
 | `0.8.70` | 79 | 2026-11-23 | `v0.8.70` | Unobtrusive PDF navigation: remove the floating zoom pill (pinch/double-tap zoom stays), dock page navigation in a layout row below the canvas/list so it never covers the PDF; continuous reader gains numeric page jump and loses the 60dp floating-label padding; split/immersive chrome contracts unchanged; help/guard vocabulary updated; 4 JVM tests |
 | `0.8.69` | 78 | 2026-11-23 | `v0.8.69` | Real-pen pressure feel: temporal pressure low-pass at capture (asymmetric attack/release, neutral identity), speed-aware brush/fountain/pencil width, fixed-ball ballpoint width band + speed-weighted flow + first-contact dot, dwell ink pooling for fountain/brush; full-stroke replay-stable dynamics; 29 JVM tests |
 | `0.8.68` | 77 | 2026-11-23 | `v0.8.68` | Five-agent full code review: fix undo snapshot notes/cards/bookmarks, docstate writer serialization + tmp recovery, SEND_MULTIPLE recents, PDF pressureInk sharing, note highlight presets, 4 stale E2E tests, bounded stationary samples and several lifecycle/IO fixes; 4 JVM tests |

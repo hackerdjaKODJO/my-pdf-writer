@@ -289,9 +289,7 @@ internal const val SPLIT_CHROME_VISUAL_DP = 36
  * list so the "split compact" contract can be checked without a device.
  */
 internal fun splitPdfToolbarControls(compact: Boolean): List<String> = buildList {
-    add("이전 페이지")
-    add("페이지 선택")
-    add("다음 페이지")
+    // Page navigation is docked below the PDF strip (SplitDivider), not here.
     add("검색")
     // Selecting text and annotating are the reason the study pane exists; they
     // must stay reachable even when the note takes 85% of the screen.
@@ -341,24 +339,22 @@ internal fun SplitPdfBackButton(
 }
 
 /**
- * Floating top strip over the PDF area: page pill, text-selection toggle,
- * current-page bookmark, annotation-tool sheet and 학습 메뉴. It never reserves
- * layout height; the note pane keeps the rest of the screen. In [compact] mode
- * the secondary tools are hidden (the top-start back button is drawn separately),
+ * Floating top strip over the PDF area: text-selection toggle, current-page
+ * bookmark, annotation-tool sheet and 학습 메뉴. It never reserves layout
+ * height; the note pane keeps the rest of the screen. In [compact] mode the
+ * secondary tools are hidden (the top-start back button is drawn separately),
  * but search stays reachable: the default 85% study pane is ESSENTIAL, so gating
  * search behind `!compact` removed it from the primary study mode.
+ *
+ * Page navigation is NOT here: it lives in the divider row BELOW the PDF strip
+ * so no navigation control ever covers the page.
  */
 @Composable
 internal fun SplitPdfToolbar(
-    pageIndex: Int,
-    pageCount: Int,
     bookmarked: Boolean,
     textSelectMode: Boolean,
     textLoading: Boolean,
     hasWords: Boolean,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onOpenPages: () -> Unit,
     onToggleTextSelection: () -> Unit,
     onToggleBookmark: () -> Unit,
     onOpenSearch: () -> Unit,
@@ -390,14 +386,6 @@ internal fun SplitPdfToolbar(
                 .padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SplitPagePill(
-                pageIndex = pageIndex,
-                pageCount = pageCount,
-                onPrevious = onPrevious,
-                onNext = onNext,
-                onOpenPages = onOpenPages,
-            )
-
             // Search is one tap away in every density, including the ESSENTIAL
             // strip used by the default 85% study pane.
             SplitChromeButton(
@@ -506,11 +494,11 @@ private fun SplitPagePill(
 }
 
 /**
- * Resize divider between the PDF strip and the note pane. The whole 28dp row is
- * a vertical drag target; the centered pill also accepts tap (size presets) and
- * double-tap (50% <-> 85%). A trailing chip toggles the PDF tool strip
- * without touching the selection bar. Pure sizing/preset policy lives in
- * [StudyPaneLayout.kt], so this composable only wires gestures to callbacks.
+ * Row between the PDF strip and the note pane: page navigation (below the PDF,
+ * never over it), the resize grip (tap = size presets, double-tap = 50%<->85%)
+ * and a trailing PDF-tool visibility chip. The whole row is a vertical drag
+ * target. Pure sizing/preset policy lives in [StudyPaneLayout.kt], so this
+ * composable only wires gestures to callbacks.
  */
 @Composable
 internal fun SplitDivider(
@@ -521,6 +509,11 @@ internal fun SplitDivider(
     onPresetSelected: (Float) -> Unit,
     onTogglePdfTools: () -> Unit,
     modifier: Modifier = Modifier,
+    pageIndex: Int = 0,
+    pageCount: Int = 0,
+    onPreviousPage: () -> Unit = {},
+    onNextPage: () -> Unit = {},
+    onOpenPages: () -> Unit = {},
 ) {
     var dragStartFraction by remember { mutableFloatStateOf(paneFraction) }
     var dragY by remember { mutableFloatStateOf(0f) }
@@ -555,11 +548,35 @@ internal fun SplitDivider(
             },
         contentAlignment = Alignment.Center,
     ) {
-        // The visible pill stays inside the thin divider row, but TalkBack sees
+        // Single full-width row: page navigation, resize grip and tool chip.
+        // SpaceBetween keeps them apart; the grip's text shrinks on narrow phones.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+        // Page navigation now lives BELOW the PDF strip in this 48dp control row,
+        // never floating over the page.
+        if (pageCount > 0) {
+            Box(Modifier.padding(start = 4.dp)) {
+                SplitPagePill(
+                    pageIndex = pageIndex,
+                    pageCount = pageCount,
+                    onPrevious = onPreviousPage,
+                    onNext = onNextPage,
+                    onOpenPages = onOpenPages,
+                )
+            }
+        }
+
+        // The visible pill stays inside the control row, but TalkBack sees
         // a full 48 dp clickable node with an explicit "노트 크기 선택" action.
         // Tap opens the presets and double-tap still jumps to an endpoint.
         Box(
             modifier = Modifier
+                .weight(1f, fill = false)
                 .sizeIn(
                     minWidth = SPLIT_CHROME_TARGET_DP.dp,
                     minHeight = SPLIT_CHROME_TARGET_DP.dp,
@@ -592,19 +609,20 @@ internal fun SplitDivider(
                         .clip(RoundedCornerShape(50)),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(8.dp))
                     Icon(
                         Icons.Outlined.DragIndicator,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
                     )
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(4.dp))
                     Text(
                         studyPaneDividerLabel(paneFraction),
                         style = MaterialTheme.typography.labelMedium,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(8.dp))
                 }
             }
         }
@@ -613,8 +631,7 @@ internal fun SplitDivider(
         // clickable node carries the state-aware label and a 48 dp target.
         Box(
             modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 8.dp)
+                .padding(end = 4.dp)
                 .sizeIn(
                     minWidth = SPLIT_CHROME_TARGET_DP.dp,
                     minHeight = SPLIT_CHROME_TARGET_DP.dp,
@@ -648,6 +665,7 @@ internal fun SplitDivider(
                 }
             }
         }
+        } // end full-width control row
 
         if (showSizePopup) {
             val density = LocalDensity.current
