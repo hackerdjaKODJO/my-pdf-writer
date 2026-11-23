@@ -7,7 +7,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Pure JVM checks that the offline HTML guide matches the shipped 0.8.61 app
+ * Pure JVM checks that the offline HTML guide matches the shipped 0.8.62 app
  * and leads with a short quick start. No network or Android runtime required.
  */
 class UsageGuideContentTest {

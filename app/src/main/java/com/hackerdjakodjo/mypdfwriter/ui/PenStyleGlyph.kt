@@ -7,22 +7,31 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 
 /**
- * A compact, original graphic for one pen type: a drawn nib silhouette plus a
- * sample stroke showing that nib's character. Shown in both the PDF and note
- * style sheets so a student can see what they are selecting.
+ * A realistic drawing of the selected writing instrument — ballpoint with clip
+ * and clicker, fountain pen with a gold nib and breather hole, brush with a
+ * ferrule and bristles, or a sharpened pencil with an eraser — followed by a
+ * small sample stroke showing that nib's character. Shown in both the PDF and
+ * note style sheets so a student can see what they are selecting.
+ *
+ * The silhouettes are original Compose Canvas geometry (no third-party art);
+ * all coordinates come from the pure [penIllustrationSpec] so both pickers stay
+ * in sync and the geometry can be unit-tested without a device.
  */
 @Composable
 internal fun PenStyleGlyph(
@@ -32,7 +41,7 @@ internal fun PenStyleGlyph(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val spec = penStyleGlyphSpec(style)
+    val spec = remember(style) { penIllustrationSpec(style) }
     val ink = Color(color)
     val foreground = if (selected) {
         MaterialTheme.colorScheme.onPrimaryContainer
@@ -44,100 +53,111 @@ internal fun PenStyleGlyph(
         selected = selected,
         onClick = onClick,
         leadingIcon = {
-            Canvas(Modifier.size(width = 26.dp, height = 20.dp)) {
+            Canvas(Modifier.size(40.dp)) {
                 val w = size.width
                 val h = size.height
-                when (spec.nib) {
-                    PenNibKind.BALL -> {
+                // First layout (or a collapsed scroll container) can report zero;
+                // bailing out avoids NaN/negative-radius draw calls.
+                if (w <= 0f || h <= 0f) return@Canvas
+                val side = minOf(w, h)
+                val ox = (w - side) / 2f
+                val oy = (h - side) / 2f
+                fun x(n: Float) = ox + n * side
+                fun y(n: Float) = oy + n * side
+                fun r(n: Float) = (n * side).coerceAtLeast(0.5f)
+
+                fun partColor(role: PenPartColor): Color = when (role) {
+                    PenPartColor.BODY -> foreground
+                    PenPartColor.BODY_SHADE -> foreground.copy(alpha = 0.72f)
+                    PenPartColor.METAL -> Color(0xFF9AA0A6)
+                    PenPartColor.GOLD -> Color(0xFFC9A227)
+                    PenPartColor.WOOD -> Color(0xFFD9B98A)
+                    PenPartColor.PENCIL_BODY -> Color(0xFFD9A441)
+                    PenPartColor.GRAPHITE -> Color(0xFF3A3A3A)
+                    PenPartColor.ERASER -> Color(0xFFE58A8A)
+                    PenPartColor.INK -> ink
+                    PenPartColor.CUTOUT -> surfaceColor
+                    PenPartColor.HIGHLIGHT -> Color.White.copy(alpha = 0.38f)
+                }
+
+                // Tilt the horizontal instrument so it rests diagonally on the page.
+                rotate(spec.rotationDeg, pivot = Offset(w / 2f, h / 2f)) {
+                    spec.parts.forEach { part ->
+                        when (part) {
+                            is PenPart.RoundRect -> drawRoundRect(
+                                color = partColor(part.color),
+                                topLeft = Offset(x(part.x0), y(part.y0)),
+                                size = Size(
+                                    r(part.x1 - part.x0),
+                                    r(part.y1 - part.y0),
+                                ),
+                                cornerRadius = CornerRadius(r(part.corner)),
+                            )
+                            is PenPart.Polygon -> {
+                                val points = part.points
+                                if (points.size >= 3) {
+                                    val path = Path().apply {
+                                        moveTo(x(points.first().x), y(points.first().y))
+                                        points.drop(1).forEach { lineTo(x(it.x), y(it.y)) }
+                                        close()
+                                    }
+                                    drawPath(path, partColor(part.color))
+                                }
+                            }
+                            is PenPart.Circle -> drawCircle(
+                                color = partColor(part.color),
+                                radius = r(part.radius),
+                                center = Offset(x(part.center.x), y(part.center.y)),
+                            )
+                            is PenPart.Line -> drawLine(
+                                color = partColor(part.color),
+                                start = Offset(x(part.from.x), y(part.from.y)),
+                                end = Offset(x(part.to.x), y(part.to.y)),
+                                strokeWidth = r(part.width),
+                                cap = StrokeCap.Round,
+                            )
+                        }
+                    }
+                }
+
+                // Sample stroke stays horizontal below the instrument. A faint
+                // theme-coloured underlay keeps a very light user ink visible.
+                val trail = spec.trail
+                if (trail.size >= 2) {
+                    val trailPath = Path().apply {
+                        moveTo(x(trail.first().x), y(trail.first().y))
+                        trail.drop(1).forEach { lineTo(x(it.x), y(it.y)) }
+                    }
+                    val strokeWidth = r(spec.trailWidth)
+                    drawPath(
+                        trailPath,
+                        foreground.copy(alpha = 0.18f),
+                        style = Stroke(width = strokeWidth + 2f, cap = StrokeCap.Round),
+                    )
+                    drawPath(
+                        trailPath,
+                        ink,
+                        alpha = spec.trailAlpha,
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                    )
+                    if (spec.trailOverlay) {
+                        val mid = trail[trail.size / 2]
+                        val end = trail.last()
                         drawLine(
-                            foreground, Offset(w * 0.5f, 0f), Offset(w * 0.5f, h * 0.42f),
-                            strokeWidth = 3f, cap = StrokeCap.Round,
-                        )
-                        drawPath(
-                            Path().apply {
-                                moveTo(w * 0.34f, h * 0.40f)
-                                lineTo(w * 0.66f, h * 0.40f)
-                                lineTo(w * 0.5f, h * 0.78f)
-                                close()
-                            },
-                            foreground,
-                        )
-                        drawCircle(ink, radius = 2.4f, center = Offset(w * 0.5f, h * 0.82f))
-                    }
-                    PenNibKind.SPLIT -> {
-                        drawPath(
-                            Path().apply {
-                                moveTo(w * 0.28f, h * 0.12f)
-                                lineTo(w * 0.72f, h * 0.12f)
-                                lineTo(w * 0.5f, h * 0.86f)
-                                close()
-                            },
-                            foreground,
-                        )
-                        drawCircle(
-                            surfaceColor,
-                            radius = 2f,
-                            center = Offset(w * 0.5f, h * 0.42f),
-                        )
-                    }
-                    PenNibKind.BRISTLE -> {
-                        drawRect(foreground, Offset(w * 0.32f, h * 0.10f), Size(w * 0.36f, h * 0.20f))
-                        drawPath(
-                            Path().apply {
-                                moveTo(w * 0.32f, h * 0.30f)
-                                quadraticBezierTo(w * 0.36f, h * 0.70f, w * 0.5f, h * 0.86f)
-                                quadraticBezierTo(w * 0.64f, h * 0.70f, w * 0.68f, h * 0.30f)
-                                close()
-                            },
-                            foreground.copy(alpha = 0.7f),
-                        )
-                    }
-                    PenNibKind.GRAPHITE -> {
-                        drawPath(
-                            Path().apply {
-                                moveTo(w * 0.30f, h * 0.26f)
-                                lineTo(w * 0.70f, h * 0.26f)
-                                lineTo(w * 0.5f, h * 0.82f)
-                                close()
-                            },
-                            Color(0xFFD9B98A),
-                        )
-                        drawPath(
-                            Path().apply {
-                                moveTo(w * 0.42f, h * 0.62f)
-                                lineTo(w * 0.58f, h * 0.62f)
-                                lineTo(w * 0.5f, h * 0.88f)
-                                close()
-                            },
                             ink,
+                            Offset(x(mid.x), y(mid.y)),
+                            Offset(x(end.x), y(end.y)),
+                            strokeWidth = r(0.010f),
+                            cap = StrokeCap.Round,
                         )
                     }
-                }
-                // Sample stroke under the nib: a gentle pressure ramp exercises
-                // the visual character of each style (display only).
-                val strokePath = Path().apply {
-                    moveTo(2f, h - 3f)
-                    quadraticBezierTo(w * 0.5f, h * 0.55f, w - 2f, h - 5f)
-                }
-                when (spec.texture) {
-                    StrokeTexture.EVEN -> drawPath(
-                        strokePath, ink, style = Stroke(width = 2.2f, cap = StrokeCap.Round),
-                    )
-                    StrokeTexture.TAPERED -> {
-                        drawPath(strokePath, ink, alpha = 0.5f,
-                            style = Stroke(width = 3.4f, cap = StrokeCap.Round))
-                        drawLine(ink, Offset(w * 0.5f, h * 0.7f), Offset(w - 2f, h - 5f),
-                            strokeWidth = 1.2f, cap = StrokeCap.Round)
-                    }
-                    StrokeTexture.WASH -> drawPath(
-                        strokePath, ink, alpha = 0.35f,
-                        style = Stroke(width = 5f, cap = StrokeCap.Round),
-                    )
-                    StrokeTexture.GRAIN -> {
-                        drawPath(strokePath, ink, alpha = 0.7f,
-                            style = Stroke(width = 1.8f, cap = StrokeCap.Round))
-                        drawCircle(ink, radius = 1f, center = Offset(w * 0.28f, h * 0.8f), alpha = 0.5f)
-                        drawCircle(ink, radius = 1f, center = Offset(w * 0.72f, h * 0.72f), alpha = 0.5f)
+                    spec.trailDots.forEach { dot ->
+                        drawCircle(
+                            ink,
+                            radius = r(0.010f),
+                            center = Offset(x(dot.x), y(dot.y)),
+                            alpha = 0.7f,
+                        )
                     }
                 }
             }
