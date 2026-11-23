@@ -63,6 +63,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -921,7 +922,12 @@ private fun NotePressureCurveRow(
                     onClick = { onCurve(option) },
                     enabled = enabled,
                     label = { Text(pressureCurveLabel(option)) },
-                    modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
+                    modifier = Modifier
+                        .heightIn(min = MIN_TARGET_DP.dp)
+                        .semantics {
+                            selected = curve == option
+                            stateDescription = pressureCurveDescription(option)
+                        },
                 )
             }
         }

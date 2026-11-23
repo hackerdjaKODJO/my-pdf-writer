@@ -778,7 +778,8 @@ object AnnotationPainter {
         fun halfWidth(index: Int): Float {
             val t = index.toFloat() / tSpan
             return base * smoothed[index] * pressure[index] * 0.5f *
-                PenStrokeGeometry.fountainTaper(t, variation)
+                PenStrokeGeometry.fountainTaper(t, variation) *
+                InkQuality.nibEndProfile(t, variation)
         }
         val path = ribbonPath(points, width, height) { index -> halfWidth(index) }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -791,14 +792,16 @@ object AnnotationPainter {
             points.first().x * width,
             points.first().y * height,
             base * smoothed.first() * pressure.first() * 0.5f *
-                PenStrokeGeometry.fountainTaper(0f, variation),
+                PenStrokeGeometry.fountainTaper(0f, variation) *
+                InkQuality.nibEndProfile(0f, variation),
             paint,
         )
         canvas.drawCircle(
             points.last().x * width,
             points.last().y * height,
             base * smoothed.last() * pressure.last() * 0.5f *
-                PenStrokeGeometry.fountainTaper(1f, variation),
+                PenStrokeGeometry.fountainTaper(1f, variation) *
+                InkQuality.nibEndProfile(1f, variation),
             paint,
         )
     }
@@ -925,6 +928,7 @@ object AnnotationPainter {
     ) {
         val points = annotation.points
         val base = (annotation.width * width).coerceAtLeast(1f)
+        val localVariation = PenStrokeGeometry.pressureVariation(points)
         if (points.size == 1) {
             val local = if (neutral) response else series.first()
             drawPenDot(
@@ -972,9 +976,15 @@ object AnnotationPainter {
                         (current.y - previous.y) * height,
                     )
                 }
+                val speedReference = (arcs.lastOrNull() ?: 0f) /
+                    points.size.coerceAtLeast(2).toFloat()
                 for (index in 1 until points.size) {
                     val local = series[index]
-                    paint.strokeWidth = pencilStrokeWidth(base, local.width)
+                    val tip = InkQuality.nibEndProfile(
+                        t = index.toFloat() / (points.size - 1).coerceAtLeast(1).toFloat(),
+                        variation = localVariation,
+                    )
+                    paint.strokeWidth = pencilStrokeWidth(base, local.width) * tip
                     val wave = PenStrokeGeometry.graphiteJitterByArc(
                         index = index,
                         arcLength = arcs[index],
@@ -985,9 +995,15 @@ object AnnotationPainter {
                     val deposit = PenStrokeGeometry.graphiteDeposit(
                         arcs[index], pass, local.grain, wave,
                     )
+                    val gain = InkQuality.depositGain(
+                        speed = arcs[index] - arcs[index - 1],
+                        reference = speedReference,
+                        pressure = points[index].pressure,
+                        variation = localVariation,
+                    )
                     paint.alpha = scaledInkAlpha(
                         alpha,
-                        PenStrokeGeometry.pencilSegmentAlpha(pass, local.flow) * deposit,
+                        PenStrokeGeometry.pencilSegmentAlpha(pass, local.flow) * deposit * gain,
                         min = 1,
                     )
                     canvas.drawPath(segmentPath(jittered, index, width, height), paint)

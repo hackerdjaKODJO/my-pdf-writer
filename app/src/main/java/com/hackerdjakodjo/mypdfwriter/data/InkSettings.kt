@@ -17,6 +17,8 @@ data class InkSettings(
     val opacity: Float = DEFAULT_OPACITY,
     val pressureCurve: PressureCurve = PressureCurve.DEFAULT,
     val highlightWidth: Float = HighlightInk.DEFAULT_WIDTH,
+    /** Stylus pressure response; finger/mouse always record neutral pressure. */
+    val pressureInk: Boolean = true,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("style", penStyle.name)
@@ -25,6 +27,7 @@ data class InkSettings(
         put("opacity", opacity.toDouble())
         put("curve", pressureCurve.name)
         put("hw", highlightWidth.toDouble())
+        if (!pressureInk) put("pi", false)
     }
 
     companion object {
@@ -63,6 +66,7 @@ data class InkSettings(
                 highlightWidth = HighlightInk.clamp(
                     o.optDouble("hw", HighlightInk.DEFAULT_WIDTH.toDouble()).toFloat(),
                 ),
+                pressureInk = o.optBoolean("pi", true),
             )
         }
 

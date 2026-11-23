@@ -108,4 +108,13 @@ class InkSettingsTest {
         assertTrue(isRequiredPreset("pen-box-ballpoint"))
         assertTrue(!isRequiredPreset("custom"))
     }
+
+    @Test
+    fun pressureInkRoundTripsAndDefaultsOnLegacyJson() {
+        assertTrue(InkSettings.DEFAULT.pressureInk)
+        assertTrue(InkSettings.fromJson(org.json.JSONObject()).pressureInk)
+        val custom = InkSettings(pressureInk = false)
+        assertTrue(!custom.toJson().getBoolean("pi"))
+        assertTrue(!InkSettings.fromJson(custom.toJson()).pressureInk)
+    }
 }

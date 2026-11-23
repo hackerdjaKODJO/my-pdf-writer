@@ -47,7 +47,9 @@ internal object PaperTooth {
         return (mantissa / scale).coerceIn(0f, 1f)
     }
 
-    fun marks(): List<ToothMark> = List(MARK_COUNT) { index ->
+    // Immutable and size-independent: build once instead of allocating 420
+    // objects on every background draw frame.
+    private val cachedMarks: List<ToothMark> = List(MARK_COUNT) { index ->
         val density = hash01(index * R_MIX)
         ToothMark(
             x = hash01(index * X_MIX),
@@ -55,4 +57,6 @@ internal object PaperTooth {
             radius = 0.35f + 0.75f * density,
         )
     }
+
+    fun marks(): List<ToothMark> = cachedMarks
 }

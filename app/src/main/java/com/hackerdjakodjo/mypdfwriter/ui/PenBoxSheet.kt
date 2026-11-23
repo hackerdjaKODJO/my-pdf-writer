@@ -454,11 +454,15 @@ private fun PenBoxRow(
 internal fun PenBoxPreview(preset: PenPreset, modifier: Modifier = Modifier) {
     val type = if (preset.tool == Tool.HIGHLIGHT) AnnotationType.HIGHLIGHT else AnnotationType.PEN
     val points = remember {
-        (0..10).map { index ->
-            val t = index / 10f
+        (0..14).map { index ->
+            val t = index / 14f
+            // A light→firm→light ramp makes the swatch show the nib's real
+            // width/flow/grain response instead of a uniform marker line.
+            val ramp = (0.28f + 0.72f * sin(t * PI).toFloat()).coerceIn(0f, 1f)
             NormalizedPoint(
                 x = 0.06f + t * 0.88f,
                 y = 0.5f + sin(t * PI * 1.6).toFloat() * 0.16f,
+                pressure = ramp,
             )
         }
     }

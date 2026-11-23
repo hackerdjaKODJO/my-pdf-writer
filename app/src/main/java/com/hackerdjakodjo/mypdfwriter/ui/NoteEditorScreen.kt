@@ -255,7 +255,7 @@ fun NoteEditorScreen(
     var simplifyPoints by remember { mutableStateOf(NOTE_SIMPLIFY_POINTS_DEFAULT) }
     var shapeRecognition by remember { mutableStateOf(false) }
     var partialEraser by remember { mutableStateOf(true) }
-    var pressureInk by remember { mutableStateOf(true) }
+    var pressureInk by remember { mutableStateOf(initialInk.pressureInk) }
     var pressureCurve by remember { mutableStateOf(initialInk.pressureCurve) }
     var gestureUndo by remember { mutableStateOf(NOTE_GESTURE_UNDO_DEFAULT) }
 
@@ -263,7 +263,7 @@ fun NoteEditorScreen(
     val configuration = LocalConfiguration.current
     // Large fonts hide the secondary dock labels, but never shrink the slots.
     val showDockLabels = noteDockShowLabels(configuration.screenWidthDp, configuration.fontScale)
-    LaunchedEffect(color, strokeWidth, opacity, penStyle, pressureCurve, highlightWidth) {
+    LaunchedEffect(color, strokeWidth, opacity, penStyle, pressureCurve, highlightWidth, pressureInk) {
         inkStore.save(
             com.hackerdjakodjo.mypdfwriter.data.InkSettings(
                 penStyle = penStyle,
@@ -272,6 +272,7 @@ fun NoteEditorScreen(
                 opacity = opacity,
                 pressureCurve = pressureCurve,
                 highlightWidth = highlightWidth,
+                pressureInk = pressureInk,
             ),
         )
     }

@@ -51,6 +51,7 @@ import com.hackerdjakodjo.mypdfwriter.data.clampInkPressure
 import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
 import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
+import com.hackerdjakodjo.mypdfwriter.pdf.InkQuality
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -339,6 +340,8 @@ fun NoteCanvas(
                 // session and must keep the pen's learned range across strokes,
                 // otherwise every stroke starts with the wrong ink weight.
                 val downPressure = if (canDraw) capturePressure(down) else DEFAULT_INK_PRESSURE
+                var lastPressure = downPressure
+                var lastPressureAtMs = SystemClock.elapsedRealtime()
 
                 if (canDraw) {
                     down.consume()
@@ -439,6 +442,23 @@ fun NoteCanvas(
 
                                     else -> livePoints.add(normalize(primary.position, primaryPressure))
                                 }
+                                lastPressure = primaryPressure
+                                lastPressureAtMs = SystemClock.elapsedRealtime()
+                                primary.consume()
+                            } else if (
+                                (gestureTool == Tool.PEN || gestureTool == Tool.HIGHLIGHT) &&
+                                InkQuality.shouldEmitPressureSample(
+                                    previousPressure = lastPressure,
+                                    nextPressure = primaryPressure,
+                                    positionChanged = false,
+                                    elapsedMs = SystemClock.elapsedRealtime() - lastPressureAtMs,
+                                )
+                            ) {
+                                // Leaning on a stationary nib must still darken/widen
+                                // the ink instead of being discarded as "no movement".
+                                livePoints.add(normalize(lastPosition, primaryPressure))
+                                lastPressure = primaryPressure
+                                lastPressureAtMs = SystemClock.elapsedRealtime()
                                 primary.consume()
                             }
                         } else {

@@ -53,6 +53,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
 import com.hackerdjakodjo.mypdfwriter.pdf.DocumentOverlayPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
 import com.hackerdjakodjo.mypdfwriter.ui.SearchHighlightOverlay
+import com.hackerdjakodjo.mypdfwriter.pdf.InkQuality
 import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfCrop
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfLink
@@ -193,6 +194,11 @@ fun PdfCanvas(
     val currentOnNextPage by rememberUpdatedState(onNextPage)
     val currentZoom by rememberUpdatedState(zoom)
     val currentSelectedWords by rememberUpdatedState(selectedWords)
+    // One learned pressure range per document/page/settings combination. A fresh
+    // calibrator per stroke made every PDF stroke restart from raw pressure.
+    val inkCalibrator = remember(docId, pageIndex, tool, pressureEnabled, pressureCurve) {
+        PressureCalibrator(bootstrapSamples = 3)
+    }
 
     val pageKey = CanvasPageKey(docId, pageIndex)
     // Pan is transient per *document page*, not just per index: switching to
@@ -584,16 +590,14 @@ fun PdfCanvas(
                     }
 
                     else -> awaitEachGesture {
-                        // One calibrator per stroke: stylus pressure is now a real
-                        // sample instead of the neutral 1f every PDF stroke used
-                        // to carry. Finger/mouse stay neutral by construction.
-                        val calibrator = PressureCalibrator(bootstrapSamples = 3)
+                        // Shared, session-scoped calibration keeps ink weight
+                        // consistent stroke-to-stroke. Finger/mouse stay neutral.
                         fun capture(change: PointerInputChange): Float = effectiveInkPressure(
                             pointerType = change.type,
                             rawPressure = change.pressure,
                             pressureEnabled = pressureEnabled,
                             pressureCurve = pressureCurve,
-                            calibrator = calibrator,
+                            calibrator = inkCalibrator,
                             pressed = change.pressed,
                         )
 
@@ -605,8 +609,10 @@ fun PdfCanvas(
                         down.consume()
                         val strokeStartMs = SystemClock.elapsedRealtime()
                         livePoints.clear()
-                        calibrator.reset()
                         livePoints.add(transform.normalize(down.position, capture(down)))
+                        var lastPressure = capture(down)
+                        var lastPressureAtMs = SystemClock.elapsedRealtime()
+                        var lastPosition = down.position
                         var pressed = true
                         while (pressed) {
                             val event = awaitPointerEvent()
@@ -615,7 +621,23 @@ fun PdfCanvas(
                                 change.consume()
                                 pressed = false
                             } else if (change.positionChanged()) {
-                                livePoints.add(transform.normalize(change.position, capture(change)))
+                                lastPosition = change.position
+                                lastPressure = capture(change)
+                                lastPressureAtMs = SystemClock.elapsedRealtime()
+                                livePoints.add(transform.normalize(change.position, lastPressure))
+                                change.consume()
+                            } else if (
+                                (tool == Tool.PEN || tool == Tool.HIGHLIGHT) &&
+                                InkQuality.shouldEmitPressureSample(
+                                    previousPressure = lastPressure,
+                                    nextPressure = capture(change),
+                                    positionChanged = false,
+                                    elapsedMs = SystemClock.elapsedRealtime() - lastPressureAtMs,
+                                )
+                            ) {
+                                lastPressure = capture(change)
+                                lastPressureAtMs = SystemClock.elapsedRealtime()
+                                livePoints.add(transform.normalize(lastPosition, lastPressure))
                                 change.consume()
                             }
                         }
