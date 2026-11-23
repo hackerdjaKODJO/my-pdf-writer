@@ -24,4 +24,21 @@ class ToolHandoffTest {
         org.junit.Assert.assertTrue(toolsEnabledFor(false, isUnlock = false))
         org.junit.Assert.assertTrue(toolsEnabledFor(false, isUnlock = true))
     }
+
+    @Test
+    fun textOnlyResultsHaveNoViewerOpenAction() {
+        org.junit.Assert.assertFalse(hasMeaningfulText("--- 1 / 1 ---\n"))
+        org.junit.Assert.assertFalse(
+            hasMeaningfulText("--- 1 / 2 ---\n\n--- 2 / 2 ---\n"),
+        )
+        org.junit.Assert.assertTrue(hasMeaningfulText("--- 1 / 1 ---\nPAGE 1"))
+        org.junit.Assert.assertFalse(hasMeaningfulText(""))
+    }
+
+    @Test
+    fun onlyPasswordLoadFailuresNeedUnlocking() {
+        org.junit.Assert.assertTrue(needsPasswordFromError("암호가 필요합니다"))
+        org.junit.Assert.assertFalse(needsPasswordFromError("파일을 읽을 수 없습니다"))
+        org.junit.Assert.assertFalse(needsPasswordFromError(null))
+    }
 }

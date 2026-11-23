@@ -27,6 +27,19 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.OutputStream
 
+/** A .txt result cannot be opened in the PDF viewer, so it gets no "열기" action. */
+internal fun hasMeaningfulText(text: String): Boolean {
+    val header = Regex("---\\s*\\d+\\s*/\\s*\\d+\\s*---")
+    return text.lineSequence().any { line ->
+        val trimmed = line.trim()
+        trimmed.isNotEmpty() && !header.matches(trimmed)
+    }
+}
+
+/** Only a load failure caused by a password means the file must be unlocked. */
+internal fun needsPasswordFromError(message: String?): Boolean =
+    message?.contains("암호") == true
+
 /** Tools must operate on the edited working PDF, not the pristine source. */
 internal fun toolHandoffFile(working: File?, source: File?): File? = working ?: source
 
@@ -67,8 +80,11 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
             runTool("PDF를 읽는 중…") {
                 val name = queryName(uri)
                 val file = copyToTemp(uri, name)
-                val needsPassword = PdfTools.isEncrypted(file)
-                val pages = if (needsPassword) 0 else PdfTools.pageCount(file)
+                val loaded = runCatching { PdfTools.pageCount(file) }
+                // A permission-only PDF has /Encrypt but opens with an empty
+                // user password; only a load failure means it must be unlocked.
+                val needsPassword = needsPasswordFromError(loaded.exceptionOrNull()?.message)
+                val pages = loaded.getOrDefault(0)
                 _state.update {
                     it.copy(
                         sourceName = name,
@@ -90,8 +106,11 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
     fun selectSource(file: File, name: String = file.name) {
         viewModelScope.launch {
             runTool("PDF를 읽는 중…") {
-                val needsPassword = PdfTools.isEncrypted(file)
-                val pages = if (needsPassword) 0 else PdfTools.pageCount(file)
+                val loaded = runCatching { PdfTools.pageCount(file) }
+                // A permission-only PDF has /Encrypt but opens with an empty
+                // user password; only a load failure means it must be unlocked.
+                val needsPassword = needsPasswordFromError(loaded.exceptionOrNull()?.message)
+                val pages = loaded.getOrDefault(0)
                 _state.update {
                     it.copy(
                         sourceName = name.ifBlank { file.name },
@@ -212,8 +231,8 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
                 resolver.openOutputStream(out, "wt")?.use { output ->
                     output.writer(Charsets.UTF_8).use { it.write(text) }
                 } ?: error("출력 파일을 열 수 없습니다.")
-                _state.update { it.copy(lastOutput = out) }
-                if (text.isBlank()) "텍스트가 없습니다. 스캔 PDF일 수 있습니다." else "텍스트를 저장했습니다."
+                if (!hasMeaningfulText(text)) "텍스트가 없습니다. 스캔 PDF일 수 있습니다."
+                else "텍스트를 저장했습니다."
             }
         }
     }
@@ -234,8 +253,8 @@ class ToolsViewModel(application: Application) : AndroidViewModel(application) {
                 resolver.openOutputStream(out, "wt")?.use { output ->
                     output.writer(Charsets.UTF_8).use { it.write(text) }
                 } ?: error("출력 파일을 열 수 없습니다.")
-                _state.update { it.copy(lastOutput = out) }
-                if (text.isBlank()) "인식된 텍스트가 없습니다." else "OCR 텍스트를 저장했습니다."
+                if (!hasMeaningfulText(text)) "인식된 텍스트가 없습니다."
+                else "OCR 텍스트를 저장했습니다."
             }
         }
     }

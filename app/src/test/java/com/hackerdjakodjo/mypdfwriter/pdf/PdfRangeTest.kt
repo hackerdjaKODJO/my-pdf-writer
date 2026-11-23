@@ -65,6 +65,9 @@ class PdfRangeTest {
         val clamped = PdfRange.describe("99", 10)
         assertEquals(listOf(9), clamped.pages)
         org.junit.Assert.assertTrue(clamped.clamped)
+        org.junit.Assert.assertTrue(PdfRange.describe("0-3", 10).clamped)
+        org.junit.Assert.assertTrue(PdfRange.describe("8-", 5).clamped)
+        org.junit.Assert.assertFalse(PdfRange.describe("8-", 10).clamped)
         assertEquals("선택된 쪽 없음", PdfRange.describe("", 10).summary)
     }
 }

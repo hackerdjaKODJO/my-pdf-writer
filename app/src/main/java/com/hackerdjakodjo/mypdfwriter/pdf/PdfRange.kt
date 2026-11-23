@@ -51,8 +51,23 @@ object PdfRange {
     fun describe(spec: String, pageCount: Int): Description {
         val pages = parse(spec, pageCount)
         val clamped = spec.split(',').any { token ->
-            val number = token.trim().toIntOrNull() ?: return@any false
-            number !in 1..pageCount
+            val text = token.trim()
+            val dash = text.indexOf('-')
+            if (dash < 0) {
+                val number = text.toIntOrNull() ?: return@any false
+                number !in 1..pageCount
+            } else {
+                val startText = text.substring(0, dash).trim()
+                val endText = text.substring(dash + 1).trim()
+                val start = startText.toIntOrNull()
+                val end = endText.toIntOrNull()
+                when {
+                    startText.isEmpty() -> end != null && end !in 1..pageCount
+                    endText.isEmpty() -> start != null && start !in 1..pageCount
+                    else -> (start != null && start !in 1..pageCount) ||
+                        (end != null && end !in 1..pageCount)
+                }
+            }
         }
         val preview = pages.take(8).map { it + 1 }
         val suffix = if (pages.size > preview.size) " …" else ""

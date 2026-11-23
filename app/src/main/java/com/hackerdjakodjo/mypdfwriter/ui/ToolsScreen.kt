@@ -143,7 +143,8 @@ fun ToolsScreen(
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     val source = state.sourceFile
-    val canUseTools = source != null && !state.sourceNeedsPassword
+    val canUseTools = source != null &&
+        toolsEnabledFor(state.sourceNeedsPassword, isUnlock = false)
 
     var pending by remember { mutableStateOf<PendingOutput?>(null) }
     var showExtract by remember { mutableStateOf(false) }
@@ -385,7 +386,8 @@ fun ToolsScreen(
                             }, canUseTools),
                             ToolItem("암호 해제", "암호를 풀어 새 PDF로", Icons.Outlined.LockOpen, {
                                 if (canUseTools) showUnlock = true
-                            }, source != null),
+                            }, source != null &&
+                                toolsEnabledFor(state.sourceNeedsPassword, isUnlock = true)),
                         ),
                     )
                 }
