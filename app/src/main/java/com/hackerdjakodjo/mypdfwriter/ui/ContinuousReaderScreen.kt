@@ -23,9 +23,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
@@ -33,15 +32,18 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -57,6 +59,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -72,9 +75,11 @@ import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -136,6 +141,8 @@ fun ContinuousReaderScreen(
     val panX = remember { mutableFloatStateOf(0f) }
     val latestZoom = rememberUpdatedState(zoom)
     val currentOnPageChange by rememberUpdatedState(onPageChange)
+    val scope = rememberCoroutineScope()
+    var showPageJump by remember { mutableStateOf(false) }
     val density = LocalDensity.current.density
     val viewportWidthPx = listState.layoutInfo.viewportSize.width.toFloat()
     val setZoom: (Float, Float, String) -> Unit = { value, focalX, reason ->
@@ -250,391 +257,439 @@ fun ContinuousReaderScreen(
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)),
         ) {
-            if (pageCount <= 0) {
-                EmptyReader(onBack = onBack)
-            } else {
-                // One raw Initial-pass observer owns the document-wide
-                // pinch zoom and one-finger horizontal pan. It deliberately
-                // never consumes single-finger events: the LazyColumn keeps
-                // its native vertical scroll/fling, and a diagonal drag can
-                // pan horizontally while the list scrolls vertically.
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            val touchSlop = viewConfiguration.touchSlop
-                            awaitPointerEventScope {
-                                val gate = ContinuousPinchGate()
-                                val seen = HashSet<Long>()
-                                // Remember each down pointer's x even on frames
-                                // where only the other finger moved, so the zoom
-                                // focal stays at the midpoint of the two fingers
-                                // instead of jumping to whichever changed.
-                                val pressedX = HashMap<Long, Float>()
-                                var lastTracedRenderZoom = readerRenderZoom(latestZoom.value)
-                                var pinchWasActive = false
-                                var panPointerId = -1L
-                                var panTotalX = 0f
-                                var panStarted = false
-                                // Fit-zoom page swipe: observe only, never consume.
-                                var swipePointerId = -1L
-                                var swipeTotalX = 0f
-                                var swipeTotalY = 0f
-                                var swipeDelivered = false
-                                while (true) {
-                                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                                    event.changes.forEach { change ->
-                                        val id = change.id.value
-                                        if (change.pressed) {
-                                            pressedX[id] = change.position.x
-                                            if (seen.add(id)) {
-                                                gate.onDown(id)
-                                                if (seen.size == 1) {
-                                                    suppressPageTap.value = false
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                if (pageCount <= 0) {
+                    EmptyReader(onBack = onBack)
+                } else {
+                    // One raw Initial-pass observer owns the document-wide
+                    // pinch zoom and one-finger horizontal pan. It deliberately
+                    // never consumes single-finger events: the LazyColumn keeps
+                    // its native vertical scroll/fling, and a diagonal drag can
+                    // pan horizontally while the list scrolls vertically.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                val touchSlop = viewConfiguration.touchSlop
+                                awaitPointerEventScope {
+                                    val gate = ContinuousPinchGate()
+                                    val seen = HashSet<Long>()
+                                    // Remember each down pointer's x even on frames
+                                    // where only the other finger moved, so the zoom
+                                    // focal stays at the midpoint of the two fingers
+                                    // instead of jumping to whichever changed.
+                                    val pressedX = HashMap<Long, Float>()
+                                    var lastTracedRenderZoom = readerRenderZoom(latestZoom.value)
+                                    var pinchWasActive = false
+                                    var panPointerId = -1L
+                                    var panTotalX = 0f
+                                    var panStarted = false
+                                    // Fit-zoom page swipe: observe only, never consume.
+                                    var swipePointerId = -1L
+                                    var swipeTotalX = 0f
+                                    var swipeTotalY = 0f
+                                    var swipeDelivered = false
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        event.changes.forEach { change ->
+                                            val id = change.id.value
+                                            if (change.pressed) {
+                                                pressedX[id] = change.position.x
+                                                if (seen.add(id)) {
+                                                    gate.onDown(id)
+                                                    if (seen.size == 1) {
+                                                        suppressPageTap.value = false
+                                                    }
                                                 }
+                                            } else if (seen.remove(id)) {
+                                                pressedX.remove(id)
+                                                gate.onUp(id)
                                             }
-                                        } else if (seen.remove(id)) {
-                                            pressedX.remove(id)
-                                            gate.onUp(id)
                                         }
-                                    }
 
-                                    if (gate.twoFinger) {
-                                        pinchActive = true
-                                        if (!pinchWasActive) {
-                                            pinchWasActive = true
-                                            // A second finger invalidates any one-finger
-                                            // pan tracking; a retained finger must start
-                                            // a fresh drag once the pinch is over.
-                                            panPointerId = -1L
-                                            panTotalX = 0f
-                                            panStarted = false
-                                            swipeDelivered = false
-                                            swipeTotalX = 0f
-                                            swipeTotalY = 0f
-                                            lastTracedRenderZoom =
-                                                readerRenderZoom(latestZoom.value)
-                                            PdfContinuousTrace.pinch(
-                                                latestZoom.value,
-                                                lastTracedRenderZoom,
-                                                event.calculateZoom(),
-                                            )
-                                        }
-                                        val zoomChange = event.calculateZoom()
-                                        if (zoomChange.isFinite() && zoomChange > 0f &&
-                                            zoomChange != 1f
-                                        ) {
-                                            val pressedXs = pressedX.values.toList()
-                                            val focalX = when (pressedXs.size) {
-                                                0 -> Float.NaN
-                                                1 -> pressedXs[0]
-                                                else -> (pressedXs[0] + pressedXs[1]) / 2f
-                                            }
-                                            val nextZoom = gatedPinchZoom(
-                                                latestZoom.value,
-                                                zoomChange,
-                                                true,
-                                            )
-                                            setZoom(nextZoom, focalX, "pinch")
-                                            val nextRenderZoom = readerRenderZoom(nextZoom)
-                                            if (nextRenderZoom != lastTracedRenderZoom) {
-                                                lastTracedRenderZoom = nextRenderZoom
+                                        if (gate.twoFinger) {
+                                            pinchActive = true
+                                            if (!pinchWasActive) {
+                                                pinchWasActive = true
+                                                // A second finger invalidates any one-finger
+                                                // pan tracking; a retained finger must start
+                                                // a fresh drag once the pinch is over.
+                                                panPointerId = -1L
+                                                panTotalX = 0f
+                                                panStarted = false
+                                                swipeDelivered = false
+                                                swipeTotalX = 0f
+                                                swipeTotalY = 0f
+                                                lastTracedRenderZoom =
+                                                    readerRenderZoom(latestZoom.value)
                                                 PdfContinuousTrace.pinch(
-                                                    nextZoom,
-                                                    nextRenderZoom,
-                                                    zoomChange,
+                                                    latestZoom.value,
+                                                    lastTracedRenderZoom,
+                                                    event.calculateZoom(),
                                                 )
                                             }
-                                        }
-                                        // Consume two-finger events only. This tells
-                                        // the LazyColumn scroller and page drag/tap
-                                        // detectors to cancel without blocking the
-                                        // normal one-finger scroll path.
-                                        event.changes.forEach { change ->
-                                            if (change.pressed) change.consume()
-                                        }
-                                    } else {
-                                        if (pinchWasActive) {
-                                            // The pinch ended (one finger lifted). Do
-                                            // not keep pan disabled just because a
-                                            // pointer from the pinch is still down:
-                                            // start a clean pan with the retained finger.
-                                            panPointerId = -1L
-                                            panTotalX = 0f
-                                            panStarted = false
-                                        }
-                                        pinchWasActive = false
-                                        pinchActive = false
-
-                                        // One-finger horizontal pan is observed but
-                                        // not consumed. Vertical movement continues to
-                                        // the LazyColumn, so diagonal drags work.
-                                        if (latestZoom.value > READER_ZOOM_MIN) {
-                                            val change = event.changes.firstOrNull {
-                                                it.pressed
-                                            }
-                                            if (change != null) {
-                                                val id = change.id.value
-                                                if (panPointerId != id) {
-                                                    panPointerId = id
-                                                    panTotalX = 0f
-                                                    panStarted = false
+                                            val zoomChange = event.calculateZoom()
+                                            if (zoomChange.isFinite() && zoomChange > 0f &&
+                                                zoomChange != 1f
+                                            ) {
+                                                val pressedXs = pressedX.values.toList()
+                                                val focalX = when (pressedXs.size) {
+                                                    0 -> Float.NaN
+                                                    1 -> pressedXs[0]
+                                                    else -> (pressedXs[0] + pressedXs[1]) / 2f
                                                 }
-                                                val deltaX = change.position.x -
-                                                    change.previousPosition.x
-                                                if (deltaX != 0f) {
-                                                    panTotalX += deltaX
-                                                    val panWidth = listState.layoutInfo
-                                                        .viewportSize.width.toFloat()
-                                                    val maxPan = readerMaxPanPx(
-                                                        panWidth,
-                                                        latestZoom.value,
+                                                val nextZoom = gatedPinchZoom(
+                                                    latestZoom.value,
+                                                    zoomChange,
+                                                    true,
+                                                )
+                                                setZoom(nextZoom, focalX, "pinch")
+                                                val nextRenderZoom = readerRenderZoom(nextZoom)
+                                                if (nextRenderZoom != lastTracedRenderZoom) {
+                                                    lastTracedRenderZoom = nextRenderZoom
+                                                    PdfContinuousTrace.pinch(
+                                                        nextZoom,
+                                                        nextRenderZoom,
+                                                        zoomChange,
                                                     )
-                                                    if (!panStarted &&
-                                                        abs(panTotalX) > touchSlop
-                                                    ) {
-                                                        panStarted = true
-                                                        suppressPageTap.value = true
-                                                        PdfContinuousTrace.pan(
-                                                            "start", id, deltaX, panTotalX,
-                                                            panX.floatValue, panX.floatValue,
-                                                            latestZoom.value, maxPan,
-                                                        )
-                                                    }
-                                                    if (panStarted) {
-                                                        val panBefore = panX.floatValue
-                                                        panX.floatValue = panReaderAfterDrag(
-                                                            panBefore,
-                                                            deltaX,
-                                                            latestZoom.value,
-                                                            panWidth,
-                                                        )
-                                                        PdfContinuousTrace.pan(
-                                                            "move", id, deltaX, panTotalX,
-                                                            panBefore, panX.floatValue,
-                                                            latestZoom.value, maxPan,
-                                                        )
-                                                    }
                                                 }
+                                            }
+                                            // Consume two-finger events only. This tells
+                                            // the LazyColumn scroller and page drag/tap
+                                            // detectors to cancel without blocking the
+                                            // normal one-finger scroll path.
+                                            event.changes.forEach { change ->
+                                                if (change.pressed) change.consume()
                                             }
                                         } else {
-                                            // At fit zoom a horizontal swipe turns
-                                            // the page. Observe only: the LazyColumn
-                                            // keeps its native vertical fling.
-                                            val change = event.changes.firstOrNull {
-                                                it.pressed
+                                            if (pinchWasActive) {
+                                                // The pinch ended (one finger lifted). Do
+                                                // not keep pan disabled just because a
+                                                // pointer from the pinch is still down:
+                                                // start a clean pan with the retained finger.
+                                                panPointerId = -1L
+                                                panTotalX = 0f
+                                                panStarted = false
                                             }
-                                            if (change != null) {
-                                                val id = change.id.value
-                                                if (swipePointerId != id) {
-                                                    swipePointerId = id
-                                                    swipeTotalX = 0f
-                                                    swipeTotalY = 0f
-                                                    swipeDelivered = false
-                                                }
-                                                swipeTotalX += change.position.x -
-                                                    change.previousPosition.x
-                                                swipeTotalY += change.position.y -
-                                                    change.previousPosition.y
-                                                if (!swipeDelivered &&
-                                                    abs(swipeTotalX) > touchSlop &&
-                                                    abs(swipeTotalX) > abs(swipeTotalY) *
-                                                        PageSwipe.AXIS_DOMINANCE
-                                                ) {
-                                                    swipeDelivered = true
-                                                    // Prevent the page tap detector
-                                                    // from opening the single-page view.
-                                                    suppressPageTap.value = true
-                                                }
-                                            }
-                                        }
-                                    }
+                                            pinchWasActive = false
+                                            pinchActive = false
 
-                                    if (event.changes.none { it.pressed }) {
-                                        if (swipeDelivered) {
-                                            val width = listState.layoutInfo
-                                                .viewportSize.width.toFloat()
-                                            if (abs(swipeTotalX) >=
-                                                PageSwipe.thresholdPx(width, density)
-                                            ) {
-                                                val dir = PageSwipe.direction(
-                                                    swipeTotalX, swipeTotalY, touchSlop,
-                                                )
-                                                val current0 = currentPage - 1
-                                                val target = PageSwipe.target(
-                                                    current0, dir, pageCount,
-                                                )
-                                                if (target != current0) {
-                                                    PdfContinuousTrace.pageSwipe(
-                                                        current0, target, dir,
-                                                        swipeTotalX, swipeTotalY,
-                                                    )
-                                                    currentOnPageChange(target)
+                                            // One-finger horizontal pan is observed but
+                                            // not consumed. Vertical movement continues to
+                                            // the LazyColumn, so diagonal drags work.
+                                            if (latestZoom.value > READER_ZOOM_MIN) {
+                                                val change = event.changes.firstOrNull {
+                                                    it.pressed
+                                                }
+                                                if (change != null) {
+                                                    val id = change.id.value
+                                                    if (panPointerId != id) {
+                                                        panPointerId = id
+                                                        panTotalX = 0f
+                                                        panStarted = false
+                                                    }
+                                                    val deltaX = change.position.x -
+                                                        change.previousPosition.x
+                                                    if (deltaX != 0f) {
+                                                        panTotalX += deltaX
+                                                        val panWidth = listState.layoutInfo
+                                                            .viewportSize.width.toFloat()
+                                                        val maxPan = readerMaxPanPx(
+                                                            panWidth,
+                                                            latestZoom.value,
+                                                        )
+                                                        if (!panStarted &&
+                                                            abs(panTotalX) > touchSlop
+                                                        ) {
+                                                            panStarted = true
+                                                            suppressPageTap.value = true
+                                                            PdfContinuousTrace.pan(
+                                                                "start", id, deltaX, panTotalX,
+                                                                panX.floatValue, panX.floatValue,
+                                                                latestZoom.value, maxPan,
+                                                            )
+                                                        }
+                                                        if (panStarted) {
+                                                            val panBefore = panX.floatValue
+                                                            panX.floatValue = panReaderAfterDrag(
+                                                                panBefore,
+                                                                deltaX,
+                                                                latestZoom.value,
+                                                                panWidth,
+                                                            )
+                                                            PdfContinuousTrace.pan(
+                                                                "move", id, deltaX, panTotalX,
+                                                                panBefore, panX.floatValue,
+                                                                latestZoom.value, maxPan,
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                // At fit zoom a horizontal swipe turns
+                                                // the page. Observe only: the LazyColumn
+                                                // keeps its native vertical fling.
+                                                val change = event.changes.firstOrNull {
+                                                    it.pressed
+                                                }
+                                                if (change != null) {
+                                                    val id = change.id.value
+                                                    if (swipePointerId != id) {
+                                                        swipePointerId = id
+                                                        swipeTotalX = 0f
+                                                        swipeTotalY = 0f
+                                                        swipeDelivered = false
+                                                    }
+                                                    swipeTotalX += change.position.x -
+                                                        change.previousPosition.x
+                                                    swipeTotalY += change.position.y -
+                                                        change.previousPosition.y
+                                                    if (!swipeDelivered &&
+                                                        abs(swipeTotalX) > touchSlop &&
+                                                        abs(swipeTotalX) > abs(swipeTotalY) *
+                                                            PageSwipe.AXIS_DOMINANCE
+                                                    ) {
+                                                        swipeDelivered = true
+                                                        // Prevent the page tap detector
+                                                        // from opening the single-page view.
+                                                        suppressPageTap.value = true
+                                                    }
                                                 }
                                             }
                                         }
-                                        if (panStarted) {
-                                            PdfContinuousTrace.pan(
-                                                "end", panPointerId, 0f, panTotalX,
-                                                panX.floatValue, panX.floatValue,
-                                                latestZoom.value,
-                                                readerMaxPanPx(
-                                                    listState.layoutInfo.viewportSize.width
-                                                        .toFloat(),
+
+                                        if (event.changes.none { it.pressed }) {
+                                            if (swipeDelivered) {
+                                                val width = listState.layoutInfo
+                                                    .viewportSize.width.toFloat()
+                                                if (abs(swipeTotalX) >=
+                                                    PageSwipe.thresholdPx(width, density)
+                                                ) {
+                                                    val dir = PageSwipe.direction(
+                                                        swipeTotalX, swipeTotalY, touchSlop,
+                                                    )
+                                                    val current0 = currentPage - 1
+                                                    val target = PageSwipe.target(
+                                                        current0, dir, pageCount,
+                                                    )
+                                                    if (target != current0) {
+                                                        PdfContinuousTrace.pageSwipe(
+                                                            current0, target, dir,
+                                                            swipeTotalX, swipeTotalY,
+                                                        )
+                                                        currentOnPageChange(target)
+                                                    }
+                                                }
+                                            }
+                                            if (panStarted) {
+                                                PdfContinuousTrace.pan(
+                                                    "end", panPointerId, 0f, panTotalX,
+                                                    panX.floatValue, panX.floatValue,
                                                     latestZoom.value,
-                                                ),
-                                            )
+                                                    readerMaxPanPx(
+                                                        listState.layoutInfo.viewportSize.width
+                                                            .toFloat(),
+                                                        latestZoom.value,
+                                                    ),
+                                                )
+                                            }
+                                            pressedX.clear()
+                                            gate.clear()
+                                            seen.clear()
+                                            pinchActive = false
+                                            pinchWasActive = false
+                                            panPointerId = -1L
+                                            panTotalX = 0f
+                                            panStarted = false
+                                            swipePointerId = -1L
+                                            swipeTotalX = 0f
+                                            swipeTotalY = 0f
+                                            swipeDelivered = false
                                         }
-                                        pressedX.clear()
-                                        gate.clear()
-                                        seen.clear()
-                                        pinchActive = false
-                                        pinchWasActive = false
-                                        panPointerId = -1L
-                                        panTotalX = 0f
-                                        panStarted = false
-                                        swipePointerId = -1L
-                                        swipeTotalX = 0f
-                                        swipeTotalY = 0f
-                                        swipeDelivered = false
                                     }
                                 }
-                            }
-                        },
-                ) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        // The scroller stays enabled: the Initial-pass pinch observer
-                        // consumes only two-finger events, so one-finger vertical
-                        // scrolling keeps its native fling behavior.
-                        // Leave just enough room under the last page for the floating
-                        // current-page indicator; the old 18 dp label + gap made pages
-                        // look far apart.
-                        contentPadding = PaddingValues(
-                            top = 8.dp,
-                            bottom = 60.dp,
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                            },
                     ) {
-                        items(count = pageCount, key = { index -> index }) { index ->
-                            ReaderPageCard(
-                                index = index,
-                                zoom = zoom,
-                                panX = { panX.floatValue },
-                                cropInsets = cropInsets,
-                                cropOddEven = cropOddEven,
-                                loadPage = loadPage,
-                                onOpenPage = onOpenPage,
-                                onToggleZoom = toggleZoom,
-                                suppressTap = { suppressPageTap.value },
-                                onRendered = { lastRender = it },
-                            )
-                        }
-                    }
-                }
-
-                // Non-interactive brightness scrim over the pages only; the
-                // current-page indicator and debug HUD below stay fully readable.
-                val dimAlpha = 1f - brightness.coerceIn(0.4f, 1f)
-                if (dimAlpha > 0f) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = dimAlpha)),
-                    )
-                }
-
-                // Same adaptive layout as the paged viewer: the page indicator
-                // and the zoom pill share one measured area and never overlap.
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 16.dp),
-                ) {
-                    when (viewerBottomControlsLayout(maxWidth.value.toInt())) {
-                        ViewerBottomControlsLayout.SIDE_BY_SIDE -> {
-                            Row(verticalAlignment = Alignment.Bottom) {
-                                CurrentPageIndicator(page = currentPage, pageCount = pageCount)
-                                Spacer(Modifier.width(12.dp))
-                                ViewerZoomPill(
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            // The scroller stays enabled: the Initial-pass pinch observer
+                            // consumes only two-finger events, so one-finger vertical
+                            // scrolling keeps its native fling behavior.
+                            // The page bar is a layout row below the list, so the
+                            // last page no longer needs room for a floating label.
+                            contentPadding = PaddingValues(
+                                top = 8.dp,
+                                bottom = 8.dp,
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            items(count = pageCount, key = { index -> index }) { index ->
+                                ReaderPageCard(
+                                    index = index,
                                     zoom = zoom,
-                                    onStep = { steps ->
-                                        setZoom(
-                                            stepReaderZoom(latestZoom.value, steps),
-                                            viewportWidthPx / 2f,
-                                            "button",
-                                        )
-                                    },
+                                    panX = { panX.floatValue },
+                                    cropInsets = cropInsets,
+                                    cropOddEven = cropOddEven,
+                                    loadPage = loadPage,
+                                    onOpenPage = onOpenPage,
+                                    onToggleZoom = toggleZoom,
+                                    suppressTap = { suppressPageTap.value },
+                                    onRendered = { lastRender = it },
                                 )
                             }
                         }
-                        ViewerBottomControlsLayout.STACKED -> {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                ViewerZoomPill(
-                                    zoom = zoom,
-                                    onStep = { steps ->
-                                        setZoom(
-                                            stepReaderZoom(latestZoom.value, steps),
-                                            viewportWidthPx / 2f,
-                                            "button",
-                                        )
-                                    },
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                CurrentPageIndicator(page = currentPage, pageCount = pageCount)
-                            }
-                        }
                     }
-                }
 
-                if (BuildConfig.DEBUG) {
-                    val renderZoom = readerRenderZoom(zoom)
-                    val rendered = lastRender
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(end = 10.dp, top = 6.dp),
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                    ) {
-                        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                            Text(
-                                "DEBUG zoom=${readerZoomLabel(zoom)} " +
-                                    "render=${readerZoomLabel(renderZoom)} " +
-                                    "scale=${"%.2f".format(readerRenderScale(renderZoom))} " +
-                                    "pinch=$pinchActive",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                            Text(
-                                if (rendered == null) {
-                                    "bitmap: —"
-                                } else {
-                                    "bitmap p${rendered.page + 1} " +
-                                        "rz=${readerZoomLabel(rendered.renderZoom)} " +
-                                        "scale=${"%.2f".format(rendered.scale)} " +
-                                        "${rendered.width}x${rendered.height}"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                            Text(
-                                "DEBUG pan=${panX.floatValue.roundToInt()}/" +
-                                    "${readerMaxPanPx(viewportWidthPx, zoom).roundToInt()} " +
-                                    "view=${viewportWidthPx.roundToInt()}",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
+                    // Non-interactive brightness scrim over the pages only; the
+                    // current-page indicator and debug HUD below stay fully readable.
+                    val dimAlpha = 1f - brightness.coerceIn(0.4f, 1f)
+                    if (dimAlpha > 0f) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = dimAlpha)),
+                        )
+                    }
+
+                    if (BuildConfig.DEBUG) {
+                        val renderZoom = readerRenderZoom(zoom)
+                        val rendered = lastRender
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(end = 10.dp, top = 6.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                        ) {
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                Text(
+                                    "DEBUG zoom=${readerZoomLabel(zoom)} " +
+                                        "render=${readerZoomLabel(renderZoom)} " +
+                                        "scale=${"%.2f".format(readerRenderScale(renderZoom))} " +
+                                        "pinch=$pinchActive",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                                Text(
+                                    if (rendered == null) {
+                                        "bitmap: —"
+                                    } else {
+                                        "bitmap p${rendered.page + 1} " +
+                                            "rz=${readerZoomLabel(rendered.renderZoom)} " +
+                                            "scale=${"%.2f".format(rendered.scale)} " +
+                                            "${rendered.width}x${rendered.height}"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                                Text(
+                                    "DEBUG pan=${panX.floatValue.roundToInt()}/" +
+                                        "${readerMaxPanPx(viewportWidthPx, zoom).roundToInt()} " +
+                                        "view=${viewportWidthPx.roundToInt()}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
                         }
                     }
                 }
             }
+
+            // Page navigation is docked below the page list, never over it.
+            // ‹/› scroll one page; the counter opens a numeric page jump.
+            if (pageCount > 0) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 2.dp,
+                ) {
+                    ViewerBottomPageBar(
+                        pageIndex = currentPage - 1,
+                        pageCount = pageCount,
+                        onPrevious = {
+                            val target = continuousReaderScrollTarget(currentPage, -1, pageCount)
+                            scope.launch { listState.animateScrollToItem(target) }
+                        },
+                        onNext = {
+                            val target = continuousReaderScrollTarget(currentPage, 1, pageCount)
+                            scope.launch { listState.animateScrollToItem(target) }
+                        },
+                        onOpenPages = { showPageJump = true },
+                        modifier = Modifier.navigationBarsPadding(),
+                    )
+                }
+            }
         }
     }
+
+    if (showPageJump) {
+        ContinuousPageJumpDialog(
+            currentPage = currentPage,
+            pageCount = pageCount,
+            onDismiss = { showPageJump = false },
+            onJump = { index ->
+                showPageJump = false
+                scope.launch { listState.animateScrollToItem(index) }
+            },
+        )
+    }
+}
+
+/**
+ * Zero-based scroll target for the bottom bar's ‹/› buttons, from the 1-based
+ * [currentPage] the reader derives from the visible list. Clamped at both ends
+ * so the first and last page never scroll out of the document.
+ */
+internal fun continuousReaderScrollTarget(currentPage: Int, direction: Int, pageCount: Int): Int {
+    if (pageCount <= 0) return 0
+    val current = currentPage.coerceIn(1, pageCount)
+    return (current - 1 + direction).coerceIn(0, pageCount - 1)
+}
+
+/** Numeric page jump for the continuous reader, sharing [parsePageJump]. */
+@Composable
+private fun ContinuousPageJumpDialog(
+    currentPage: Int,
+    pageCount: Int,
+    onDismiss: () -> Unit,
+    onJump: (Int) -> Unit,
+) {
+    var input by remember { mutableStateOf("") }
+    val target = parsePageJump(input, pageCount)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("페이지 이동") },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                Text(
+                    "현재 ${currentPage}쪽 · 1–$pageCount 쪽으로 이동합니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it },
+                    singleLine = true,
+                    label = { Text("페이지 번호") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = input.isNotEmpty() && target == null,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { target?.let(onJump) },
+                enabled = target != null,
+            ) { Text("이동") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("취소") }
+        },
+    )
 }
 
 @Composable
@@ -854,29 +909,6 @@ private fun FailedPage(onRetry: () -> Unit) {
                 style = MaterialTheme.typography.labelMedium,
             )
         }
-    }
-}
-
-@Composable
-private fun CurrentPageIndicator(
-    page: Int,
-    pageCount: Int,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 2.dp,
-        shadowElevation = 3.dp,
-    ) {
-        Text(
-            "$page / ${pageCount}쪽",
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 1,
-        )
     }
 }
 

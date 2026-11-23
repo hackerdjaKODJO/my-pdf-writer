@@ -189,7 +189,7 @@ class HelpCenterContentTest {
         }
         listOf(
             "60초 빠른 시작", "하단 도구 독의 노트", "홈 설정의 백업/복원",
-            "읽기·필기·담기·설정", "설정 → PDF 내보내기", "± 버튼", "스와이프",
+            "읽기·필기·담기·설정", "설정 → PDF 내보내기", "하단 페이지 바", "스와이프",
         ).forEach { current ->
             assertTrue("missing current help path '$current'", all.contains(current))
         }

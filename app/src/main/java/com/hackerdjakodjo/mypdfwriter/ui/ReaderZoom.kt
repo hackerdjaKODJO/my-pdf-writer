@@ -8,9 +8,6 @@ const val READER_ZOOM_MIN = 1.0f
 /** Largest continuous-reader zoom, kept modest so page bitmaps stay usable. */
 const val READER_ZOOM_MAX = 2.5f
 
-/** Increment used by the toolbar −/+ buttons. */
-const val READER_ZOOM_STEP = 0.25f
-
 /** Zoom reached by double-tapping a page. */
 const val READER_ZOOM_DOUBLE_TAP = 2.0f
 
@@ -22,10 +19,6 @@ fun clampReaderZoom(value: Float): Float {
     if (!value.isFinite()) return READER_ZOOM_MIN
     return value.coerceIn(READER_ZOOM_MIN, READER_ZOOM_MAX)
 }
-
-/** Applies [steps] button increments to [current] and clamps the result. */
-fun stepReaderZoom(current: Float, steps: Int): Float =
-    clampReaderZoom(clampReaderZoom(current) + steps * READER_ZOOM_STEP)
 
 /**
  * Double-tap toggle: fit the page when already zoomed, otherwise jump straight

@@ -422,6 +422,50 @@ fun ViewerPageNavigator(
     }
 }
 
+/**
+ * The bottom page bar is a LAYOUT row below the page, never an overlay: it is
+ * shown only in the full-screen reader with chrome visible. Split mode keeps
+ * its floating top toolbar (the strip is too short for a permanent row) and
+ * immersive auto-hide removes every height-consuming bar, exactly like the
+ * top app bar and the tool dock.
+ */
+internal fun viewerBottomPageBarVisible(splitMode: Boolean, immersive: Boolean): Boolean =
+    !splitMode && !immersive
+
+/** Height of the layout page-navigation row below the PDF canvas. */
+internal const val VIEWER_BOTTOM_PAGE_BAR_HEIGHT_DP = 56
+
+/**
+ * Page navigation docked BELOW the page instead of floating over it. The old
+ * bottom pills covered the last lines of the PDF; this row reserves its own
+ * height so the canvas never renders under a control. Zoom stays on pinch and
+ * double tap — the ± pill was removed because it blocked reading.
+ */
+@Composable
+internal fun ViewerBottomPageBar(
+    pageIndex: Int,
+    pageCount: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onOpenPages: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(VIEWER_BOTTOM_PAGE_BAR_HEIGHT_DP.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        ViewerPageNavigator(
+            pageIndex = pageIndex,
+            pageCount = pageCount,
+            onPrevious = onPrevious,
+            onNext = onNext,
+            onOpenPages = onOpenPages,
+        )
+    }
+}
+
 private data class ToolOption(
     val tool: Tool,
     val icon: ImageVector,

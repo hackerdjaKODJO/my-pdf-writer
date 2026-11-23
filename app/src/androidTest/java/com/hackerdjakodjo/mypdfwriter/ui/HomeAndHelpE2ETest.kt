@@ -269,7 +269,7 @@ class HomeAndHelpE2ETest {
         }
         listOf(
             "60초 빠른 시작", "하단 도구 독의 노트", "홈 설정의 백업/복원",
-            "홈 설정의 백업·복원", "± 버튼", "스와이프",
+            "홈 설정의 백업·복원", "하단 페이지 바", "스와이프",
         ).forEach { current ->
             assertTrue("in-app guidance must mention '$current'", corpus.contains(current))
         }

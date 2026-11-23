@@ -1154,9 +1154,6 @@ fun ViewerScreen(
                     }
                 },
         ) {
-            // Captured here because nested layout lambdas shadow the implicit
-            // BoxWithConstraintsScope receiver further down.
-            val bottomControlsWidthDp = maxWidth.value.toInt()
             // Split mode removes the app bar and bottom dock from layout, so the
             // PDF starts at the top safe edge and the pane gets the full rest of
             // the screen. PDF controls float inside the strip instead.
@@ -1279,7 +1276,8 @@ fun ViewerScreen(
                     )
 
                     // Small, always-visible lock affordance. Bottom-start keeps it
-                    // clear of the bottom-center page pill and the top hint/search chips.
+                    // clear of the top hint/search chips; page navigation now lives
+                    // in its own row below the canvas.
                     if (state.pageLocked) {
                         PageLockBadge(
                             onUnlock = vm::togglePageLock,
@@ -1499,66 +1497,24 @@ fun ViewerScreen(
                                     .padding(start = 8.dp, end = 8.dp, bottom = 6.dp),
                             )
                         }
-                    } else {
-                        if (!immersive) {
-                            // Both pills share one measured container so they can
-                            // never overlap: narrow phones stack them vertically,
-                            // wide screens keep the page counter centred with the
-                            // zoom control beside it.
-                            when (viewerBottomControlsLayout(bottomControlsWidthDp)) {
-                                ViewerBottomControlsLayout.SIDE_BY_SIDE -> {
-                                    Row(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomCenter)
-                                            .padding(bottom = 14.dp),
-                                        verticalAlignment = Alignment.Bottom,
-                                    ) {
-                                        ViewerPageNavigator(
-                                            pageIndex = state.pageIndex,
-                                            pageCount = state.pageCount,
-                                            onPrevious = vm::previousPage,
-                                            onNext = vm::nextPage,
-                                            onOpenPages = { showPages = true },
-                                        )
-                                        Spacer(Modifier.width(12.dp))
-                                        ViewerZoomPill(
-                                            zoom = state.zoom,
-                                            onStep = { steps ->
-                                                vm.setZoom(stepReaderZoom(state.zoom, steps))
-                                            },
-                                        )
-                                    }
-                                }
-                                ViewerBottomControlsLayout.STACKED -> {
-                                    Column(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomCenter)
-                                            .padding(bottom = 14.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                    ) {
-                                        ViewerZoomPill(
-                                            zoom = state.zoom,
-                                            onStep = { steps ->
-                                                vm.setZoom(stepReaderZoom(state.zoom, steps))
-                                            },
-                                        )
-                                        Spacer(Modifier.height(8.dp))
-                                        ViewerPageNavigator(
-                                            pageIndex = state.pageIndex,
-                                            pageCount = state.pageCount,
-                                            onPrevious = vm::previousPage,
-                                            onNext = vm::nextPage,
-                                            onOpenPages = { showPages = true },
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
 
                     if (state.busy) {
                         BusyOverlay(state.busyLabel)
                     }
+                }
+
+                // Page navigation is docked below the canvas so it never covers
+                // the PDF. Split mode keeps its floating top toolbar and
+                // immersive auto-hide removes the row with the rest of the chrome.
+                if (viewerBottomPageBarVisible(splitMode, immersive)) {
+                    ViewerBottomPageBar(
+                        pageIndex = state.pageIndex,
+                        pageCount = state.pageCount,
+                        onPrevious = vm::previousPage,
+                        onNext = vm::nextPage,
+                        onOpenPages = { showPages = true },
+                    )
                 }
 
                 if (studyPane != null) {

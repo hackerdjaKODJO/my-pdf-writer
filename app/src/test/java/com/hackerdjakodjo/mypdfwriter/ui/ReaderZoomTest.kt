@@ -26,25 +26,6 @@ class ReaderZoomTest {
     }
 
     @Test
-    fun `step moves by a quarter and stops at the bounds`() {
-        assertZoom(1.25f, stepReaderZoom(1.0f, 1))
-        assertZoom(1.5f, stepReaderZoom(1.25f, 1))
-        assertZoom(1.0f, stepReaderZoom(1.25f, -1))
-        assertZoom(READER_ZOOM_MIN, stepReaderZoom(1.0f, -1))
-        assertZoom(READER_ZOOM_MAX, stepReaderZoom(2.25f, 1))
-        assertZoom(READER_ZOOM_MAX, stepReaderZoom(2.5f, 4))
-    }
-
-    @Test
-    fun `step handles multiple steps and dirty input`() {
-        assertZoom(2.0f, stepReaderZoom(1.0f, 4))
-        assertZoom(READER_ZOOM_MAX, stepReaderZoom(1.0f, 10))
-        assertZoom(1.65f, stepReaderZoom(1.4f, 1))
-        // Non-finite input is treated as fit-to-width before the step applies.
-        assertZoom(1.25f, stepReaderZoom(Float.NaN, 1))
-    }
-
-    @Test
     fun `double tap toggles between fit and two hundred percent`() {
         assertZoom(READER_ZOOM_DOUBLE_TAP, toggleReaderZoom(1.0f))
         assertZoom(READER_ZOOM_DOUBLE_TAP, toggleReaderZoom(0.5f))
@@ -127,21 +108,6 @@ class ReaderZoomTest {
                 scales[i] > scales[i - 1],
             )
         }
-    }
-
-    @Test
-    fun `page and zoom controls stack on narrow screens`() {
-        assertEquals(ViewerBottomControlsLayout.STACKED, viewerBottomControlsLayout(320))
-        assertEquals(ViewerBottomControlsLayout.STACKED, viewerBottomControlsLayout(360))
-        assertEquals(ViewerBottomControlsLayout.STACKED, viewerBottomControlsLayout(411))
-        assertEquals(
-            ViewerBottomControlsLayout.SIDE_BY_SIDE,
-            viewerBottomControlsLayout(VIEWER_BOTTOM_CONTROLS_WIDE_DP),
-        )
-        assertEquals(
-            ViewerBottomControlsLayout.SIDE_BY_SIDE,
-            viewerBottomControlsLayout(840),
-        )
     }
 
     @Test
