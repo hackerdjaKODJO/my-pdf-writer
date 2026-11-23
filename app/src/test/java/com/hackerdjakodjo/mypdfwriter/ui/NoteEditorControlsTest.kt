@@ -273,6 +273,16 @@ class NoteEditorControlsTest {
     }
 
     @Test
+    fun longPressTargetsAreOnlyPenAndHighlight() {
+        assertEquals(
+            listOf(Tool.PEN, Tool.HIGHLIGHT),
+            NOTE_DOCK_TOOLS.filter(::noteDockLongPressOpensStyle),
+        )
+        assertTrue(!noteDockLongPressOpensStyle(Tool.ERASER))
+        assertTrue(!noteDockLongPressOpensStyle(Tool.TEXT))
+    }
+
+    @Test
     fun `one tap add page lives on the pill only on phones`() {
         assertTrue("phone full editor", notePagePillShowsAdd(wide = false, compact = false))
         assertFalse("phone compact dock owns add", notePagePillShowsAdd(wide = false, compact = true))

@@ -280,9 +280,13 @@ fun ViewerScreen(
     fun applyViewerFavorite(preset: PenPreset) {
         vm.setTool(preset.tool)
         vm.setColor(preset.color)
-        vm.setStrokeWidth(preset.width)
-        vm.setOpacity(preset.opacity)
-        vm.setPenStyle(preset.penStyle)
+        if (preset.tool == Tool.HIGHLIGHT) {
+            vm.setHighlightWidth(preset.width)
+        } else {
+            vm.setStrokeWidth(preset.width)
+            vm.setOpacity(preset.opacity)
+            vm.setPenStyle(preset.penStyle)
+        }
     }
 
     val state = stateFlow.value ?: return
@@ -291,9 +295,9 @@ fun ViewerScreen(
         id = "current-pen",
         name = "현재 펜",
         color = state.color,
-        width = state.strokeWidth,
-        opacity = state.opacity,
-        penStyle = state.penStyle,
+        width = if (state.tool == Tool.HIGHLIGHT) state.highlightWidth else state.strokeWidth,
+        opacity = if (state.tool == Tool.HIGHLIGHT) 1f else state.opacity,
+        penStyle = if (state.tool == Tool.HIGHLIGHT) PenStyle.BALLPOINT else state.penStyle,
         tool = if (state.tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN,
     )
 
@@ -1085,6 +1089,11 @@ fun ViewerScreen(
                             ViewerToolDock(
                                 state = state,
                                 onSelectTool = selectTool,
+                                // Long press a writing tool opens its own style sheet.
+                                onLongPressTool = { tool ->
+                                    selectTool(tool)
+                                    showToolStyle = true
+                                },
                                 onTextSelect = toggleTextSelection,
                                 onNote = openNote,
                                 textSelectMode = textSelectMode,
@@ -1842,6 +1851,7 @@ fun ViewerScreen(
             onFontSize = vm::setFontSize,
             onOpacity = vm::setOpacity,
             onPenStyle = vm::setPenStyle,
+            onHighlightWidth = vm::setHighlightWidth,
             onDismiss = { showToolStyle = false },
         )
     }

@@ -16,6 +16,7 @@ data class InkSettings(
     val width: Float = DEFAULT_WIDTH,
     val opacity: Float = DEFAULT_OPACITY,
     val pressureCurve: PressureCurve = PressureCurve.DEFAULT,
+    val highlightWidth: Float = HighlightInk.DEFAULT_WIDTH,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("style", penStyle.name)
@@ -23,6 +24,7 @@ data class InkSettings(
         put("width", width.toDouble())
         put("opacity", opacity.toDouble())
         put("curve", pressureCurve.name)
+        put("hw", highlightWidth.toDouble())
     }
 
     companion object {
@@ -58,6 +60,9 @@ data class InkSettings(
                 pressureCurve = runCatching {
                     PressureCurve.valueOf(o.optString("curve"))
                 }.getOrDefault(DEFAULT.pressureCurve),
+                highlightWidth = HighlightInk.clamp(
+                    o.optDouble("hw", HighlightInk.DEFAULT_WIDTH.toDouble()).toFloat(),
+                ),
             )
         }
 
@@ -66,6 +71,22 @@ data class InkSettings(
             return runCatching { fromJson(JSONObject(raw)) }.getOrDefault(DEFAULT)
         }
     }
+}
+
+/**
+ * Highlighter width is deliberately separate from pen width: both surfaces used
+ * to force 0.02f at capture while sharing the pen width state, so changing one
+ * silently fattened the other pen. The range starts at the old note floor and
+ * ends at the global width cap; opacity stays 1f for legibility on white PDFs.
+ */
+object HighlightInk {
+    const val DEFAULT_WIDTH = 0.02f
+    const val MIN_WIDTH = 0.018f
+    const val MAX_WIDTH = 0.03f
+    val range: ClosedFloatingPointRange<Float> = MIN_WIDTH..MAX_WIDTH
+
+    fun clamp(value: Float): Float =
+        if (value.isFinite()) value.coerceIn(MIN_WIDTH, MAX_WIDTH) else DEFAULT_WIDTH
 }
 
 /** Pure conversions between shared settings and named/synthetic pen presets. */
@@ -78,7 +99,11 @@ object InkPolicy {
         InkSettings(
             penStyle = preset.penStyle,
             color = preset.color,
-            width = InkSettings.clampWidth(preset.width),
+            width = if (preset.tool == Tool.HIGHLIGHT) {
+                current.highlightWidth
+            } else {
+                InkSettings.clampWidth(preset.width)
+            },
             opacity = InkSettings.clampOpacity(preset.opacity),
             pressureCurve = current.pressureCurve,
         )
@@ -89,7 +114,7 @@ object InkPolicy {
             id = CURRENT_PEN_ID,
             name = CURRENT_PEN_NAME,
             color = settings.color,
-            width = maxOf(settings.width, 0.018f),
+            width = HighlightInk.clamp(settings.highlightWidth),
             opacity = 1f,
             penStyle = PenStyle.BALLPOINT,
             tool = Tool.HIGHLIGHT,

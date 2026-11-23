@@ -122,6 +122,16 @@ class ViewerToolDockTest {
     }
 
     @Test
+    fun longPressTargetsAreOnlyPenAndHighlight() {
+        assertEquals(
+            listOf(ViewerDockSlot.HIGHLIGHT, ViewerDockSlot.PEN),
+            viewerDockSlots.filter(::viewerDockLongPressOpensStyle),
+        )
+        assertTrue(!viewerDockLongPressOpensStyle(ViewerDockSlot.VIEW))
+        assertTrue(!viewerDockLongPressOpensStyle(ViewerDockSlot.ERASER))
+    }
+
+    @Test
     fun pagePillAnnouncesPositionAndAction() {
         assertEquals("페이지 3 / 12, 목록 열기", viewerPagePillDescription(2, 12))
         assertEquals("페이지 1 / 1, 목록 열기", viewerPagePillDescription(0, 1))

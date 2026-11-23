@@ -2,7 +2,9 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -74,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
+import com.hackerdjakodjo.mypdfwriter.data.HighlightInk
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import kotlin.math.roundToInt
@@ -190,11 +193,16 @@ internal fun viewerDockSlotLabel(slot: ViewerDockSlot): String = when (slot) {
     ViewerDockSlot.NOTE -> "노트"
 }
 
+/** Only the two writing tools expose per-tool style via long press. */
+internal fun viewerDockLongPressOpensStyle(slot: ViewerDockSlot): Boolean =
+    slot == ViewerDockSlot.PEN || slot == ViewerDockSlot.HIGHLIGHT
+
 private data class DockEntry(
     val label: String,
     val icon: ImageVector,
     val selected: Boolean,
     val onClick: () -> Unit,
+    val onLongClick: (() -> Unit)? = null,
 )
 
 /**
@@ -206,6 +214,7 @@ private data class DockEntry(
 fun ViewerToolDock(
     state: ViewerUiState,
     onSelectTool: (Tool) -> Unit,
+    onLongPressTool: ((Tool) -> Unit)? = null,
     onTextSelect: () -> Unit,
     onNote: () -> Unit,
     textSelectMode: Boolean = false,
@@ -217,25 +226,31 @@ fun ViewerToolDock(
                 viewerDockSlotLabel(slot),
                 Icons.Outlined.Visibility,
                 state.tool == Tool.VIEW && !textSelectMode,
-            ) { onSelectTool(Tool.VIEW) }
+            onClick = { onSelectTool(Tool.VIEW) },
+            )
 
             ViewerDockSlot.HIGHLIGHT -> DockEntry(
                 viewerDockSlotLabel(slot),
                 Icons.Outlined.Highlight,
                 state.tool == Tool.HIGHLIGHT,
-            ) { onSelectTool(Tool.HIGHLIGHT) }
+                onClick = { onSelectTool(Tool.HIGHLIGHT) },
+                onLongClick = { onLongPressTool?.invoke(Tool.HIGHLIGHT) },
+            )
 
             ViewerDockSlot.PEN -> DockEntry(
                 viewerDockSlotLabel(slot),
                 Icons.Outlined.Edit,
                 state.tool == Tool.PEN,
-            ) { onSelectTool(Tool.PEN) }
+                onClick = { onSelectTool(Tool.PEN) },
+                onLongClick = { onLongPressTool?.invoke(Tool.PEN) },
+            )
 
             ViewerDockSlot.ERASER -> DockEntry(
                 viewerDockSlotLabel(slot),
                 Icons.Outlined.DeleteSweep,
                 state.tool == Tool.ERASER,
-            ) { onSelectTool(Tool.ERASER) }
+            onClick = { onSelectTool(Tool.ERASER) },
+            )
 
             ViewerDockSlot.TEXT_SELECT -> DockEntry(
                 viewerDockSlotLabel(slot),
@@ -269,6 +284,7 @@ fun ViewerToolDock(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DockItem(
     entry: DockEntry,
@@ -291,7 +307,7 @@ private fun DockItem(
                 contentDescription = entry.label
                 selected = entry.selected
             }
-            .clickable(onClick = entry.onClick)
+            .combinedClickable(onClick = entry.onClick, onLongClick = entry.onLongClick)
             .padding(vertical = if (compact) 2.dp else 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -687,6 +703,7 @@ fun ViewerStyleSheet(
     onOpacity: (Float) -> Unit,
     onDismiss: () -> Unit,
     onPenStyle: ((PenStyle) -> Unit)? = null,
+    onHighlightWidth: ((Float) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -767,6 +784,22 @@ fun ViewerStyleSheet(
                         modifier = Modifier.semantics {
                             contentDescription = sliderLabel("글자 크기", fontSizeValue)
                             stateDescription = fontSizeValue
+                        },
+                    )
+                }
+
+                Tool.HIGHLIGHT -> {
+                    Spacer(Modifier.height(16.dp))
+                    val width = HighlightInk.clamp(state.highlightWidth)
+                    val widthValue = "${(width * 1000).roundToInt()}"
+                    SettingHeader(label = "굵기", value = widthValue)
+                    Slider(
+                        value = width,
+                        onValueChange = { onHighlightWidth?.invoke(it) },
+                        valueRange = HighlightInk.range,
+                        modifier = Modifier.semantics {
+                            contentDescription = sliderLabel("굵기", widthValue)
+                            stateDescription = widthValue
                         },
                     )
                 }

@@ -260,7 +260,11 @@ internal fun NoteStyleSheet(
                     label = "굵기",
                     valueLabel = "${(strokeWidth * 1000).roundToInt()}",
                     value = strokeWidth,
-                    range = 0.001f..0.02f,
+                    range = if (tool == Tool.HIGHLIGHT) {
+                        com.hackerdjakodjo.mypdfwriter.data.HighlightInk.range
+                    } else {
+                        0.001f..0.02f
+                    },
                     onValueChange = onStrokeWidth,
                 )
             }

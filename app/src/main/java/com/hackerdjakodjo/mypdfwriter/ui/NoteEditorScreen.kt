@@ -9,7 +9,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -131,6 +133,7 @@ import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 import com.hackerdjakodjo.mypdfwriter.data.PenBoxStore
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
+import com.hackerdjakodjo.mypdfwriter.data.HighlightInk
 import com.hackerdjakodjo.mypdfwriter.data.InkSettings
 import com.hackerdjakodjo.mypdfwriter.data.InkPolicy
 import com.hackerdjakodjo.mypdfwriter.data.InkSettingsStore
@@ -241,6 +244,7 @@ fun NoteEditorScreen(
     var fontSize by remember { mutableStateOf(0.028f) }
     var opacity by remember { mutableStateOf(initialInk.opacity) }
     var penStyle by remember { mutableStateOf(initialInk.penStyle) }
+    var highlightWidth by remember { mutableStateOf(initialInk.highlightWidth) }
     var fingerWriting by remember { mutableStateOf(false) }
     var zoomLock by remember { mutableStateOf(false) }
     var strokeStabilization by remember { mutableStateOf(true) }
@@ -257,7 +261,7 @@ fun NoteEditorScreen(
     val configuration = LocalConfiguration.current
     // Large fonts hide the secondary dock labels, but never shrink the slots.
     val showDockLabels = noteDockShowLabels(configuration.screenWidthDp, configuration.fontScale)
-    LaunchedEffect(color, strokeWidth, opacity, penStyle, pressureCurve) {
+    LaunchedEffect(color, strokeWidth, opacity, penStyle, pressureCurve, highlightWidth) {
         inkStore.save(
             com.hackerdjakodjo.mypdfwriter.data.InkSettings(
                 penStyle = penStyle,
@@ -265,6 +269,7 @@ fun NoteEditorScreen(
                 width = strokeWidth,
                 opacity = opacity,
                 pressureCurve = pressureCurve,
+                highlightWidth = highlightWidth,
             ),
         )
     }
@@ -1387,6 +1392,7 @@ fun NoteEditorScreen(
                         color = color,
                         showLabels = showDockLabels,
                         onOpenStyle = { showStyle = true },
+                        onLongPressTool = { t -> tool = t; showStyle = true },
                     )
                 }
             }
@@ -1405,7 +1411,7 @@ fun NoteEditorScreen(
                         page = visiblePage,
                         tool = tool,
                         color = color,
-                        strokeWidth = strokeWidth,
+                        strokeWidth = if (tool == Tool.HIGHLIGHT) highlightWidth else strokeWidth,
                         fontSize = fontSize,
                         opacity = opacity,
                         penStyle = penStyle,
@@ -1477,7 +1483,7 @@ fun NoteEditorScreen(
                     page = visiblePage,
                     tool = tool,
                     color = color,
-                    strokeWidth = strokeWidth,
+                    strokeWidth = if (tool == Tool.HIGHLIGHT) highlightWidth else strokeWidth,
                     fontSize = fontSize,
                     opacity = opacity,
                     penStyle = penStyle,
@@ -1609,6 +1615,7 @@ fun NoteEditorScreen(
                             color = color,
                             showLabels = showDockLabels,
                             onOpenStyle = { showStyle = true },
+                            onLongPressTool = { t -> tool = t; showStyle = true },
                             canUndo = canUndo,
                             canRedo = canRedo,
                             onUndo = { undo() },
@@ -1779,7 +1786,7 @@ fun NoteEditorScreen(
     if (showPenBox) {
         val currentTool = if (tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN
         val currentPen = InkPolicy.currentPen(
-            InkSettings(penStyle, color, strokeWidth, opacity, pressureCurve),
+            InkSettings(penStyle, color, strokeWidth, opacity, pressureCurve, highlightWidth),
             currentTool,
         )
         PenBoxSheet(
@@ -1951,8 +1958,10 @@ fun NoteEditorScreen(
             tool = tool,
             color = color,
             onColor = { color = it },
-            strokeWidth = strokeWidth,
-            onStrokeWidth = { strokeWidth = it },
+            strokeWidth = if (tool == Tool.HIGHLIGHT) highlightWidth else strokeWidth,
+            onStrokeWidth = {
+                if (tool == Tool.HIGHLIGHT) highlightWidth = it else strokeWidth = it
+            },
             fontSize = fontSize,
             onFontSize = { fontSize = it },
             opacity = opacity,
@@ -1966,7 +1975,7 @@ fun NoteEditorScreen(
             onDismiss = { showStyle = false },
             favorites = favoritePens,
             currentPen = InkPolicy.currentPen(
-                InkSettings(penStyle, color, strokeWidth, opacity, pressureCurve),
+                InkSettings(penStyle, color, strokeWidth, opacity, pressureCurve, highlightWidth),
                 if (tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN,
             ),
             onApplyFavorite = { applyPenPreset(it) },
@@ -2361,6 +2370,10 @@ private fun NoteCanvasPane(
  * Undo/redo/menu are in the top bar and the page pill floats over the canvas, so
  * this no longer reserves a second action row at the bottom of the screen.
  */
+/** Both note docks open the style sheet for these two writing tools on long press. */
+internal fun noteDockLongPressOpensStyle(tool: Tool): Boolean =
+    tool == Tool.PEN || tool == Tool.HIGHLIGHT
+
 @Composable
 private fun NoteDock(
     tool: Tool,
@@ -2368,6 +2381,7 @@ private fun NoteDock(
     color: Int,
     showLabels: Boolean,
     onOpenStyle: () -> Unit,
+    onLongPressTool: ((Tool) -> Unit)? = null,
 ) {
     Surface(tonalElevation = 3.dp) {
         Column(
@@ -2429,6 +2443,9 @@ private fun NoteDock(
                                         else -> dockTool
                                     },
                                 )
+                            },
+                            onLongClick = onLongPressTool?.let { cb ->
+                                { cb(dockTool) }
                             },
                             showLabels = showLabels,
                             modifier = Modifier.weight(1f),
@@ -2545,6 +2562,7 @@ private fun NoteFloatingDock(
     color: Int,
     showLabels: Boolean,
     onOpenStyle: () -> Unit,
+    onLongPressTool: ((Tool) -> Unit)? = null,
     canUndo: Boolean,
     canRedo: Boolean,
     onUndo: () -> Unit,
@@ -2695,6 +2713,7 @@ private fun NoteFloatingDock(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NoteCompactDockTool(
     icon: ImageVector,
@@ -2703,10 +2722,10 @@ private fun NoteCompactDockTool(
     selected: Boolean,
     primary: Boolean,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        onClick = onClick,
         shape = RoundedCornerShape(9.dp),
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
@@ -2728,7 +2747,8 @@ private fun NoteCompactDockTool(
             .semantics {
                 contentDescription = noteToolDescription(label, selected)
                 this.selected = selected
-            },
+            }
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         // Visuals stay tiny; the 48 dp slot around them is the real target.
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -2814,6 +2834,7 @@ private fun noteDockToolIcon(tool: Tool): ImageVector = when (tool) {
     else -> Icons.Filled.Edit
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NoteDockTool(
     icon: ImageVector,
@@ -2822,10 +2843,10 @@ private fun NoteDockTool(
     selected: Boolean,
     primary: Boolean,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        onClick = onClick,
         shape = RoundedCornerShape(14.dp),
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
@@ -2849,7 +2870,8 @@ private fun NoteDockTool(
             .semantics {
                 contentDescription = noteToolDescription(label, selected)
                 this.selected = selected
-            },
+            }
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (showLabels) {

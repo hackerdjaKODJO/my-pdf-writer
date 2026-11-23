@@ -18,6 +18,8 @@ import com.hackerdjakodjo.mypdfwriter.data.DocumentStyle
 import com.hackerdjakodjo.mypdfwriter.data.DocumentStyleStore
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.ExcerptStore
+import com.hackerdjakodjo.mypdfwriter.data.HighlightInk
+import com.hackerdjakodjo.mypdfwriter.data.InkSettings
 import com.hackerdjakodjo.mypdfwriter.data.InkSettingsStore
 import com.hackerdjakodjo.mypdfwriter.data.LibraryStore
 import com.hackerdjakodjo.mypdfwriter.data.MemoCard
@@ -81,6 +83,7 @@ data class ViewerUiState(
     val penStyle: PenStyle = PenStyle.BALLPOINT,
     val color: Int = 0xFF1F4E79.toInt(),
     val strokeWidth: Float = 0.0035f,
+    val highlightWidth: Float = HighlightInk.DEFAULT_WIDTH,
     val fontSize: Float = 0.024f,
     val opacity: Float = 1f,
     val zoom: Float = 1f,
@@ -420,6 +423,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     penStyle = ink.penStyle,
                     color = ink.color,
                     strokeWidth = ink.width,
+                    highlightWidth = ink.highlightWidth,
                     opacity = ink.opacity,
                     docName = displayName,
                     pageCount = pages.size,
@@ -820,6 +824,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 width = state.strokeWidth,
                 opacity = state.opacity,
                 pressureCurve = curve,
+                highlightWidth = state.highlightWidth,
             ),
         )
     }
@@ -835,7 +840,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             it?.copy(
                 tool = tool,
                 strokeWidth = when (tool) {
-                    Tool.HIGHLIGHT -> 0.02f
+                    // Never overwrite the shared PEN width with a highlighter value.
+                    Tool.HIGHLIGHT -> it.strokeWidth
                     Tool.PEN -> inkStore.load().width
                     else -> it.strokeWidth
                 },
@@ -850,6 +856,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setStrokeWidth(width: Float) {
         _viewer.update { it?.copy(strokeWidth = width.coerceIn(0.001f, 0.03f)) }
+        persistInk()
+    }
+
+    /** Width used by the highlighter, stored separately from the pen width. */
+    fun setHighlightWidth(width: Float) {
+        _viewer.update { it?.copy(highlightWidth = HighlightInk.clamp(width)) }
         persistInk()
     }
 
@@ -892,7 +904,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             page = state.pageIndex,
             color = state.color,
             width = when (type) {
-                AnnotationType.HIGHLIGHT -> 0.02f
+                AnnotationType.HIGHLIGHT -> HighlightInk.clamp(state.highlightWidth)
                 AnnotationType.RECT,
                 AnnotationType.ARROW,
                 AnnotationType.LINE,
