@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.62`** — `versionCode = 71`.
-- **Next version is `0.8.63` — `versionCode = 72`.**
+- Current delivered version: **`0.8.63`** — `versionCode = 72`.
+- **Next version is `0.8.64` — `versionCode = 73`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.63` | 72 | 2026-11-23 | `v0.8.63` | Three-agent PDF text-selection performance pass: dedupe per-frame selection publishes, debounce ViewModel mirror, isolate selection overlay into its own Canvas, prefilter gesture words; 5 JVM + 1 E2E tests |
 | `0.8.62` | 71 | 2026-11-23 | `v0.8.62` | Three-agent pen-illustration pass: realistic ballpoint/fountain/brush/pencil drawings (clip, clicker, gold nib, breather hole, ferrule, bristles, graphite, eraser) in both PDF and note pickers; pure geometry spec; 7 JVM + 1 E2E tests |
 | `0.8.61` | 70 | 2026-11-23 | `v0.8.61` | Four-agent commercial UX/accessibility pass: surface silent import errors as Home snackbar, ACTION_VIEW PDFs join recents for resume, persisted per-document zoom, debounced notebook page resume, page-aware TalkBack pane titles, 48dp overlay targets + spoken states; 7 JVM + 2 E2E tests |
 | `0.8.60` | 69 | 2026-11-23 | `v0.8.60` | Three-agent long-press dock review: pen/highlight long press opens that tool's style sheet in PDF + note; highlighter width stored separately so pen width is never corrupted; 5 JVM + 3 E2E tests |

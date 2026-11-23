@@ -192,6 +192,7 @@ fun PdfCanvas(
     val currentOnPreviousPage by rememberUpdatedState(onPreviousPage)
     val currentOnNextPage by rememberUpdatedState(onNextPage)
     val currentZoom by rememberUpdatedState(zoom)
+    val currentSelectedWords by rememberUpdatedState(selectedWords)
 
     val pageKey = CanvasPageKey(docId, pageIndex)
     // Pan is transient per *document page*, not just per index: switching to
@@ -211,6 +212,11 @@ fun PdfCanvas(
     }
     val pageWords = remember(textWords, pageIndex) {
         textWords.filter { it.pageIndex == pageIndex }
+    }
+    // Gesture hit-testing needs non-blank words only. Computed once per page so
+    // a drag never re-filters the whole document on a pointer-move frame.
+    val selectablePageWords = remember(textWords, pageIndex) {
+        textWords.filter { it.pageIndex == pageIndex && it.text.isNotBlank() }
     }
     val transform = remember { CanvasTransform() }
     // The VIEW-mode pointer handler uses a stable key, so read the host callback
@@ -331,9 +337,8 @@ fun PdfCanvas(
         }
 
         fun wordsInSelection(a: NormalizedPoint, b: NormalizedPoint): List<PdfTextWord> =
-            PdfTextLayout.wordsForGesture(
-                words = textWords,
-                pageIndex = pageIndex,
+            PdfTextLayout.wordsForGestureOnPage(
+                pageWords = selectablePageWords,
                 startX = a.x,
                 startY = a.y,
                 endX = b.x,
@@ -352,6 +357,10 @@ fun PdfCanvas(
                     val start = transform.normalize(down.position)
                     selectionStart = start
                     selectionEnd = start
+                    // Publish only when the covered words actually change. Jitter
+                    // inside one word must not recompose the whole viewer on every
+                    // touch frame — the live drag rectangle is drawn locally.
+                    var lastPublished: List<PdfTextWord> = currentSelectedWords
                     var pressed = true
                     while (pressed) {
                         val event = awaitPointerEvent()
@@ -363,11 +372,21 @@ fun PdfCanvas(
                             val point = transform.normalize(change.position)
                             selectionEnd = point
                             change.consume()
-                            onTextSelection(wordsInSelection(start, point))
+                            val next = wordsInSelection(start, point)
+                            if (TextSelectionPublish.shouldPublish(lastPublished, next)) {
+                                lastPublished = next
+                                onTextSelection(next)
+                            }
                         }
                     }
                     val end = selectionEnd ?: start
-                    onTextSelection(wordsInSelection(start, end))
+                    val final = wordsInSelection(start, end)
+                    // Compared against what the host held at gesture start, so an
+                    // empty final result still clears a previous selection while an
+                    // unchanged one costs no extra recomposition.
+                    if (TextSelectionPublish.shouldPublish(lastPublished, final)) {
+                        onTextSelection(final)
+                    }
                     selectionStart = null
                     selectionEnd = null
                 }
@@ -699,69 +718,6 @@ fun PdfCanvas(
                     progress = annotationProgress,
                 )
 
-                if (textSelectMode && textWords.isNotEmpty()) {
-                    val subtleFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        style = Paint.Style.FILL
-                        this.color = android.graphics.Color.argb(16, 31, 78, 121)
-                    }
-                    val selectedFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        style = Paint.Style.FILL
-                        this.color = android.graphics.Color.argb(72, 31, 78, 121)
-                    }
-                    val selectedBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        style = Paint.Style.STROKE
-                        this.color = android.graphics.Color.argb(190, 31, 78, 121)
-                        this.strokeWidth = (1.2f / total).coerceAtLeast(0.2f)
-                    }
-                    pageWords.forEach { word ->
-                        val left = word.rect.left * pageW
-                        val top = word.rect.top * pageH
-                        val right = word.rect.right * pageW
-                        val bottom = word.rect.bottom * pageH
-                        if (word in selectedWordSet) {
-                            native.drawRect(left, top, right, bottom, selectedFill)
-                            native.drawRect(left, top, right, bottom, selectedBorder)
-                        } else {
-                            native.drawRect(left, top, right, bottom, subtleFill)
-                        }
-                    }
-
-                    val start = selectionStart
-                    val end = selectionEnd
-                    if (start != null && end != null) {
-                        val drag = NormalizedRect(
-                            minOf(start.x, end.x),
-                            minOf(start.y, end.y),
-                            maxOf(start.x, end.x),
-                            maxOf(start.y, end.y),
-                        )
-                        if (drag.width > 0.002f || drag.height > 0.002f) {
-                            val dragFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                                style = Paint.Style.FILL
-                                this.color = android.graphics.Color.argb(36, 31, 78, 121)
-                            }
-                            val dragBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                                style = Paint.Style.STROKE
-                                this.color = android.graphics.Color.argb(170, 31, 78, 121)
-                                this.strokeWidth = (1.5f / total).coerceAtLeast(0.25f)
-                            }
-                            native.drawRect(
-                                drag.left * pageW,
-                                drag.top * pageH,
-                                drag.right * pageW,
-                                drag.bottom * pageH,
-                                dragFill,
-                            )
-                            native.drawRect(
-                                drag.left * pageW,
-                                drag.top * pageH,
-                                drag.right * pageW,
-                                drag.bottom * pageH,
-                                dragBorder,
-                            )
-                        }
-                    }
-                }
 
                 val previewPoints = livePoints.toList()
                 if (previewPoints.isNotEmpty()) {
@@ -831,6 +787,95 @@ fun PdfCanvas(
                 native.restore() // page-origin translate (ink/text overlays)
                 native.restore() // crop clip
                 native.restore() // viewport translate + scale + crop centre
+            }
+        }
+
+        // Selection highlight lives in its own Canvas. The page bitmap, ink,
+        // search and overlays above are NOT redrawn while a finger drags the
+        // selection rectangle — only this small overlay is invalidated. The
+        // transform below mirrors the page Canvas exactly so every rect aligns.
+        if (textSelectMode && textWords.isNotEmpty()) {
+            Canvas(Modifier.matchParentSize()) {
+                val cx = size.width / 2f + pan.x
+                val cy = size.height / 2f + pan.y
+                val pageLeft = -pageW / 2f
+                val pageTop = -pageH / 2f
+                drawIntoCanvas { canvas ->
+                    val native = canvas.nativeCanvas
+                    native.save()
+                    native.translate(cx, cy)
+                    native.scale(total, total)
+                    native.translate(pageW / 2f - originX, pageH / 2f - originY)
+                    native.save()
+                    val clip = PdfCrop.clipRectForCanvas(visible, pageW, pageH)
+                    native.clipRect(clip.left, clip.top, clip.right, clip.bottom)
+                    native.translate(pageLeft, pageTop)
+
+                    val subtleFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.FILL
+                        this.color = android.graphics.Color.argb(16, 31, 78, 121)
+                    }
+                    val selectedFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.FILL
+                        this.color = android.graphics.Color.argb(72, 31, 78, 121)
+                    }
+                    val selectedBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.STROKE
+                        this.color = android.graphics.Color.argb(190, 31, 78, 121)
+                        this.strokeWidth = (1.2f / total).coerceAtLeast(0.2f)
+                    }
+                    pageWords.forEach { word ->
+                        val left = word.rect.left * pageW
+                        val top = word.rect.top * pageH
+                        val right = word.rect.right * pageW
+                        val bottom = word.rect.bottom * pageH
+                        if (word in selectedWordSet) {
+                            native.drawRect(left, top, right, bottom, selectedFill)
+                            native.drawRect(left, top, right, bottom, selectedBorder)
+                        } else {
+                            native.drawRect(left, top, right, bottom, subtleFill)
+                        }
+                    }
+
+                    val start = selectionStart
+                    val end = selectionEnd
+                    if (start != null && end != null) {
+                        val drag = NormalizedRect(
+                            minOf(start.x, end.x),
+                            minOf(start.y, end.y),
+                            maxOf(start.x, end.x),
+                            maxOf(start.y, end.y),
+                        )
+                        if (drag.width > 0.002f || drag.height > 0.002f) {
+                            val dragFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                style = Paint.Style.FILL
+                                this.color = android.graphics.Color.argb(36, 31, 78, 121)
+                            }
+                            val dragBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                style = Paint.Style.STROKE
+                                this.color = android.graphics.Color.argb(170, 31, 78, 121)
+                                this.strokeWidth = (1.5f / total).coerceAtLeast(0.25f)
+                            }
+                            native.drawRect(
+                                drag.left * pageW,
+                                drag.top * pageH,
+                                drag.right * pageW,
+                                drag.bottom * pageH,
+                                dragFill,
+                            )
+                            native.drawRect(
+                                drag.left * pageW,
+                                drag.top * pageH,
+                                drag.right * pageW,
+                                drag.bottom * pageH,
+                                dragBorder,
+                            )
+                        }
+                    }
+
+                    native.restore() // crop clip
+                    native.restore() // viewport translate + scale + crop centre
+                }
             }
         }
 

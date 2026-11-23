@@ -266,6 +266,40 @@ class PdfTextLayoutTest {
             rotation = rotation,
         )
 
+    @Test
+    fun prefilteredGestureReturnsTheSameResultAsThePublicApi() {
+        val hello = word("Hello", 0.1f, 0.1f, 0.2f, 0.12f)
+        val world = word("world", 0.21f, 0.1f, 0.3f, 0.12f)
+        val otherPage = word("other", 0.1f, 0.1f, 0.2f, 0.12f).copy(pageIndex = 1)
+        val blank = word("", 0.1f, 0.1f, 0.2f, 0.12f)
+        val all = listOf(hello, world, otherPage, blank)
+
+        listOf(
+            Quad(0.15f, 0.11f, 0.151f, 0.111f), // tap on Hello
+            Quad(0.05f, 0.05f, 0.35f, 0.2f), // drag across both words
+            Quad(0.5f, 0.5f, 0.5f, 0.5f), // empty tap
+        ).forEach { q ->
+            val publicResult = PdfTextLayout.wordsForGesture(
+                words = all,
+                pageIndex = 0,
+                startX = q.x1,
+                startY = q.y1,
+                endX = q.x2,
+                endY = q.y2,
+            )
+            val prefilteredResult = PdfTextLayout.wordsForGestureOnPage(
+                pageWords = listOf(hello, world),
+                startX = q.x1,
+                startY = q.y1,
+                endX = q.x2,
+                endY = q.y2,
+            )
+            assertEquals(publicResult, prefilteredResult)
+        }
+    }
+
+    private data class Quad(val x1: Float, val y1: Float, val x2: Float, val y2: Float)
+
     private fun word(
         text: String,
         left: Float,

@@ -120,9 +120,13 @@ import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
 import com.hackerdjakodjo.mypdfwriter.pdf.SummarySafWriter
 import com.hackerdjakodjo.mypdfwriter.pdf.TextActions
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.math.roundToInt
+
+/** Debounce for the transient selection mirror into the view model. */
+private const val SELECTION_MIRROR_SETTLE_MS = 120L
 
 /**
  * Every viewer sheet/dialog that must intercept system Back before the document
@@ -384,7 +388,19 @@ fun ViewerScreen(
 
     // The replacement action lives in the view model, so mirror the local canvas
     // selection into it. This is transient UI state, never persisted or snapshotted.
-    LaunchedEffect(selectedWords) { vm.setSelectedWords(selectedWords) }
+    // Dragging changes the selection on nearly every touch frame, but the view
+    // model only needs the settled value (for the text-replace action). Publishing
+    // every frame emitted a new ViewerUiState and forced a SECOND whole-screen
+    // recomposition per tick. Clearing is still immediate so no action can use a
+    // stale selection.
+    LaunchedEffect(selectedWords) {
+        if (selectedWords.isEmpty()) {
+            vm.setSelectedWords(selectedWords)
+        } else {
+            delay(SELECTION_MIRROR_SETTLE_MS)
+            vm.setSelectedWords(selectedWords)
+        }
+    }
 
     /** Enter/leave the text-selection (lasso) mode used by both the dock and the hub. */
     val toggleTextSelection: () -> Unit = {
@@ -1215,7 +1231,9 @@ fun ViewerScreen(
                             if (replayNote != null && replayNote?.pageIndex != state.pageIndex) 1f
                             else annotationRevealFraction(annotation, replayNote, replayPositionMs)
                         },
-                        memoCards = pdfMemoCardsForPage(state.memoCards, state.pageIndex),
+                        memoCards = remember(state.memoCards, state.pageIndex) {
+                            pdfMemoCardsForPage(state.memoCards, state.pageIndex)
+                        },
                         showMemoCardsOnPage = showMemoCardsOnPage,
                         onOpenMemoCard = { id ->
                             memoEditCardId = id
@@ -1226,7 +1244,7 @@ fun ViewerScreen(
                         onDeleteMemoCard = vm::deleteMemoCard,
                         penStyle = state.penStyle,
                         pressureEnabled = true,
-                        pressureCurve = inkStore.load().pressureCurve,
+                        pressureCurve = remember(inkStore) { inkStore.load().pressureCurve },
                         onZoomChange = vm::setZoom,
                         onAddStroke = vm::addStroke,
                         onEraseStroke = vm::eraseStroke,

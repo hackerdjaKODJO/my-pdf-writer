@@ -124,8 +124,28 @@ object PdfTextLayout {
         endX: Float,
         endY: Float,
         tapSpan: Float = DEFAULT_TAP_SPAN,
+    ): List<PdfTextWord> = wordsForGestureOnPage(
+        pageWords = words.filter { it.pageIndex == pageIndex && it.text.isNotBlank() },
+        startX = startX,
+        startY = startY,
+        endX = endX,
+        endY = endY,
+        tapSpan = tapSpan,
+    )
+
+    /**
+     * Same hit test as [wordsForGesture] but for a caller that already holds the
+     * selectable words of the current page. The drag path uses this to avoid
+     * re-filtering the whole document on every pointer-move frame.
+     */
+    fun wordsForGestureOnPage(
+        pageWords: List<PdfTextWord>,
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        tapSpan: Float = DEFAULT_TAP_SPAN,
     ): List<PdfTextWord> {
-        val pageWords = words.filter { it.pageIndex == pageIndex && it.text.isNotBlank() }
         if (pageWords.isEmpty()) return emptyList()
 
         val left = min(startX, endX)

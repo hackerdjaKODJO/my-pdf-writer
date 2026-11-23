@@ -65,6 +65,33 @@ class PdfCanvasSelectionE2ETest {
     }
 
     @Test
+    fun jitterInsideOneWordPublishesTheSelectionOnlyOnce() {
+        val word = word("steady", 0.20f, 0.20f, 0.80f, 0.80f)
+        var publishes = 0
+        var selected: List<PdfTextWord> = emptyList()
+        setCanvas(listOf(word), onSelection = {
+            publishes++
+            selected = it
+        })
+
+        composeRule.onNodeWithTag(CANVAS_TAG).performTouchInput {
+            val side = min(width, height).toFloat()
+            val left = (width - side) / 2f
+            val top = (height - side) / 2f
+            down(Offset(left + side * 0.40f, top + side * 0.40f))
+            // Many frames of finger jitter that never leave the single word.
+            repeat(8) { i ->
+                moveTo(Offset(left + side * (0.40f + i * 0.01f), top + side * 0.40f))
+            }
+            up()
+        }
+        composeRule.waitForIdle()
+
+        assertEquals(1, publishes)
+        assertEquals(listOf(word), selected)
+    }
+
+    @Test
     fun longPressInViewModeRequestsSelectionAtThePressedWord() {
         val word = word("long", 0.35f, 0.40f, 0.65f, 0.60f)
         var requested: NormalizedPoint? = null
