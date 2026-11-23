@@ -15,6 +15,22 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+/** Page turning and zoom must never overlap at the bottom of the PDF sample. */
+internal enum class ViewerBottomControlsLayout { STACKED, SIDE_BY_SIDE }
+
+/**
+ * Minimum width for the page pill and the zoom pill to sit on one row without
+ * touching. 360 dp phones must stack them; tablets can keep them side by side.
+ */
+internal const val VIEWER_BOTTOM_CONTROLS_WIDE_DP = 520
+
+internal fun viewerBottomControlsLayout(availableWidthDp: Int): ViewerBottomControlsLayout =
+    if (availableWidthDp >= VIEWER_BOTTOM_CONTROLS_WIDE_DP) {
+        ViewerBottomControlsLayout.SIDE_BY_SIDE
+    } else {
+        ViewerBottomControlsLayout.STACKED
+    }
+
 /**
  * Small, always-visible zoom control for both PDF readers.
  *

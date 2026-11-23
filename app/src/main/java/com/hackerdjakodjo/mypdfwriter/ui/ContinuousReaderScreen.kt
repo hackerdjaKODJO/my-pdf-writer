@@ -23,7 +23,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
@@ -549,27 +551,48 @@ fun ContinuousReaderScreen(
                     )
                 }
 
-                CurrentPageIndicator(
-                    page = currentPage,
-                    pageCount = pageCount,
+                // Same adaptive layout as the paged viewer: the page indicator
+                // and the zoom pill share one measured area and never overlap.
+                BoxWithConstraints(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp),
-                )
-
-                ViewerZoomPill(
-                    zoom = zoom,
-                    onStep = { steps ->
-                        setZoom(
-                            stepReaderZoom(latestZoom.value, steps),
-                            viewportWidthPx / 2f,
-                            "button",
-                        )
-                    },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 12.dp, bottom = 16.dp),
-                )
+                ) {
+                    when (viewerBottomControlsLayout(maxWidth.value.toInt())) {
+                        ViewerBottomControlsLayout.SIDE_BY_SIDE -> {
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                CurrentPageIndicator(page = currentPage, pageCount = pageCount)
+                                Spacer(Modifier.width(12.dp))
+                                ViewerZoomPill(
+                                    zoom = zoom,
+                                    onStep = { steps ->
+                                        setZoom(
+                                            stepReaderZoom(latestZoom.value, steps),
+                                            viewportWidthPx / 2f,
+                                            "button",
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                        ViewerBottomControlsLayout.STACKED -> {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                ViewerZoomPill(
+                                    zoom = zoom,
+                                    onStep = { steps ->
+                                        setZoom(
+                                            stepReaderZoom(latestZoom.value, steps),
+                                            viewportWidthPx / 2f,
+                                            "button",
+                                        )
+                                    },
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                CurrentPageIndicator(page = currentPage, pageCount = pageCount)
+                            }
+                        }
+                    }
+                }
 
                 if (BuildConfig.DEBUG) {
                     val renderZoom = readerRenderZoom(zoom)

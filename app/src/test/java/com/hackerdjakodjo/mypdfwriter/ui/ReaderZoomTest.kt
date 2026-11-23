@@ -130,6 +130,21 @@ class ReaderZoomTest {
     }
 
     @Test
+    fun `page and zoom controls stack on narrow screens`() {
+        assertEquals(ViewerBottomControlsLayout.STACKED, viewerBottomControlsLayout(320))
+        assertEquals(ViewerBottomControlsLayout.STACKED, viewerBottomControlsLayout(360))
+        assertEquals(ViewerBottomControlsLayout.STACKED, viewerBottomControlsLayout(411))
+        assertEquals(
+            ViewerBottomControlsLayout.SIDE_BY_SIDE,
+            viewerBottomControlsLayout(VIEWER_BOTTOM_CONTROLS_WIDE_DP),
+        )
+        assertEquals(
+            ViewerBottomControlsLayout.SIDE_BY_SIDE,
+            viewerBottomControlsLayout(840),
+        )
+    }
+
+    @Test
     fun `label renders a clamped percentage`() {
         assertEquals("100%", readerZoomLabel(1.0f))
         assertEquals("125%", readerZoomLabel(1.25f))
