@@ -99,6 +99,7 @@ import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.PenBoxStore
@@ -1131,7 +1132,9 @@ fun ViewerScreen(
                     onTitleClick = { openRecentDocs() },
                     onSearch = { showSearch = true },
                     onOpenMenu = { showHub = true },
-                    modifier = Modifier.align(Alignment.TopCenter),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .zIndex(1f),
                 )
             }
             // Split mode removes the app bar and bottom dock from layout, so the

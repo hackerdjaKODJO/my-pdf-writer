@@ -76,6 +76,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -251,7 +252,9 @@ fun ContinuousReaderScreen(
                     scope.launch { listState.animateScrollToItem(target) }
                 },
                 onOpenPages = { showPageJump = true },
-                modifier = Modifier.align(Alignment.TopCenter),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .zIndex(1f),
             )
             Box(Modifier.fillMaxSize()) {
                 if (pageCount <= 0) {

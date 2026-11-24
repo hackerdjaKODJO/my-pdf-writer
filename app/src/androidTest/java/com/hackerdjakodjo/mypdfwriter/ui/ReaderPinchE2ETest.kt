@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -147,12 +149,17 @@ class ReaderPinchE2ETest {
     fun floatingPageNavigatorOpensNumericJump() {
         setReader()
         val previous = composeRule.onNodeWithContentDescription("이전 페이지")
-        previous.assertExists()
+        val next = composeRule.onNodeWithContentDescription("다음 페이지")
+        previous.assertIsDisplayed()
+        next.assertIsDisplayed()
         val previousBounds = previous.getUnclippedBoundsInRoot()
         assertTrue("compact navigator must stay small", previousBounds.bottom - previousBounds.top <= 32.dp)
-        composeRule.onNodeWithContentDescription("다음 페이지").assertExists()
-        composeRule.onNodeWithContentDescription(viewerPagePillDescription(0, 3)).performClick()
-        composeRule.onNodeWithText("페이지 이동").assertExists()
+        next.performTouchInput { click(center) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription(viewerPagePillDescription(1, 3)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(viewerPagePillDescription(1, 3))
+            .performTouchInput { click(center) }
+        composeRule.onNodeWithText("페이지 이동").assertIsDisplayed()
     }
 
     @Test
