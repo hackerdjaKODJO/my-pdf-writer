@@ -40,7 +40,7 @@ class UsageGuideContentTest {
         assertTrue(guide.contains("노트 메뉴 → 카드"))
         assertTrue(guide.contains("하단 도구 독의"))
         assertTrue(guide.contains("PDF 내보내기"))
-        assertTrue(guide.contains("하단 페이지 바"))
+        assertTrue(guide.contains("작은 페이지 탐색"))
         assertTrue(guide.contains("스와이프"))
         assertTrue(guide.contains("최근 수정순"))
         assertTrue(guide.contains("보기 도구"))

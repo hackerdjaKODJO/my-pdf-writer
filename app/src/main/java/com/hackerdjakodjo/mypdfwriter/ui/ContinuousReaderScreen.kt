@@ -261,13 +261,13 @@ fun ContinuousReaderScreen(
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)),
         ) {
-            Box(Modifier.fillMaxWidth().weight(1f)) {
+            Box(Modifier.fillMaxSize()) {
                 if (pageCount <= 0) {
                     EmptyReader(onBack = onBack)
                 } else {
@@ -538,8 +538,8 @@ fun ContinuousReaderScreen(
                             // The scroller stays enabled: the Initial-pass pinch observer
                             // consumes only two-finger events, so one-finger vertical
                             // scrolling keeps its native fling behavior.
-                            // The page bar is a layout row below the list, so the
-                            // last page no longer needs room for a floating label.
+                            // The page navigator floats over the list and consumes
+                            // no layout height; only a small visual inset remains.
                             contentPadding = PaddingValues(
                                 top = 8.dp,
                                 bottom = 8.dp,
@@ -574,28 +574,29 @@ fun ContinuousReaderScreen(
                 }
             }
 
-            // Page navigation is docked below the page list, never over it.
-            // ‹/› scroll one page; the counter opens a numeric page jump.
+            // Compact floating navigation: it overlays the PDF instead of
+            // reserving a 56dp layout row, so the continuous reader uses the
+            // full available height. ‹/› scroll one page; the count opens the
+            // numeric jump dialog.
             if (pageCount > 0) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp,
-                ) {
-                    ViewerBottomPageBar(
-                        pageIndex = currentPage - 1,
-                        pageCount = pageCount,
-                        onPrevious = {
-                            val target = continuousReaderScrollTarget(currentPage, -1, pageCount)
-                            scope.launch { listState.animateScrollToItem(target) }
-                        },
-                        onNext = {
-                            val target = continuousReaderScrollTarget(currentPage, 1, pageCount)
-                            scope.launch { listState.animateScrollToItem(target) }
-                        },
-                        onOpenPages = { showPageJump = true },
-                        modifier = Modifier.navigationBarsPadding(),
-                    )
-                }
+                ViewerPageNavigator(
+                    pageIndex = currentPage - 1,
+                    pageCount = pageCount,
+                    onPrevious = {
+                        val target = continuousReaderScrollTarget(currentPage, -1, pageCount)
+                        scope.launch { listState.animateScrollToItem(target) }
+                    },
+                    onNext = {
+                        val target = continuousReaderScrollTarget(currentPage, 1, pageCount)
+                        scope.launch { listState.animateScrollToItem(target) }
+                    },
+                    onOpenPages = { showPageJump = true },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(horizontal = 8.dp)
+                        .padding(bottom = 8.dp),
+                )
             }
         }
     }
@@ -614,7 +615,7 @@ fun ContinuousReaderScreen(
 }
 
 /**
- * Zero-based scroll target for the bottom bar's ‹/› buttons, from the 1-based
+ * Zero-based scroll target for the floating navigator's ‹/› buttons, from the 1-based
  * [currentPage] the reader derives from the visible list. Clamped at both ends
  * so the first and last page never scroll out of the document.
  */

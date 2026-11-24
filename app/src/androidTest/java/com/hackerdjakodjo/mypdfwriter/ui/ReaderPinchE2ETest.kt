@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CompletableDeferred
@@ -144,6 +145,15 @@ class ReaderPinchE2ETest {
     private fun doubleTapToZoom() {
         composeRule.onRoot().performTouchInput { doubleClick(center) }
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun floatingPageNavigatorOpensNumericJump() {
+        setReader()
+        composeRule.onNodeWithContentDescription("이전 페이지").assertExists()
+        composeRule.onNodeWithContentDescription("다음 페이지").assertExists()
+        composeRule.onNodeWithContentDescription(viewerPagePillDescription(0, 3)).performClick()
+        composeRule.onNodeWithText("페이지 이동").assertExists()
     }
 
     @Test
