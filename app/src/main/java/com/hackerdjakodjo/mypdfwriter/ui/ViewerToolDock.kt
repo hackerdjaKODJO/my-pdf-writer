@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -64,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
@@ -424,6 +426,11 @@ fun ViewerPageNavigator(
     }
 }
 
+/** Exact shared height for the PDF title row and its centred page navigator. */
+internal const val PDF_COMPACT_TOP_BAR_HEIGHT_DP = 32
+internal const val PDF_PAGE_NAVIGATOR_TAG = "pdf_page_navigator"
+internal const val PDF_PAGE_COUNT_TAG = "pdf_page_count"
+
 /** Compact page navigator for the centre of a top app bar. */
 @Composable
 fun ViewerCompactPageNavigator(
@@ -434,9 +441,9 @@ fun ViewerCompactPageNavigator(
     onOpenPages: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val target = 30.dp
+    val target = PDF_COMPACT_TOP_BAR_HEIGHT_DP.dp
     Surface(
-        modifier = modifier,
+        modifier = modifier.testTag(PDF_PAGE_NAVIGATOR_TAG),
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
         tonalElevation = 1.dp,
@@ -463,21 +470,27 @@ fun ViewerCompactPageNavigator(
                 )
             }
             Surface(
-                onClick = onOpenPages,
                 shape = RoundedCornerShape(50),
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                modifier = Modifier
-                    .heightIn(min = target)
-                    .semantics {
-                        contentDescription = viewerPagePillDescription(pageIndex, pageCount)
-                    },
+                modifier = Modifier.height(target),
             ) {
-                Text(
-                    "${pageIndex + 1} / $pageCount",
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag(PDF_PAGE_COUNT_TAG)
+                        .clickable(onClick = onOpenPages)
+                        .semantics {
+                            contentDescription = viewerPagePillDescription(pageIndex, pageCount)
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "${pageIndex + 1} / $pageCount",
+                        modifier = Modifier.padding(horizontal = 6.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                    )
+                }
             }
             Box(
                 modifier = Modifier

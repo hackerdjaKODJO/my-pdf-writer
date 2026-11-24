@@ -21,16 +21,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
+internal const val PDF_TOP_BAR_ROW_TAG = "pdf_top_bar_row"
+
 /**
  * Fixed-height PDF title bar used by single-page and continuous readers.
  *
  * Material TopAppBar keeps internal title/icon minimums and vertical padding
- * even when expandedHeight is reduced. This row owns the exact 42dp content
+ * even when expandedHeight is reduced. This row owns the exact 32dp content
  * height, so the page navigator has no white gap below it.
  */
 @Composable
@@ -53,7 +56,10 @@ fun PdfCompactTopBar(
         color = containerColor,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(42.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(PDF_COMPACT_TOP_BAR_HEIGHT_DP.dp)
+                .testTag(PDF_TOP_BAR_ROW_TAG),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PdfCompactIconButton(
@@ -122,7 +128,7 @@ private fun PdfCompactIconButton(
 ) {
     Box(
         modifier = Modifier
-            .size(36.dp)
+            .size(PDF_COMPACT_TOP_BAR_HEIGHT_DP.dp)
             .clickable(onClickLabel = contentDescription, onClick = onClick)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
@@ -130,7 +136,7 @@ private fun PdfCompactIconButton(
         Icon(
             icon,
             contentDescription = null,
-            modifier = Modifier.size(17.dp),
+            modifier = Modifier.size(16.dp),
         )
     }
 }

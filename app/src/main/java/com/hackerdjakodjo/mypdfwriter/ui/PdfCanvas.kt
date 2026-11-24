@@ -81,6 +81,16 @@ private const val PAN_HEADROOM_BAND = 0.75f
  */
 internal data class CanvasPageKey(val docId: String, val pageIndex: Int)
 
+/**
+ * Top-anchors a page that fits vertically. When the page overflows, the offset
+ * is zero and the existing centred pan/zoom model is preserved.
+ */
+internal fun pdfTopAnchorOffset(
+    visibleHeightPx: Float,
+    scale: Float,
+    viewportHeightPx: Float,
+): Float = ((visibleHeightPx * scale - viewportHeightPx) / 2f).coerceAtMost(0f)
+
 private class CanvasTransform {
     var total = 1f
     var fit = 1f
@@ -88,6 +98,7 @@ private class CanvasTransform {
     var pan = Offset.Zero
     var viewW = 1f
     var viewH = 1f
+    var topAnchorOffset = 0f
     /** On-screen scale denominator: size of the *visible* crop in local units. */
     var visibleW = 1f
     var visibleH = 1f
@@ -105,7 +116,8 @@ private class CanvasTransform {
         pressure: Float = DEFAULT_INK_PRESSURE,
     ): NormalizedPoint {
         val displayX = (position.x - viewW / 2f - pan.x) / (visibleW * total) + 0.5f
-        val displayY = (position.y - viewH / 2f - pan.y) / (visibleH * total) + 0.5f
+        val displayY = (position.y - viewH / 2f - topAnchorOffset - pan.y) /
+            (visibleH * total) + 0.5f
         val page = PdfCrop.displayToPage(displayX, displayY, insets)
         return NormalizedPoint(
             page.x.coerceIn(0f, 1f),
@@ -283,13 +295,14 @@ fun PdfCanvas(
             visible.right < 1f || visible.bottom < 1f
         val fit = min(viewW / visW, viewH / visH)
         val total = fit * zoom
+        val topAnchorOffset = pdfTopAnchorOffset(visH, total, viewH)
 
         // The memo-card helpers assume the full page centre sits at the viewport
         // centre. Shifting pan by the crop-centre delta lets them reuse their
         // existing geometry without changing the note-side shared code.
         val memoPan = Offset(
             pan.x + (pageW / 2f - originX) * total,
-            pan.y + (pageH / 2f - originY) * total,
+            pan.y + topAnchorOffset + (pageH / 2f - originY) * total,
         )
 
         // A touch on a visible card belongs to that card: no stroke, erase, shape
@@ -326,6 +339,7 @@ fun PdfCanvas(
             transform.pan = pan
             transform.viewW = viewW
             transform.viewH = viewH
+            transform.topAnchorOffset = topAnchorOffset
             transform.visibleW = visW
             transform.visibleH = visH
             transform.insets = effectiveCrop
@@ -418,9 +432,23 @@ fun PdfCanvas(
                         val newTotal = transform.fit * newZoom
                         // Capture before mutating transform.zoom below.
                         val zoomChanged = newZoom != transform.zoom
-                        val pivot = centroid - Offset(size.width / 2f, size.height / 2f)
+                        val oldAnchor = pdfTopAnchorOffset(
+                            transform.visibleH, oldTotal, size.height.toFloat(),
+                        )
+                        val newAnchor = pdfTopAnchorOffset(
+                            transform.visibleH, newTotal, size.height.toFloat(),
+                        )
+                        val pivot = centroid - Offset(
+                            size.width / 2f,
+                            size.height / 2f + oldAnchor,
+                        )
                         val scaledPan = if (oldTotal > 0f) {
-                            pivot - (pivot - pan) * (newTotal / oldTotal)
+                            val ratio = newTotal / oldTotal
+                            Offset(
+                                pivot.x - (pivot.x - pan.x) * ratio,
+                                pivot.y + oldAnchor - newAnchor -
+                                    (pivot.y - pan.y) * ratio,
+                            )
                         } else {
                             pan
                         }
@@ -462,8 +490,21 @@ fun PdfCanvas(
                             val ratio = if (transform.total > 0f) {
                                 newTotal / transform.total
                             } else 1f
-                            val pivot = tapPosition - Offset(size.width / 2f, size.height / 2f)
-                            val anchored = pivot - (pivot - pan) * ratio
+                            val oldAnchor = pdfTopAnchorOffset(
+                                transform.visibleH, transform.total, size.height.toFloat(),
+                            )
+                            val newAnchor = pdfTopAnchorOffset(
+                                transform.visibleH, newTotal, size.height.toFloat(),
+                            )
+                            val pivot = tapPosition - Offset(
+                                size.width / 2f,
+                                size.height / 2f + oldAnchor,
+                            )
+                            val anchored = Offset(
+                                pivot.x - (pivot.x - pan.x) * ratio,
+                                pivot.y + oldAnchor - newAnchor -
+                                    (pivot.y - pan.y) * ratio,
+                            )
                             pan = clampPanWithHeadroom(anchored, newTotal)
                             // Update the cache synchronously: the next gesture
                             // frame must not read stale zoom/pan before SideEffect.
@@ -673,7 +714,7 @@ fun PdfCanvas(
 
         Canvas(modifier = Modifier.fillMaxSize().then(gestureModifier)) {
             val cx = size.width / 2f + pan.x
-            val cy = size.height / 2f + pan.y
+            val cy = size.height / 2f + topAnchorOffset + pan.y
             drawIntoCanvas { canvas ->
                 val native = canvas.nativeCanvas
                 native.save()
@@ -846,7 +887,7 @@ fun PdfCanvas(
         if (textSelectMode && textWords.isNotEmpty()) {
             Canvas(Modifier.matchParentSize()) {
                 val cx = size.width / 2f + pan.x
-                val cy = size.height / 2f + pan.y
+                val cy = size.height / 2f + topAnchorOffset + pan.y
                 val pageLeft = -pageW / 2f
                 val pageTop = -pageH / 2f
                 drawIntoCanvas { canvas ->
@@ -937,7 +978,7 @@ fun PdfCanvas(
             // float over the cropped page. Its pan is expressed relative to the
             // crop box; the hit-test above keeps the full-screen equivalent.
             val cropBoxLeft = viewW / 2f + pan.x - visW * total / 2f
-            val cropBoxTop = viewH / 2f + pan.y - visH * total / 2f
+            val cropBoxTop = viewH / 2f + topAnchorOffset + pan.y - visH * total / 2f
             val cropBoxWidth = with(memoDensity) { (visW * total).toDp() }
             val cropBoxHeight = with(memoDensity) { (visH * total).toDp() }
             Box(
