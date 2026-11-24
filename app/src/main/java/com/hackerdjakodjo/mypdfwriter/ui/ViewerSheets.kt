@@ -1526,7 +1526,7 @@ private fun LocationsBookmarksTab(
     }
     if (bookmarks.isEmpty()) {
         Text(
-            "아직 북마크가 없습니다. 학습 메뉴에서 현재 쪽을 북마크해 두면 여기에서 바로 찾을 수 있습니다.",
+            "아직 북마크가 없습니다. PDF 메뉴에서 현재 페이지를 북마크해 두면 여기에서 바로 찾을 수 있습니다.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 24.dp),

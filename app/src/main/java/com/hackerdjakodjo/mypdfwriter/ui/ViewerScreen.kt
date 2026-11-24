@@ -193,7 +193,7 @@ internal enum class PdfTopChromeControl(val label: String) {
     BACK("뒤로"),
     TITLE("문서 이름"),
     SEARCH("검색"),
-    HUB("학습 메뉴"),
+    HUB(UiCopy.PDF_MENU),
 }
 
 internal val pdfTopChromeControls = listOf(
@@ -598,7 +598,7 @@ fun ViewerScreen(
         signatureTargetOpen = signatureTarget != null,
     ).anyOpen
 
-    BackHandler(enabled = !sheetOpen) {
+    val handleViewerBack: () -> Unit = {
         when (viewerBackTarget(
             hasStudyPane = studyPane != null && onCloseStudyPane != null,
             hasSelection = textSelectMode || selectedWords.isNotEmpty(),
@@ -611,6 +611,7 @@ fun ViewerScreen(
             ViewerBackTarget.CLOSE_DOCUMENT -> vm.closeDocument()
         }
     }
+    BackHandler(enabled = !sheetOpen, onBack = handleViewerBack)
 
     if (showReflow) {
         val source = vm.currentWorkingFile() ?: vm.currentSourceFile()
@@ -761,6 +762,7 @@ fun ViewerScreen(
             pdfMenuActionLabel(action, bookmarked = currentBookmark != null),
             if (currentBookmark != null) Icons.Filled.Star else Icons.Outlined.StarBorder,
             trailing = if (currentBookmark != null) "저장됨" else null,
+            kind = PdfHubActionKind.TOGGLE,
         ) {
             if (currentBookmark != null) {
                 vm.deleteBookmark(currentBookmark.id)
@@ -793,6 +795,7 @@ fun ViewerScreen(
             action.label,
             Icons.Outlined.FitScreen,
             trailing = "${(state.zoom * 100).roundToInt()}%",
+            kind = PdfHubActionKind.COMMAND,
         ) { vm.setZoom(1f) }
 
         // 필기: annotation tools, post-its and visibility stay one tap away.
@@ -813,6 +816,7 @@ fun ViewerScreen(
             pdfMenuActionLabel(action, annotationsHidden = annotationsHidden),
             if (annotationsHidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
             trailing = if (annotationsHidden) "숨김" else "표시 중",
+            kind = PdfHubActionKind.TOGGLE,
         ) { annotationsHidden = !annotationsHidden }
 
         PdfMenuAction.DECORATE -> PdfHubAction(action.label, Icons.Outlined.Palette) {
@@ -820,7 +824,11 @@ fun ViewerScreen(
         }
 
         // 담기: one label, one capture path, one list of what was captured.
-        PdfMenuAction.CAPTURE -> PdfHubAction(action.label, Icons.Outlined.EditNote) {
+        PdfMenuAction.CAPTURE -> PdfHubAction(
+            action.label,
+            Icons.Outlined.EditNote,
+            kind = PdfHubActionKind.COMMAND,
+        ) {
             captureToNote()
         }
 
@@ -830,7 +838,11 @@ fun ViewerScreen(
             trailing = if (excerpts.isEmpty()) null else "${excerpts.size}개",
         ) { showExcerpts = true }
 
-        PdfMenuAction.COPY_TEXT -> PdfHubAction(action.label, Icons.Outlined.ContentCopy) {
+        PdfMenuAction.COPY_TEXT -> PdfHubAction(
+            action.label,
+            Icons.Outlined.ContentCopy,
+            kind = PdfHubActionKind.COMMAND,
+        ) {
             vm.copyPageText()
         }
 
@@ -847,6 +859,7 @@ fun ViewerScreen(
                 Icons.Outlined.Visibility
             },
             trailing = autoHideMode.label,
+            kind = PdfHubActionKind.TOGGLE,
         ) { autoHideMode = toggleChromeAutoHideMode(autoHideMode) }
 
         PdfMenuAction.HELP -> PdfHubAction(
@@ -868,15 +881,27 @@ fun ViewerScreen(
             onOpenTools()
         }
 
-        PdfMenuAction.EXPORT -> PdfHubAction(action.label, Icons.Outlined.FileDownload) {
+        PdfMenuAction.EXPORT -> PdfHubAction(
+            action.label,
+            Icons.Outlined.FileDownload,
+            kind = PdfHubActionKind.COMMAND,
+        ) {
             onExportRequest(vm.exportSuggestedName())
         }
 
-        PdfMenuAction.PRINT -> PdfHubAction(action.label, Icons.Outlined.Print) {
+        PdfMenuAction.PRINT -> PdfHubAction(
+            action.label,
+            Icons.Outlined.Print,
+            kind = PdfHubActionKind.COMMAND,
+        ) {
             vm.printCurrent()
         }
 
-        PdfMenuAction.SHARE -> PdfHubAction(action.label, Icons.Outlined.Share) {
+        PdfMenuAction.SHARE -> PdfHubAction(
+            action.label,
+            Icons.Outlined.Share,
+            kind = PdfHubActionKind.COMMAND,
+        ) {
             vm.shareCurrent()
         }
 
@@ -889,6 +914,7 @@ fun ViewerScreen(
             pdfMenuActionLabel(action, pageLocked = state.pageLocked),
             if (state.pageLocked) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
             trailing = if (state.pageLocked) "켜짐" else null,
+            kind = PdfHubActionKind.TOGGLE,
         ) { vm.togglePageLock() }
 
         PdfMenuAction.READ_TEXT_MODE -> PdfHubAction(action.label, Icons.Outlined.AutoStories) {
@@ -1052,7 +1078,7 @@ fun ViewerScreen(
                     },
                     navigationIcon = {
                         IconButton(
-                            onClick = vm::closeDocument,
+                            onClick = handleViewerBack,
                             modifier = Modifier.sizeIn(minWidth = MIN_TARGET_DP.dp, minHeight = MIN_TARGET_DP.dp),
                         ) {
                             Icon(
@@ -1360,7 +1386,7 @@ fun ViewerScreen(
                         // Auto-hidden chrome never traps the reader: exit stays a
                         // top-start tap and the menu stays a top-end tap away.
                         SplitPdfBackButton(
-                            onBack = vm::closeDocument,
+                            onBack = handleViewerBack,
                             modifier = Modifier
                                 .align(Alignment.TopStart)
                                 .padding(start = 8.dp, top = 6.dp),
@@ -1420,7 +1446,7 @@ fun ViewerScreen(
 
                     if (splitMode) {
                         SplitPdfBackButton(
-                            onBack = vm::closeDocument,
+                            onBack = handleViewerBack,
                             modifier = Modifier
                                 .align(Alignment.TopStart)
                                 .padding(start = 8.dp, top = 6.dp),

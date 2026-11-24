@@ -86,7 +86,7 @@ internal val NOTE_CAPTURE_VOCABULARY: List<String> =
  * and identifiers stay exactly the same. `필기 설정` is already student-friendly
  * and keeps its name.
  */
-internal const val NOTE_REVIEW_CARDS_LABEL = "복습 카드"
+internal const val NOTE_REVIEW_CARDS_LABEL = "카드"
 internal const val NOTE_MASKING_REVIEW_CARD_LABEL = "가리기 카드"
 internal const val NOTE_INK_SETTINGS_LABEL = "필기 설정"
 
@@ -134,9 +134,9 @@ internal fun noteToggleStateDescription(checked: Boolean): String =
  */
 internal enum class NoteMenuSection(val label: String) {
     NOTE("노트"),
-    REVIEW("복습"),
-    EXPORT("내보내기"),
-    HELP("도움말"),
+    ADD("추가"),
+    FILE("파일"),
+    SETTINGS("설정"),
 }
 
 /** Four groups in reading order; kept explicit so tests and UI cannot drift. */
@@ -148,12 +148,12 @@ internal enum class NoteMenuEntry(val section: NoteMenuSection) {
     TEMPLATES(NoteMenuSection.NOTE),
     LAYERS(NoteMenuSection.NOTE),
     SEARCH(NoteMenuSection.NOTE),
-    STUDY_CARDS(NoteMenuSection.REVIEW),
-    AUDIO(NoteMenuSection.REVIEW),
-    INK_SETTINGS(NoteMenuSection.REVIEW),
-    EXPORT_PDF(NoteMenuSection.EXPORT),
-    SOURCE_PDF(NoteMenuSection.EXPORT),
-    HELP(NoteMenuSection.HELP),
+    STUDY_CARDS(NoteMenuSection.ADD),
+    AUDIO(NoteMenuSection.ADD),
+    INK_SETTINGS(NoteMenuSection.SETTINGS),
+    EXPORT_PDF(NoteMenuSection.FILE),
+    SOURCE_PDF(NoteMenuSection.FILE),
+    HELP(NoteMenuSection.SETTINGS),
 }
 
 /** Rows shown in the main sheet, in order: 9–11 depending on the note. */
@@ -168,9 +168,9 @@ internal fun noteMenuEntries(
     add(NoteMenuEntry.SEARCH)
     add(NoteMenuEntry.STUDY_CARDS)
     add(NoteMenuEntry.AUDIO)
-    add(NoteMenuEntry.INK_SETTINGS)
     add(NoteMenuEntry.EXPORT_PDF)
     if (hasSourcePdf) add(NoteMenuEntry.SOURCE_PDF)
+    add(NoteMenuEntry.INK_SETTINGS)
     add(NoteMenuEntry.HELP)
 }
 

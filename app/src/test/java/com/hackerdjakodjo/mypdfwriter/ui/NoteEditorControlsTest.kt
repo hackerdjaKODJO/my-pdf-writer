@@ -147,7 +147,7 @@ class NoteEditorControlsTest {
         assertEquals("내 펜", NOTE_PEN_PRESETS_LABEL)
         // The legacy card constants are untouched; the menu uses student-facing aliases.
         assertEquals("가리기 카드", NOTE_MASKING_CARD_LABEL)
-        assertEquals("복습 카드", NOTE_REVIEW_CARDS_LABEL)
+        assertEquals("카드", NOTE_REVIEW_CARDS_LABEL)
         assertEquals("가리기 카드", NOTE_MASKING_REVIEW_CARD_LABEL)
         assertEquals("필기 설정", NOTE_INK_SETTINGS_LABEL)
         assertEquals("체크리스트", NOTE_CHECKLIST_LABEL)

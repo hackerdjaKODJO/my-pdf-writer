@@ -47,7 +47,7 @@ class ViewerScreenTest {
     fun topChromeHasExactlyFourControls() {
         assertEquals(PDF_TOP_CHROME_MAX_CONTROLS, 4)
         assertEquals(
-            listOf("뒤로", "문서 이름", "검색", "학습 메뉴"),
+            listOf("뒤로", "문서 이름", "검색", UiCopy.PDF_MENU),
             pdfTopChromeControls.map { it.label },
         )
         val labels = pdfTopChromeControls.map { it.label }.toSet()

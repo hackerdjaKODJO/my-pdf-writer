@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.RotateLeft
 import androidx.compose.material.icons.outlined.RotateRight
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -55,7 +56,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -105,8 +109,26 @@ fun OrganizeScreen(
 ) {
     val selection = selected.filter { it in pages.indices }.toSet()
     val allSelected = pages.isNotEmpty() && selection.size == pages.size
+    var pendingDelete by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
     BackHandler(onBack = onBack)
+
+    if (pendingDelete.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { pendingDelete = emptySet() },
+            title = { Text("${pendingDelete.size}개 페이지 삭제") },
+            text = { Text("선택한 페이지가 문서에서 제거됩니다. 이 작업은 실행 취소로 되돌릴 수 없습니다.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete(pendingDelete)
+                    pendingDelete = emptySet()
+                }) { Text("삭제") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = emptySet() }) { Text("취소") }
+            },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -119,13 +141,13 @@ fun OrganizeScreen(
                 title = {
                     Column {
                         Text(
-                            docName.ifBlank { "문서" },
+                            "페이지 정리",
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            "${pages.size}쪽",
+                            "${docName.ifBlank { "문서" }} · ${pages.size}개 페이지",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -154,7 +176,7 @@ fun OrganizeScreen(
                 selection = selection,
                 pageCount = pages.size,
                 onRotate = onRotate,
-                onDelete = onDelete,
+                onDelete = { pendingDelete = it },
                 onDuplicate = onDuplicate,
                 onMove = onMove,
                 onInsertBlank = { afterIndex -> onInsertBlank(afterIndex) },
@@ -432,7 +454,7 @@ private fun OrganizeBottomBar(
                 ) {
                     if (hasSelection) {
                         Text(
-                            "${selection.size}쪽 선택됨",
+                            "${selection.size}개 페이지 선택됨",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -447,10 +469,10 @@ private fun OrganizeBottomBar(
                 }
 
                 val pageActions = listOf(
-                    OrganizeActionSpec(Icons.Outlined.RotateLeft, "왼쪽", hasSelection) {
+                    OrganizeActionSpec(Icons.Outlined.RotateLeft, "왼쪽 회전", hasSelection) {
                         onRotate(selection, -90)
                     },
-                    OrganizeActionSpec(Icons.Outlined.RotateRight, "오른쪽", hasSelection) {
+                    OrganizeActionSpec(Icons.Outlined.RotateRight, "오른쪽 회전", hasSelection) {
                         onRotate(selection, 90)
                     },
                     OrganizeActionSpec(Icons.Outlined.ContentCopy, "복제", hasSelection) {
@@ -459,17 +481,17 @@ private fun OrganizeBottomBar(
                     OrganizeActionSpec(Icons.Outlined.Delete, "삭제", hasSelection) {
                         onDelete(selection)
                     },
-                    OrganizeActionSpec(Icons.Outlined.ArrowUpward, "앞으로", selection.any { it > 0 }) {
+                    OrganizeActionSpec(Icons.Outlined.ArrowUpward, "한 칸 앞으로", selection.any { it > 0 }) {
                         onMove(selection, -1)
                     },
                     OrganizeActionSpec(
                         Icons.Outlined.ArrowDownward,
-                        "뒤로",
+                        "한 칸 뒤로",
                         selection.any { it < pageCount - 1 },
                     ) { onMove(selection, 1) },
                 )
                 val documentActions = listOf(
-                    OrganizeActionSpec(Icons.Outlined.Add, "빈 페이지", hasSelection) {
+                    OrganizeActionSpec(Icons.Outlined.Add, "빈 페이지 추가", hasSelection) {
                         selection.maxOrNull()?.let(onInsertBlank)
                     },
                     OrganizeActionSpec(Icons.Outlined.OpenInNew, "추출", hasSelection) {
@@ -544,7 +566,7 @@ private fun OrganizeAction(
         Spacer(Modifier.height(3.dp))
         Text(
             label,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+            style = MaterialTheme.typography.labelSmall,
             color = tint,
             maxLines = 2,
             overflow = TextOverflow.Clip,

@@ -70,7 +70,7 @@ class PdfSplitChromeE2ETest {
         composeRule.onNodeWithContentDescription("텍스트 선택").performClick()
         composeRule.onNodeWithContentDescription("현재 페이지 북마크").performClick()
         composeRule.onNodeWithContentDescription("주석").performClick()
-        composeRule.onNodeWithContentDescription("학습 메뉴").performClick()
+        composeRule.onNodeWithContentDescription(UiCopy.PDF_MENU).performClick()
 
         assertEquals(1, search)
         assertEquals(1, selection)
@@ -80,7 +80,7 @@ class PdfSplitChromeE2ETest {
     }
 
     @Test
-    fun compactToolbarKeepsStudyActionsButHidesSecondaryChrome() {
+    fun compactToolbarKeepsStudyActionsAndPdfMenu() {
         var search = 0
         var selection = 0
         var bookmark = 0
@@ -109,15 +109,14 @@ class PdfSplitChromeE2ETest {
         composeRule.onNodeWithContentDescription("검색").performClick()
         composeRule.onNodeWithContentDescription("텍스트 선택").performClick()
         composeRule.onNodeWithContentDescription("주석").performClick()
-        listOf("현재 페이지 북마크", "학습 메뉴").forEach {
-            composeRule.onNodeWithContentDescription(it).assertIsNotDisplayed()
-        }
+        composeRule.onNodeWithContentDescription("현재 페이지 북마크").assertIsNotDisplayed()
+        composeRule.onNodeWithContentDescription(UiCopy.PDF_MENU).performClick()
 
         assertEquals(1, search)
         assertEquals(1, selection)
         assertEquals(0, bookmark)
         assertEquals(1, tools)
-        assertEquals(0, hub)
+        assertEquals(1, hub)
     }
 
     @Test
@@ -127,7 +126,7 @@ class PdfSplitChromeE2ETest {
             MaterialTheme { SplitPdfBackButton(onBack = { back += 1 }) }
         }
 
-        composeRule.onNodeWithContentDescription("PDF 닫기").assertIsEnabled().performClick()
+        composeRule.onNodeWithContentDescription("뒤로").assertIsEnabled().performClick()
         assertEquals(1, back)
     }
 

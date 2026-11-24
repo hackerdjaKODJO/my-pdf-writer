@@ -337,7 +337,7 @@ fun NotebookHomeScreen(
         tag = selectedTag,
         query = query,
     )
-    val showStart = filterState.showsHomeStart()
+    val showStart = section == LibrarySection.NOTES && filterState.showsHomeStart()
 
     val actions = NotebookActions(
         open = onOpenNotebook,
@@ -1620,20 +1620,17 @@ private fun PdfSection(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (!hasAnyPdf) {
+            if (pdfs.isNotEmpty() || query.isNotBlank()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    ImportPdfBanner(onImportPdf = onImportPdf, onCreatePdf = onCreatePdf)
+                    PdfHeader(
+                        count = pdfs.size,
+                        filtered = query.isNotBlank(),
+                        sort = sort,
+                        onSortChange = onSortChange,
+                        gridMode = gridMode,
+                        onToggleGrid = onToggleGrid,
+                    )
                 }
-            }
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                PdfHeader(
-                    count = pdfs.size,
-                    filtered = query.isNotBlank(),
-                    sort = sort,
-                    onSortChange = onSortChange,
-                    gridMode = gridMode,
-                    onToggleGrid = onToggleGrid,
-                )
             }
             if (queryChips.isNotEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -1676,18 +1673,17 @@ private fun PdfSection(
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (!hasAnyPdf) {
-                item { ImportPdfBanner(onImportPdf = onImportPdf, onCreatePdf = onCreatePdf) }
-            }
-            item {
-                PdfHeader(
-                    count = pdfs.size,
-                    filtered = query.isNotBlank(),
-                    sort = sort,
-                    onSortChange = onSortChange,
-                    gridMode = gridMode,
-                    onToggleGrid = onToggleGrid,
-                )
+            if (pdfs.isNotEmpty() || query.isNotBlank()) {
+                item {
+                    PdfHeader(
+                        count = pdfs.size,
+                        filtered = query.isNotBlank(),
+                        sort = sort,
+                        onSortChange = onSortChange,
+                        gridMode = gridMode,
+                        onToggleGrid = onToggleGrid,
+                    )
+                }
             }
             if (queryChips.isNotEmpty()) {
                 item {
@@ -1851,7 +1847,7 @@ private fun PdfGridCard(doc: RecentDoc, onClick: () -> Unit, onMenu: () -> Unit)
                 IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
                     Icon(
                         Icons.Outlined.MoreVert,
-                        contentDescription = menuLabel("학습 메뉴", doc.name),
+                        contentDescription = menuLabel(UiCopy.RECENT_PDF_MENU, doc.name),
                         modifier = Modifier.size(19.dp),
                     )
                 }
@@ -1920,7 +1916,7 @@ private fun PdfListRow(doc: RecentDoc, onClick: () -> Unit, onMenu: () -> Unit) 
             IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
                 Icon(
                     Icons.Outlined.MoreVert,
-                    contentDescription = menuLabel("학습 메뉴", doc.name),
+                    contentDescription = menuLabel(UiCopy.RECENT_PDF_MENU, doc.name),
                     modifier = Modifier.size(19.dp),
                 )
             }

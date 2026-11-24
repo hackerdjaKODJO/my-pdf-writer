@@ -295,10 +295,10 @@ internal fun splitPdfToolbarControls(compact: Boolean): List<String> = buildList
     // must stay reachable even when the note takes 85% of the screen.
     add("텍스트 선택")
     add("주석")
-    if (!compact) {
-        add("현재 페이지 북마크")
-        add("학습 메뉴")
-    }
+    if (!compact) add("현재 페이지 북마크")
+    // The document menu is the only route to export, reading modes and display
+    // settings, so it must remain reachable even in the default 85% pane.
+    add(UiCopy.PDF_MENU)
 }
 
 /** Tiny translucent back target shown at the PDF-strip edge in split mode. */
@@ -313,7 +313,7 @@ internal fun SplitPdfBackButton(
                 minWidth = SPLIT_CHROME_TARGET_DP.dp,
                 minHeight = SPLIT_CHROME_TARGET_DP.dp,
             )
-            .semantics { contentDescription = "PDF 닫기" }
+            .semantics { contentDescription = "뒤로" }
             .clickable(onClick = onBack),
         contentAlignment = Alignment.Center,
     ) {
@@ -340,7 +340,7 @@ internal fun SplitPdfBackButton(
 
 /**
  * Floating top strip over the PDF area: text-selection toggle, current-page
- * bookmark, annotation-tool sheet and 학습 메뉴. It never reserves layout
+ * bookmark, annotation-tool sheet and PDF 메뉴. It never reserves layout
  * height; the note pane keeps the rest of the screen. In [compact] mode the
  * secondary tools are hidden (the top-start back button is drawn separately),
  * but search stays reachable: the default 85% study pane is ESSENTIAL, so gating
@@ -427,12 +427,12 @@ internal fun SplitPdfToolbar(
                     selectedTint = MaterialTheme.colorScheme.primary,
                 )
 
-                SplitChromeButton(
-                    icon = Icons.Outlined.Menu,
-                    contentDescription = "학습 메뉴",
-                    onClick = onOpenHub,
-                )
             }
+            SplitChromeButton(
+                icon = Icons.Outlined.Menu,
+                contentDescription = UiCopy.PDF_MENU,
+                onClick = onOpenHub,
+            )
         }
     }
 }

@@ -323,7 +323,26 @@ fun ToolsScreen(
                     )
                 }
 
-                if (!canUseTools) {
+                if (state.sourceNeedsPassword) {
+                    item {
+                        ToolSection(
+                            title = PdfToolSections.SECURITY,
+                            items = listOf(
+                                ToolItem("암호 해제", "암호를 풀어 새 PDF로", Icons.Outlined.LockOpen, {
+                                    if (source != null) showUnlock = true
+                                }, source != null),
+                            ),
+                        )
+                    }
+                    item {
+                        Text(
+                            "암호로 보호된 PDF입니다. 먼저 암호를 해제하면 페이지·OCR·양식 도구를 사용할 수 있어요.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                    }
+                } else if (!canUseTools) {
                     item {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
@@ -751,12 +770,20 @@ private fun PasswordDialog(
                     onValueChange = onUser,
                     label = { Text("열기 암호") },
                     singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
+                    ),
                 )
                 OutlinedTextField(
                     value = owner,
                     onValueChange = onOwner,
                     label = { Text("소유자 암호 (비우면 동일)") },
                     singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
+                    ),
                 )
                 Text(
                     "암호를 잊으면 파일을 열 수 없습니다. 안전한 곳에 보관하세요.",
@@ -787,6 +814,10 @@ private fun OnePasswordDialog(
                 onValueChange = onValueChange,
                 label = { Text("PDF 암호") },
                 singleLine = true,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
+                ),
             )
         },
         confirmButton = { TextButton(onClick = onConfirm) { Text("열기") } },

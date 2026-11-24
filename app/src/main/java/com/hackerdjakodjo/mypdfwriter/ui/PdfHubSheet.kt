@@ -43,22 +43,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /**
- * Stable grouping for the single 학습 메뉴. Students see only four first-level
- * groups, in this order: 읽기 → 필기 → 담기 → 설정. Everything that used to be a
- * top-level group (내보내기, 기타, 보기·페이지) now lives inside 읽기/설정 or in a
- * small sub-sheet, so the menu stays one calm screen. The order of
+ * Stable grouping for the single PDF 메뉴. Students see only four first-level
+ * task groups, in this order: 보기 → 주석 → 노트 → 파일·설정. Less-frequent
+ * utilities live inside 추가 도구 so the first screen stays short. The order of
  * [pdfMenuTopLevelGroups] is the visible order; every [PdfMenuAction] belongs to
  * exactly one surface, so adding an action cannot silently drop it from the sheet.
  */
 internal enum class PdfMenuGroup(val title: String, val expandable: Boolean = false) {
-    READ("읽기"),
-    WRITE("필기"),
-    CAPTURE("담기"),
-    SETTINGS("설정"),
+    READ("보기"),
+    WRITE("주석"),
+    CAPTURE("노트"),
+    SETTINGS("파일·설정"),
     // Sub-sheets, never first-level groups.
     READ_MODE("읽기 모드"),
     AUDIO("오디오"),
-    FILE_TOOLS("파일 도구"),
+    FILE_TOOLS("추가 도구"),
 }
 
 internal val pdfMenuTopLevelGroups = listOf(
@@ -79,7 +78,7 @@ internal const val PDF_HUB_READ_GROUP_TITLE = "읽기"
 internal const val PDF_HUB_LOCATIONS_LABEL = "위치"
 
 /**
- * Every action reachable from the 학습 메뉴 surface. Actions in the three
+ * Every action reachable from the PDF 메뉴 surface. Actions in the three
  * sub-sheet groups ([PdfMenuGroup.READ_MODE], [PdfMenuGroup.AUDIO],
  * [PdfMenuGroup.FILE_TOOLS]) use a small sub-sheet; [pdfTopBarOwnedActions] stay
  * in the viewer top chrome instead of the menu. 목차/북마크/주석 목록 are folded
@@ -92,32 +91,32 @@ internal enum class PdfMenuAction(val group: PdfMenuGroup, val label: String) {
     LOCATIONS(PdfMenuGroup.READ, PDF_HUB_LOCATIONS_LABEL),
     BOOKMARK_TOGGLE(PdfMenuGroup.READ, BOOKMARK_TOGGLE_LABEL),
     READ_MODE(PdfMenuGroup.READ, "읽기 모드"),
-    AUDIO(PdfMenuGroup.READ, "오디오"),
     DISPLAY_SETTINGS(PdfMenuGroup.READ, "화면 설정"),
-    FIT_SCREEN(PdfMenuGroup.READ, "화면에 맞추기"),
 
-    // 필기
+    // 주석: frequent writing actions only.
     TOOL_MORE(PdfMenuGroup.WRITE, "주석 도구"),
-    MEMO_CARDS(PdfMenuGroup.WRITE, "포스트잇"),
     TOGGLE_ANNOTATIONS(PdfMenuGroup.WRITE, "주석 숨기기/표시"),
     PAGE_NOTES(PdfMenuGroup.WRITE, "페이지 메모"),
-    DECORATE(PdfMenuGroup.WRITE, "문서 꾸미기"),
 
-    // 담기
+    // 노트: capture and saved excerpts.
     CAPTURE(PdfMenuGroup.CAPTURE, PDF_HUB_CAPTURE_LABEL),
     EXCERPTS(PdfMenuGroup.CAPTURE, "발췌 목록"),
-    COPY_TEXT(PdfMenuGroup.CAPTURE, "텍스트 복사"),
 
-    // 설정
-    FILE_TOOLS(PdfMenuGroup.SETTINGS, "파일 도구"),
-    AUTO_HIDE(PdfMenuGroup.SETTINGS, "메뉴 자동 숨김"),
-    HELP(PdfMenuGroup.READ, "도움말"),
+    // 파일·설정: one utility destination plus direct export/help.
+    FILE_TOOLS(PdfMenuGroup.SETTINGS, "추가 도구"),
+    EXPORT(PdfMenuGroup.SETTINGS, UiCopy.EXPORT_PDF),
+    HELP(PdfMenuGroup.SETTINGS, UiCopy.HELP),
 
-    // 설정 → 파일 도구 (advanced file operations)
-    PAGE_EDIT(PdfMenuGroup.FILE_TOOLS, "페이지 이동"),
-    PAGE_MANAGE(PdfMenuGroup.FILE_TOOLS, "페이지 편집"),
+    // 추가 도구: less-frequent but still one tap away.
+    AUDIO(PdfMenuGroup.FILE_TOOLS, "오디오"),
+    FIT_SCREEN(PdfMenuGroup.FILE_TOOLS, "화면에 맞추기"),
+    MEMO_CARDS(PdfMenuGroup.FILE_TOOLS, "포스트잇"),
+    DECORATE(PdfMenuGroup.FILE_TOOLS, "문서 꾸미기"),
+    COPY_TEXT(PdfMenuGroup.FILE_TOOLS, "현재 페이지 텍스트 복사"),
+    AUTO_HIDE(PdfMenuGroup.FILE_TOOLS, "메뉴 자동 숨김"),
+    PAGE_EDIT(PdfMenuGroup.FILE_TOOLS, UiCopy.PAGE_FIND),
+    PAGE_MANAGE(PdfMenuGroup.FILE_TOOLS, UiCopy.PAGE_EDIT),
     PDF_TOOLS(PdfMenuGroup.FILE_TOOLS, "PDF 도구"),
-    EXPORT(PdfMenuGroup.SETTINGS, "PDF 내보내기"),
     PRINT(PdfMenuGroup.FILE_TOOLS, "인쇄"),
     SHARE(PdfMenuGroup.FILE_TOOLS, "공유"),
     DOCUMENT_INFO(PdfMenuGroup.FILE_TOOLS, "문서 정보"),
@@ -132,7 +131,7 @@ internal enum class PdfMenuAction(val group: PdfMenuGroup, val label: String) {
 
     // 읽기 → 오디오
     AUDIO_NOTES(PdfMenuGroup.AUDIO, "오디오 노트"),
-    AUDIO_REPLAY(PdfMenuGroup.AUDIO, "오디오 재생"),
+    AUDIO_REPLAY(PdfMenuGroup.AUDIO, UiCopy.REPLAY),
 }
 
 /** Search is the only menu action owned by the top chrome. */
@@ -159,6 +158,12 @@ internal val pdfFileToolsActions = listOf(
     PdfMenuAction.SHARE,
     PdfMenuAction.DOCUMENT_INFO,
     PdfMenuAction.PAGE_LOCK,
+    PdfMenuAction.AUDIO,
+    PdfMenuAction.FIT_SCREEN,
+    PdfMenuAction.MEMO_CARDS,
+    PdfMenuAction.DECORATE,
+    PdfMenuAction.COPY_TEXT,
+    PdfMenuAction.AUTO_HIDE,
 )
 
 internal fun pdfMenuActions(group: PdfMenuGroup): List<PdfMenuAction> =
@@ -182,12 +187,15 @@ internal fun pdfMenuActionLabel(
     else -> action.label
 }
 
+enum class PdfHubActionKind { NAVIGATE, COMMAND, TOGGLE }
+
 /** One row in the PDF menu. [trailing] is a short state/count label. */
 data class PdfHubAction(
     val label: String,
     val icon: ImageVector,
     val trailing: String? = null,
     val enabled: Boolean = true,
+    val kind: PdfHubActionKind = PdfHubActionKind.NAVIGATE,
     val onClick: () -> Unit,
 )
 
@@ -234,7 +242,7 @@ internal fun pdfHubRowLayout(widthDp: Int, fontScale: Float): PdfHubRowLayout {
 }
 
 /**
- * The single 학습 메뉴: four fixed first-level groups, no quick-action row and
+ * The single PDF 메뉴: four fixed first-level groups, no quick-action row and
  * no duplicate navigation entries. Undo/redo/style live in 필기 → 주석 도구, and
  * advanced file operations live in 설정 → 파일 도구, so the first screen stays
  * short enough to read at a glance. Every row dismisses the menu before running
@@ -369,7 +377,7 @@ private fun HubHeader(
     pageCount: Int,
 ) {
     Column(Modifier.padding(horizontal = 20.dp)) {
-        Text("학습 메뉴", style = MaterialTheme.typography.titleLarge, modifier = Modifier.sectionHeading())
+        Text(UiCopy.PDF_MENU, style = MaterialTheme.typography.titleLarge, modifier = Modifier.sectionHeading())
         Text(
             "$docName · ${pageIndex + 1} / $pageCount",
             style = MaterialTheme.typography.labelMedium,
@@ -379,7 +387,7 @@ private fun HubHeader(
         )
         Spacer(Modifier.size(4.dp))
         Text(
-            "읽기·필기·담기·설정 네 묶음입니다. 목차·북마크·주석은 위치에서 한 번에 찾으세요.",
+            "보기·주석·노트·파일 설정으로 묶었습니다. 자주 쓰는 기능만 먼저 보이고, 나머지는 추가 도구에 모여 있어요.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
@@ -517,12 +525,14 @@ private fun HubActionRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Icon(
-                Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.outline,
-            )
+            if (action.kind == PdfHubActionKind.NAVIGATE) {
+                Icon(
+                    Icons.Outlined.ChevronRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.outline,
+                )
+            }
         }
     }
 }

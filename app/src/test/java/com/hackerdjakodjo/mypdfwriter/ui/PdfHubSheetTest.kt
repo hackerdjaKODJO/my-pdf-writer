@@ -14,12 +14,12 @@ class PdfHubSheetTest {
     fun firstLevelHasExactlyFourGroupsInTheStudentOrder() {
         assertEquals(PDF_HUB_MAX_TOP_LEVEL_GROUPS, 4)
         assertEquals(
-            listOf("읽기", "필기", "담기", "설정"),
+            listOf("보기", "주석", "노트", "파일·설정"),
             pdfMenuTopLevelGroups.map { it.title },
         )
         assertEquals(4, pdfMenuTopLevelGroups.size)
         assertEquals(
-            setOf("읽기", "필기", "담기", "설정"),
+            setOf("보기", "주석", "노트", "파일·설정"),
             pdfMenuTopLevelGroups.map { it.title }.toSet(),
         )
         // Nothing at the first level collapses: students should see every group.
@@ -29,7 +29,7 @@ class PdfHubSheetTest {
     @Test
     fun readGroupFoldsAllNavigationIntoOneLocationRow() {
         assertEquals(
-            listOf("위치", "현재 페이지 북마크", "읽기 모드", "오디오", "화면 설정", "화면에 맞추기", "도움말"),
+            listOf("위치", "현재 페이지 북마크", "읽기 모드", "화면 설정"),
             pdfMenuActions(PdfMenuGroup.READ).map { it.label },
         )
         assertEquals(1, pdfMenuActions(PdfMenuGroup.READ).count { it == PdfMenuAction.LOCATIONS })
@@ -51,14 +51,14 @@ class PdfHubSheetTest {
     @Test
     fun writeAndCaptureGroupsKeepEveryStudentAction() {
         assertEquals(
-            listOf("주석 도구", "포스트잇", "주석 숨기기/표시", "페이지 메모", "문서 꾸미기"),
+            listOf("주석 도구", "주석 숨기기/표시", "페이지 메모"),
             pdfMenuActions(PdfMenuGroup.WRITE).map { it.label },
         )
         assertEquals(
-            listOf(PDF_HUB_CAPTURE_LABEL, "발췌 목록", "텍스트 복사"),
+            listOf(PDF_HUB_CAPTURE_LABEL, "발췌 목록"),
             pdfMenuActions(PdfMenuGroup.CAPTURE).map { it.label },
         )
-        assertEquals(PdfMenuGroup.WRITE, PdfMenuAction.MEMO_CARDS.group)
+        assertEquals(PdfMenuGroup.FILE_TOOLS, PdfMenuAction.MEMO_CARDS.group)
         assertEquals("포스트잇", PdfMenuAction.MEMO_CARDS.label)
         assertEquals(PdfMenuGroup.WRITE, PdfMenuAction.TOOL_MORE.group)
         assertTrue(PdfMenuAction.TOOL_MORE in pdfMenuActions(PdfMenuGroup.WRITE))
@@ -67,16 +67,18 @@ class PdfHubSheetTest {
     @Test
     fun settingsKeepsChromeToggleAndPushesAdvancedFileOpsOneLevelDown() {
         assertEquals(
-            listOf("파일 도구", "메뉴 자동 숨김", "PDF 내보내기"),
+            listOf("추가 도구", "PDF 내보내기", "도움말"),
             pdfMenuActions(PdfMenuGroup.SETTINGS).map { it.label },
         )
         assertEquals(
             listOf(
-                "페이지 이동", "페이지 편집", "PDF 도구", "인쇄", "공유", "문서 정보", "페이지 잠금",
+                "페이지 찾기", "페이지 편집", "PDF 도구", "인쇄", "공유", "문서 정보", "페이지 잠금",
+                "오디오", "화면에 맞추기", "포스트잇", "문서 꾸미기", "현재 페이지 텍스트 복사",
+                "메뉴 자동 숨김",
             ),
-            pdfMenuActions(PdfMenuGroup.FILE_TOOLS).map { it.label },
+            pdfFileToolsActions.map { it.label },
         )
-        assertEquals("페이지 이동", PdfMenuAction.PAGE_EDIT.label)
+        assertEquals("페이지 찾기", PdfMenuAction.PAGE_EDIT.label)
         assertEquals(PdfMenuGroup.FILE_TOOLS, PdfMenuAction.PAGE_EDIT.group)
         assertTrue(PdfMenuAction.EXPORT in pdfMenuActions(PdfMenuGroup.SETTINGS))
         assertFalse(PdfMenuAction.EXPORT in pdfMenuActions(PdfMenuGroup.FILE_TOOLS))
@@ -88,8 +90,8 @@ class PdfHubSheetTest {
             listOf("텍스트 모드", "연속 보기", "스프레드 보기", "팝업 보기", "소리 내어 읽기"),
             pdfReadModeActions.map { it.label },
         )
-        assertEquals(listOf("오디오 노트", "오디오 재생"), pdfAudioActions.map { it.label })
-        assertEquals(7, pdfFileToolsActions.size)
+        assertEquals(listOf("오디오 노트", UiCopy.REPLAY), pdfAudioActions.map { it.label })
+        assertEquals(13, pdfFileToolsActions.size)
         assertEquals(PdfMenuAction.PAGE_EDIT, pdfFileToolsActions.first())
     }
 

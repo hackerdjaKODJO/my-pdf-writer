@@ -34,12 +34,12 @@ class UsageGuideContentTest {
     @Test
     fun guideUsesCurrentMenuGroupsDockAndHideState() {
         val guide = usageGuide()
-        assertTrue(guide.contains("읽기 · 필기 · 담기 · 설정"))
+        assertTrue(guide.contains("보기 · 주석 · 노트 · 파일·설정"))
         assertTrue(guide.contains("보기 · 형광펜 · 펜 · 지우개 · 텍스트 선택 · 노트"))
         assertTrue(guide.contains("켜져 있는지"))
-        assertTrue(guide.contains("복습 카드"))
+        assertTrue(guide.contains("노트 메뉴 → 카드"))
         assertTrue(guide.contains("하단 도구 독의"))
-        assertTrue(guide.contains("설정 → PDF 내보내기"))
+        assertTrue(guide.contains("PDF 내보내기"))
         assertTrue(guide.contains("하단 페이지 바"))
         assertTrue(guide.contains("스와이프"))
         assertTrue(guide.contains("최근 수정순"))
