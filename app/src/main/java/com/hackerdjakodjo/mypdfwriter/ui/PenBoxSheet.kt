@@ -462,7 +462,11 @@ internal fun PenBoxPreview(preset: PenPreset, modifier: Modifier = Modifier) {
             NormalizedPoint(
                 x = 0.06f + t * 0.88f,
                 y = 0.5f + sin(t * PI * 1.6).toFloat() * 0.16f,
-                pressure = ramp,
+                pressure = if (preset.pressureInk == false) {
+                    1f
+                } else {
+                    preset.pressureCurve?.applyTo(ramp) ?: ramp
+                },
             )
         }
     }

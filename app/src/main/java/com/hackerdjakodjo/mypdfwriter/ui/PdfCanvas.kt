@@ -42,6 +42,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.DEFAULT_INK_PRESSURE
 import com.hackerdjakodjo.mypdfwriter.data.DocumentStyle
+import com.hackerdjakodjo.mypdfwriter.data.HighlightInk
 import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
@@ -139,6 +140,10 @@ fun PdfCanvas(
     /** Stylus pressure capture; false keeps finger/mouse ink neutral. */
     pressureEnabled: Boolean = false,
     pressureCurve: PressureCurve = PressureCurve.DEFAULT,
+    /** Independent highlighter width used by preview and commit. */
+    highlightWidth: Float = HighlightInk.DEFAULT_WIDTH,
+    /** Independent highlighter opacity used by preview and commit. */
+    highlightOpacity: Float = 1f,
     /**
      * View-only crop margins in normalized page fractions. Applied uniformly to
      * the rendered page and every overlay (ink, markup, text, search, links and
@@ -510,7 +515,7 @@ fun PdfCanvas(
                     }
                 }
         } else {
-            Modifier.pointerInput(tool) {
+            Modifier.pointerInput(tool, docId, pageIndex, pressureEnabled, pressureCurve) {
                 when (tool) {
                     Tool.TEXT -> detectTapGestures { position ->
                         if (!currentMemoHitTest(position)) onRequestText(transform.normalize(position))
@@ -764,10 +769,18 @@ fun PdfCanvas(
                             type = type,
                             page = pageIndex,
                             color = color,
-                            width = if (type == AnnotationType.HIGHLIGHT) 0.02f else strokeWidth,
+                            width = if (type == AnnotationType.HIGHLIGHT) {
+                                HighlightInk.clamp(highlightWidth)
+                            } else {
+                                strokeWidth
+                            },
                             points = previewPoints,
                             penStyle = if (type == AnnotationType.PEN) penStyle else PenStyle.BALLPOINT,
-                            opacity = if (type == AnnotationType.HIGHLIGHT) 1f else opacity,
+                            opacity = if (type == AnnotationType.HIGHLIGHT) {
+                                HighlightInk.clampOpacity(highlightOpacity)
+                            } else {
+                                opacity
+                            },
                         ),
                         pageW,
                         pageH,

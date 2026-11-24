@@ -31,6 +31,7 @@ import com.hackerdjakodjo.mypdfwriter.data.PageSize
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
 import com.hackerdjakodjo.mypdfwriter.data.PageTransforms
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import com.hackerdjakodjo.mypdfwriter.data.PdfBookmark
 import com.hackerdjakodjo.mypdfwriter.data.PdfReadingState
 import com.hackerdjakodjo.mypdfwriter.data.PdfReadingStore
@@ -120,6 +121,10 @@ data class ViewerUiState(
     val selectedWords: List<PdfTextWord> = emptyList(),
     /** Shared with the note editor: stylus pressure capture can be turned off. */
     val pressureInk: Boolean = true,
+    /** Shared pressure response used by new PDF strokes and Pen Studio preview. */
+    val pressureCurve: PressureCurve = PressureCurve.DEFAULT,
+    /** Highlighter opacity is independent from pen opacity. */
+    val highlightOpacity: Float = 1f,
 )
 
 /** Pure memo-card list transitions; JVM-tested without an Android ViewModel. */
@@ -443,6 +448,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     highlightWidth = ink.highlightWidth,
                     opacity = ink.opacity,
                     pressureInk = ink.pressureInk,
+                    pressureCurve = ink.pressureCurve,
+                    highlightOpacity = ink.highlightOpacity,
                     docName = displayName,
                     pageCount = pages.size,
                     pageIndex = restoredPage,
@@ -846,16 +853,16 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     /** Persists the active ink so the note editor keeps the same pen. */
     private fun persistInk() {
         val state = _viewer.value ?: return
-        val ink = inkStore.load()
         inkStore.save(
             com.hackerdjakodjo.mypdfwriter.data.InkSettings(
                 penStyle = state.penStyle,
                 color = state.color,
                 width = state.strokeWidth,
                 opacity = state.opacity,
-                pressureCurve = ink.pressureCurve,
+                pressureCurve = state.pressureCurve,
                 highlightWidth = state.highlightWidth,
-                pressureInk = ink.pressureInk,
+                pressureInk = state.pressureInk,
+                highlightOpacity = state.highlightOpacity,
             ),
         )
     }
@@ -905,6 +912,21 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         persistInk()
     }
 
+    fun setPressureInk(enabled: Boolean) {
+        _viewer.update { it?.copy(pressureInk = enabled) }
+        persistInk()
+    }
+
+    fun setPressureCurve(curve: PressureCurve) {
+        _viewer.update { it?.copy(pressureCurve = curve) }
+        persistInk()
+    }
+
+    fun setHighlightOpacity(opacity: Float) {
+        _viewer.update { it?.copy(highlightOpacity = HighlightInk.clampOpacity(opacity)) }
+        persistInk()
+    }
+
     fun setZoom(zoom: Float) {
         _viewer.update { it?.copy(zoom = DisplayPrefs.clampZoom(zoom)) }
         // Zoom is part of DisplayPrefs, which the viewer promises to restore.
@@ -951,7 +973,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             points = usablePoints,
             penStyle = if (type == AnnotationType.PEN) state.penStyle else PenStyle.BALLPOINT,
             opacity = when (type) {
-                AnnotationType.HIGHLIGHT, AnnotationType.REDACT -> 1f
+                AnnotationType.HIGHLIGHT -> HighlightInk.clampOpacity(state.highlightOpacity)
+                AnnotationType.REDACT -> 1f
                 else -> state.opacity
             },
             createdAt = System.currentTimeMillis() - safeDuration,

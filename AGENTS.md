@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.77`** — `versionCode = 86`.
-- **Next version is `0.8.78` — `versionCode = 87`.**
+- Current delivered version: **`0.8.78`** — `versionCode = 87`.
+- **Next version is `0.8.79` — `versionCode = 88`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,7 +54,8 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
-| `0.8.77` | 86 | 2026-11-24 | — | Continuous-reader diagonal scrolling: pan is observed without consumption in the Initial pass so the same drag's Y delta reaches LazyColumn; retained-finger pan after pinch is explicitly re-armed; added diagonal simultaneous-pan/scroll and vertical-only no-pan E2E regressions |
+| `0.8.78` | 87 | 2026-11-24 | — | Five-agent pressure/pen audit → shared Pen Studio for PDF and notes: live pressure preview on three backgrounds, pressure on/off + sensitivity graph, complete favorite-pen pressure profiles, independent highlighter width/opacity, canonical width range, PDF highlighter preview parity, note stabilization preview and recognized-shape fixes; additive backward-compatible JSON + JVM/E2E regressions |
+| `0.8.77` | 86 | 2026-11-24 | `v0.8.77` | Continuous-reader diagonal scrolling: pan is observed without consumption in the Initial pass so the same drag's Y delta reaches LazyColumn; retained-finger pan after pinch is explicitly re-armed; added diagonal simultaneous-pan/scroll and vertical-only no-pan E2E regressions |
 | `0.8.76` | 85 | 2026-11-24 | `v0.8.76` | Five-agent re-audit after user confirmed 0.8.75 still frozen: orientation-locked `detectDragGestures` re-picks the retained finger after pinch consumption; explicit page `Layout` removes Compose `requiredWidth` centering so pan 0 exposes the true page-left edge and maxPan the true right edge; maxPan uses actual integer rendered width; retained-pointer and exact left/right edge E2E regressions |
 | `0.8.75` | 84 | 2026-11-24 | `v0.8.75` | Continuous reader pan rewrite (user confirmed 0.8.74 still frozen): replaced the manual pointer-state pan machine with Compose `detectHorizontalDragGestures`, removed the DEBUG HUD over the PDF, made E2E drags multi-frame; v0.8.74's per-gesture handoff reverted as it did not work on device |
 | `0.8.74` | 83 | 2026-11-24 | `v0.8.74` | Continuous reader zoom-lands-mid-drag handoff (4 parallel agents): per-gesture zoom routing + carry pre-zoom drag travel into pan so a right-edge-focal zoom can reach the true left edge in one gesture; suppress false page-swipe when zoom lands mid-drag; 1 JVM + 1 E2E regression |

@@ -39,18 +39,46 @@ class InkSettingsTest {
     }
 
     @Test
-    fun jsonRoundTripKeepsAllFiveFields() {
+    fun jsonRoundTripKeepsInkAndHighlighterFields() {
         val settings = InkSettings(
             PenStyle.FOUNTAIN,
             0xFF1F4E79.toInt(),
             0.0055f,
             0.9f,
             PressureCurve.FIRM,
+            highlightWidth = 0.026f,
+            pressureInk = false,
+            highlightOpacity = 0.55f,
         )
         val json = settings.toJson()
         assertEquals("FOUNTAIN", json.getString("style"))
         assertEquals("FIRM", json.getString("curve"))
         assertEquals(settings, InkSettings.fromRaw(json.toString()))
+    }
+
+    @Test
+    fun presetPressureResponseAndHighlighterOpacityRestoreWithoutOverwritingPen() {
+        val current = InkSettings(
+            width = 0.007f,
+            opacity = 0.8f,
+            pressureCurve = PressureCurve.LINEAR,
+            highlightWidth = 0.021f,
+            highlightOpacity = 0.9f,
+        )
+        val preset = PenPreset(
+            width = 0.027f,
+            opacity = 0.45f,
+            tool = Tool.HIGHLIGHT,
+            pressureCurve = PressureCurve.SOFT,
+            pressureInk = false,
+        )
+        val applied = InkPolicy.fromPreset(preset, current)
+        assertEquals(current.width, applied.width, 0f)
+        assertEquals(current.opacity, applied.opacity, 0f)
+        assertEquals(0.027f, applied.highlightWidth, 0f)
+        assertEquals(0.45f, applied.highlightOpacity, 0f)
+        assertEquals(PressureCurve.SOFT, applied.pressureCurve)
+        assertEquals(false, applied.pressureInk)
     }
 
     @Test

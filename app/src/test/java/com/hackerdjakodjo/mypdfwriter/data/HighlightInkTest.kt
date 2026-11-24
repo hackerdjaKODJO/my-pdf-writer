@@ -34,11 +34,21 @@ class HighlightInkTest {
     }
 
     @Test
+    fun highlighterOpacityIsIndependentAndLegacySafe() {
+        assertEquals(1f, InkSettings.DEFAULT.highlightOpacity, 0f)
+        assertEquals(1f, InkSettings.fromRaw("""{"width":0.004}""").highlightOpacity, 0f)
+        val settings = InkSettings(highlightOpacity = 0.42f)
+        assertEquals(0.42f, InkSettings.fromRaw(settings.toJson().toString()).highlightOpacity, 0f)
+        assertEquals(InkSettings.MIN_OPACITY, HighlightInk.clampOpacity(0f), 0f)
+        assertEquals(InkSettings.MAX_OPACITY, HighlightInk.clampOpacity(2f), 0f)
+    }
+
+    @Test
     fun highlightPresetNeverOverwritesThePenWidth() {
         val current = InkSettings(highlightWidth = 0.023f)
         val preset = defaultPenPresets().first { it.tool == Tool.HIGHLIGHT }
         val applied = InkPolicy.fromPreset(preset, current)
-        assertEquals(0.023f, applied.width, 0f)
+        assertEquals(current.width, applied.width, 0f)
         assertEquals(0.02f, applied.highlightWidth, 0f)
         val currentPen = InkPolicy.currentPen(applied, Tool.HIGHLIGHT)
         assertEquals(0.02f, currentPen.width, 0f)

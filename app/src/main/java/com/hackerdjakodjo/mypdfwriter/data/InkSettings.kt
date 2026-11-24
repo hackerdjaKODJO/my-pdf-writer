@@ -19,6 +19,8 @@ data class InkSettings(
     val highlightWidth: Float = HighlightInk.DEFAULT_WIDTH,
     /** Stylus pressure response; finger/mouse always record neutral pressure. */
     val pressureInk: Boolean = true,
+    /** Highlighter opacity is independent from pen opacity. */
+    val highlightOpacity: Float = DEFAULT_OPACITY,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("style", penStyle.name)
@@ -28,6 +30,7 @@ data class InkSettings(
         put("curve", pressureCurve.name)
         put("hw", highlightWidth.toDouble())
         if (!pressureInk) put("pi", false)
+        if (highlightOpacity != DEFAULT_OPACITY) put("ho", highlightOpacity.toDouble())
     }
 
     companion object {
@@ -67,6 +70,9 @@ data class InkSettings(
                     o.optDouble("hw", HighlightInk.DEFAULT_WIDTH.toDouble()).toFloat(),
                 ),
                 pressureInk = o.optBoolean("pi", true),
+                highlightOpacity = clampOpacity(
+                    o.optDouble("ho", DEFAULT_OPACITY.toDouble()).toFloat(),
+                ),
             )
         }
 
@@ -81,7 +87,7 @@ data class InkSettings(
  * Highlighter width is deliberately separate from pen width: both surfaces used
  * to force 0.02f at capture while sharing the pen width state, so changing one
  * silently fattened the other pen. The range starts at the old note floor and
- * ends at the global width cap; opacity stays 1f for legibility on white PDFs.
+ * ends at the global width cap; opacity is independent from pen opacity.
  */
 object HighlightInk {
     const val DEFAULT_WIDTH = 0.02f
@@ -91,6 +97,10 @@ object HighlightInk {
 
     fun clamp(value: Float): Float =
         if (value.isFinite()) value.coerceIn(MIN_WIDTH, MAX_WIDTH) else DEFAULT_WIDTH
+
+    fun clampOpacity(value: Float): Float =
+        if (value.isFinite()) value.coerceIn(InkSettings.MIN_OPACITY, InkSettings.MAX_OPACITY)
+        else InkSettings.DEFAULT_OPACITY
 }
 
 /** Pure conversions between shared settings and named/synthetic pen presets. */
@@ -98,18 +108,37 @@ object InkPolicy {
     const val CURRENT_PEN_ID = "current-pen"
     const val CURRENT_PEN_NAME = "현재 펜"
 
-    /** Applying a preset copies ink fields but keeps the live pressure curve. */
+    /**
+     * Applying a preset restores its complete ink behavior. Legacy presets have
+     * no pressure curve and inherit the current one; highlighter width/opacity
+     * never overwrite the pen's independent values.
+     */
     fun fromPreset(preset: PenPreset, current: InkSettings = InkSettings.DEFAULT): InkSettings =
         InkSettings(
             penStyle = preset.penStyle,
             color = preset.color,
             width = if (preset.tool == Tool.HIGHLIGHT) {
-                current.highlightWidth
+                current.width
             } else {
                 InkSettings.clampWidth(preset.width)
             },
-            opacity = InkSettings.clampOpacity(preset.opacity),
-            pressureCurve = current.pressureCurve,
+            opacity = if (preset.tool == Tool.HIGHLIGHT) {
+                current.opacity
+            } else {
+                InkSettings.clampOpacity(preset.opacity)
+            },
+            pressureCurve = preset.pressureCurve ?: current.pressureCurve,
+            highlightWidth = if (preset.tool == Tool.HIGHLIGHT) {
+                HighlightInk.clamp(preset.width)
+            } else {
+                current.highlightWidth
+            },
+            pressureInk = preset.pressureInk ?: current.pressureInk,
+            highlightOpacity = if (preset.tool == Tool.HIGHLIGHT) {
+                HighlightInk.clampOpacity(preset.opacity)
+            } else {
+                current.highlightOpacity
+            },
         )
 
     /** Transient preset used by the "current pen" strip and save-current action. */
@@ -119,9 +148,11 @@ object InkPolicy {
             name = CURRENT_PEN_NAME,
             color = settings.color,
             width = HighlightInk.clamp(settings.highlightWidth),
-            opacity = 1f,
+            opacity = HighlightInk.clampOpacity(settings.highlightOpacity),
             penStyle = PenStyle.BALLPOINT,
             tool = Tool.HIGHLIGHT,
+            pressureCurve = settings.pressureCurve,
+            pressureInk = settings.pressureInk,
         )
         else -> PenPreset(
             id = CURRENT_PEN_ID,
@@ -131,6 +162,8 @@ object InkPolicy {
             opacity = settings.opacity,
             penStyle = settings.penStyle,
             tool = Tool.PEN,
+            pressureCurve = settings.pressureCurve,
+            pressureInk = settings.pressureInk,
         )
     }
 }

@@ -104,7 +104,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.PenBoxStore
-import com.hackerdjakodjo.mypdfwriter.data.InkSettingsStore
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
@@ -277,7 +276,6 @@ fun ViewerScreen(
     val context = LocalContext.current
     val accessibilityScale = chromeScale(widthDp = 360, fontScale = LocalConfiguration.current.fontScale)
     val penBoxStore = remember(context) { PenBoxStore(context) }
-    val inkStore = remember(context) { InkSettingsStore(context) }
     var viewerFavorites by remember(penBoxStore) { mutableStateOf(penBoxStore.loadFavorites()) }
     var showViewerPenBox by remember { mutableStateOf(false) }
 
@@ -286,27 +284,43 @@ fun ViewerScreen(
     }
 
     fun applyViewerFavorite(preset: PenPreset) {
+        val currentState = stateFlow.value ?: return
+        val current = com.hackerdjakodjo.mypdfwriter.data.InkSettings(
+            penStyle = currentState.penStyle,
+            color = currentState.color,
+            width = currentState.strokeWidth,
+            opacity = currentState.opacity,
+            pressureCurve = currentState.pressureCurve,
+            highlightWidth = currentState.highlightWidth,
+            pressureInk = currentState.pressureInk,
+            highlightOpacity = currentState.highlightOpacity,
+        )
+        val applied = com.hackerdjakodjo.mypdfwriter.data.InkPolicy.fromPreset(preset, current)
         vm.setTool(preset.tool)
-        vm.setColor(preset.color)
-        if (preset.tool == Tool.HIGHLIGHT) {
-            vm.setHighlightWidth(preset.width)
-        } else {
-            vm.setStrokeWidth(preset.width)
-            vm.setOpacity(preset.opacity)
-            vm.setPenStyle(preset.penStyle)
-        }
+        vm.setColor(applied.color)
+        vm.setStrokeWidth(applied.width)
+        vm.setOpacity(applied.opacity)
+        vm.setPenStyle(applied.penStyle)
+        vm.setHighlightWidth(applied.highlightWidth)
+        vm.setHighlightOpacity(applied.highlightOpacity)
+        vm.setPressureCurve(applied.pressureCurve)
+        vm.setPressureInk(applied.pressureInk)
     }
 
     val state = stateFlow.value ?: return
 
-    fun currentViewerPen(): PenPreset = PenPreset(
-        id = "current-pen",
-        name = "현재 펜",
-        color = state.color,
-        width = if (state.tool == Tool.HIGHLIGHT) state.highlightWidth else state.strokeWidth,
-        opacity = if (state.tool == Tool.HIGHLIGHT) 1f else state.opacity,
-        penStyle = if (state.tool == Tool.HIGHLIGHT) PenStyle.BALLPOINT else state.penStyle,
-        tool = if (state.tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN,
+    fun currentViewerPen(): PenPreset = com.hackerdjakodjo.mypdfwriter.data.InkPolicy.currentPen(
+        com.hackerdjakodjo.mypdfwriter.data.InkSettings(
+            penStyle = state.penStyle,
+            color = state.color,
+            width = state.strokeWidth,
+            opacity = state.opacity,
+            pressureCurve = state.pressureCurve,
+            highlightWidth = state.highlightWidth,
+            pressureInk = state.pressureInk,
+            highlightOpacity = state.highlightOpacity,
+        ),
+        if (state.tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN,
     )
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -1261,7 +1275,9 @@ fun ViewerScreen(
                         onDeleteMemoCard = vm::deleteMemoCard,
                         penStyle = state.penStyle,
                         pressureEnabled = state.pressureInk,
-                        pressureCurve = remember(inkStore) { inkStore.load().pressureCurve },
+                        pressureCurve = state.pressureCurve,
+                        highlightWidth = state.highlightWidth,
+                        highlightOpacity = state.highlightOpacity,
                         onZoomChange = vm::setZoom,
                         onAddStroke = vm::addStroke,
                         onEraseStroke = vm::eraseStroke,
@@ -1883,6 +1899,9 @@ fun ViewerScreen(
             onOpacity = vm::setOpacity,
             onPenStyle = vm::setPenStyle,
             onHighlightWidth = vm::setHighlightWidth,
+            onPressureInk = vm::setPressureInk,
+            onPressureCurve = vm::setPressureCurve,
+            onHighlightOpacity = vm::setHighlightOpacity,
             onDismiss = { showToolStyle = false },
         )
     }

@@ -247,6 +247,7 @@ fun NoteEditorScreen(
     var opacity by remember { mutableStateOf(initialInk.opacity) }
     var penStyle by remember { mutableStateOf(initialInk.penStyle) }
     var highlightWidth by remember { mutableStateOf(initialInk.highlightWidth) }
+    var highlightOpacity by remember { mutableStateOf(initialInk.highlightOpacity) }
     var fingerWriting by remember { mutableStateOf(false) }
     var zoomLock by remember { mutableStateOf(false) }
     var strokeStabilization by remember { mutableStateOf(true) }
@@ -263,7 +264,7 @@ fun NoteEditorScreen(
     val configuration = LocalConfiguration.current
     // Large fonts hide the secondary dock labels, but never shrink the slots.
     val showDockLabels = noteDockShowLabels(configuration.screenWidthDp, configuration.fontScale)
-    LaunchedEffect(color, strokeWidth, opacity, penStyle, pressureCurve, highlightWidth, pressureInk) {
+    LaunchedEffect(color, strokeWidth, opacity, penStyle, pressureCurve, highlightWidth, highlightOpacity, pressureInk) {
         inkStore.save(
             com.hackerdjakodjo.mypdfwriter.data.InkSettings(
                 penStyle = penStyle,
@@ -273,6 +274,7 @@ fun NoteEditorScreen(
                 pressureCurve = pressureCurve,
                 highlightWidth = highlightWidth,
                 pressureInk = pressureInk,
+                highlightOpacity = highlightOpacity,
             ),
         )
     }
@@ -910,18 +912,20 @@ fun NoteEditorScreen(
             }
         }
 
-        if (strokeStabilization &&
+        if (strokeStabilization && !recognizedShape &&
             (type == AnnotationType.PEN || type == AnnotationType.HIGHLIGHT)
         ) {
-            val stabilized = NoteInk.stabilize(points, NOTE_STABILIZE_STRENGTH)
+            // Refine the recognized/final geometry, never the original raw
+            // points: otherwise stabilization overwrote a recognized shape.
+            val stabilized = NoteInk.stabilize(committedPoints, NOTE_STABILIZE_STRENGTH)
             NoteTrace.event(
                 NOTE_TRACE_TAG,
                 "stabilize",
                 "tool" to tool.name,
-                "before" to points.size,
+                "before" to committedPoints.size,
                 "after" to stabilized.size,
                 "strength" to NOTE_STABILIZE_STRENGTH,
-                "applied" to (stabilized !== points),
+                "applied" to (stabilized !== committedPoints),
             )
             committedPoints = stabilized
         }
@@ -968,7 +972,11 @@ fun NoteEditorScreen(
             color = color,
             width = noteStrokeWidth(type, strokeWidth),
             points = committedPoints,
-            opacity = if (type == AnnotationType.HIGHLIGHT) 1f else opacity,
+            opacity = if (type == AnnotationType.HIGHLIGHT) {
+                HighlightInk.clampOpacity(highlightOpacity)
+            } else {
+                opacity
+            },
             penStyle = if (type == AnnotationType.PEN) penStyle else PenStyle.BALLPOINT,
             layerId = layer.id,
             createdAt = System.currentTimeMillis() - safeDuration,
@@ -1130,17 +1138,25 @@ fun NoteEditorScreen(
     }
 
     fun applyPenPreset(preset: PenPreset) {
+        val current = InkSettings(
+            penStyle = penStyle,
+            color = color,
+            width = strokeWidth,
+            opacity = opacity,
+            pressureCurve = pressureCurve,
+            highlightWidth = highlightWidth,
+            pressureInk = pressureInk,
+            highlightOpacity = highlightOpacity,
+        )
+        val applied = InkPolicy.fromPreset(preset, current)
         tool = preset.tool
-        color = preset.color
-        if (preset.tool == Tool.HIGHLIGHT) {
-            // The highlighter has its own width; writing it into the pen width
-            // corrupts the pen and leaves the highlight visually unchanged.
-            highlightWidth = HighlightInk.clamp(preset.width)
-        } else {
-            strokeWidth = preset.width
-            opacity = preset.opacity
-            penStyle = preset.penStyle
-        }
+        color = applied.color
+        strokeWidth = applied.width
+        opacity = applied.opacity
+        penStyle = applied.penStyle
+        pressureCurve = applied.pressureCurve
+        highlightWidth = applied.highlightWidth
+        highlightOpacity = applied.highlightOpacity
         showPenBox = false
     }
 
@@ -1150,13 +1166,19 @@ fun NoteEditorScreen(
             name = name,
             color = color,
             width = if (savedTool == Tool.HIGHLIGHT) {
-                noteStrokeWidth(AnnotationType.HIGHLIGHT, highlightWidth)
+                HighlightInk.clamp(highlightWidth)
             } else {
                 strokeWidth
             },
-            opacity = opacity,
-            penStyle = penStyle,
+            opacity = if (savedTool == Tool.HIGHLIGHT) {
+                HighlightInk.clampOpacity(highlightOpacity)
+            } else {
+                opacity
+            },
+            penStyle = if (savedTool == Tool.HIGHLIGHT) PenStyle.BALLPOINT else penStyle,
             tool = savedTool,
+            pressureCurve = pressureCurve,
+            pressureInk = pressureInk,
         )
         val updated = penPresets + saved
         penPresets = updated
@@ -1449,6 +1471,8 @@ fun NoteEditorScreen(
                         zoomLock = zoomLock,
                         pressureEnabled = pressureInk,
                         pressureCurve = pressureCurve,
+                        highlightOpacity = highlightOpacity,
+                        stabilizeStrength = if (strokeStabilization) NOTE_STABILIZE_STRENGTH else 0f,
                         gestureUndoEnabled = gestureUndo,
                         smoothHandwriting = smoothHandwriting,
                         simplifyPoints = simplifyPoints,
@@ -1522,6 +1546,8 @@ fun NoteEditorScreen(
                     zoomLock = zoomLock,
                     pressureEnabled = pressureInk,
                     pressureCurve = pressureCurve,
+                    highlightOpacity = highlightOpacity,
+                    stabilizeStrength = if (strokeStabilization) NOTE_STABILIZE_STRENGTH else 0f,
                     gestureUndoEnabled = gestureUndo,
                     smoothHandwriting = smoothHandwriting,
                     simplifyPoints = simplifyPoints,
@@ -1818,7 +1844,16 @@ fun NoteEditorScreen(
     if (showPenBox) {
         val currentTool = if (tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN
         val currentPen = InkPolicy.currentPen(
-            InkSettings(penStyle, color, strokeWidth, opacity, pressureCurve, highlightWidth),
+            InkSettings(
+                penStyle = penStyle,
+                color = color,
+                width = strokeWidth,
+                opacity = opacity,
+                pressureCurve = pressureCurve,
+                highlightWidth = highlightWidth,
+                pressureInk = pressureInk,
+                highlightOpacity = highlightOpacity,
+            ),
             currentTool,
         )
         PenBoxSheet(
@@ -2008,6 +2043,14 @@ fun NoteEditorScreen(
             onOpacity = { opacity = it },
             penStyle = penStyle,
             onPenStyle = { penStyle = it },
+            pressureInk = pressureInk,
+            onPressureInk = { pressureInk = it },
+            pressureCurve = pressureCurve,
+            onPressureCurve = { pressureCurve = it },
+            highlightWidth = highlightWidth,
+            onHighlightWidth = { highlightWidth = it },
+            highlightOpacity = highlightOpacity,
+            onHighlightOpacity = { highlightOpacity = it },
             onOpenPenBox = {
                 showStyle = false
                 showPenBox = true
@@ -2015,7 +2058,16 @@ fun NoteEditorScreen(
             onDismiss = { showStyle = false },
             favorites = favoritePens,
             currentPen = InkPolicy.currentPen(
-                InkSettings(penStyle, color, strokeWidth, opacity, pressureCurve, highlightWidth),
+                InkSettings(
+                    penStyle = penStyle,
+                    color = color,
+                    width = strokeWidth,
+                    opacity = opacity,
+                    pressureCurve = pressureCurve,
+                    highlightWidth = highlightWidth,
+                    pressureInk = pressureInk,
+                    highlightOpacity = highlightOpacity,
+                ),
                 if (tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN,
             ),
             onApplyFavorite = { applyPenPreset(it) },
@@ -2296,6 +2348,8 @@ private fun NoteCanvasPane(
     zoomLock: Boolean,
     pressureEnabled: Boolean,
     pressureCurve: PressureCurve,
+    highlightOpacity: Float,
+    stabilizeStrength: Float,
     gestureUndoEnabled: Boolean,
     smoothHandwriting: Boolean = NOTE_SMOOTH_HANDWRITING_DEFAULT,
     simplifyPoints: Boolean = NOTE_SIMPLIFY_POINTS_DEFAULT,
@@ -2343,6 +2397,8 @@ private fun NoteCanvasPane(
             zoomLock = zoomLock,
             pressureEnabled = pressureEnabled,
             pressureCurve = pressureCurve,
+            highlightOpacity = highlightOpacity,
+            stabilizeStrength = stabilizeStrength,
             gestureUndoEnabled = gestureUndoEnabled,
             smoothHandwriting = smoothHandwriting,
             simplifyPoints = simplifyPoints,

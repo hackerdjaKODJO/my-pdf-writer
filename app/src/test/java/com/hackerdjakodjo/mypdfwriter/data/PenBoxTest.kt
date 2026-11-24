@@ -34,6 +34,8 @@ class PenBoxTest {
             opacity = 0.8f,
             penStyle = PenStyle.BRUSH,
             tool = Tool.PEN,
+            pressureCurve = PressureCurve.FIRM,
+            pressureInk = false,
         )
 
         val restored = PenPreset.fromJson(JSONObject(preset.toJson().toString()))
@@ -45,6 +47,8 @@ class PenBoxTest {
         assertEquals(0.8f, restored.opacity, 0.00001f)
         assertEquals(PenStyle.BRUSH, restored.penStyle)
         assertEquals(Tool.PEN, restored.tool)
+        assertEquals(PressureCurve.FIRM, restored.pressureCurve)
+        assertEquals(false, restored.pressureInk)
     }
 
     @Test
@@ -141,6 +145,9 @@ class PenBoxTest {
         assertFalse(samePenStyle(pen, otherColor))
         assertFalse(samePenStyle(pen, pen.copy(penStyle = PenStyle.BRUSH)))
         assertFalse(samePenStyle(pen, pen.copy(tool = Tool.HIGHLIGHT)))
+        val firm = pen.copy(pressureCurve = PressureCurve.FIRM, pressureInk = true)
+        assertFalse(samePenStyle(firm, firm.copy(pressureCurve = PressureCurve.SOFT)))
+        assertFalse(samePenStyle(firm, firm.copy(pressureInk = false)))
     }
 
     @Test

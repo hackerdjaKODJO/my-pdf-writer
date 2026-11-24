@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.hackerdjakodjo.mypdfwriter.data.InkSettings
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.Tool
@@ -152,6 +153,14 @@ internal fun NoteStyleSheet(
     onOpacity: (Float) -> Unit,
     penStyle: PenStyle,
     onPenStyle: (PenStyle) -> Unit,
+    pressureInk: Boolean,
+    onPressureInk: (Boolean) -> Unit,
+    pressureCurve: com.hackerdjakodjo.mypdfwriter.data.PressureCurve,
+    onPressureCurve: (com.hackerdjakodjo.mypdfwriter.data.PressureCurve) -> Unit,
+    highlightWidth: Float,
+    onHighlightWidth: (Float) -> Unit,
+    highlightOpacity: Float,
+    onHighlightOpacity: (Float) -> Unit,
     onOpenPenBox: () -> Unit,
     onDismiss: () -> Unit,
     favorites: List<PenPreset> = emptyList(),
@@ -179,7 +188,10 @@ internal fun NoteStyleSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("스타일", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        if (tool == Tool.PEN || tool == Tool.HIGHLIGHT) "펜 설정" else "스타일",
+                        style = MaterialTheme.typography.titleLarge,
+                    )
                     Text(
                         noteStyleTitle(tool),
                         style = MaterialTheme.typography.labelMedium,
@@ -206,77 +218,75 @@ internal fun NoteStyleSheet(
                 Spacer(Modifier.height(10.dp))
             }
 
-            if (showsColor) {
-                StyleSectionLabel("색상")
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    NOTE_PALETTE.forEach { swatch ->
-                        NoteColorDot(
-                            color = swatch,
-                            selected = color == swatch,
-                            onClick = { onColor(swatch) },
-                        )
+            if (tool == Tool.PEN || tool == Tool.HIGHLIGHT) {
+                PenStudioControls(
+                    tool = tool,
+                    color = color,
+                    onColor = onColor,
+                    strokeWidth = strokeWidth,
+                    onStrokeWidth = onStrokeWidth,
+                    opacity = opacity,
+                    onOpacity = onOpacity,
+                    penStyle = penStyle,
+                    onPenStyle = onPenStyle,
+                    pressureInk = pressureInk,
+                    onPressureInk = onPressureInk,
+                    pressureCurve = pressureCurve,
+                    onPressureCurve = onPressureCurve,
+                    highlightWidth = highlightWidth,
+                    onHighlightWidth = onHighlightWidth,
+                    highlightOpacity = highlightOpacity,
+                    onHighlightOpacity = onHighlightOpacity,
+                )
+            } else {
+                if (showsColor) {
+                    StyleSectionLabel("색상")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        NOTE_PALETTE.forEach { swatch ->
+                            NoteColorDot(
+                                color = swatch,
+                                selected = color == swatch,
+                                onClick = { onColor(swatch) },
+                            )
+                        }
                     }
+                    Spacer(Modifier.height(12.dp))
                 }
-                Spacer(Modifier.height(12.dp))
-            }
 
-            if (showsPenType) {
-                StyleSectionLabel("펜 종류")
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    PenStyle.entries.forEach { style ->
-                        PenStyleGlyph(
-                            style = style,
-                            selected = penStyle == style,
-                            color = color,
-                            onClick = { onPenStyle(style) },
-                        )
-                    }
+                if (showsFontSize) {
+                    NoteStyleSlider(
+                        label = "글자 크기",
+                        valueLabel = "${(fontSize * 1000).roundToInt()}",
+                        value = fontSize,
+                        range = 0.012f..0.08f,
+                        onValueChange = onFontSize,
+                    )
                 }
-                Spacer(Modifier.height(8.dp))
-            }
 
-            if (showsFontSize) {
-                NoteStyleSlider(
-                    label = "글자 크기",
-                    valueLabel = "${(fontSize * 1000).roundToInt()}",
-                    value = fontSize,
-                    range = 0.012f..0.08f,
-                    onValueChange = onFontSize,
-                )
-            }
+                if (showsThickness) {
+                    NoteStyleSlider(
+                        label = "굵기",
+                        valueLabel = "${(strokeWidth * 1000).roundToInt()}",
+                        value = strokeWidth,
+                        range = InkSettings.MIN_WIDTH..InkSettings.MAX_WIDTH,
+                        onValueChange = onStrokeWidth,
+                    )
+                }
 
-            if (showsThickness) {
-                NoteStyleSlider(
-                    label = "굵기",
-                    valueLabel = "${(strokeWidth * 1000).roundToInt()}",
-                    value = strokeWidth,
-                    range = if (tool == Tool.HIGHLIGHT) {
-                        com.hackerdjakodjo.mypdfwriter.data.HighlightInk.range
-                    } else {
-                        0.001f..0.02f
-                    },
-                    onValueChange = onStrokeWidth,
-                )
-            }
-
-            if (showsOpacity) {
-                NoteStyleSlider(
-                    label = "투명도",
-                    valueLabel = "${(opacity * 100).roundToInt()}%",
-                    value = opacity,
-                    range = 0.1f..1f,
-                    onValueChange = onOpacity,
-                )
+                if (showsOpacity) {
+                    NoteStyleSlider(
+                        label = "불투명도",
+                        valueLabel = "${(opacity * 100).roundToInt()}%",
+                        value = opacity,
+                        range = 0.1f..1f,
+                        onValueChange = onOpacity,
+                    )
+                }
             }
 
             if (!showsColor && !showsPenType && !showsThickness && !showsOpacity && !showsFontSize) {

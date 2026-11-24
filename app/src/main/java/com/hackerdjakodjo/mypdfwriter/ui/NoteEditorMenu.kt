@@ -68,7 +68,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
-import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
 
 /** Shared label so the study-card sub-sheet and tests use one vocabulary. */
 internal const val NOTE_MEMO_CARD_LABEL = "포스트잇"
@@ -861,15 +860,15 @@ private fun NoteMenuToggleRow(
 }
 
 private fun pressureCurveLabel(curve: PressureCurve): String = when (curve) {
-    PressureCurve.SOFT -> "부드럽게"
-    PressureCurve.LINEAR -> "선형"
-    PressureCurve.FIRM -> "강하게"
+    PressureCurve.SOFT -> "민감"
+    PressureCurve.LINEAR -> "보통"
+    PressureCurve.FIRM -> "둔감"
 }
 
 private fun pressureCurveDescription(curve: PressureCurve): String = when (curve) {
-    PressureCurve.SOFT -> "가벼운 필압을 더 굵게 반영"
-    PressureCurve.LINEAR -> "필압에 비례해 굵기 변화"
-    PressureCurve.FIRM -> "충분히 눌러야 굵어짐"
+    PressureCurve.SOFT -> "가벼운 필압도 잘 반영해요."
+    PressureCurve.LINEAR -> "필압에 고르게 반응해요."
+    PressureCurve.FIRM -> "필압을 강하게 눌러야 반응해요."
 }
 
 @Composable
@@ -878,11 +877,6 @@ private fun NotePressureCurveRow(
     enabled: Boolean,
     onCurve: (PressureCurve) -> Unit,
 ) {
-    // 25% and 75% are a compact, device-neutral illustration only. Real stylus
-    // digitizers still need on-device pressure tuning.
-    val sample = remember(curve) { pressureCurveRange(curve, 0.25f, 0.75f) }
-    val diagnostic = "필압 25→75% = 반영 " +
-        "${(sample.effectiveMin * 100).toInt()}→${(sample.effectiveMax * 100).toInt()}%"
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -904,7 +898,7 @@ private fun NotePressureCurveRow(
             Column(Modifier.weight(1f)) {
                 Text("필압 곡선", style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    "${pressureCurveDescription(curve)} · $diagnostic",
+                    pressureCurveDescription(curve),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,

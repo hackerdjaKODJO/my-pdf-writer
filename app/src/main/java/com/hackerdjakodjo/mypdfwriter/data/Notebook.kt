@@ -91,6 +91,10 @@ data class PenPreset(
     val opacity: Float = 1f,
     val penStyle: PenStyle = PenStyle.BALLPOINT,
     val tool: Tool = Tool.PEN,
+    /** Null keeps legacy presets inheriting the current pressure response. */
+    val pressureCurve: PressureCurve? = null,
+    /** Null keeps legacy presets inheriting the current pressure switch. */
+    val pressureInk: Boolean? = null,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -100,6 +104,8 @@ data class PenPreset(
         put("opacity", opacity.toDouble())
         put("style", penStyle.name)
         put("tool", tool.name)
+        pressureCurve?.let { put("pc", it.name) }
+        pressureInk?.let { put("pi", it) }
     }
 
     companion object {
@@ -115,6 +121,12 @@ data class PenPreset(
             tool = runCatching {
                 Tool.valueOf(o.optString("tool"))
             }.getOrDefault(Tool.PEN),
+            pressureCurve = if (o.has("pc")) {
+                runCatching { PressureCurve.valueOf(o.optString("pc")) }.getOrNull()
+            } else {
+                null
+            },
+            pressureInk = if (o.has("pi")) o.optBoolean("pi") else null,
         )
     }
 }

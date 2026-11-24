@@ -80,7 +80,9 @@ import androidx.compose.ui.unit.sp
 import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.HighlightInk
+import com.hackerdjakodjo.mypdfwriter.data.InkSettings
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import kotlin.math.roundToInt
 
@@ -759,6 +761,9 @@ fun ViewerStyleSheet(
     onDismiss: () -> Unit,
     onPenStyle: ((PenStyle) -> Unit)? = null,
     onHighlightWidth: ((Float) -> Unit)? = null,
+    onPressureInk: ((Boolean) -> Unit)? = null,
+    onPressureCurve: ((PressureCurve) -> Unit)? = null,
+    onHighlightOpacity: ((Float) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -772,7 +777,11 @@ fun ViewerStyleSheet(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("스타일", style = MaterialTheme.typography.titleLarge, modifier = Modifier.sectionHeading())
+                    Text(
+                        if (state.tool == Tool.PEN || state.tool == Tool.HIGHLIGHT) "펜 설정" else "스타일",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.sectionHeading(),
+                    )
                     Text(
                         "${styleToolLabel(state.tool)} 도구의 색상과 크기를 조정합니다.",
                         style = MaterialTheme.typography.bodySmall,
@@ -783,147 +792,119 @@ fun ViewerStyleSheet(
             }
             Spacer(Modifier.height(10.dp))
 
-            if (state.tool != Tool.REDACT) {
-                Spacer(Modifier.height(16.dp))
-                Text("색상", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    annotationPalette.forEach { swatch ->
-                        ColorDot(
-                            color = swatch,
-                            name = annotationColorName(swatch),
-                            selected = state.color == swatch,
-                            onClick = { onColor(swatch) },
-                        )
-                    }
-                }
-            }
-
-            if (state.tool == Tool.PEN && onPenStyle != null) {
-                Spacer(Modifier.height(16.dp))
-                Text("펜 종류", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    PenStyle.entries.forEach { style ->
-                        PenStyleGlyph(
-                            style = style,
-                            selected = state.penStyle == style,
-                            color = state.color,
-                            onClick = { onPenStyle(style) },
-                        )
-                    }
-                }
-            }
-
-            when (state.tool) {
-                Tool.TEXT -> {
+            if (state.tool == Tool.PEN || state.tool == Tool.HIGHLIGHT) {
+                PenStudioControls(
+                    tool = state.tool,
+                    color = state.color,
+                    onColor = onColor,
+                    strokeWidth = state.strokeWidth,
+                    onStrokeWidth = onStrokeWidth,
+                    opacity = state.opacity,
+                    onOpacity = onOpacity,
+                    penStyle = state.penStyle,
+                    onPenStyle = { onPenStyle?.invoke(it) },
+                    pressureInk = state.pressureInk,
+                    onPressureInk = { onPressureInk?.invoke(it) },
+                    pressureCurve = state.pressureCurve,
+                    onPressureCurve = { onPressureCurve?.invoke(it) },
+                    highlightWidth = state.highlightWidth,
+                    onHighlightWidth = { onHighlightWidth?.invoke(it) },
+                    highlightOpacity = state.highlightOpacity,
+                    onHighlightOpacity = { onHighlightOpacity?.invoke(it) },
+                )
+            } else {
+                if (state.tool != Tool.REDACT) {
                     Spacer(Modifier.height(16.dp))
-                    val fontSizeValue = "${(state.fontSize * 1000).roundToInt()}"
-                    SettingHeader(
-                        label = "글자 크기",
-                        value = fontSizeValue,
-                    )
-                    Slider(
-                        value = state.fontSize,
-                        onValueChange = onFontSize,
-                        valueRange = 0.012f..0.05f,
-                        modifier = Modifier.semantics {
-                            contentDescription = sliderLabel("글자 크기", fontSizeValue)
-                            stateDescription = fontSizeValue
-                        },
-                    )
-                }
-
-                Tool.HIGHLIGHT -> {
-                    Spacer(Modifier.height(16.dp))
-                    val width = HighlightInk.clamp(state.highlightWidth)
-                    val widthValue = "${(width * 1000).roundToInt()}"
-                    SettingHeader(label = "굵기", value = widthValue)
-                    Slider(
-                        value = width,
-                        onValueChange = { onHighlightWidth?.invoke(it) },
-                        valueRange = HighlightInk.range,
-                        modifier = Modifier.semantics {
-                            contentDescription = sliderLabel("굵기", widthValue)
-                            stateDescription = widthValue
-                        },
-                    )
-                }
-
-                Tool.PEN,
-                Tool.RECT,
-                Tool.ARROW,
-                Tool.LINE,
-                Tool.ELLIPSE,
-                Tool.UNDERLINE,
-                Tool.STRIKEOUT,
-                -> {
-                    Spacer(Modifier.height(16.dp))
-                    val strokeValue = "${(state.strokeWidth.coerceIn(0.001f, 0.012f) * 1000).roundToInt()}"
-                    SettingHeader(
-                        label = "굵기",
-                        value = strokeValue,
-                    )
-                    Slider(
-                        value = state.strokeWidth.coerceIn(0.001f, 0.012f),
-                        onValueChange = onStrokeWidth,
-                        valueRange = 0.001f..0.012f,
-                        modifier = Modifier.semantics {
-                            contentDescription = sliderLabel("굵기", strokeValue)
-                            stateDescription = strokeValue
-                        },
-                    )
-                }
-
-                Tool.REDACT -> {
-                    Spacer(Modifier.height(16.dp))
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        modifier = Modifier.fillMaxWidth(),
+                    Text("색상", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(
-                            "가림 도구는 선택한 영역을 검게 처리합니다.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        )
+                        annotationPalette.forEach { swatch ->
+                            ColorDot(
+                                color = swatch,
+                                name = annotationColorName(swatch),
+                                selected = state.color == swatch,
+                                onClick = { onColor(swatch) },
+                            )
+                        }
                     }
                 }
 
-                else -> Unit
-            }
+                when (state.tool) {
+                    Tool.TEXT -> {
+                        Spacer(Modifier.height(16.dp))
+                        val fontSizeValue = "${(state.fontSize * 1000).roundToInt()}"
+                        SettingHeader(label = "글자 크기", value = fontSizeValue)
+                        Slider(
+                            value = state.fontSize,
+                            onValueChange = onFontSize,
+                            valueRange = 0.012f..0.05f,
+                            modifier = Modifier.semantics {
+                                contentDescription = sliderLabel("글자 크기", fontSizeValue)
+                                stateDescription = fontSizeValue
+                            },
+                        )
+                    }
 
-            if (state.tool != Tool.HIGHLIGHT && state.tool != Tool.REDACT) {
-                Spacer(Modifier.height(16.dp))
-                val opacityLabel = stringResource(R.string.opacity)
-                val opacityValue = stringResource(
-                    R.string.opacity_percent,
-                    (state.opacity * 100).roundToInt(),
-                )
-                SettingHeader(
-                    label = opacityLabel,
-                    value = opacityValue,
-                )
-                Slider(
-                    value = state.opacity,
-                    onValueChange = onOpacity,
-                    valueRange = 0.1f..1f,
-                    modifier = Modifier.semantics {
-                        contentDescription = sliderLabel(opacityLabel, opacityValue)
-                        stateDescription = opacityValue
-                    },
-                )
+                    Tool.RECT,
+                    Tool.ARROW,
+                    Tool.LINE,
+                    Tool.ELLIPSE,
+                    Tool.UNDERLINE,
+                    Tool.STRIKEOUT,
+                    -> {
+                        Spacer(Modifier.height(16.dp))
+                        val strokeValue = "${(state.strokeWidth * 1000).roundToInt()}"
+                        SettingHeader(label = "굵기", value = strokeValue)
+                        Slider(
+                            value = state.strokeWidth,
+                            onValueChange = onStrokeWidth,
+                            valueRange = InkSettings.MIN_WIDTH..InkSettings.MAX_WIDTH,
+                            modifier = Modifier.semantics {
+                                contentDescription = sliderLabel("굵기", strokeValue)
+                                stateDescription = strokeValue
+                            },
+                        )
+                    }
+
+                    Tool.REDACT -> {
+                        Spacer(Modifier.height(16.dp))
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                "가림 도구는 선택한 영역을 검게 처리합니다.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            )
+                        }
+                    }
+
+                    else -> Unit
+                }
+
+                if (state.tool != Tool.REDACT) {
+                    Spacer(Modifier.height(16.dp))
+                    val opacityLabel = "불투명도"
+                    val opacityValue = "${(state.opacity * 100).roundToInt()}%"
+                    SettingHeader(label = opacityLabel, value = opacityValue)
+                    Slider(
+                        value = state.opacity,
+                        onValueChange = onOpacity,
+                        valueRange = 0.1f..1f,
+                        modifier = Modifier.semantics {
+                            contentDescription = sliderLabel(opacityLabel, opacityValue)
+                            stateDescription = opacityValue
+                        },
+                    )
+                }
             }
 
             Spacer(Modifier.height(6.dp))

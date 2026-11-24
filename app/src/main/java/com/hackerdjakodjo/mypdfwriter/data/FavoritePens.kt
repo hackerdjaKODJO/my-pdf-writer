@@ -94,4 +94,6 @@ fun samePenStyle(a: PenPreset, b: PenPreset): Boolean =
         a.width == b.width &&
         a.opacity == b.opacity &&
         a.penStyle == b.penStyle &&
-        a.tool == b.tool
+        a.tool == b.tool &&
+        (a.pressureCurve == null || b.pressureCurve == null || a.pressureCurve == b.pressureCurve) &&
+        (a.pressureInk == null || b.pressureInk == null || a.pressureInk == b.pressureInk)

@@ -38,6 +38,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.ChecklistCard
 import com.hackerdjakodjo.mypdfwriter.data.DEFAULT_INK_PRESSURE
+import com.hackerdjakodjo.mypdfwriter.data.HighlightInk
 import com.hackerdjakodjo.mypdfwriter.data.MAX_INK_PRESSURE
 import com.hackerdjakodjo.mypdfwriter.data.MaskingCard
 import com.hackerdjakodjo.mypdfwriter.data.MemoCard
@@ -110,6 +111,9 @@ fun NoteCanvas(
     zoomLock: Boolean,
     pressureEnabled: Boolean = true,
     pressureCurve: PressureCurve = PressureCurve.DEFAULT,
+    highlightOpacity: Float = 1f,
+    /** Preview stabilization strength; zero keeps raw geometry verbatim. */
+    stabilizeStrength: Float = NOTE_STABILIZE_STRENGTH,
     gestureUndoEnabled: Boolean = NOTE_GESTURE_UNDO_DEFAULT,
     /** Preview-only refinement settings; commit keeps the editor's own policy. */
     smoothHandwriting: Boolean = NOTE_SMOOTH_HANDWRITING_DEFAULT,
@@ -708,6 +712,7 @@ fun NoteCanvas(
 
                 val previewPoints = notePreviewPoints(
                     livePoints.toList(),
+                    stabilizeStrength = stabilizeStrength,
                     smoothHandwriting = smoothHandwriting,
                     simplifyPoints = simplifyPoints,
                 )
@@ -725,7 +730,11 @@ fun NoteCanvas(
                             color = color,
                             width = noteStrokeWidth(previewType, strokeWidth),
                             points = previewPoints,
-                            opacity = if (previewType == AnnotationType.HIGHLIGHT) 1f else opacity,
+                            opacity = if (previewType == AnnotationType.HIGHLIGHT) {
+                                HighlightInk.clampOpacity(highlightOpacity)
+                            } else {
+                                opacity
+                            },
                             penStyle = if (previewType == AnnotationType.PEN) {
                                 penStyle
                             } else {
