@@ -76,8 +76,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -1045,70 +1043,17 @@ fun ViewerScreen(
     Scaffold(
         topBar = {
             if (chromePolicy.showTopAppBar) {
-                TopAppBar(
-                    title = {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                state.docName,
-                                style = MaterialTheme.typography.titleSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(end = 8.dp)
-                                    .clickable { openRecentDocs() }
-                                    .semantics {
-                                        contentDescription = "${state.docName}, 최근 문서 열기"
-                                    }
-                                    .sectionHeading(),
-                            )
-                            ViewerCompactPageNavigator(
-                                pageIndex = state.pageIndex,
-                                pageCount = state.pageCount,
-                                onPrevious = vm::previousPage,
-                                onNext = vm::nextPage,
-                                onOpenPages = { showPages = true },
-                            )
-                            Spacer(Modifier.weight(1f))
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(
-                            onClick = handleViewerBack,
-                            modifier = Modifier.sizeIn(minWidth = MIN_TARGET_DP.dp, minHeight = MIN_TARGET_DP.dp),
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Outlined.ArrowBack,
-                                contentDescription = PdfTopChromeControl.BACK.label,
-                            )
-                        }
-                    },
-                    actions = {
-                        // Only four controls exist up here: back, the document
-                        // name (title), search and the study menu. Bookmark, note
-                        // capture and auto-hide moved into 학습 메뉴; the existing
-                        // tab/recent sheets still expose the chrome toggles.
-                        IconButton(
-                            onClick = { showSearch = true },
-                            modifier = Modifier.sizeIn(minWidth = MIN_TARGET_DP.dp, minHeight = MIN_TARGET_DP.dp),
-                        ) {
-                            Icon(
-                                Icons.Outlined.Search,
-                                contentDescription = PdfTopChromeControl.SEARCH.label,
-                            )
-                        }
-                        IconButton(
-                            onClick = { showHub = true },
-                            modifier = Modifier.sizeIn(minWidth = MIN_TARGET_DP.dp, minHeight = MIN_TARGET_DP.dp),
-                        ) {
-                            Icon(Icons.Outlined.Menu, contentDescription = PdfTopChromeControl.HUB.label)
-                        }
-                    },
-                    expandedHeight = 48.dp,
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                PdfCompactTopBar(
+                    title = state.docName,
+                    pageIndex = state.pageIndex,
+                    pageCount = state.pageCount,
+                    onBack = handleViewerBack,
+                    onPrevious = vm::previousPage,
+                    onNext = vm::nextPage,
+                    onOpenPages = { showPages = true },
+                    onTitleClick = { openRecentDocs() },
+                    onSearch = { showSearch = true },
+                    onOpenMenu = { showHub = true },
                 )
             }
         },

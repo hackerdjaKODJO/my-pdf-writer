@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.82`** — `versionCode = 91`.
-- **Next version is `0.8.83` — `versionCode = 92`.**
+- Current delivered version: **`0.8.83`** — `versionCode = 92`.
+- **Next version is `0.8.84` — `versionCode = 93`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,7 +54,8 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
-| `0.8.82` | 91 | 2026-11-24 | — | Reduced top app bar from 64dp to 48dp and compact page navigator from 40dp to 34dp with smaller icons/text/padding, removing excess white space below the page count; E2E asserts compact navigator height |
+| `0.8.83` | 92 | 2026-11-24 | — | Screenshot-driven fix: replaced Material TopAppBar with a fixed status-bar + 42dp Row, shrank page navigator to 30dp and action icons to 36dp, eliminating residual white space and giving the document title more width; shared by single/continuous readers |
+| `0.8.82` | 91 | 2026-11-24 | `v0.8.82` | Reduced top app bar from 64dp to 48dp and compact page navigator from 40dp to 34dp with smaller icons/text/padding, removing excess white space below the page count; E2E asserts compact navigator height |
 | `0.8.81` | 90 | 2026-11-24 | `v0.8.81` | Shared single/continuous top-bar layout: smaller document title, compact page navigator centred in the title bar, removed bottom navigator, position-percent text/progress bar and continuous zoom subtitle; accessibility state description + E2E retained |
 | `0.8.80` | 89 | 2026-11-24 | `v0.8.80` | Continuous reader uses full content height: removed the 56dp bottom page-bar layout row and placed the compact page navigator as a bottom-center overlay; previous/next and numeric jump retained; floating navigator E2E added |
 | `0.8.79` | 88 | 2026-11-24 | `v0.8.79` | Six-agent menu/UX audit → task-based PDF menu (보기/주석/노트/파일·설정), no chevrons on commands, PDF menu retained in default split mode, unified visible/system Back, note menu regrouped (노트/추가/파일/설정), Home continuation/empty-state cleanup, protected-PDF unlock + masked passwords, Organize delete confirmation and clearer labels; canonical UiCopy + JVM/E2E regressions |

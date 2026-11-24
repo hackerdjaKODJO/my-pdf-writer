@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,8 +44,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -231,49 +228,21 @@ fun ContinuousReaderScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = "뒤로",
-                        )
-                    }
+            PdfCompactTopBar(
+                title = title.ifBlank { "PDF" },
+                pageIndex = currentPage - 1,
+                pageCount = pageCount,
+                onBack = onBack,
+                onPrevious = {
+                    val target = continuousReaderScrollTarget(currentPage, -1, pageCount)
+                    scope.launch { listState.animateScrollToItem(target) }
                 },
-                title = {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            title.ifBlank { "PDF" },
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f).padding(end = 8.dp),
-                        )
-                        if (pageCount > 0) {
-                            ViewerCompactPageNavigator(
-                                pageIndex = currentPage - 1,
-                                pageCount = pageCount,
-                                onPrevious = {
-                                    val target = continuousReaderScrollTarget(currentPage, -1, pageCount)
-                                    scope.launch { listState.animateScrollToItem(target) }
-                                },
-                                onNext = {
-                                    val target = continuousReaderScrollTarget(currentPage, 1, pageCount)
-                                    scope.launch { listState.animateScrollToItem(target) }
-                                },
-                                onOpenPages = { showPageJump = true },
-                            )
-                        }
-                        Spacer(Modifier.weight(1f))
-                    }
+                onNext = {
+                    val target = continuousReaderScrollTarget(currentPage, 1, pageCount)
+                    scope.launch { listState.animateScrollToItem(target) }
                 },
-                expandedHeight = 48.dp,
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
+                onOpenPages = { showPageJump = true },
+                containerColor = MaterialTheme.colorScheme.background,
             )
         },
         containerColor = MaterialTheme.colorScheme.background,

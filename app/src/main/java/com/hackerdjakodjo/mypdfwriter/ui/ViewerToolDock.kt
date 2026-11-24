@@ -434,7 +434,7 @@ fun ViewerCompactPageNavigator(
     onOpenPages: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val target = 34.dp
+    val target = 30.dp
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(50),
@@ -459,7 +459,7 @@ fun ViewerCompactPageNavigator(
                 Icon(
                     Icons.Outlined.ChevronLeft,
                     contentDescription = null,
-                    modifier = Modifier.size(15.dp),
+                    modifier = Modifier.size(13.dp),
                 )
             }
             Surface(
@@ -474,7 +474,7 @@ fun ViewerCompactPageNavigator(
             ) {
                 Text(
                     "${pageIndex + 1} / $pageCount",
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.dp),
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
                 )
@@ -493,7 +493,7 @@ fun ViewerCompactPageNavigator(
                 Icon(
                     Icons.Outlined.ChevronRight,
                     contentDescription = null,
-                    modifier = Modifier.size(15.dp),
+                    modifier = Modifier.size(13.dp),
                 )
             }
         }

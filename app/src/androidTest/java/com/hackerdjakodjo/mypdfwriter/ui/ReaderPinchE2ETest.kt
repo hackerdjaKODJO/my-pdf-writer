@@ -149,7 +149,7 @@ class ReaderPinchE2ETest {
         val previous = composeRule.onNodeWithContentDescription("이전 페이지")
         previous.assertExists()
         val previousBounds = previous.getUnclippedBoundsInRoot()
-        assertTrue("compact navigator must stay small", previousBounds.bottom - previousBounds.top <= 36.dp)
+        assertTrue("compact navigator must stay small", previousBounds.bottom - previousBounds.top <= 32.dp)
         composeRule.onNodeWithContentDescription("다음 페이지").assertExists()
         composeRule.onNodeWithContentDescription(viewerPagePillDescription(0, 3)).performClick()
         composeRule.onNodeWithText("페이지 이동").assertExists()
