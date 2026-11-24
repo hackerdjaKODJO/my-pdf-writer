@@ -186,17 +186,17 @@ adb shell am instrument -w \
 - Independent features use separate git worktrees/branches and are merged into
   `feature/starnote` (then fast-forwarded to `main`) only after their build and
   unit tests pass.
-- Merge order: shared-file owners first (Viewer/PdfViewModel/PdfCanvas/Models),
-  then new-file-only agents.
+- Merge order for multi-agent work: new-file-only agents land first (log core,
+  E2E classes, docs). Shared files (`Viewer`, `PdfViewModel`, `PdfCanvas`,
+  `Models`, `MyPdfWriterApp`, `build.gradle.kts`, this contract) stay with a
+  **single integration owner** and land after those branches, so agents never
+  make overlapping edits to the same shared file.
+- The integration owner runs the whole build/test matrix centrally; agents must
+  not launch concurrent Gradle builds on this phone.
 - Before merging a worktree, check `git -C <worktree> status --short` is clean.
 - Remove merged worktrees and delete merged `work/*` branches after the push.
 - Every feature change must include a test when it is pure logic, and a build
   verification note in the final report.
-- For multi-agent E2E/logging work, land new-file owners first (log core, E2E
-  classes, docs) in separate worktrees. The integration owner edits shared files
-  (`MyPdfWriterApp`, `PdfViewModel`, `build.gradle.kts`, this contract) last and
-  runs the whole build/test matrix centrally; agents must not launch concurrent
-  Gradle builds on this phone.
 
 ## Code conventions
 
