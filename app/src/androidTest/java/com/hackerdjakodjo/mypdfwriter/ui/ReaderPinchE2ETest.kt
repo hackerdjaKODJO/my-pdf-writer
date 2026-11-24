@@ -576,6 +576,29 @@ class ReaderPinchE2ETest {
     }
 
     @Test
+    fun rightDragAfterZoomReachesTheTrueLeftEdgeNotTheHeadroomBand() {
+        // Decisive v0.8.73 regression: the OLD symmetric 25% band pinned a
+        // zoom at pan >= 25% of maxPan, hiding the page's leftmost content.
+        // A rightward drag must reach the TRUE left edge (pan = 0), at which
+        // point the page's left border lines up with its fit-zoom position.
+        setReader()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        val fitLeft = page.getUnclippedBoundsInRoot().left
+        val viewport = viewportWidthPx()
+
+        doubleTapToZoom() // centred focal -> pan = 0.5 * maxPan
+        assertZoomLabel(READER_ZOOM_DOUBLE_TAP)
+        // One large right drag: pan 0.5W -> 0.5W - 0.9W = -0.4W -> clamped to 0.
+        dragPage(viewport * 0.90f)
+
+        val atEdge = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "page must reach its true left edge; fitLeft=$fitLeft after=${atEdge.left}",
+            atEdge.left >= fitLeft - 8.dp,
+        )
+    }
+
+    @Test
     fun doubleTapNearLeftEdgeThenRightDragMovesThePageRight() {
         // The user's failing gesture: an edge focal used to leave panX at 0,
         // so pushing right clamped straight back and the page never moved.

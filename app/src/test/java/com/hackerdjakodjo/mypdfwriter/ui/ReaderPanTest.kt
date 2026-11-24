@@ -123,13 +123,17 @@ class ReaderPanTest {
     }
 
     @Test
-    fun `headroom keeps rightward pan available for an edge focal`() {
-        // The user's case: a zoom anchored near the left edge used to leave
-        // panX at 0, so pushing the page right clamped straight back to 0.
+    fun `left edge focal exposes the true left edge at zoom`() {
+        // v0.8.73: the OLD symmetric band parked a left-edge zoom at 25% of
+        // maxPan, hiding page pixels 0..250 (the leftmost 12.5%). The page is
+        // left-aligned so a left-edge focal must land at pan 0 — no cutoff.
         val anchored = readerPanWithHeadroom(0f, 1f, 2f, 0f, 1000f)
-        assertFloat("25% headroom at the left edge", 250f, anchored)
-        assertFloat("rightward drag immediately moves the page", 150f,
-            panReaderAfterDrag(anchored, +100f, 2f, 1000f))
+        assertFloat("left-edge focal shows the page's left edge", 0f, anchored)
+        assertFloat("leftmost content is reachable immediately", 0f,
+            panReaderAfterDrag(anchored, +10f, 2f, 1000f))
+        // A centred focal still balances the two directions.
+        assertFloat("centred focal stays balanced", 500f,
+            readerPanWithHeadroom(0f, 1f, 2f, 500f, 1000f))
     }
 
     @Test
@@ -162,8 +166,8 @@ class ReaderPanTest {
             val maxPan = readerMaxPanPx(1000f, zoom)
             val p = readerRestoredPan(zoom, 1000f)
             org.junit.Assert.assertTrue(
-                "restored pan $p must leave both directions reachable at zoom $zoom",
-                p >= maxPan * 0.25f - 0.001f && p <= maxPan * 0.75f + 0.001f,
+                "restored pan $p must be legal and non-negative at zoom $zoom",
+                p >= 0f && p <= maxPan + 0.001f,
             )
             org.junit.Assert.assertTrue(
                 "rightward drag must move at zoom $zoom",
@@ -174,17 +178,21 @@ class ReaderPanTest {
     }
 
     @Test
-    fun `reclamping a headroom pan never parks it at a clamp edge`() {
-        // The viewport-change effect re-clamps on every zoom; it must not undo
-        // the headroom that makes rightward drags work.
+    fun `reclamping only enforces the legal range and preserves a dragged edge`() {
+        // The viewport/zoom effect must use clampReaderPan (legal range only),
+        // NOT readerPanWithHeadroom, or a user drag to the true left edge gets
+        // yanked back into the middle band (v0.8.73 regression).
         for (focal in listOf(0f, 250f, 500f, 750f, 1000f)) {
-            val headroom = readerPanWithHeadroom(0f, 1f, 2f, focal, 1000f)
-            val reclamped = clampReaderPan(headroom, 2f, 1000f)
-            assertFloat("reclamp preserves headroom for focal $focal", headroom, reclamped)
-            org.junit.Assert.assertTrue(
-                "rightward drag still moves for focal $focal",
-                panReaderAfterDrag(reclamped, +10f, 2f, 1000f) < reclamped,
-            )
+            val seeded = readerPanWithHeadroom(0f, 1f, 2f, focal, 1000f)
+            val draggedToEdge = panReaderAfterDrag(seeded, 1000f, 2f, 1000f)
+            assertFloat("a large right drag reaches pan 0 for focal $focal", 0f, draggedToEdge)
+            // The effect's legal-range clamp preserves that reached edge.
+            assertFloat("reclamp preserves the reached left edge for focal $focal",
+                0f, clampReaderPan(draggedToEdge, 2f, 1000f))
         }
+        // Re-applying the (now right-only) headroom policy at pan 0 is a no-op:
+        // centred focal with same zoom must preserve the reached left edge.
+        assertFloat("headroom re-application preserves the true left edge",
+            0f, readerPanWithHeadroom(0f, 2f, 2f, 500f, 1000f))
     }
 }

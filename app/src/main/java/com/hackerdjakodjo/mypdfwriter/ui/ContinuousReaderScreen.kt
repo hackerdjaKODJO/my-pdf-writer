@@ -180,21 +180,23 @@ fun ContinuousReaderScreen(
         // Keep the gesture snapshot in step with restored/external zoom changes.
         gestureZoom.floatValue = zoom
         val currentZoom = gestureZoom.floatValue
-        // Keep a reachable band in BOTH directions when the viewport changes;
-        // parking pan at a clamp edge is what makes rightward drags a no-op.
-        panX.floatValue = if (currentZoom > READER_ZOOM_MIN) {
-            readerPanWithHeadroom(
-                panX.floatValue, currentZoom, currentZoom,
-                viewportWidthPx / 2f, viewportWidthPx,
+        // Only re-clamp into the LEGAL range [0, maxPan]. Headroom is a one-time
+        // ZOOM seed applied in setZoom; re-applying it here would yank a user's
+        // drag back into the middle band and cut off the page's left edge.
+        val before = panX.floatValue
+        val after = clampReaderPan(before, currentZoom, viewportWidthPx)
+        if (abs(after - before) > 0.5f) {
+            // Make an otherwise silent state change visible in logcat/trace.
+            PdfContinuousTrace.zoomPan(
+                "reclamp", currentZoom, currentZoom, before, after,
+                readerMaxPanPx(viewportWidthPx, currentZoom), viewportWidthPx / 2f,
             )
-        } else {
-            0f
         }
+        panX.floatValue = after
         if (!restorePanSeeded.value) {
             restorePanSeeded.value = true
             if (currentZoom > READER_ZOOM_MIN) {
-                // Use the SAME headroom policy as a live zoom — the old bare
-                // panAfterZoom seed could plant pan at 0 and kill right drags.
+                // Restore seed uses the same right-headroom-only zoom policy.
                 val seeded = readerRestoredPan(currentZoom, viewportWidthPx)
                 panX.floatValue = seeded
                 PdfContinuousTrace.zoomPan(

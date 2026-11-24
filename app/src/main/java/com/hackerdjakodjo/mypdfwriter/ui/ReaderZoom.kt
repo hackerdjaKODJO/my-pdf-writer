@@ -99,20 +99,29 @@ fun panReaderAfterDrag(
 ): Float = clampReaderPan(panPx - deltaX, zoom, viewportWidthPx)
 
 /**
- * Minimum share of the pan range kept reachable in BOTH directions after a
- * zoom change. A focal near the viewport edge otherwise leaves pan at 0 (or at
- * maxPan), making one drag direction a complete no-op.
+ * Minimum share of the pan range reserved at the RIGHT edge after a zoom
+ * change. A focal near the right edge could otherwise leave pan at maxPan,
+ * making a LEFTWARD drag a complete no-op — that is v0.8.44's regression.
+ *
+ * There is deliberately NO lower (left-side) reserve: content to the left of
+ * an edge focal must be reachable the instant the zoom lands. The old
+ * symmetric [25%, 75%] band pinned a left-edge zoom at 25% of maxPan, hiding
+ * the page's leftmost 12.5% and reading to the user as "cannot pan further
+ * left than the zoom-start point" (v0.8.73 fix).
  */
 const val READER_PAN_HEADROOM_FRACTION = 0.25f
 
 /**
- * Focal-preserving pan with a guaranteed headroom band.
+ * Focal-preserving pan with right-side headroom only.
  *
- * A zoom anchored near the left edge used to produce panX ≈ 0, and because the
- * continuous reader clamps pan to [0, maxPan] with the page left-aligned, a
- * rightward drag immediately clamped back to 0 — the page did not move at all.
- * Keeping the result inside [25%, 75%] of the range preserves the focal for
- * ordinary centred zooms while leaving travel in both directions.
+ * For a zoom anchored near the RIGHT edge, [panAfterZoom] can return maxPan;
+ * a leftward drag would then be a no-op because the page is pinned right.
+ * Capping at [maxPan - reserve] leaves travel to the left.
+ *
+ * For a LEFT-edge focal the raw result is 0 — the page's true left edge is
+ * visible at zoom completion. This is intentional: the page is left-aligned
+ * and the drag path (`panReaderAfterDrag`, clamped to [0, maxPan]) can reach
+ * BOTH edges. No lower floor is applied, so nothing cuts off page content.
  */
 fun readerPanWithHeadroom(
     panPx: Float,
@@ -125,7 +134,7 @@ fun readerPanWithHeadroom(
     if (maxPan <= 0f) return 0f
     val focalPan = panAfterZoom(panPx, oldZoom, newZoom, focalX, viewportWidthPx)
     val reserve = maxPan * READER_PAN_HEADROOM_FRACTION
-    return focalPan.coerceIn(reserve, maxPan - reserve)
+    return focalPan.coerceAtMost(maxPan - reserve).coerceAtLeast(0f)
 }
 
 /**
