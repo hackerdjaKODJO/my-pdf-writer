@@ -11,13 +11,13 @@ Instrumentation APKs can also be compiled without a device via
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 1009 | **Passing** |
-| Instrumentation/E2E (existing component suites) | 16 classes, 86 cases | **Passing** on PC emulator |
-| Instrumentation/E2E (new real-file suites) | 4 classes, 18 cases | **Passing** on PC emulator |
-| Instrumentation/E2E (durable log suites, 0.8.88) | 2 classes | Compiled; on-device run pending |
-| **Total instrumentation** | **127 cases** | **127/127 passing** on `myreader_pixel7` (API 36) |
-| Debug build | 1 | Passing |
-| R8 release build | 1 | Passing (signed with the upload key) |
+| JVM unit tests | 1066 | **Passing** — 0 failures, 0 errors, 0 skipped (0.8.88 run) |
+| Instrumentation/E2E (existing component + real-file suites) | 26 classes, 138 cases | Previously passing on `myreader_pixel7` (API 36); compiled again here |
+| Instrumentation/E2E (durable log suites, 0.8.88) | 2 classes, 5 cases | **Compiled**; on-device run pending (no adb device on this host) |
+| **Total instrumentation** | **28 classes, 143 cases** | **138 previously passing; 5 new compiled, device run pending** |
+| Debug build (arm64-only) | 1 | Passing |
+| Instrumentation APK compilation | 1 | Passing |
+| R8 release build | 1 | Passing (unsigned locally; sign with the upload key on PC/CI) |
 
 ### Real-file E2E suites (added in 0.8.68)
 

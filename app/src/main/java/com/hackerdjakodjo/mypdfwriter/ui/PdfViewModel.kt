@@ -1495,7 +1495,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         ) {
             return
         }
-        PdfFlowTrace.pageEdit(kind, edit.pages.size, state.revision)
+        PdfFlowTrace.pageEdit(kind, edit.pages.size, state.revision.toLong())
         pushHistory(state)
         // Publish the remapped bookmarks together with the page edit, then flush
         // the reading sidecar so close/reopen cannot restore a stale page index.
@@ -1563,7 +1563,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 if (sourcePage !in specs.indices) return@mapNotNull null
                 bookmark.copy(pageIndex = sourcePage)
             }.distinctBy { it.pageIndex }
-            PdfFlowTrace.pageEdit("reset", specs.size, state.revision)
+            PdfFlowTrace.pageEdit("reset", specs.size, state.revision.toLong())
             pushHistory(state)
             _bookmarks.value = bookmarks
             saveReadingNow()

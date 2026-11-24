@@ -135,7 +135,10 @@ class PdfFlowTraceE2ETest {
     private fun assertOrderedSubsequence(actual: List<String>, expected: List<String>) {
         var cursor = 0
         expected.forEach { wanted ->
-            val at = actual.indexOf(wanted, cursor)
+            // Kotlin's List.indexOf(element) shadows Java's indexOf(element, fromIndex),
+            // so search the remaining tail and offset the result explicitly.
+            val relative = if (cursor >= actual.size) -1 else actual.drop(cursor).indexOf(wanted)
+            val at = if (relative < 0) -1 else relative + cursor
             assertTrue(
                 "Expected ordered flow event '$wanted' after index $cursor; actual=$actual",
                 at >= 0,
