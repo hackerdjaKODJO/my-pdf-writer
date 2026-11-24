@@ -434,26 +434,32 @@ fun ViewerCompactPageNavigator(
     onOpenPages: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val target = 40.dp
+    val target = 34.dp
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-        tonalElevation = 2.dp,
+        tonalElevation = 1.dp,
     ) {
         Row(
             modifier = Modifier.height(target),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(
-                onClick = onPrevious,
-                enabled = pageIndex > 0,
-                modifier = Modifier.size(target),
+            Box(
+                modifier = Modifier
+                    .size(target)
+                    .clickable(
+                        enabled = pageIndex > 0,
+                        onClickLabel = "이전 페이지",
+                        onClick = onPrevious,
+                    )
+                    .semantics { contentDescription = "이전 페이지" },
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.Outlined.ChevronLeft,
-                    contentDescription = "이전 페이지",
-                    modifier = Modifier.size(17.dp),
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
                 )
             }
             Surface(
@@ -468,20 +474,26 @@ fun ViewerCompactPageNavigator(
             ) {
                 Text(
                     "${pageIndex + 1} / $pageCount",
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                    style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
                 )
             }
-            IconButton(
-                onClick = onNext,
-                enabled = pageIndex < pageCount - 1,
-                modifier = Modifier.size(target),
+            Box(
+                modifier = Modifier
+                    .size(target)
+                    .clickable(
+                        enabled = pageIndex < pageCount - 1,
+                        onClickLabel = "다음 페이지",
+                        onClick = onNext,
+                    )
+                    .semantics { contentDescription = "다음 페이지" },
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.Outlined.ChevronRight,
-                    contentDescription = "다음 페이지",
-                    modifier = Modifier.size(17.dp),
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
                 )
             }
         }

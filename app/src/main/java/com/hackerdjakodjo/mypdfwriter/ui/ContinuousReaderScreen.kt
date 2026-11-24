@@ -270,6 +270,7 @@ fun ContinuousReaderScreen(
                         Spacer(Modifier.weight(1f))
                     }
                 },
+                expandedHeight = 48.dp,
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                 ),

@@ -1107,6 +1107,7 @@ fun ViewerScreen(
                             Icon(Icons.Outlined.Menu, contentDescription = PdfTopChromeControl.HUB.label)
                         }
                     },
+                    expandedHeight = 48.dp,
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                 )
             }
