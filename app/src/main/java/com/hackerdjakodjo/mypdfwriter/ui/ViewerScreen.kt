@@ -69,7 +69,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -718,12 +717,6 @@ fun ViewerScreen(
         vm.clearMessage()
     }
 
-    val progress = if (state.pageCount > 0) {
-        (state.pageIndex + 1).toFloat() / state.pageCount
-    } else {
-        0f
-    }
-    val progressPercent = (progress * 100).roundToInt()
     val currentBookmark = bookmarks.firstOrNull { it.pageIndex == state.pageIndex }
 
     val openNote: () -> Unit = {
@@ -1054,26 +1047,32 @@ fun ViewerScreen(
             if (chromePolicy.showTopAppBar) {
                 TopAppBar(
                     title = {
-                        // GoodReader: the filename opens the recent-document switcher.
-                        Column(
-                            Modifier
-                                .clickable { openRecentDocs() }
-                                .semantics { contentDescription = "${state.docName}, 최근 문서 열기" },
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
                                 state.docName,
-                                style = MaterialTheme.typography.titleMedium,
-                                maxLines = accessibilityScale.titleMaxLines,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.sectionHeading(),
-                            )
-                            Text(
-                                "${stringResource(R.string.page_of, state.pageIndex + 1, state.pageCount)} · 위치 $progressPercent%",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.titleSmall,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp)
+                                    .clickable { openRecentDocs() }
+                                    .semantics {
+                                        contentDescription = "${state.docName}, 최근 문서 열기"
+                                    }
+                                    .sectionHeading(),
                             )
+                            ViewerCompactPageNavigator(
+                                pageIndex = state.pageIndex,
+                                pageCount = state.pageCount,
+                                onPrevious = vm::previousPage,
+                                onNext = vm::nextPage,
+                                onOpenPages = { showPages = true },
+                            )
+                            Spacer(Modifier.weight(1f))
                         }
                     },
                     navigationIcon = {
@@ -1116,12 +1115,6 @@ fun ViewerScreen(
             if (chromePolicy.showBottomBar) {
                 Surface(tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier.fillMaxWidth().height(3.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                        )
                         if (textSelectMode) {
                             TextSelectionActionBar(
                                 text = selectedText,
@@ -1539,19 +1532,6 @@ fun ViewerScreen(
                     if (state.busy) {
                         BusyOverlay(state.busyLabel)
                     }
-                }
-
-                // Page navigation is docked below the canvas so it never covers
-                // the PDF. Split mode keeps its floating top toolbar and
-                // immersive auto-hide removes the row with the rest of the chrome.
-                if (viewerBottomPageBarVisible(splitMode, immersive)) {
-                    ViewerBottomPageBar(
-                        pageIndex = state.pageIndex,
-                        pageCount = state.pageCount,
-                        onPrevious = vm::previousPage,
-                        onNext = vm::nextPage,
-                        onOpenPages = { showPages = true },
-                    )
                 }
 
                 if (studyPane != null) {

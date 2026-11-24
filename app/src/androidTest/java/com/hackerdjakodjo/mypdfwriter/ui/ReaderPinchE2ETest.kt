@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -57,26 +56,23 @@ class ReaderPinchE2ETest {
         composeRule.waitForIdle()
     }
 
-    /** The subtitle is the only text node carrying the "연속 보기" prefix. */
+    /** Zoom is no longer drawn in the title; the page exposes it to TalkBack/tests. */
     private fun assertZoomLabel(expectedZoom: Float) {
-        composeRule.onNodeWithText("연속 보기", substring = true)
-            .assertTextContains(readerZoomLabel(expectedZoom), substring = true)
+        assertTrue(
+            "expected zoom ${readerZoomLabel(expectedZoom)}, actual=${subtitleText()}",
+            subtitleText().contains(readerZoomLabel(expectedZoom)),
+        )
     }
 
-    /** Live text of the subtitle, read from semantics after the UI is idle. */
+    /** Accessibility state description of the first rendered page. */
     private fun subtitleText(): String {
-        val node = composeRule.onNodeWithText("연속 보기", substring = true)
+        val node = composeRule.onNodeWithContentDescription("1쪽 페이지")
             .fetchSemanticsNode()
-        return node.config[SemanticsProperties.Text]
-            ?.joinToString(" ") { it.toString() }
-            ?: ""
+        return node.config[SemanticsProperties.StateDescription] ?: ""
     }
 
-    /** True when the subtitle is the plain fit label, i.e. zoom == READER_ZOOM_MIN. */
-    private fun isFitLabel(): Boolean {
-        val text = subtitleText()
-        return text.contains("연속 보기") && !text.contains("%")
-    }
+    /** True when the page is at fit zoom. */
+    private fun isFitLabel(): Boolean = subtitleText() == "맞춤 배율"
 
     /**
      * One two-pointer spread from 20% to 75% of the viewport width. Endpoints
@@ -159,8 +155,8 @@ class ReaderPinchE2ETest {
     @Test
     fun twoFingerSpreadZoomsTheWholeDocument() {
         setReader()
-        // Fit-to-width: the subtitle carries no zoom percentage yet.
-        composeRule.onNodeWithText("전체 3쪽 · 연속 보기", substring = true).assertExists()
+        composeRule.onNodeWithText("pinch-test").assertExists()
+        assertTrue(isFitLabel())
 
         spreadToMaxZoom()
 
@@ -176,7 +172,7 @@ class ReaderPinchE2ETest {
 
         pinchBackToFit()
 
-        composeRule.onNodeWithText("전체 3쪽 · 연속 보기").assertExists()
+        assertTrue(isFitLabel())
     }
 
     @Test

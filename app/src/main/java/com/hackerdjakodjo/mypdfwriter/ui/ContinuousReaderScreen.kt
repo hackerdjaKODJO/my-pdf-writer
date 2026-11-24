@@ -17,11 +17,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -67,6 +67,8 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
@@ -239,19 +241,33 @@ fun ContinuousReaderScreen(
                     }
                 },
                 title = {
-                    Column {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Text(
                             title.ifBlank { "PDF" },
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleSmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp),
                         )
-                        Text(
-                            "전체 ${pageCount}쪽 · 연속 보기" +
-                                if (zoom > READER_ZOOM_MIN) " · ${readerZoomLabel(zoom)}" else "",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        if (pageCount > 0) {
+                            ViewerCompactPageNavigator(
+                                pageIndex = currentPage - 1,
+                                pageCount = pageCount,
+                                onPrevious = {
+                                    val target = continuousReaderScrollTarget(currentPage, -1, pageCount)
+                                    scope.launch { listState.animateScrollToItem(target) }
+                                },
+                                onNext = {
+                                    val target = continuousReaderScrollTarget(currentPage, 1, pageCount)
+                                    scope.launch { listState.animateScrollToItem(target) }
+                                },
+                                onOpenPages = { showPageJump = true },
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -574,30 +590,6 @@ fun ContinuousReaderScreen(
                 }
             }
 
-            // Compact floating navigation: it overlays the PDF instead of
-            // reserving a 56dp layout row, so the continuous reader uses the
-            // full available height. ‹/› scroll one page; the count opens the
-            // numeric jump dialog.
-            if (pageCount > 0) {
-                ViewerPageNavigator(
-                    pageIndex = currentPage - 1,
-                    pageCount = pageCount,
-                    onPrevious = {
-                        val target = continuousReaderScrollTarget(currentPage, -1, pageCount)
-                        scope.launch { listState.animateScrollToItem(target) }
-                    },
-                    onNext = {
-                        val target = continuousReaderScrollTarget(currentPage, 1, pageCount)
-                        scope.launch { listState.animateScrollToItem(target) }
-                    },
-                    onOpenPages = { showPageJump = true },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
-                        .padding(horizontal = 8.dp)
-                        .padding(bottom = 8.dp),
-                )
-            }
         }
     }
 
@@ -779,7 +771,15 @@ private fun ReaderPageCard(
                             val bitmap = state.bitmap
                             val src = cropSrc(bitmap)
                             Canvas(
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .semantics {
+                                        stateDescription = if (zoom > READER_ZOOM_MIN) {
+                                            "확대 ${readerZoomLabel(zoom)}"
+                                        } else {
+                                            "맞춤 배율"
+                                        }
+                                    },
                                 contentDescription = "${index + 1}쪽 페이지",
                             ) {
                                 drawIntoCanvas { canvas ->

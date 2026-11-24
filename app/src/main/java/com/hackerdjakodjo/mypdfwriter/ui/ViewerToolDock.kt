@@ -424,6 +424,70 @@ fun ViewerPageNavigator(
     }
 }
 
+/** Compact page navigator for the centre of a top app bar. */
+@Composable
+fun ViewerCompactPageNavigator(
+    pageIndex: Int,
+    pageCount: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onOpenPages: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val target = 40.dp
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+        tonalElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier.height(target),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = onPrevious,
+                enabled = pageIndex > 0,
+                modifier = Modifier.size(target),
+            ) {
+                Icon(
+                    Icons.Outlined.ChevronLeft,
+                    contentDescription = "이전 페이지",
+                    modifier = Modifier.size(17.dp),
+                )
+            }
+            Surface(
+                onClick = onOpenPages,
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                modifier = Modifier
+                    .heightIn(min = target)
+                    .semantics {
+                        contentDescription = viewerPagePillDescription(pageIndex, pageCount)
+                    },
+            ) {
+                Text(
+                    "${pageIndex + 1} / $pageCount",
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                )
+            }
+            IconButton(
+                onClick = onNext,
+                enabled = pageIndex < pageCount - 1,
+                modifier = Modifier.size(target),
+            ) {
+                Icon(
+                    Icons.Outlined.ChevronRight,
+                    contentDescription = "다음 페이지",
+                    modifier = Modifier.size(17.dp),
+                )
+            }
+        }
+    }
+}
+
 /**
  * The bottom page bar is a LAYOUT row below the page, never an overlay: it is
  * shown only in the full-screen reader with chrome visible. Split mode keeps
