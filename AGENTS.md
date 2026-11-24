@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.87`** — `versionCode = 96`.
-- **Next version is `0.8.88` — `versionCode = 97`.**
+- Current delivered version: **`0.8.88`** — `versionCode = 97`.
+- **Next version is `0.8.89` — `versionCode = 98`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.88` | 97 | 2026-11-25 | — | Three-agent E2E/logging pass: debug-only durable structured JSONL dev log (per-day files, 7-file rotation, 1 MB cap, session id, logcat + NoteTrace mirrors) installed at app start; `PdfFlowTrace` hooks on PDF open/annotate/history/page-edit/search/export/close; new instrumentation and JVM tests that assert the real-file flow is replayable from the on-disk log; documentation refreshed |
 | `0.8.87` | 96 | 2026-11-25 | — | Four-agent screenshot review: retired top coach card, constrained page-count pill from fillMaxSize to 128dp max, offset single-page canvas and continuous list below status bar + compact controls so the PDF top is not obscured; navigator width regression test |
 | `0.8.86` | 95 | 2026-11-24 | `v0.8.86` | Three-agent regression review: fixed Compose sibling z-order that let PDF content cover the transparent top overlay; explicit zIndex(1f) in single/continuous readers and real-touch next-page/page-jump E2E |
 | `0.8.85` | 94 | 2026-11-24 | `v0.8.85` | Removed full-width reserved PDF top bar: Scaffold topBar height is gone and back/title/page navigator/search/menu render as a transparent 32dp overlay above the PDF in single and continuous readers |
@@ -168,6 +169,18 @@ The phone SDK lives at `~/android-sdk`; the setup is documented in
 Release R8 builds are unsigned locally; download/sign with the real upload key
 outside this phone.
 
+After a device E2E run, the durable log can be pulled and replayed (debug build):
+
+```bash
+adb logcat -s PdfWriterDev
+adb exec-out run-as com.hackerdjakodjo.mypdfwriter.debug \
+  cat files/logs/devlog-$(date +%F).jsonl > devlog.jsonl
+# run only the E2E/logging classes
+adb shell am instrument -w \
+  -e class com.hackerdjakodjo.mypdfwriter.e2e.DevLogE2ETest,com.hackerdjakodjo.mypdfwriter.e2e.PdfFlowTraceE2ETest \
+  com.hackerdjakodjo.mypdfwriter.debug.test/androidx.test.runner.AndroidJUnitRunner
+```
+
 ## Agent/worktree rules
 
 - Independent features use separate git worktrees/branches and are merged into
@@ -179,6 +192,11 @@ outside this phone.
 - Remove merged worktrees and delete merged `work/*` branches after the push.
 - Every feature change must include a test when it is pure logic, and a build
   verification note in the final report.
+- For multi-agent E2E/logging work, land new-file owners first (log core, E2E
+  classes, docs) in separate worktrees. The integration owner edits shared files
+  (`MyPdfWriterApp`, `PdfViewModel`, `build.gradle.kts`, this contract) last and
+  runs the whole build/test matrix centrally; agents must not launch concurrent
+  Gradle builds on this phone.
 
 ## Code conventions
 
@@ -198,6 +216,35 @@ outside this phone.
   `assembleDebugAndroidTest` when a change affects note input.
 - Keep the existing PDF/OCR/bookmark/reflow/TTS/search/backup behavior intact
   when adding features.
+
+## Development logging (required for E2E work)
+
+Two local-only trace layers exist; both are **debug-only** and dependency-free
+so JVM tests can exercise them:
+
+- `debug/NoteTrace.kt` — bounded (800-entry) in-memory ring shown in the in-app
+  `노트 추적` debug sheet (`복사`/`비우기`).
+- `debug/DevLog.kt` + `debug/DevLogStore.kt` — durable structured log installed
+  once from `MyPdfWriterApp.onCreate()`. One JSON object per line in
+  `files/logs/devlog-YYYY-MM-DD.jsonl` (UTC day), 7 files retained, 1 MB per file
+  (`-partN` siblings), 1200-entry in-memory ring. Each event carries the
+  process `sessionId`, monotonic `seq`, epoch `ts` and ISO-8601 `iso` time,
+  `thread`, `component`, `event` and string `fields`. Every event is also
+  emitted as `Log.d` with tag `PdfWriterDev` and mirrored into `NoteTrace`, so
+  the same flow is readable from logcat, from disk and from the app. Nothing is
+  sent off-device.
+
+`pdf/PdfFlowTrace.kt` is the typed facade (component `PDF_FLOW`) for
+`open_start`, `open_done`, `open_fail`, `close`, `annotate`, `history`,
+`page_edit`, `search`, `export_start`, `export_done`. Add a call from
+`PdfViewModel` whenever a new user-visible PDF flow, failure or state
+transition is introduced, and extend the E2E assertions in
+`e2e/PdfFlowTraceE2ETest.kt` / `e2e/DevLogE2ETest.kt` in the same change. A flow
+change without a matching trace assertion is incomplete.
+
+**Privacy is hard:** never log PDF text, search queries, file names, paths,
+URIs or annotation text — only counts, opaque ids, kinds and timings.
+`DevLogStore.record()` must never throw; logging must never break the app.
 
 ## Release checklist
 

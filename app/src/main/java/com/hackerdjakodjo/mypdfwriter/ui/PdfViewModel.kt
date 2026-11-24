@@ -42,6 +42,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfCrop
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfExporter
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfFlowTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfLink
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfLinks
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfMetadata
@@ -383,6 +384,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         searchJob?.cancel()
         openJob?.cancel()
         val token = openGate.begin()
+        val openStartedAt = System.currentTimeMillis()
+        // Only the URI *scheme* is logged — never the path, file name or query.
+        PdfFlowTrace.openStart(
+            uriKind = uri.scheme ?: "none",
+            addToRecents = addToRecents,
+        )
         openJob = viewModelScope.launch {
             if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
             _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.rendering_page)) }
@@ -477,8 +484,11 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 renderPage(restoredPage, token)
+                PdfFlowTrace.openDone(docId, pages.size, System.currentTimeMillis() - openStartedAt)
             }.onFailure { error ->
                 if (!mayPublishOpenResult(isActive, token, openGate.current)) return@launch
+                // Only the exception type is logged; its message can contain a path.
+                PdfFlowTrace.openFailed(error::class.java.simpleName)
                 // A bad/truncated copy must not poison later opens in this session.
                 repo.invalidateSource(uri.toString())
                 if (keepViewerOnFailedOpen(_viewer.value?.docId, currentUriString)) {
@@ -533,6 +543,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         linkLoadJob?.cancel()
         saveReadingNow()
         persistNow()
+        val closingState = _viewer.value
+        if (closingState != null) {
+            PdfFlowTrace.close(closingState.docId, closingState.annotations.size)
+        }
         _viewer.value = null
         _pageBitmap.value = null
         _pageLinks.value = emptyList()
@@ -981,6 +995,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             durationMs = safeDuration,
         )
         mutateAnnotations { it + annotation }
+        PdfFlowTrace.annotate(
+            type = type.name,
+            annotationId = annotation.id,
+            page = annotation.page,
+            total = state.annotations.size + 1,
+        )
     }
 
     fun addText(point: NormalizedPoint, text: String) {
@@ -1288,6 +1308,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val previous = undoStack.removeLastOrNull() ?: return
         redoStack.addLast(snapshot(state))
         restoreSnapshot(state, previous)
+        PdfFlowTrace.history("undo", previous.annotations.lastOrNull()?.id, _viewer.value?.annotations?.size ?: 0)
     }
 
     fun redo() {
@@ -1295,6 +1316,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val next = redoStack.removeLastOrNull() ?: return
         undoStack.addLast(snapshot(state))
         restoreSnapshot(state, next)
+        PdfFlowTrace.history("redo", next.annotations.lastOrNull()?.id, _viewer.value?.annotations?.size ?: 0)
     }
 
     // ---------------------------------------------------------------- page layout
@@ -1366,7 +1388,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 aspectForPage = ::aspectForPage,
             )
         }
-        applyPageEdit(state, edit, "페이지를 회전하는 중…", memos)
+        applyPageEdit(state, edit, "페이지를 회전하는 중…", memos, kind = "rotate")
     }
 
     fun movePage(index: Int, direction: Int) {
@@ -1379,7 +1401,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val (edit, memos) = pageEditWithMemos(state) { base ->
             PageOps.move(base, indices, direction)
         }
-        applyPageEdit(state, edit, "페이지를 이동하는 중…", memos)
+        applyPageEdit(state, edit, "페이지를 이동하는 중…", memos, kind = "move")
     }
 
     fun deletePage(index: Int) {
@@ -1392,7 +1414,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val (edit, memos) = pageEditWithMemos(state) { base ->
             PageOps.delete(base, indices)
         }
-        applyPageEdit(state, edit, "페이지를 삭제하는 중…", memos)
+        applyPageEdit(state, edit, "페이지를 삭제하는 중…", memos, kind = "delete")
     }
 
     fun duplicatePages(indices: Set<Int>) {
@@ -1401,7 +1423,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val (edit, memos) = pageEditWithMemos(state) { base ->
             PageOps.duplicate(base, indices)
         }
-        applyPageEdit(state, edit, "페이지를 복제하는 중…", memos)
+        applyPageEdit(state, edit, "페이지를 복제하는 중…", memos, kind = "duplicate")
     }
 
     fun insertBlankPage(afterIndex: Int) {
@@ -1419,6 +1441,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             edit.copy(currentPage = (afterIndex + 1).coerceIn(0, state.pages.size + count - 1)),
             "빈 페이지를 추가하는 중…",
             memos,
+            kind = "insert",
         )
     }
 
@@ -1461,6 +1484,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         edit: PageEdit,
         label: String,
         memoCards: List<MemoCard> = state.memoCards,
+        kind: String = "edit",
     ) {
         if (edit.pages == state.pages &&
             edit.annotations == state.annotations &&
@@ -1471,6 +1495,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         ) {
             return
         }
+        PdfFlowTrace.pageEdit(kind, edit.pages.size, state.revision)
         pushHistory(state)
         // Publish the remapped bookmarks together with the page edit, then flush
         // the reading sidecar so close/reopen cannot restore a stale page index.
@@ -1538,6 +1563,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 if (sourcePage !in specs.indices) return@mapNotNull null
                 bookmark.copy(pageIndex = sourcePage)
             }.distinctBy { it.pageIndex }
+            PdfFlowTrace.pageEdit("reset", specs.size, state.revision)
             pushHistory(state)
             _bookmarks.value = bookmarks
             saveReadingNow()
@@ -2014,6 +2040,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             currentPageTextsKey = key
             val hits = SearchNavigation.hitsForPages(texts, trimmed)
             if (!mayPublishViewerResult(isActive, _viewer.value?.docId, state.docId)) return@launch
+            // Only the query *length* is logged — the query itself may be user data.
+            PdfFlowTrace.search(trimmed.length, hits.size)
             _viewer.update { current ->
                 current?.copy(
                     searchHits = hits,
@@ -2094,6 +2122,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             // indicator or success/failure message onto the newly active document.
             if (!mayPublishViewerResult(isActive, _viewer.value?.docId, snapshot.docId)) return@launch
             _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.preparing_export)) }
+            PdfFlowTrace.exportStart()
+            var exportedBytes = 0L
             runCatching {
                 withContext(Dispatchers.IO) {
                     resolver.openOutputStream(uri, "wt")?.use { output ->
@@ -2106,9 +2136,14 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                             pageCount = snapshot.state.pages.size,
                         )
                     } ?: error("출력 파일을 열 수 없습니다.")
+                    // Read back only the byte count for the dev log. Never log the URI.
+                    exportedBytes = runCatching {
+                        resolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: 0L
+                    }.getOrDefault(0L)
                 }
             }.onSuccess {
                 if (!mayPublishViewerResult(isActive, _viewer.value?.docId, snapshot.docId)) return@launch
+                PdfFlowTrace.exportDone(exportedBytes, flattened = true)
                 _viewer.update {
                     it?.copy(busy = false, busyLabel = null, message = text(R.string.export_done))
                 }
