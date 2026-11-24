@@ -195,4 +195,22 @@ class ReaderPanTest {
         assertFloat("headroom re-application preserves the true left edge",
             0f, readerPanWithHeadroom(0f, 2f, 2f, 500f, 1000f))
     }
+
+    @Test
+    fun `drag travel accumulated before the zoom lands still reaches pan zero`() {
+        // v0.8.74 handoff: when a zoom commits mid-drag, the travel gathered in
+        // the fit-zoom branch is applied to pan instead of being thrown away.
+        // A right-edge focal seeds pan near maxPan — the early travel must be
+        // enough to reach the page's true left edge in the SAME gesture.
+        val width = 1000f
+        for (focal in listOf(500f, 750f, 850f, 1000f)) {
+            val seeded = readerPanWithHeadroom(0f, 1f, 2f, focal, width)
+            val preZoomTravel = width * 0.95f
+            val afterHandoff = panReaderAfterDrag(seeded, preZoomTravel, 2f, width)
+            assertFloat(
+                "pre-zoom travel reaches pan 0 for focal $focal",
+                0f, afterHandoff,
+            )
+        }
+    }
 }

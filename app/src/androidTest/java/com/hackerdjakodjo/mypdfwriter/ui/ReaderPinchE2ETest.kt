@@ -686,4 +686,54 @@ class ReaderPinchE2ETest {
             pageChanges.isEmpty(),
         )
     }
+
+    @Test
+    fun doubleTapThenImmediateRightDragReachesTrueLeftEdgeWithoutTurningPage() {
+        // Multi-agent regression: the zoom can land a frame AFTER the follow-up
+        // drag starts (the tap detector commits on its own schedule). The early
+        // drag frames used to be spent in the fit-zoom page-swipe branch, so the
+        // travel was discarded and the page stayed pinned at the zoom focal —
+        // exactly the "cannot go further left than where zoom started" report.
+        // A right-edge focal is the worst case: pan is seeded near maxPan.
+        val pageChanges = Collections.synchronizedList(mutableListOf<Int>())
+        composeRule.setContent {
+            ContinuousReaderScreen(
+                title = "zoom-handoff",
+                pageCount = 3,
+                initialPage = 0,
+                loadPage = { _, _ -> Bitmap.createBitmap(80, 112, Bitmap.Config.ARGB_8888) },
+                onBack = {},
+                onOpenPage = {},
+                onPageChange = { pageChanges.add(it) },
+            )
+        }
+        composeRule.waitForIdle()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        val fitLeft = page.getUnclippedBoundsInRoot().left
+        val viewport = viewportWidthPx()
+
+        // Double tap near the right edge, then push right immediately — no idle
+        // wait between the two blocks, so the zoom may land mid-drag.
+        composeRule.onRoot().performTouchInput {
+            doubleClick(Offset(width * 0.85f, height * 0.6f))
+        }
+        composeRule.onRoot().performTouchInput {
+            down(0, center)
+            moveTo(0, center + Offset(viewport * 0.95f, 0f), delayMillis = 16)
+            up(0)
+        }
+        composeRule.waitForIdle()
+
+        assertTrue("double tap must zoom", !isFitLabel())
+        assertTrue(
+            "a right drag after zoom must never turn the page: $pageChanges",
+            pageChanges.isEmpty(),
+        )
+        val atEdge = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "the whole rightward drag must reach the page's true left edge; " +
+                "fitLeft=$fitLeft after=${atEdge.left}",
+            atEdge.left >= fitLeft - 8.dp,
+        )
+    }
 }
