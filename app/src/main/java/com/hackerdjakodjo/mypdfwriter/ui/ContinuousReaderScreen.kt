@@ -12,11 +12,11 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
@@ -68,6 +67,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -76,7 +76,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -449,34 +449,37 @@ fun ContinuousReaderScreen(
                                     }
                                 }
                             }
-                            // Dedicated one-finger pan. The standard detector
-                            // owns slop, pointer-id tracking and consumption, so
-                            // a rightward drag after zoom cannot be lost to a
-                            // stale manual state machine. It consumes only
-                            // horizontal movement after slop; vertical drags
-                            // still reach the LazyColumn's native fling.
+                            // Dedicated one-finger pan. The orientation-lock
+                            // detector retries slop detection after another node
+                            // consumes the gesture, so lifting one finger from a
+                            // pinch hands the retained finger back to panning
+                            // without waiting for every pointer to rise. Vertical
+                            // slop still belongs to the LazyColumn's native fling.
                             .pointerInput(Unit) {
-                                detectHorizontalDragGestures { change, dragAmount ->
-                                    if (gestureZoom.floatValue > READER_ZOOM_MIN) {
-                                        change.consume()
-                                        val width = listState.layoutInfo.viewportSize.width
-                                            .toFloat()
-                                        val before = panX.floatValue
-                                        panX.floatValue = panReaderAfterDrag(
-                                            before,
-                                            dragAmount,
-                                            gestureZoom.floatValue,
-                                            width,
-                                        )
-                                        suppressPageTap.value = true
-                                        PdfContinuousTrace.pan(
-                                            "move", -1L, dragAmount, dragAmount,
-                                            before, panX.floatValue,
-                                            gestureZoom.floatValue,
-                                            readerMaxPanPx(width, gestureZoom.floatValue),
-                                        )
-                                    }
-                                }
+                                detectDragGestures(
+                                    orientationLock = Orientation.Horizontal,
+                                    onDrag = { change, dragAmount ->
+                                        if (gestureZoom.floatValue > READER_ZOOM_MIN) {
+                                            val width = listState.layoutInfo.viewportSize.width
+                                                .toFloat()
+                                            val before = panX.floatValue
+                                            panX.floatValue = panReaderAfterDrag(
+                                                before,
+                                                dragAmount.x,
+                                                gestureZoom.floatValue,
+                                                width,
+                                            )
+                                            suppressPageTap.value = true
+                                            PdfContinuousTrace.pan(
+                                                "move", change.id.value,
+                                                dragAmount.x, dragAmount.x,
+                                                before, panX.floatValue,
+                                                gestureZoom.floatValue,
+                                                readerMaxPanPx(width, gestureZoom.floatValue),
+                                            )
+                                        }
+                                    },
+                                )
                             },
                     ) {
                         LazyColumn(
@@ -687,49 +690,30 @@ private fun ReaderPageCard(
     val currentSuppressTap by rememberUpdatedState(suppressTap)
     val currentOnToggleZoom by rememberUpdatedState(onToggleZoom)
 
-    BoxWithConstraints(
+    // Measure and place the zoomed page explicitly. requiredWidth inside a
+    // viewport-constrained Box is coerced and then centered by Compose, which
+    // put the real page origin at -(pageWidth-viewportWidth)/2 - pan. At pan 0
+    // the true left edge was still off-screen, so the left content could not
+    // be reached no matter how far the user dragged. This Layout owns both the
+    // overflow width and its placement: page x = -pan, exactly matching the
+    // pan math in ReaderZoom.kt.
+    Layout(
         modifier = Modifier
             .fillMaxWidth()
-            .clipToBounds(),
-    ) {
-        val pageWidth = maxWidth * zoom
-        val maxPan = with(LocalDensity.current) {
-            readerMaxPanPx(maxWidth.toPx(), zoom)
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .pointerInput(index, canOpenPage, onOpenPage) {
-                    detectTapGestures(
-                        onTap = {
-                            if (canOpenPage && !currentSuppressTap()) onOpenPage(index)
-                        },
-                        // The detector sits on the full-width, unshifted parent
-                        // Box, so the tap offset is already in viewport x: the
-                        // same space panX and pinch focal points use.
-                        onDoubleTap = { offset -> currentOnToggleZoom(offset.x) },
-                    )
-                },
-            contentAlignment = Alignment.CenterStart,
-        ) {
+            .clipToBounds()
+            .pointerInput(index, canOpenPage, onOpenPage) {
+                detectTapGestures(
+                    onTap = {
+                        if (canOpenPage && !currentSuppressTap()) onOpenPage(index)
+                    },
+                    // The detector is on the viewport-sized Layout root, so
+                    // tap offsets are already in the same x space as panX.
+                    onDoubleTap = { offset -> currentOnToggleZoom(offset.x) },
+                )
+            },
+        content = {
             Surface(
-                // requiredWidth, not width: width is coerced to the parent's
-                // max width, which made zoom change the percentage and bitmap
-                // while the page stayed fit-to-width. requiredWidth lets the
-                // page measure past the viewport; the outer box clips it and
-                // the shared pan offset reveals the rest.
-                modifier = Modifier
-                    .requiredWidth(pageWidth)
-                    // Read pan state during layout, not composition: every
-                    // pan frame moves all visible pages without recomposing
-                    // their bitmaps or semantics.
-                    .offset {
-                        IntOffset(
-                            -panX().coerceIn(0f, maxPan).roundToInt(),
-                            0,
-                        )
-                    }
-                    .aspectRatio(aspectRatio),
+                modifier = Modifier.fillMaxSize(),
                 shape = RoundedCornerShape(2.dp),
                 color = Color.White,
                 border = BorderStroke(
@@ -773,6 +757,24 @@ private fun ReaderPageCard(
                     }
                 }
             }
+        },
+    ) { measurables, constraints ->
+        val viewportWidth = constraints.maxWidth.coerceAtLeast(1)
+        val pageWidth = readerPageWidthPx(viewportWidth.toFloat(), zoom)
+            .toInt()
+            .coerceAtLeast(1)
+        val pageHeight = (pageWidth.toFloat() / aspectRatio)
+            .roundToInt()
+            .coerceAtLeast(1)
+        val maxPan = readerMaxPanPx(viewportWidth.toFloat(), zoom)
+        val page = measurables.first().measure(
+            Constraints.fixed(pageWidth, pageHeight),
+        )
+        layout(viewportWidth, pageHeight) {
+            // Read pan state during placement, not composition: every pan
+            // frame re-places the page without recomposing its bitmap.
+            val x = -panX().coerceIn(0f, maxPan).roundToInt()
+            page.place(x, 0)
         }
     }
 }

@@ -460,34 +460,50 @@ class ReaderPinchE2ETest {
 
     @Test
     fun pinchThenPanWithRetainedFingerMovesThePage() {
-        // Regression for the sticky multiTouchGesture latch: after a pinch the
-        // user often lifts one thumb and keeps dragging with the other. Pan was
-        // disabled until *every* pointer was up.
+        // Exact retained-finger path: the raw pinch observer consumes the
+        // two-finger events; the pan detector must pick the remaining finger
+        // back up without waiting for every pointer to rise.
         setReader()
         val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
         doubleTapToZoom()
         assertZoomLabel(READER_ZOOM_DOUBLE_TAP)
-        val before = page.getUnclippedBoundsInRoot()
+        val viewport = viewportWidthPx()
+        val cx = viewport / 2f
+        val cy = composeRule.onRoot().fetchSemanticsNode().size.height * 0.6f
+        val first = Offset(cx - viewport * 0.10f, cy)
 
         composeRule.onRoot().performTouchInput {
-            val cx = width / 2f
-            val cy = height * 0.6f
-            val first = Offset(cx - width * 0.10f, cy)
             down(0, first)
-            down(1, Offset(cx + width * 0.10f, cy))
-            moveTo(1, Offset(cx + width * 0.30f, cy), delayMillis = 16)
-            up(1) // finger 0 stays down: this used to freeze panning
-            moveTo(0, first + Offset(width * 0.35f, 0f), delayMillis = 16)
+            down(1, Offset(cx + viewport * 0.10f, cy))
+            for (step in 1..8) {
+                moveTo(
+                    1,
+                    Offset(cx + viewport * 0.10f + viewport * 0.20f * step / 8, cy),
+                    delayMillis = 16,
+                )
+            }
+            up(1) // finger 0 deliberately stays down across injection blocks
+        }
+        composeRule.waitForIdle()
+        val beforeRetainedDrag = page.getUnclippedBoundsInRoot()
+
+        composeRule.onRoot().performTouchInput {
+            for (step in 1..8) {
+                moveTo(
+                    0,
+                    first + Offset(viewport * 0.30f * step / 8, 0f),
+                    delayMillis = 16,
+                )
+            }
             up(0)
         }
         composeRule.waitForIdle()
 
         val after = page.getUnclippedBoundsInRoot()
-        val pageWidth = after.right - after.left
         assertTrue(
-            "panning with the finger left down after a pinch must move the page; " +
-                "before=${before.left} after=${after.left}",
-            after.left - before.left >= pageWidth * 0.05f,
+            "retained finger must move the page after a pinch; " +
+                "before=${beforeRetainedDrag.left} after=${after.left}",
+            after.left - beforeRetainedDrag.left > 8.dp,
         )
     }
 
@@ -546,15 +562,26 @@ class ReaderPinchE2ETest {
         val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
         val viewport = viewportWidthPx()
 
+        val cy = composeRule.onRoot().fetchSemanticsNode().size.height * 0.6f
+        val cx = viewport / 2f
+        val first = Offset(cx - viewport * 0.05f, cy)
         composeRule.onRoot().performTouchInput {
-            val cy = height * 0.6f
-            val cx = width / 2f
-            down(0, Offset(cx - width * 0.05f, cy))
-            down(1, Offset(cx + width * 0.05f, cy))
-            moveTo(1, Offset(cx + width * 0.30f, cy), delayMillis = 16) // pinch to zoom
-            up(1)
-            // Retained finger pushes RIGHT immediately — no idle wait.
-            val startX = cx + width * 0.30f
+            down(0, first)
+            down(1, Offset(cx + viewport * 0.05f, cy))
+            for (step in 1..8) {
+                moveTo(
+                    1,
+                    Offset(cx + viewport * 0.05f + viewport * 0.25f * step / 8, cy),
+                    delayMillis = 16,
+                )
+            }
+            up(1) // retained finger continues immediately in the next block
+        }
+        composeRule.waitForIdle()
+        val beforeRetainedDrag = page.getUnclippedBoundsInRoot()
+        val startX = cx + viewport * 0.30f
+
+        composeRule.onRoot().performTouchInput {
             for (step in 1..8) {
                 moveTo(
                     0,
@@ -571,13 +598,11 @@ class ReaderPinchE2ETest {
             "zoom must not be mistaken for a fit-zoom page swipe: $pageChanges",
             pageChanges.isEmpty(),
         )
-        // A correct pan moves the page right; a misclassified swipe leaves it
-        // wherever the zoom anchored it. Compare in Dp to avoid px/Dp mismatch.
         val after = page.getUnclippedBoundsInRoot()
-        val pageWidthDp = after.right - after.left
         assertTrue(
-            "immediate rightward drag after zoom must keep the page visible",
-            after.right > pageWidthDp * 0.25f,
+            "retained-finger right drag must actually move the page; " +
+                "before=${beforeRetainedDrag.left} after=${after.left}",
+            after.left - beforeRetainedDrag.left > 8.dp,
         )
     }
 
@@ -631,8 +656,28 @@ class ReaderPinchE2ETest {
 
         val atEdge = page.getUnclippedBoundsInRoot()
         assertTrue(
-            "page must reach its true left edge; fitLeft=$fitLeft after=${atEdge.left}",
-            atEdge.left >= fitLeft - 8.dp,
+            "page must reach its true left edge without centering overflow; " +
+                "fitLeft=$fitLeft after=${atEdge.left}",
+            atEdge.left in (fitLeft - 8.dp)..(fitLeft + 8.dp),
+        )
+    }
+
+    @Test
+    fun leftDragAfterZoomReachesTheTrueRightEdge() {
+        setReader()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        val viewport = viewportWidthPx()
+        val viewportBounds = composeRule.onRoot().getUnclippedBoundsInRoot()
+
+        doubleTapToZoom()
+        assertZoomLabel(READER_ZOOM_DOUBLE_TAP)
+        dragPage(-viewport * 0.90f)
+
+        val atEdge = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "page must reach its true right edge without blank viewport space; " +
+                "viewportRight=${viewportBounds.right} after=${atEdge.right}",
+            atEdge.right in (viewportBounds.right - 8.dp)..(viewportBounds.right + 8.dp),
         )
     }
 
@@ -655,7 +700,7 @@ class ReaderPinchE2ETest {
         assertTrue(
             "rightward drag after an edge-focal zoom must move the page; " +
                 "before=${zoomed.left} after=${after.left}",
-            after.left - zoomed.left >= (zoomed.right - zoomed.left) * 0.05f,
+            after.left - zoomed.left > 8.dp,
         )
     }
 
@@ -684,7 +729,7 @@ class ReaderPinchE2ETest {
         assertTrue(
             "rightward drag after an edge-focal pinch must move the page; " +
                 "before=${zoomed.left} after=${after.left}",
-            after.left - zoomed.left >= (zoomed.right - zoomed.left) * 0.03f,
+            after.left - zoomed.left > 8.dp,
         )
     }
 

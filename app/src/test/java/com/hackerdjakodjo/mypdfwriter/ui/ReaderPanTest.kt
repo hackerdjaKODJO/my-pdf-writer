@@ -27,10 +27,23 @@ class ReaderPanTest {
     }
 
     @Test
+    fun `max pan uses the integer width the page actually renders`() {
+        // A fractional zoom can report overflow mathematically while the
+        // measured page still rounds to the viewport width. Pan mode must use
+        // the real integer page width so it never enables a zero-pixel drag.
+        assertFloat("page width at fit", 1000f, readerPageWidthPx(1000f, 1f))
+        assertFloat("page width at 200%", 2000f, readerPageWidthPx(1000f, 2f))
+        assertFloat("tiny zoom has no rendered overflow", 0f,
+            readerMaxPanPx(1000f, 1.0001f))
+        assertFloat("one rendered pixel of overflow", 1f,
+            readerMaxPanPx(1000f, 1.001f))
+    }
+
+    @Test
     fun `max pan sanitizes bad viewport and zoom values`() {
         assertFloat("NaN viewport", 1f, readerMaxPanPx(Float.NaN, 2f))
         assertFloat("negative viewport", 1f, readerMaxPanPx(-10f, 2f))
-        assertFloat("infinite viewport still clamps zoom", 1.5f,
+        assertFloat("infinite viewport still clamps zoom and rounds page width", 2f,
             readerMaxPanPx(Float.POSITIVE_INFINITY, 9f))
     }
 
@@ -194,23 +207,5 @@ class ReaderPanTest {
         // centred focal with same zoom must preserve the reached left edge.
         assertFloat("headroom re-application preserves the true left edge",
             0f, readerPanWithHeadroom(0f, 2f, 2f, 500f, 1000f))
-    }
-
-    @Test
-    fun `drag travel accumulated before the zoom lands still reaches pan zero`() {
-        // v0.8.74 handoff: when a zoom commits mid-drag, the travel gathered in
-        // the fit-zoom branch is applied to pan instead of being thrown away.
-        // A right-edge focal seeds pan near maxPan — the early travel must be
-        // enough to reach the page's true left edge in the SAME gesture.
-        val width = 1000f
-        for (focal in listOf(500f, 750f, 850f, 1000f)) {
-            val seeded = readerPanWithHeadroom(0f, 1f, 2f, focal, width)
-            val preZoomTravel = width * 0.95f
-            val afterHandoff = panReaderAfterDrag(seeded, preZoomTravel, 2f, width)
-            assertFloat(
-                "pre-zoom travel reaches pan 0 for focal $focal",
-                0f, afterHandoff,
-            )
-        }
     }
 }

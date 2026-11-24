@@ -69,9 +69,17 @@ fun zoomFromPinch(
  * (instead of duplicating it in the gesture observer and the page layout) makes
  * it impossible for the stored pan and the displayed offset to disagree.
  */
+fun readerPageWidthPx(viewportWidthPx: Float, zoom: Float): Float {
+    val width = if (viewportWidthPx.isFinite()) viewportWidthPx.coerceAtLeast(1f) else 1f
+    return (width * clampReaderZoom(zoom)).roundToInt().coerceAtLeast(1).toFloat()
+}
+
 fun readerMaxPanPx(viewportWidthPx: Float, zoom: Float): Float {
     val width = if (viewportWidthPx.isFinite()) viewportWidthPx.coerceAtLeast(1f) else 1f
-    return (width * (clampReaderZoom(zoom) - READER_ZOOM_MIN)).coerceAtLeast(0f)
+    // Use the same integer width the page layout actually measures. A tiny
+    // zoom such as 1.0001 can otherwise report positive pan while the rendered
+    // page still rounds to the viewport width, producing a zero-pixel drag.
+    return (readerPageWidthPx(width, zoom) - width).coerceAtLeast(0f)
 }
 
 /**
