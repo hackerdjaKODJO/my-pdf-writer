@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -227,7 +228,15 @@ fun ContinuousReaderScreen(
     }
 
     Scaffold(
-        topBar = {
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)),
+        ) {
             PdfCompactTopBar(
                 title = title.ifBlank { "PDF" },
                 pageIndex = currentPage - 1,
@@ -242,17 +251,8 @@ fun ContinuousReaderScreen(
                     scope.launch { listState.animateScrollToItem(target) }
                 },
                 onOpenPages = { showPageJump = true },
-                containerColor = MaterialTheme.colorScheme.background,
+                modifier = Modifier.align(Alignment.TopCenter),
             )
-        },
-        containerColor = MaterialTheme.colorScheme.background,
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)),
-        ) {
             Box(Modifier.fillMaxSize()) {
                 if (pageCount <= 0) {
                     EmptyReader(onBack = onBack)

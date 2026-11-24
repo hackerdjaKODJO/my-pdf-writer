@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -1041,22 +1042,7 @@ fun ViewerScreen(
     }
 
     Scaffold(
-        topBar = {
-            if (chromePolicy.showTopAppBar) {
-                PdfCompactTopBar(
-                    title = state.docName,
-                    pageIndex = state.pageIndex,
-                    pageCount = state.pageCount,
-                    onBack = handleViewerBack,
-                    onPrevious = vm::previousPage,
-                    onNext = vm::nextPage,
-                    onOpenPages = { showPages = true },
-                    onTitleClick = { openRecentDocs() },
-                    onSearch = { showSearch = true },
-                    onOpenMenu = { showHub = true },
-                )
-            }
-        },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (chromePolicy.showBottomBar) {
                 Surface(tonalElevation = 3.dp) {
@@ -1133,6 +1119,21 @@ fun ViewerScreen(
                     }
                 },
         ) {
+            if (chromePolicy.showTopAppBar) {
+                PdfCompactTopBar(
+                    title = state.docName,
+                    pageIndex = state.pageIndex,
+                    pageCount = state.pageCount,
+                    onBack = handleViewerBack,
+                    onPrevious = vm::previousPage,
+                    onNext = vm::nextPage,
+                    onOpenPages = { showPages = true },
+                    onTitleClick = { openRecentDocs() },
+                    onSearch = { showSearch = true },
+                    onOpenMenu = { showHub = true },
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
+            }
             // Split mode removes the app bar and bottom dock from layout, so the
             // PDF starts at the top safe edge and the pane gets the full rest of
             // the screen. PDF controls float inside the strip instead.

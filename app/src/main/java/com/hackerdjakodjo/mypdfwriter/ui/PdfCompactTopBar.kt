@@ -15,12 +15,10 @@ import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -30,7 +28,7 @@ import androidx.compose.ui.unit.dp
 internal const val PDF_TOP_BAR_ROW_TAG = "pdf_top_bar_row"
 
 /**
- * Fixed-height PDF title bar used by single-page and continuous readers.
+ * Transparent fixed-height overlay used by single-page and continuous readers.
  *
  * Material TopAppBar keeps internal title/icon minimums and vertical padding
  * even when expandedHeight is reduced. This row owns the exact 32dp content
@@ -46,22 +44,19 @@ fun PdfCompactTopBar(
     onNext: () -> Unit,
     onOpenPages: () -> Unit,
     modifier: Modifier = Modifier,
-    containerColor: Color = MaterialTheme.colorScheme.surface,
     onTitleClick: (() -> Unit)? = null,
     onSearch: (() -> Unit)? = null,
     onOpenMenu: (() -> Unit)? = null,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth().statusBarsPadding(),
-        color = containerColor,
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 2.dp)
+            .height(PDF_COMPACT_TOP_BAR_HEIGHT_DP.dp)
+            .testTag(PDF_TOP_BAR_ROW_TAG),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(PDF_COMPACT_TOP_BAR_HEIGHT_DP.dp)
-                .testTag(PDF_TOP_BAR_ROW_TAG),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
             PdfCompactIconButton(
                 icon = Icons.AutoMirrored.Outlined.ArrowBack,
                 contentDescription = "뒤로",
@@ -117,7 +112,6 @@ fun PdfCompactTopBar(
                 )
             }
         }
-    }
 }
 
 @Composable

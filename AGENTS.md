@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.84`** — `versionCode = 93`.
-- **Next version is `0.8.85` — `versionCode = 94`.**
+- Current delivered version: **`0.8.85`** — `versionCode = 94`.
+- **Next version is `0.8.86` — `versionCode = 95`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,7 +54,8 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
-| `0.8.84` | 93 | 2026-11-24 | — | Four-agent residual-gap audit: title row/navigator/count are flush at 32dp, clickable numeric pill no longer has Material's hidden 48dp minimum, and single-page PDF is top-anchored when it fits vertically with drawing/selection/memo coordinates synchronized; geometry E2E + anchor JVM tests |
+| `0.8.85` | 94 | 2026-11-24 | — | Removed full-width reserved PDF top bar: Scaffold topBar height is gone and back/title/page navigator/search/menu render as a transparent 32dp overlay above the PDF in single and continuous readers |
+| `0.8.84` | 93 | 2026-11-24 | `v0.8.84` | Four-agent residual-gap audit: title row/navigator/count are flush at 32dp, clickable numeric pill no longer has Material's hidden 48dp minimum, and single-page PDF is top-anchored when it fits vertically with drawing/selection/memo coordinates synchronized; geometry E2E + anchor JVM tests |
 | `0.8.83` | 92 | 2026-11-24 | `v0.8.83` | Screenshot-driven fix: replaced Material TopAppBar with a fixed status-bar + 42dp Row, shrank page navigator to 30dp and action icons to 36dp, eliminating residual white space and giving the document title more width; shared by single/continuous readers |
 | `0.8.82` | 91 | 2026-11-24 | `v0.8.82` | Reduced top app bar from 64dp to 48dp and compact page navigator from 40dp to 34dp with smaller icons/text/padding, removing excess white space below the page count; E2E asserts compact navigator height |
 | `0.8.81` | 90 | 2026-11-24 | `v0.8.81` | Shared single/continuous top-bar layout: smaller document title, compact page navigator centred in the title bar, removed bottom navigator, position-percent text/progress bar and continuous zoom subtitle; accessibility state description + E2E retained |
