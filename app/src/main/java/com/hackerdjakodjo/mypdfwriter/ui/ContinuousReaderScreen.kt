@@ -3,7 +3,6 @@ package com.hackerdjakodjo.mypdfwriter.ui
 import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.Rect
-import com.hackerdjakodjo.mypdfwriter.BuildConfig
 import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
 import com.hackerdjakodjo.mypdfwriter.pdf.CropPixelRect
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfContinuousTrace
@@ -13,6 +12,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -207,23 +207,11 @@ fun ContinuousReaderScreen(
         }
     }
 
-    // True only while the companion observer (below) sees 2+ pointers down.
-    // detectTransformGestures also fires for one-finger drags, so this gate is
-    // what keeps zoom two-finger-only. It also suspends the LazyColumn scroller
-    // and the per-page horizontal-pan detectors for the duration of a pinch so
-    // they cannot consume the first pointer away from the transform detector.
-    var pinchActive by remember { mutableStateOf(false) }
-
     // Set for the duration of a one-finger pan. The page tap detector reads it
     // at tap time so a horizontal pan cannot also open the page. Reset on the
     // next distinct pointer-down; this avoids consuming the up event and keeps
     // the LazyColumn's native vertical fling intact on diagonal drags.
     val suppressPageTap = remember { mutableStateOf(false) }
-
-    // Debug-only observability: `lastRender` is written from the render
-    // coroutine with the *real* bitmap size, so the HUD can tell a computed
-    // scale from a page that was really re-rendered at that scale.
-    var lastRender by remember { mutableStateOf<ReaderRenderInfo?>(null) }
 
     val currentPage by remember(listState, pageCount) {
         derivedStateOf {
@@ -285,11 +273,13 @@ fun ContinuousReaderScreen(
                 if (pageCount <= 0) {
                     EmptyReader(onBack = onBack)
                 } else {
-                    // One raw Initial-pass observer owns the document-wide
-                    // pinch zoom and one-finger horizontal pan. It deliberately
-                    // never consumes single-finger events: the LazyColumn keeps
-                    // its native vertical scroll/fling, and a diagonal drag can
-                    // pan horizontally while the list scrolls vertically.
+                    // One raw Initial-pass observer owns pinch zoom and fit-zoom
+                    // page-swipe detection. One-finger panning is handled by the
+                    // dedicated horizontal-drag detector below: routing pan
+                    // through this manual state machine proved unreliable on a
+                    // real device (a right drag after zoom could do nothing at
+                    // all), while the standard detector consumes only horizontal
+                    // movement and leaves vertical scrolling to the LazyColumn.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -305,24 +295,11 @@ fun ContinuousReaderScreen(
                                     val pressedX = HashMap<Long, Float>()
                                     var lastTracedRenderZoom = readerRenderZoom(gestureZoom.floatValue)
                                     var pinchWasActive = false
-                                    var panPointerId = -1L
-                                    var panTotalX = 0f
-                                    var panStarted = false
                                     // Fit-zoom page swipe: observe only, never consume.
                                     var swipePointerId = -1L
                                     var swipeTotalX = 0f
                                     var swipeTotalY = 0f
                                     var swipeDelivered = false
-                                    // A zoom can land WHILE a finger is already
-                                    // dragging: detectTapGestures.onDoubleTap fires
-                                    // only after the double-tap timeout (~300ms), and
-                                    // a pinch can resolve while a finger is still
-                                    // moving. The routing decision is therefore
-                                    // tracked per gesture, not re-read per frame, so
-                                    // the in-flight drag is handed over to panning
-                                    // instead of being discarded as a page swipe.
-                                    var gestureZoomed = gestureZoom.floatValue > READER_ZOOM_MIN
-                                    var zoomLandedMidGesture = false
                                     while (true) {
                                         val event = awaitPointerEvent(PointerEventPass.Initial)
                                         event.changes.forEach { change ->
@@ -333,18 +310,11 @@ fun ContinuousReaderScreen(
                                                     gate.onDown(id)
                                                     if (seen.size == 1) {
                                                         suppressPageTap.value = false
-                                                        // A new gesture must not inherit pan or
-                                                        // swipe state from a previous one (a missed
-                                                        // up could otherwise pin the next drag).
-                                                        panPointerId = -1L
-                                                        panTotalX = 0f
-                                                        panStarted = false
+                                                        // A new gesture must not inherit
+                                                        // swipe state from a previous one.
                                                         swipeDelivered = false
                                                         swipeTotalX = 0f
                                                         swipeTotalY = 0f
-                                                        gestureZoomed =
-                                                            gestureZoom.floatValue > READER_ZOOM_MIN
-                                                        zoomLandedMidGesture = false
                                                     }
                                                 }
                                             } else if (seen.remove(id)) {
@@ -354,15 +324,12 @@ fun ContinuousReaderScreen(
                                         }
 
                                         if (gate.twoFinger) {
-                                            pinchActive = true
-                                            if (!pinchWasActive) {
+                                                if (!pinchWasActive) {
                                                 pinchWasActive = true
-                                                // A second finger invalidates any one-finger
-                                                // pan tracking; a retained finger must start
-                                                // a fresh drag once the pinch is over.
-                                                panPointerId = -1L
-                                                panTotalX = 0f
-                                                panStarted = false
+                                                // A second finger starts a zoom; the
+                                                // horizontal-drag detector is gated on
+                                                // two-finger events being consumed, so it
+                                                // stays out of the way during a pinch.
                                                 swipeDelivered = false
                                                 swipeTotalX = 0f
                                                 swipeTotalY = 0f
@@ -408,130 +375,14 @@ fun ContinuousReaderScreen(
                                                 if (change.pressed) change.consume()
                                             }
                                         } else {
-                                            if (pinchWasActive) {
-                                                // The pinch ended (one finger lifted). Do
-                                                // not keep pan disabled just because a
-                                                // pointer from the pinch is still down:
-                                                // start a clean pan with the retained finger.
-                                                panPointerId = -1L
-                                                panTotalX = 0f
-                                                panStarted = false
-                                                // The pinch may have zoomed. From here the
-                                                // retained finger is panning the zoomed page.
-                                                gestureZoomed =
-                                                    gestureZoom.floatValue > READER_ZOOM_MIN
-                                                zoomLandedMidGesture = gestureZoomed
-                                            }
                                             pinchWasActive = false
-                                            pinchActive = false
 
-                                            val zoomedNow =
-                                                gestureZoom.floatValue > READER_ZOOM_MIN
-                                            if (zoomedNow && !gestureZoomed) {
-                                                // Zoom landed mid-drag: double tap's tap
-                                                // detector commits on a later frame, or the
-                                                // final pinch frame resolved while a finger
-                                                // was already moving. Carry the travel made
-                                                // so far into pan. Otherwise those frames go
-                                                // to the fit-zoom page-swipe branch, the page
-                                                // stays pinned at the zoom-start focal and
-                                                // the left part of the page is unreachable.
-                                                zoomLandedMidGesture = true
-                                                val pressed = event.changes
-                                                    .firstOrNull { it.pressed }
-                                                panPointerId = pressed?.id?.value ?: -1L
-                                                // Apply the pre-zoom travel to the pan
-                                                // as well, so a rightward push that
-                                                // started before the zoom landed can
-                                                // reach the page's true left edge in
-                                                // the SAME gesture.
-                                                if (swipeTotalX != 0f) {
-                                                    panX.floatValue = panReaderAfterDrag(
-                                                        panX.floatValue,
-                                                        swipeTotalX,
-                                                        gestureZoom.floatValue,
-                                                        listState.layoutInfo.viewportSize.width
-                                                            .toFloat(),
-                                                    )
-                                                }
-                                                panTotalX = swipeTotalX
-                                                panStarted = abs(swipeTotalX) > touchSlop
-                                                swipeDelivered = false
-                                                swipeTotalX = 0f
-                                                swipeTotalY = 0f
-                                                suppressPageTap.value = true
-                                                PdfContinuousTrace.pan(
-                                                    "zoomHandoff", panPointerId, 0f, panTotalX,
-                                                    panX.floatValue, panX.floatValue,
-                                                    gestureZoom.floatValue,
-                                                    readerMaxPanPx(
-                                                        listState.layoutInfo.viewportSize.width
-                                                            .toFloat(),
-                                                        gestureZoom.floatValue,
-                                                    ),
-                                                )
-                                            }
-                                            gestureZoomed = zoomedNow || zoomLandedMidGesture
-
-                                            // One-finger horizontal pan is observed but
-                                            // not consumed. Vertical movement continues to
-                                            // the LazyColumn, so diagonal drags work.
-                                            // Sticky for the rest of the gesture: once zoom
-                                            // has landed, a drag that started at fit zoom
-                                            // keeps panning instead of flipping back to the
-                                            // page-swipe branch.
-                                            if (gestureZoomed) {
-                                                val change = event.changes.firstOrNull {
-                                                    it.pressed
-                                                }
-                                                if (change != null) {
-                                                    val id = change.id.value
-                                                    if (panPointerId != id) {
-                                                        panPointerId = id
-                                                        panTotalX = 0f
-                                                        panStarted = false
-                                                    }
-                                                    val deltaX = change.position.x -
-                                                        change.previousPosition.x
-                                                    if (deltaX != 0f) {
-                                                        panTotalX += deltaX
-                                                        val panWidth = listState.layoutInfo
-                                                            .viewportSize.width.toFloat()
-                                                        val maxPan = readerMaxPanPx(
-                                                            panWidth,
-                                                            gestureZoom.floatValue,
-                                                        )
-                                                        if (!panStarted &&
-                                                            abs(panTotalX) > touchSlop
-                                                        ) {
-                                                            panStarted = true
-                                                            suppressPageTap.value = true
-                                                            PdfContinuousTrace.pan(
-                                                                "start", id, deltaX, panTotalX,
-                                                                panX.floatValue, panX.floatValue,
-                                                                gestureZoom.floatValue, maxPan,
-                                                            )
-                                                        }
-                                                        if (panStarted) {
-                                                            val panBefore = panX.floatValue
-                                                            panX.floatValue = panReaderAfterDrag(
-                                                                panBefore,
-                                                                deltaX,
-                                                                gestureZoom.floatValue,
-                                                                panWidth,
-                                                            )
-                                                            PdfContinuousTrace.pan(
-                                                                "move", id, deltaX, panTotalX,
-                                                                panBefore, panX.floatValue,
-                                                                gestureZoom.floatValue, maxPan,
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            } else {
-                                                // At fit zoom a horizontal swipe turns
-                                                // the page. Observe only: the LazyColumn
-                                                // keeps its native vertical fling.
+                                            // At fit zoom a horizontal swipe turns the
+                                            // page; observe only, never consume. Zoomed
+                                            // horizontal drags are handled by the dedicated
+                                            // detector added after this observer — keeping
+                                            // them here made them unreliable on a device.
+                                            if (gestureZoom.floatValue <= READER_ZOOM_MIN) {
                                                 val change = event.changes.firstOrNull {
                                                     it.pressed
                                                 }
@@ -553,8 +404,6 @@ fun ContinuousReaderScreen(
                                                             PageSwipe.AXIS_DOMINANCE
                                                     ) {
                                                         swipeDelivered = true
-                                                        // Prevent the page tap detector
-                                                        // from opening the single-page view.
                                                         suppressPageTap.value = true
                                                     }
                                                 }
@@ -562,9 +411,11 @@ fun ContinuousReaderScreen(
                                         }
 
                                         if (event.changes.none { it.pressed }) {
-                                            // A zoom that landed in this gesture wins:
-                                            // the drag is a pan, never a page turn.
-                                            if (swipeDelivered && !zoomLandedMidGesture) {
+                                            // A zoomed gesture is a pan, never a page
+                                            // turn, even if the zoom landed mid-swipe.
+                                            if (swipeDelivered &&
+                                                gestureZoom.floatValue <= READER_ZOOM_MIN
+                                            ) {
                                                 val width = listState.layoutInfo
                                                     .viewportSize.width.toFloat()
                                                 if (abs(swipeTotalX) >=
@@ -586,34 +437,44 @@ fun ContinuousReaderScreen(
                                                     }
                                                 }
                                             }
-                                            if (panStarted) {
-                                                PdfContinuousTrace.pan(
-                                                    "end", panPointerId, 0f, panTotalX,
-                                                    panX.floatValue, panX.floatValue,
-                                                    gestureZoom.floatValue,
-                                                    readerMaxPanPx(
-                                                        listState.layoutInfo.viewportSize.width
-                                                            .toFloat(),
-                                                        gestureZoom.floatValue,
-                                                    ),
-                                                )
-                                            }
                                             pressedX.clear()
                                             gate.clear()
                                             seen.clear()
-                                            pinchActive = false
                                             pinchWasActive = false
-                                            panPointerId = -1L
-                                            panTotalX = 0f
-                                            panStarted = false
                                             swipePointerId = -1L
                                             swipeTotalX = 0f
                                             swipeTotalY = 0f
                                             swipeDelivered = false
-                                            zoomLandedMidGesture = false
-                                            gestureZoomed =
-                                                gestureZoom.floatValue > READER_ZOOM_MIN
                                         }
+                                    }
+                                }
+                            }
+                            // Dedicated one-finger pan. The standard detector
+                            // owns slop, pointer-id tracking and consumption, so
+                            // a rightward drag after zoom cannot be lost to a
+                            // stale manual state machine. It consumes only
+                            // horizontal movement after slop; vertical drags
+                            // still reach the LazyColumn's native fling.
+                            .pointerInput(Unit) {
+                                detectHorizontalDragGestures { change, dragAmount ->
+                                    if (gestureZoom.floatValue > READER_ZOOM_MIN) {
+                                        change.consume()
+                                        val width = listState.layoutInfo.viewportSize.width
+                                            .toFloat()
+                                        val before = panX.floatValue
+                                        panX.floatValue = panReaderAfterDrag(
+                                            before,
+                                            dragAmount,
+                                            gestureZoom.floatValue,
+                                            width,
+                                        )
+                                        suppressPageTap.value = true
+                                        PdfContinuousTrace.pan(
+                                            "move", -1L, dragAmount, dragAmount,
+                                            before, panX.floatValue,
+                                            gestureZoom.floatValue,
+                                            readerMaxPanPx(width, gestureZoom.floatValue),
+                                        )
                                     }
                                 }
                             },
@@ -643,14 +504,12 @@ fun ContinuousReaderScreen(
                                     onOpenPage = onOpenPage,
                                     onToggleZoom = toggleZoom,
                                     suppressTap = { suppressPageTap.value },
-                                    onRendered = { lastRender = it },
                                 )
                             }
                         }
                     }
 
-                    // Non-interactive brightness scrim over the pages only; the
-                    // current-page indicator and debug HUD below stay fully readable.
+                    // Non-interactive brightness scrim over the pages only.
                     val dimAlpha = 1f - brightness.coerceIn(0.4f, 1f)
                     if (dimAlpha > 0f) {
                         Box(
@@ -658,45 +517,6 @@ fun ContinuousReaderScreen(
                                 .fillMaxSize()
                                 .background(Color.Black.copy(alpha = dimAlpha)),
                         )
-                    }
-
-                    if (BuildConfig.DEBUG) {
-                        val renderZoom = readerRenderZoom(zoom)
-                        val rendered = lastRender
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(end = 10.dp, top = 6.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                        ) {
-                            Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                                Text(
-                                    "DEBUG zoom=${readerZoomLabel(zoom)} " +
-                                        "render=${readerZoomLabel(renderZoom)} " +
-                                        "scale=${"%.2f".format(readerRenderScale(renderZoom))} " +
-                                        "pinch=$pinchActive",
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                                Text(
-                                    if (rendered == null) {
-                                        "bitmap: —"
-                                    } else {
-                                        "bitmap p${rendered.page + 1} " +
-                                            "rz=${readerZoomLabel(rendered.renderZoom)} " +
-                                            "scale=${"%.2f".format(rendered.scale)} " +
-                                            "${rendered.width}x${rendered.height}"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                                Text(
-                                    "DEBUG pan=${panX.floatValue.roundToInt()}/" +
-                                        "${readerMaxPanPx(viewportWidthPx, zoom).roundToInt()} " +
-                                        "view=${viewportWidthPx.roundToInt()}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                            }
-                        }
                     }
                 }
             }
@@ -805,7 +625,6 @@ private fun ReaderPageCard(
     onOpenPage: (Int) -> Unit,
     onToggleZoom: (Float) -> Unit,
     suppressTap: () -> Boolean,
-    onRendered: (ReaderRenderInfo) -> Unit,
 ) {
     var attempt by remember(index) { mutableIntStateOf(0) }
     val renderZoom = readerRenderZoom(zoom)
@@ -815,7 +634,6 @@ private fun ReaderPageCard(
     // key the render on both the zoom bucket and the derived scale so a change
     // to either can never leave an old bitmap on screen.
     val currentLoadPage by rememberUpdatedState(loadPage)
-    val currentOnRendered by rememberUpdatedState(onRendered)
     val page by produceState<ReaderPageState>(
         initialValue = ReaderPageState.Loading,
         index,
@@ -842,9 +660,6 @@ private fun ReaderPageCard(
                 scale = renderScale,
                 bitmapWidth = bitmap.width,
                 bitmapHeight = bitmap.height,
-            )
-            currentOnRendered(
-                ReaderRenderInfo(index, renderZoom, renderScale, bitmap.width, bitmap.height),
             )
         }
         value = if (bitmap != null) ReaderPageState.Ready(bitmap) else ReaderPageState.Failed
@@ -1053,14 +868,5 @@ private sealed interface ReaderPageState {
     data class Ready(val bitmap: Bitmap) : ReaderPageState
     data object Failed : ReaderPageState
 }
-
-/** Last successful page render, surfaced in the debug HUD. */
-private data class ReaderRenderInfo(
-    val page: Int,
-    val renderZoom: Float,
-    val scale: Float,
-    val width: Int,
-    val height: Int,
-)
 
 private const val DEFAULT_PAGE_ASPECT = 0.707f

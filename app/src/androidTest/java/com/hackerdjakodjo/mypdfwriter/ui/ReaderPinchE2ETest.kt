@@ -254,7 +254,9 @@ class ReaderPinchE2ETest {
         val dragDx = viewportWidthPx * 0.35f
         composeRule.onRoot().performTouchInput {
             down(0, center)
-            moveTo(0, center + Offset(-dragDx, 0f), delayMillis = 16)
+            for (step in 1..8) {
+                moveTo(0, center + Offset(-dragDx * step / 8, 0f), delayMillis = 16)
+            }
             up(0)
         }
         composeRule.waitForIdle()
@@ -274,7 +276,13 @@ class ReaderPinchE2ETest {
         repeat(2) {
             composeRule.onRoot().performTouchInput {
                 down(0, center)
-                moveTo(0, center + Offset(dragDx * 1.35f, 0f), delayMillis = 16)
+                for (step in 1..8) {
+                    moveTo(
+                        0,
+                        center + Offset(dragDx * 1.35f * step / 8, 0f),
+                        delayMillis = 16,
+                    )
+                }
                 up(0)
             }
             composeRule.waitForIdle()
@@ -338,11 +346,22 @@ class ReaderPinchE2ETest {
         )
     }
 
-    /** One-finger horizontal drag by [dx] pixels, ending with the pointer lifted. */
+    /**
+     * One-finger horizontal drag by [dx] pixels, ending with the pointer lifted.
+     * Several move frames matter: the production drag detector consumes the
+     * slop-crossing frame and reports the following ones.
+     */
     private fun dragPage(dx: Float) {
         composeRule.onRoot().performTouchInput {
             down(0, center)
-            moveTo(0, center + Offset(dx, 0f), delayMillis = 16)
+            val steps = 8
+            for (step in 1..steps) {
+                moveTo(
+                    0,
+                    center + Offset(dx * step / steps, 0f),
+                    delayMillis = 16,
+                )
+            }
             up(0)
         }
         composeRule.waitForIdle()
@@ -486,7 +505,13 @@ class ReaderPinchE2ETest {
 
         composeRule.onRoot().performTouchInput {
             down(0, center)
-            moveTo(0, center + Offset(viewport * 0.30f, 0f), delayMillis = 16)
+            for (step in 1..8) {
+                moveTo(
+                    0,
+                    center + Offset(viewport * 0.30f * step / 8, 0f),
+                    delayMillis = 16,
+                )
+            }
             up(0)
         }
         composeRule.waitForIdle()
@@ -529,7 +554,14 @@ class ReaderPinchE2ETest {
             moveTo(1, Offset(cx + width * 0.30f, cy), delayMillis = 16) // pinch to zoom
             up(1)
             // Retained finger pushes RIGHT immediately — no idle wait.
-            moveTo(0, Offset(cx + width * 0.30f + viewport * 0.30f, cy), delayMillis = 16)
+            val startX = cx + width * 0.30f
+            for (step in 1..8) {
+                moveTo(
+                    0,
+                    Offset(startX + viewport * 0.30f * step / 8, cy),
+                    delayMillis = 16,
+                )
+            }
             up(0)
         }
         composeRule.waitForIdle()
@@ -562,7 +594,13 @@ class ReaderPinchE2ETest {
 
         composeRule.onRoot().performTouchInput {
             down(0, center)
-            moveTo(0, center + Offset(viewport * 0.25f, 0f), delayMillis = 16)
+            for (step in 1..8) {
+                moveTo(
+                    0,
+                    center + Offset(viewport * 0.25f * step / 8, 0f),
+                    delayMillis = 16,
+                )
+            }
             up(0)
         }
         composeRule.waitForIdle()
@@ -670,7 +708,13 @@ class ReaderPinchE2ETest {
         // Swipe left at fit zoom: next page.
         composeRule.onRoot().performTouchInput {
             down(0, center)
-            moveTo(0, center + Offset(-viewport * 0.4f, 0f), delayMillis = 16)
+            for (step in 1..8) {
+                moveTo(
+                    0,
+                    center + Offset(-viewport * 0.4f * step / 8, 0f),
+                    delayMillis = 16,
+                )
+            }
             up(0)
         }
         composeRule.waitForIdle()
@@ -719,7 +763,13 @@ class ReaderPinchE2ETest {
         }
         composeRule.onRoot().performTouchInput {
             down(0, center)
-            moveTo(0, center + Offset(viewport * 0.95f, 0f), delayMillis = 16)
+            for (step in 1..8) {
+                moveTo(
+                    0,
+                    center + Offset(viewport * 0.95f * step / 8, 0f),
+                    delayMillis = 16,
+                )
+            }
             up(0)
         }
         composeRule.waitForIdle()
