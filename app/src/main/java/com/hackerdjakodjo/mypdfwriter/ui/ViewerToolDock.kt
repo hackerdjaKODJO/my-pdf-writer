@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -19,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -443,7 +443,9 @@ fun ViewerCompactPageNavigator(
 ) {
     val target = PDF_COMPACT_TOP_BAR_HEIGHT_DP.dp
     Surface(
-        modifier = modifier.testTag(PDF_PAGE_NAVIGATOR_TAG),
+        modifier = modifier
+            .widthIn(max = 128.dp)
+            .testTag(PDF_PAGE_NAVIGATOR_TAG),
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
         tonalElevation = 1.dp,
@@ -476,7 +478,7 @@ fun ViewerCompactPageNavigator(
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .height(target)
                         .testTag(PDF_PAGE_COUNT_TAG)
                         .clickable(onClick = onOpenPages)
                         .semantics {

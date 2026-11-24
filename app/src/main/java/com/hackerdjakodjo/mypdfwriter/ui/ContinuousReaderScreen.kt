@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -145,7 +146,12 @@ fun ContinuousReaderScreen(
     val currentOnPageChange by rememberUpdatedState(onPageChange)
     val scope = rememberCoroutineScope()
     var showPageJump by remember { mutableStateOf(false) }
-    val density = LocalDensity.current.density
+    val localDensity = LocalDensity.current
+    val density = localDensity.density
+    val statusBarTopDp = with(localDensity) {
+        WindowInsets.statusBars.getTop(localDensity).toDp()
+    }
+    val readerTopPadding = statusBarTopDp + (PDF_COMPACT_TOP_BAR_HEIGHT_DP + 4).dp
     val viewportWidthPx = listState.layoutInfo.viewportSize.width.toFloat()
     val setZoom: (Float, Float, String) -> Unit = { value, focalX, reason ->
         val zoomBefore = gestureZoom.floatValue
@@ -530,7 +536,7 @@ fun ContinuousReaderScreen(
                             // The page navigator floats over the list and consumes
                             // no layout height; only a small visual inset remains.
                             contentPadding = PaddingValues(
-                                top = 8.dp,
+                                top = readerTopPadding,
                                 bottom = 8.dp,
                             ),
                             verticalArrangement = Arrangement.spacedBy(5.dp),

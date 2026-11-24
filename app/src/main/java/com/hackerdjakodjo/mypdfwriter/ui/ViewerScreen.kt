@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -93,6 +94,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
@@ -388,14 +390,6 @@ fun ViewerScreen(
     // SAF returns after the Activity is recreated; keep the text across that
     // recreation and clear it on every outcome (including a cancelled picker).
     var pendingSummary by rememberSaveable { mutableStateOf("") }
-    var coachState by remember {
-        mutableStateOf(PdfCoachState(shownThisSession = PdfViewerCoachSession.shown))
-    }
-    val coachVisible = shouldShowPdfCoach(coachState)
-    val dismissCoach: () -> Unit = {
-        coachState = dismissPdfCoach(coachState)
-        PdfViewerCoachSession.shown = true
-    }
     val smallestScreenWidthDp = LocalConfiguration.current.smallestScreenWidthDp
     var autoHideMode by remember {
         mutableStateOf(defaultChromeAutoHideMode(smallestScreenWidthDp))
@@ -960,6 +954,12 @@ fun ViewerScreen(
         chromeHidden = chromeHidden,
         autoHideMode = autoHideMode,
     )
+    val density = LocalDensity.current
+    val statusBarTopDp = with(density) {
+        WindowInsets.statusBars.getTop(density).toDp()
+    }
+    val pdfTopInset = statusBarTopDp +
+        if (chromePolicy.showTopAppBar) (PDF_COMPACT_TOP_BAR_HEIGHT_DP + 4).dp else 0.dp
     val chromeTapAllowed = chromeTapToggleAllowed(
         mode = autoHideMode,
         studyPaneOpen = splitMode,
@@ -1018,7 +1018,15 @@ fun ViewerScreen(
     val splitToolbarVisible = splitMode && chromePolicy.showSplitToolbar && pdfToolsVisible
     // Hint and search chips share the top edge with the toolbar, so they sit in
     // the next row whenever the strip is drawn.
-    val splitTopOverlayOffsetDp = if (splitToolbarVisible) 52 else 10
+    val splitTopOverlayOffsetDp = if (splitToolbarVisible) {
+        52f
+    } else {
+        statusBarTopDp.value + if (chromePolicy.showTopAppBar) {
+            PDF_COMPACT_TOP_BAR_HEIGHT_DP + 6f
+        } else {
+            6f
+        }
+    }
 
     // One state, one hint. The chip only draws what this pure policy allows, so
     // the selection action bar and the tool hint can never be duplicated.
@@ -1164,7 +1172,7 @@ fun ViewerScreen(
                 pdfStripHeightDp = pdfStripHeightDp,
             )
             // The one-time coach replaces the contextual hint; they never stack.
-            val showTopHint = showHintChip && !coachVisible && !immersive
+            val showTopHint = showHintChip && !immersive
             Column(
                 Modifier
                     .fillMaxSize()
@@ -1204,6 +1212,7 @@ fun ViewerScreen(
                     }
 
                     PdfCanvas(
+                        modifier = Modifier.padding(top = pdfTopInset),
                         bitmap = bitmap,
                         docId = state.docId,
                         pageIndex = state.pageIndex,
@@ -1299,17 +1308,9 @@ fun ViewerScreen(
                         }
                         if (annotationsHidden) {
                             HiddenAnnotationsBanner(onShow = { annotationsHidden = false })
-                            if (showTopHint || coachVisible) Spacer(Modifier.height(6.dp))
+                            if (showTopHint) Spacer(Modifier.height(6.dp))
                         }
-                        if (coachVisible && !immersive) {
-                            // Small, self-dismissing overlay: it intercepts only its
-                            // own bounds, so pinch, scroll, selection and page taps
-                            // keep working everywhere else on the page.
-                            PdfCoachCard(
-                                onDismiss = dismissCoach,
-                                modifier = Modifier.padding(horizontal = if (splitMode) 48.dp else 8.dp),
-                            )
-                        } else if (showTopHint) {
+                        if (showTopHint) {
                             PdfContextHintChip(
                                 text = pdfContextHintText(contextHint, stringResource(toolHintRes)),
                                 loading = contextHint == PdfContextHint.LOADING,

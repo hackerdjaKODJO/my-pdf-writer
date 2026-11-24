@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.86`** — `versionCode = 95`.
-- **Next version is `0.8.87` — `versionCode = 96`.**
+- Current delivered version: **`0.8.87`** — `versionCode = 96`.
+- **Next version is `0.8.88` — `versionCode = 97`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,7 +54,8 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
-| `0.8.86` | 95 | 2026-11-24 | — | Three-agent regression review: fixed Compose sibling z-order that let PDF content cover the transparent top overlay; explicit zIndex(1f) in single/continuous readers and real-touch next-page/page-jump E2E |
+| `0.8.87` | 96 | 2026-11-25 | — | Four-agent screenshot review: retired top coach card, constrained page-count pill from fillMaxSize to 128dp max, offset single-page canvas and continuous list below status bar + compact controls so the PDF top is not obscured; navigator width regression test |
+| `0.8.86` | 95 | 2026-11-24 | `v0.8.86` | Three-agent regression review: fixed Compose sibling z-order that let PDF content cover the transparent top overlay; explicit zIndex(1f) in single/continuous readers and real-touch next-page/page-jump E2E |
 | `0.8.85` | 94 | 2026-11-24 | `v0.8.85` | Removed full-width reserved PDF top bar: Scaffold topBar height is gone and back/title/page navigator/search/menu render as a transparent 32dp overlay above the PDF in single and continuous readers |
 | `0.8.84` | 93 | 2026-11-24 | `v0.8.84` | Four-agent residual-gap audit: title row/navigator/count are flush at 32dp, clickable numeric pill no longer has Material's hidden 48dp minimum, and single-page PDF is top-anchored when it fits vertically with drawing/selection/memo coordinates synchronized; geometry E2E + anchor JVM tests |
 | `0.8.83` | 92 | 2026-11-24 | `v0.8.83` | Screenshot-driven fix: replaced Material TopAppBar with a fixed status-bar + 42dp Row, shrank page navigator to 30dp and action icons to 36dp, eliminating residual white space and giving the document title more width; shared by single/continuous readers |

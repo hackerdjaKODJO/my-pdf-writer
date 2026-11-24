@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.ui.theme.MyPdfWriterTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -44,5 +45,9 @@ class PdfCompactTopBarE2ETest {
         val navigatorBounds = navigator.getUnclippedBoundsInRoot()
         assertEquals(rowBounds.top, navigatorBounds.top)
         assertEquals(rowBounds.bottom, navigatorBounds.bottom)
+        assertTrue(
+            "navigator must not consume the whole bar",
+            navigatorBounds.right - navigatorBounds.left <= 128.dp,
+        )
     }
 }
