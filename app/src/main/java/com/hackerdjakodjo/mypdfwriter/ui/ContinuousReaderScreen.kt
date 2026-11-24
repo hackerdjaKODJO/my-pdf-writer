@@ -12,8 +12,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -273,13 +271,11 @@ fun ContinuousReaderScreen(
                 if (pageCount <= 0) {
                     EmptyReader(onBack = onBack)
                 } else {
-                    // One raw Initial-pass observer owns pinch zoom and fit-zoom
-                    // page-swipe detection. One-finger panning is handled by the
-                    // dedicated horizontal-drag detector below: routing pan
-                    // through this manual state machine proved unreliable on a
-                    // real device (a right drag after zoom could do nothing at
-                    // all), while the standard detector consumes only horizontal
-                    // movement and leaves vertical scrolling to the LazyColumn.
+                    // One raw Initial-pass observer owns pinch zoom, one-finger
+                    // horizontal pan and fit-zoom page-swipe detection. Pan is
+                    // observed but never consumed: the same pointer delta also
+                    // reaches the LazyColumn, so diagonal drags pan and scroll
+                    // together while vertical-only drags keep native fling.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -295,6 +291,11 @@ fun ContinuousReaderScreen(
                                     val pressedX = HashMap<Long, Float>()
                                     var lastTracedRenderZoom = readerRenderZoom(gestureZoom.floatValue)
                                     var pinchWasActive = false
+                                    // One-finger pan: observe only, never consume.
+                                    var panPointerId = -1L
+                                    var panTotalX = 0f
+                                    var panTotalY = 0f
+                                    var panStarted = false
                                     // Fit-zoom page swipe: observe only, never consume.
                                     var swipePointerId = -1L
                                     var swipeTotalX = 0f
@@ -311,7 +312,11 @@ fun ContinuousReaderScreen(
                                                     if (seen.size == 1) {
                                                         suppressPageTap.value = false
                                                         // A new gesture must not inherit
-                                                        // swipe state from a previous one.
+                                                        // pan or swipe state from a previous one.
+                                                        panPointerId = -1L
+                                                        panTotalX = 0f
+                                                        panTotalY = 0f
+                                                        panStarted = false
                                                         swipeDelivered = false
                                                         swipeTotalX = 0f
                                                         swipeTotalY = 0f
@@ -326,10 +331,12 @@ fun ContinuousReaderScreen(
                                         if (gate.twoFinger) {
                                                 if (!pinchWasActive) {
                                                 pinchWasActive = true
-                                                // A second finger starts a zoom; the
-                                                // horizontal-drag detector is gated on
-                                                // two-finger events being consumed, so it
-                                                // stays out of the way during a pinch.
+                                                // A second finger starts a zoom and
+                                                // invalidates one-finger pan tracking.
+                                                panPointerId = -1L
+                                                panTotalX = 0f
+                                                panTotalY = 0f
+                                                panStarted = false
                                                 swipeDelivered = false
                                                 swipeTotalX = 0f
                                                 swipeTotalY = 0f
@@ -375,29 +382,88 @@ fun ContinuousReaderScreen(
                                                 if (change.pressed) change.consume()
                                             }
                                         } else {
+                                            if (pinchWasActive) {
+                                                // One finger remains after a pinch.
+                                                // Re-arm pan tracking for that retained
+                                                // pointer immediately instead of waiting
+                                                // for every pointer to rise.
+                                                panPointerId = -1L
+                                                panTotalX = 0f
+                                                panTotalY = 0f
+                                                panStarted = false
+                                                swipeDelivered = false
+                                                swipeTotalX = 0f
+                                                swipeTotalY = 0f
+                                            }
                                             pinchWasActive = false
 
-                                            // At fit zoom a horizontal swipe turns the
-                                            // page; observe only, never consume. Zoomed
-                                            // horizontal drags are handled by the dedicated
-                                            // detector added after this observer — keeping
-                                            // them here made them unreliable on a device.
-                                            if (gestureZoom.floatValue <= READER_ZOOM_MIN) {
-                                                val change = event.changes.firstOrNull {
-                                                    it.pressed
-                                                }
-                                                if (change != null) {
-                                                    val id = change.id.value
+                                            val change = event.changes.firstOrNull {
+                                                it.pressed && it.id.value == panPointerId
+                                            } ?: event.changes.firstOrNull { it.pressed }
+                                            if (change != null) {
+                                                val id = change.id.value
+                                                val deltaX = change.position.x -
+                                                    change.previousPosition.x
+                                                val deltaY = change.position.y -
+                                                    change.previousPosition.y
+
+                                                if (gestureZoom.floatValue > READER_ZOOM_MIN) {
+                                                    if (panPointerId != id) {
+                                                        panPointerId = id
+                                                        panTotalX = 0f
+                                                        panTotalY = 0f
+                                                        panStarted = false
+                                                    }
+                                                    panTotalX += deltaX
+                                                    panTotalY += deltaY
+                                                    if (!panStarted &&
+                                                        abs(panTotalX) > touchSlop
+                                                    ) {
+                                                        panStarted = true
+                                                        suppressPageTap.value = true
+                                                        PdfContinuousTrace.pan(
+                                                            "start", id, deltaX, panTotalX,
+                                                            panX.floatValue, panX.floatValue,
+                                                            gestureZoom.floatValue,
+                                                            readerMaxPanPx(
+                                                                listState.layoutInfo.viewportSize.width
+                                                                    .toFloat(),
+                                                                gestureZoom.floatValue,
+                                                            ),
+                                                        )
+                                                    }
+                                                    if (panStarted) {
+                                                        val width = listState.layoutInfo
+                                                            .viewportSize.width.toFloat()
+                                                        val before = panX.floatValue
+                                                        panX.floatValue = panReaderAfterDrag(
+                                                            before,
+                                                            deltaX,
+                                                            gestureZoom.floatValue,
+                                                            width,
+                                                        )
+                                                        PdfContinuousTrace.pan(
+                                                            "move", id, deltaX, panTotalX,
+                                                            before, panX.floatValue,
+                                                            gestureZoom.floatValue,
+                                                            readerMaxPanPx(width, gestureZoom.floatValue),
+                                                        )
+                                                    }
+                                                    // Deliberately do not consume: the
+                                                    // LazyColumn receives deltaY and keeps
+                                                    // its native vertical scroll/fling.
+                                                } else {
+                                                    // At fit zoom a horizontal-dominant
+                                                    // swipe turns the page; diagonal
+                                                    // movement stays with vertical scroll.
                                                     if (swipePointerId != id) {
                                                         swipePointerId = id
                                                         swipeTotalX = 0f
                                                         swipeTotalY = 0f
                                                         swipeDelivered = false
                                                     }
-                                                    swipeTotalX += change.position.x -
-                                                        change.previousPosition.x
-                                                    swipeTotalY += change.position.y -
-                                                        change.previousPosition.y
+                                                    swipeTotalX += deltaX
+                                                    swipeTotalY += deltaY
                                                     if (!swipeDelivered &&
                                                         abs(swipeTotalX) > touchSlop &&
                                                         abs(swipeTotalX) > abs(swipeTotalY) *
@@ -437,10 +503,26 @@ fun ContinuousReaderScreen(
                                                     }
                                                 }
                                             }
+                                            if (panStarted) {
+                                                PdfContinuousTrace.pan(
+                                                    "end", panPointerId, 0f, panTotalX,
+                                                    panX.floatValue, panX.floatValue,
+                                                    gestureZoom.floatValue,
+                                                    readerMaxPanPx(
+                                                        listState.layoutInfo.viewportSize.width
+                                                            .toFloat(),
+                                                        gestureZoom.floatValue,
+                                                    ),
+                                                )
+                                            }
                                             pressedX.clear()
                                             gate.clear()
                                             seen.clear()
                                             pinchWasActive = false
+                                            panPointerId = -1L
+                                            panTotalX = 0f
+                                            panTotalY = 0f
+                                            panStarted = false
                                             swipePointerId = -1L
                                             swipeTotalX = 0f
                                             swipeTotalY = 0f
@@ -449,38 +531,6 @@ fun ContinuousReaderScreen(
                                     }
                                 }
                             }
-                            // Dedicated one-finger pan. The orientation-lock
-                            // detector retries slop detection after another node
-                            // consumes the gesture, so lifting one finger from a
-                            // pinch hands the retained finger back to panning
-                            // without waiting for every pointer to rise. Vertical
-                            // slop still belongs to the LazyColumn's native fling.
-                            .pointerInput(Unit) {
-                                detectDragGestures(
-                                    orientationLock = Orientation.Horizontal,
-                                    onDrag = { change, dragAmount ->
-                                        if (gestureZoom.floatValue > READER_ZOOM_MIN) {
-                                            val width = listState.layoutInfo.viewportSize.width
-                                                .toFloat()
-                                            val before = panX.floatValue
-                                            panX.floatValue = panReaderAfterDrag(
-                                                before,
-                                                dragAmount.x,
-                                                gestureZoom.floatValue,
-                                                width,
-                                            )
-                                            suppressPageTap.value = true
-                                            PdfContinuousTrace.pan(
-                                                "move", change.id.value,
-                                                dragAmount.x, dragAmount.x,
-                                                before, panX.floatValue,
-                                                gestureZoom.floatValue,
-                                                readerMaxPanPx(width, gestureZoom.floatValue),
-                                            )
-                                        }
-                                    },
-                                )
-                            },
                     ) {
                         LazyColumn(
                             state = listState,

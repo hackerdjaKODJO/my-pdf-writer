@@ -20,8 +20,8 @@ android {
         applicationId = "com.hackerdjakodjo.mypdfwriter"
         minSdk = 26
         targetSdk = 36
-        versionCode = 85
-        versionName = "0.8.76"
+        versionCode = 86
+        versionName = "0.8.77"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

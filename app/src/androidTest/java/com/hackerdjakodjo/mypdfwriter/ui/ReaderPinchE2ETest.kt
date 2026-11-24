@@ -20,6 +20,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.math.abs
 
 /**
  * Device-only checks for two-finger pinch in the continuous reader.
@@ -537,6 +538,78 @@ class ReaderPinchE2ETest {
             "rightward drag after a centred zoom must move the page right; " +
                 "before=${zoomed.left} after=${after.left}",
             after.left - zoomed.left >= (zoomed.right - zoomed.left) * 0.10f,
+        )
+    }
+
+    @Test
+    fun diagonalDragPansHorizontallyAndScrollsVertically() {
+        setReader()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        doubleTapToZoom()
+        assertZoomLabel(READER_ZOOM_DOUBLE_TAP)
+        val before = page.getUnclippedBoundsInRoot()
+        val viewport = viewportWidthPx()
+        val height = composeRule.onRoot().fetchSemanticsNode().size.height.toFloat()
+
+        composeRule.onRoot().performTouchInput {
+            down(0, center)
+            val steps = 12
+            for (step in 1..steps) {
+                moveTo(
+                    0,
+                    center + Offset(
+                        viewport * 0.25f * step / steps,
+                        height * 0.55f * step / steps,
+                    ),
+                    delayMillis = 16,
+                )
+            }
+            up(0)
+        }
+        composeRule.waitForIdle()
+
+        val after = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "diagonal drag must pan horizontally; before=${before.left} after=${after.left}",
+            after.left - before.left > 8.dp,
+        )
+        assertTrue(
+            "diagonal drag must also scroll vertically; before=${before.top} after=${after.top}",
+            before.top - after.top > 8.dp,
+        )
+    }
+
+    @Test
+    fun verticalOnlyDragScrollsWithoutHorizontalPan() {
+        setReader()
+        val page = composeRule.onNodeWithContentDescription("1쪽 페이지")
+        doubleTapToZoom()
+        assertZoomLabel(READER_ZOOM_DOUBLE_TAP)
+        val before = page.getUnclippedBoundsInRoot()
+        val height = composeRule.onRoot().fetchSemanticsNode().size.height.toFloat()
+
+        composeRule.onRoot().performTouchInput {
+            down(0, center)
+            val steps = 12
+            for (step in 1..steps) {
+                moveTo(
+                    0,
+                    center + Offset(0f, height * 0.55f * step / steps),
+                    delayMillis = 16,
+                )
+            }
+            up(0)
+        }
+        composeRule.waitForIdle()
+
+        val after = page.getUnclippedBoundsInRoot()
+        assertTrue(
+            "vertical drag must scroll; before=${before.top} after=${after.top}",
+            before.top - after.top > 8.dp,
+        )
+        assertTrue(
+            "vertical drag must not pan horizontally; before=${before.left} after=${after.left}",
+            abs((after.left - before.left).value) <= 2f,
         )
     }
 
