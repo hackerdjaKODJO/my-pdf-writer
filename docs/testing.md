@@ -87,8 +87,82 @@ Debug builds expose two local trace viewers:
 
 The sheet shows `NoteTrace` entries (stroke commit counts, editor apply/undo,
 ViewModel update/save timings, and annotation-count decreases). Use `복사` to
-copy the text into a bug report, or `비우기` to clear it. The trace is in-memory
-only and is never written to disk or sent over the network.
+copy the text into a bug report, or `비우기` to clear it. The `NoteTrace` ring
+itself is in-memory only and is never sent over the network. Since 0.8.88 those
+same events are also mirrored into the durable, on-disk developer log described
+below, so a trace can still be read after the process exits.
+
+## Durable developer log (0.8.88+)
+
+Debug builds write a structured developer log to disk so a trace survives a
+process exit or Activity recreation. `debug/DevLogStore.kt` appends one JSON
+object per line (JSONL) to `files/logs/devlog-YYYY-MM-DD.jsonl` in the app's
+private files directory: one file per day, with at most 7 daily files retained.
+Each file is capped at 1 MB; when the cap is reached the store rolls to a
+`-partN` sibling in the same directory. Writes are also bounded in memory by a
+1200-entry ring buffer.
+
+Each event is a single JSON line with a session id (8 hex characters), a
+monotonically increasing `seq`, the wall-clock time in epoch milliseconds plus
+an ISO-8601 UTC timestamp, the emitting thread, a `component`, an `event` name,
+and string fields. A `session_start` event is emitted on the first write of a
+session and again after `비우기`/clear, so the session id and seq can be used to
+order events across a restart. `pdf/PdfFlowTrace.kt` writes typed `PDF_FLOW`
+events: `open_start`, `open_done`, `open_fail`, `close`, `annotate`, `history`,
+`page_edit`, `search`, `export_start` and `export_done`.
+
+The log is **debug-only**: release builds are no-ops (no file, no ring buffer,
+no cost). It is also privacy-safe: only counts, opaque ids, kinds and timings
+are recorded — never PDF text, file paths, content URIs or user data. Every
+event is mirrored into `NoteTrace` and to logcat with tag `PdfWriterDev`.
+
+Reference the log in any of three ways:
+
+1. Live from logcat (tag `PdfWriterDev`):
+
+   ```bash
+   adb logcat -s PdfWriterDev
+   ```
+
+2. Pull today's JSONL file directly off a debuggable build:
+
+   ```bash
+   adb exec-out run-as com.hackerdjakodjo.mypdfwriter.debug cat files/logs/devlog-$(date +%F).jsonl
+   ```
+
+   `run-as` works only for a debuggable debug build. On a non-debuggable release
+   build it will not work — use the in-app trace sheet (option 3) there instead.
+
+3. The in-app debug sheet `노트 추적` (Home overflow `⋮` → `노트 추적`), which
+   shows the `NoteTrace` mirror of the same events. Use `복사` to paste a report
+   or `비우기` to clear it (clearing emits a fresh `session_start`).
+
+E2E tests assert on the disk log, not just the in-memory trace:
+`DevLogE2ETest` reads the JSONL file from the app's private storage and checks
+the session header fields, that entries survive Activity recreation, and that
+no PDF text appears. `PdfFlowTraceE2ETest` drives a real PDF through
+open → annotate → page edit → search → export → close and checks that the
+`PDF_FLOW` events are on disk in that order, plus `open_fail` for a failed open.
+
+### New test classes for the durable log (0.8.88+)
+
+JVM tests (run with `./.termux-build.sh :app:testDebugUnitTest`):
+
+- `app/src/test/java/com/hackerdjakodjo/mypdfwriter/debug/DevLogTest.kt`
+- `app/src/test/java/com/hackerdjakodjo/mypdfwriter/pdf/PdfFlowTraceTest.kt`
+
+Instrumentation tests:
+
+- `app/src/androidTest/java/com/hackerdjakodjo/mypdfwriter/e2e/DevLogE2ETest.kt`
+- `app/src/androidTest/java/com/hackerdjakodjo/mypdfwriter/e2e/PdfFlowTraceE2ETest.kt`
+
+Run only these two instrumentation classes with:
+
+```bash
+adb shell am instrument -w \
+  -e class com.hackerdjakodjo.mypdfwriter.e2e.DevLogE2ETest,com.hackerdjakodjo.mypdfwriter.e2e.PdfFlowTraceE2ETest \
+  com.hackerdjakodjo.mypdfwriter.debug.test/androidx.test.runner.AndroidJUnitRunner
+```
 
 ## 0.8.68 E2E matrix
 
