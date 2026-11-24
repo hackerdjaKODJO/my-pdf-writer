@@ -6,7 +6,7 @@
 광고·계정·인터넷 권한 없이 **기기 안에서만** 동작합니다.
 
 - **패키지**: `com.hackerdjakodjo.mypdfwriter`
-- **버전**: `0.8.87` (개발 빌드)
+- **버전**: `0.8.88` (개발 빌드)
 - **지원 OS**: Android 8.0 (API 26) 이상
 - **타깃 SDK**: 36 (Android 16)
 - **PC 인계 문서**: [`HANDOFF.md`](HANDOFF.md)
@@ -251,7 +251,7 @@ Android 16(Pixel 7 AVD)에서 다음 흐름을 직접 확인했습니다.
 - **R8 릴리스 APK**에서 PDF 열기, 펜, 검색(2건), 페이지 회전, 내보내기 재검증
   - `release-r8-test.pdf` (14,545 bytes), `pdfinfo`: 3 pages, A4, Page rot 90
 - **단위 테스트 1009개 통과 · E2E 127개 케이스** (페이지 회전/정규화, 주석 JSON, 노트북/레이어/북마크, 펜박스/선택,
-  발췌 JSON, OCR 범위, 페이지 정리 등)
+  발췌 JSON, OCR 범위, 페이지 정리 등) · 내구성 개발 로그 E2E 추가
 - 릴리스 APK 권한 확인: `INTERNET`/저장소/카메라/알림/광고 ID 없음
 - 네이티브 라이브러리 16 KB 페이지 정렬 확인 (`zipalign -c -P 16`)
 - 노트 다중 획 E2E 테스트 2개를 `assembleDebugAndroidTest`로 컴파일 (실기기 실행은 adb 기기 연결 후)
@@ -433,6 +433,7 @@ app/src/test/java/com/hackerdjakodjo/mypdfwriter/data/
 - **v0.8.85**: 전체 너비 상단 탭이 PDF를 가리는 문제 해결 — Scaffold topBar 높이 예약을 제거하고 뒤로가기·제목·페이지 탐색·검색·메뉴를 PDF 위 32dp 투명 오버레이로 배치, 한 페이지·연속 보기 공통 적용 (versionCode 94)
 - **v0.8.86**: 3개 에이전트 회귀 리뷰 — 콘텐츠보다 먼저 선언된 상단 오버레이가 PDF Canvas에 덮이던 z-order 문제 수정, 두 화면에 `zIndex(1f)` 적용, 실제 터치로 다음 페이지·숫자 이동이 동작하는 E2E 강화 (versionCode 95)
 - **v0.8.87 (현재)**: 4개 에이전트 스크린샷 리뷰 — 상단 코치 카드 제거, 페이지 숫자 필의 `fillMaxSize`로 인한 전체 너비 확장 수정(최대 128dp), PDF와 연속 목록을 상태바+컨트롤 아래로 배치해 페이지 상단이 가려지지 않도록 수정; 폭 회귀 E2E 추가 (versionCode 96)
+- **v0.8.88**: 멀티 에이전트 E2E·로깅 강화 — 프로세스 재시작 후에도 남는 구조화된 JSONL 개발 로그(일자별 로테이션·용량 상한·세션 ID, 디버그 전용·개인정보 비기록)와 PDF 주요 흐름 추적 추가, 실제 PDF 열기→주석→페이지 편집→검색→내보내기→닫기 순서를 디스크 로그로 검증하는 E2E 강화; JVM·계측 테스트 추가 (versionCode 97)
 - **v0.8.71+**: 실기기 필압 캘리브레이션, 직접 캔버스 드래그, 접근성, 백업 암호화, EPUB/Word/PPT는 MyReader와 역할이 겹쳐 보류
 - **v1.0**: 사용자 승인 후 Play Store 정식 출시, 영어/일본어 UI, 온보딩
 

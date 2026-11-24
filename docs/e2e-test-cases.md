@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.68
+# E2E test cases — My PDF Writer 0.8.88
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator. On the Windows PC the existing `myreader_pixel7` AVD
@@ -14,6 +14,7 @@ Instrumentation APKs can also be compiled without a device via
 | JVM unit tests | 1009 | **Passing** |
 | Instrumentation/E2E (existing component suites) | 16 classes, 86 cases | **Passing** on PC emulator |
 | Instrumentation/E2E (new real-file suites) | 4 classes, 18 cases | **Passing** on PC emulator |
+| Instrumentation/E2E (durable log suites, 0.8.88) | 2 classes | Compiled; on-device run pending |
 | **Total instrumentation** | **127 cases** | **127/127 passing** on `myreader_pixel7` (API 36) |
 | Debug build | 1 | Passing |
 | R8 release build | 1 | Passing (signed with the upload key) |
@@ -39,6 +40,32 @@ Bugs found and fixed by these tests: bookmark indices were not remapped by page
 operations (`PageOps.kt` / `PdfViewModel.kt`), and restored
 `files/sources/<docId>.pdf` was never reused when the original URI was gone
 (`PdfRepository.kt`).
+
+### Durable log E2E suites (added in 0.8.88)
+
+These assert against the real on-disk JSONL developer log, not just the
+in-memory `NoteTrace` mirror:
+
+- `e2e/DevLogE2ETest.kt`: reads `files/logs/devlog-YYYY-MM-DD.jsonl` and checks
+  the `session_start` header fields (8-hex session id, monotonic seq, epoch ms
+  + ISO-8601 UTC timestamp, thread, component, event), verifies entries survive
+  Activity recreation, and guards privacy (no PDF text in the log).
+- `e2e/PdfFlowTraceE2ETest.kt`: drives a real-file PDF through
+  open → annotate → page edit → search → export → close and checks the ordered
+  `PDF_FLOW` events on disk, plus `open_fail` for a failed open.
+
+The production hooks are `DevLog.install(this)` in `MyPdfWriterApp.onCreate()`
+and typed calls from `pdf/PdfFlowTrace.kt` in `PdfViewModel`'s real
+open/annotate/undo/redo/page-ops/search/export/close methods. The log is
+debug-only (release builds are disabled), writes one JSON object per line with
+per-day files, 7-file rotation and a 1 MB cap per file (`-partN` siblings), and
+never stores PDF text, paths, URIs or user data. Run only these classes with:
+
+```bash
+adb shell am instrument -w \
+  -e class com.hackerdjakodjo.mypdfwriter.e2e.DevLogE2ETest,com.hackerdjakodjo.mypdfwriter.e2e.PdfFlowTraceE2ETest \
+  com.hackerdjakodjo.mypdfwriter.debug.test/androidx.test.runner.AndroidJUnitRunner
+```
 
 ## E2E cases
 
@@ -135,6 +162,12 @@ operations (`PageOps.kt` / `PdfViewModel.kt`), and restored
 | BACKUP-02 | Two simultaneous restore results start one manager call; backup flushes pending notebook saves; restore discards stale notebook state before refresh and keeps a PDF opened during restore | Instrumentation `BackupRestoreE2ETest` (pure + sheet UI) | Compiled |
 | DOC-02 | Save queue keeps newest state per docId; rapid double open publishes only the last document; SAF export snapshot stays bound to the launch document | Instrumentation `DocumentSwitchE2ETest` (pure JUnit) | Compiled |
 | GUIDE-01 | No stale `고급`/`스터디`/`발췌로 저장` and no `켜져 있는지` contradiction | JVM `UsageGuideContentTest` (HTML) + pure in-app content check in `HomeAndHelpE2ETest` | Passing / Compiled |
+| LOG-01 | Durable structured JSONL log on disk with `session_start` header and parseable fields | Instrumentation `DevLogE2ETest` | Compiled; on-device run pending |
+| LOG-02 | Log entries survive Activity recreation (session id/seq ordering) | Instrumentation `DevLogE2ETest` | Compiled; on-device run pending |
+| LOG-03 | Privacy: no PDF text, paths or URIs in the log | Instrumentation `DevLogE2ETest`, `PdfFlowTraceE2ETest` | Compiled; on-device run pending |
+| FLOW-01 | Real PDF open → annotate → page edit → search → export → close produces an ordered on-disk `PDF_FLOW` trace | Instrumentation `PdfFlowTraceE2ETest` | Compiled; on-device run pending |
+| FLOW-02 | Failed PDF open emits `open_fail` | Instrumentation `PdfFlowTraceE2ETest` | Compiled; on-device run pending |
+| LOG-JVM | Rotation, 1 MB byte cap, JSON escaping and 1200-entry memory bound | JVM `DevLogTest`, `PdfFlowTraceTest` | Added; JVM run pending |
 
 ## New data/home/help instrumentation classes
 
@@ -203,7 +236,9 @@ With a device attached, Gradle can do the install and run:
 
 ## Known blockers
 
-- No adb device or emulator is available in the current Termux environment.
+- No adb device or emulator is available in the current Termux environment; the
+  new durable-log E2E classes (`DevLogE2ETest`, `PdfFlowTraceE2ETest`) are
+  compiled but still need an attached adb device for their on-device run.
 - `pm install` from Termux is denied; use My Files or a PC with adb.
 - Stylus pressure and SAF file pickers cannot be meaningfully exercised by the
   JVM-only test suite.
