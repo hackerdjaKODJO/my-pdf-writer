@@ -10,6 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 
 class PdfFlowTraceTest {
@@ -125,6 +126,43 @@ class PdfFlowTraceTest {
     }
 
     @Test
+    fun `save helpers use exact event names and privacy safe fields`() {
+        PdfFlowTrace.saveStart()
+        PdfFlowTrace.saveDone("doc-42")
+        PdfFlowTrace.saveStart()
+        PdfFlowTrace.saveFailed("doc-42", "IOException")
+
+        val entries = events()
+        assertEquals(
+            listOf("save_start", "save_done", "save_start", "save_fail"),
+            entries.map { it.event },
+        )
+        assertTrue(entries.all { it.component == PdfFlowTrace.COMPONENT })
+        assertEquals(emptyMap<String, String>(), entries[0].fields)
+        assertEquals(mapOf("docId" to "doc-42"), entries[1].fields)
+        assertEquals(emptyMap<String, String>(), entries[2].fields)
+        assertEquals(mapOf("docId" to "doc-42", "reason" to "IOException"), entries[3].fields)
+    }
+
+    @Test
+    fun `save helpers mirror events and reduce exceptions to categories`() {
+        val secret = "/private/student/lecture.pdf"
+        val reason = PdfFlowTrace.saveFailureReason(IOException(secret))
+        PdfFlowTrace.saveStart()
+        PdfFlowTrace.saveDone("doc-1")
+        PdfFlowTrace.saveFailed("doc-1", reason)
+
+        val mirror = NoteTrace.snapshot()
+        assertEquals(3, mirror.size)
+        assertEquals(listOf("save_start", "save_done", "save_fail"), mirror.map { it.event })
+        assertEquals(events().map { it.event }, mirror.map { it.event })
+        assertTrue(mirror.all { it.tag == PdfFlowTrace.COMPONENT })
+        assertEquals("IOException", reason)
+        assertTrue(log.exportedJsonl().none { it.contains(secret) })
+        assertEquals(mapOf("docId" to "doc-1", "reason" to "IOException"), events().last().fields)
+    }
+
+    @Test
     fun `every helper mirrors the same event into NoteTrace`() {
         PdfFlowTrace.openStart("file", false)
         PdfFlowTrace.openDone("doc-1", 1, 10L)
@@ -149,8 +187,12 @@ class PdfFlowTraceTest {
         PdfFlowTrace.openDone("d1", 3, 20L)
         PdfFlowTrace.annotate("note", "a2", 1, 3)
         PdfFlowTrace.search(7, 0)
+        PdfFlowTrace.saveStart()
+        PdfFlowTrace.saveDone("d1")
+        PdfFlowTrace.saveFailed("d1", "IOException")
 
         val entries = events()
+        val secret = "/private/student/lecture.pdf"
         val canonicalKeys = setOf(
             "uriKind", "addToRecents", "docId", "pageCount", "elapsedMs", "reason",
             "annotationCount", "type", "annotationId", "page", "total", "action",
@@ -162,6 +204,7 @@ class PdfFlowTraceTest {
             assertTrue(entry.fields.values.none { it.contains("/") || it.contains("://") })
         }
         assertTrue(log.exportedJsonl().lineSequence().all { it.startsWith("{") })
+        assertTrue(log.exportedJsonl().none { it.contains(secret) })
     }
 
     private companion object {
