@@ -56,13 +56,15 @@ class NoteEraserAndRefineE2ETest {
                 penOnly = false,
                 zoomLock = false,
                 onAddStroke = { _, _ -> },
-                onErase = { trail ->
+                onErase = { trail, pressure, pressureSensitive ->
                     eraseCalls++
                     val result = NoteInk.eraseAnnotations(
                         annotations = state.page.annotations,
                         trail = trail,
                         radius = NOTE_ERASE_RADIUS,
                         partial = true,
+                        pressure = pressure,
+                        pressureSensitive = pressureSensitive,
                     )
                     state.page = state.page.copy(annotations = result.annotations)
                 },
@@ -179,7 +181,7 @@ class NoteEraserAndRefineE2ETest {
                     state.committedCounts += committed.size
                     state.durations += durationMs.coerceAtLeast(0L)
                 },
-                onErase = {},
+                onErase = { _, _, _ -> },
                 onRequestText = {},
                 onLassoSelect = { _, _ -> },
                 modifier = Modifier.fillMaxSize(),

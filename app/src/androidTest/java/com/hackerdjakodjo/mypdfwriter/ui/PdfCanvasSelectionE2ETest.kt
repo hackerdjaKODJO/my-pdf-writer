@@ -156,7 +156,7 @@ class PdfCanvasSelectionE2ETest {
                 textSelectMode = textSelectMode,
                 onZoomChange = {},
                 onAddStroke = { _, _ -> },
-                onEraseStroke = {},
+                onEraseStroke = { _, _, _ -> },
                 onRequestText = {},
                 onRequestStamp = {},
                 onRequestSignature = {},

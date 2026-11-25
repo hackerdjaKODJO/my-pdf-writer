@@ -148,7 +148,7 @@ class NotePressureE2ETest {
                         ),
                     )
                 },
-                onErase = {},
+                onErase = { _, _, _ -> },
                 onRequestText = {},
                 onLassoSelect = { _, _ -> },
                 modifier = Modifier.fillMaxSize(),

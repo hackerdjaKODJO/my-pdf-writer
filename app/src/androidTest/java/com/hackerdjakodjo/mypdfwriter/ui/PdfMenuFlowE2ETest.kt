@@ -512,7 +512,7 @@ class PdfMenuFlowE2ETest {
             zoom = 1f,
             onZoomChange = {},
             onAddStroke = { _, _ -> onAddStroke() },
-            onEraseStroke = {},
+            onEraseStroke = { _, _, _ -> },
             onRequestText = {},
             onRequestStamp = {},
             onRequestSignature = {},
