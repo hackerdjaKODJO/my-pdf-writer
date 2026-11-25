@@ -183,7 +183,8 @@ class PdfSplitChromeTest {
         assertEquals(SplitPdfChromeDensity.ESSENTIAL, splitPdfChromeDensity(0.85f))
         // Invalid values resolve through the new 70% default, which keeps the full strip.
         assertEquals(SplitPdfChromeDensity.FULL, splitPdfChromeDensity(Float.NaN))
-        assertEquals(SplitPdfChromeDensity.FULL, splitPdfChromeDensity(2f))
+        // Out-of-range finite values clamp to the supported maximum.
+        assertEquals(SplitPdfChromeDensity.ESSENTIAL, splitPdfChromeDensity(2f))
     }
 
     @Test
