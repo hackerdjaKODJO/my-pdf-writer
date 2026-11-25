@@ -99,7 +99,7 @@ class NotebookRealFileE2ETest {
         val created = vm.create(
             NotebookDraft(title = "E2E 저장 노트", template = PaperTemplate.BLANK),
         )
-        val id = created.id
+        val id = created!!.id
         showEditor(vm)
         enableFingerWriting()
 
@@ -182,7 +182,7 @@ class NotebookRealFileE2ETest {
         val created = vm.create(
             NotebookDraft(title = "E2E 복습 노트", template = PaperTemplate.BLANK),
         )
-        val id = created.id
+        val id = created!!.id
         showEditor(vm)
 
         // Real UI path: 노트 메뉴 -> 복습 카드 -> 가리기 카드 -> add card.
@@ -253,7 +253,7 @@ class NotebookRealFileE2ETest {
         val created = vm.create(
             NotebookDraft(title = "E2E 실행 취소 노트", template = PaperTemplate.BLANK),
         )
-        val id = created.id
+        val id = created!!.id
         showEditor(vm)
         enableFingerWriting()
 
@@ -308,7 +308,7 @@ class NotebookRealFileE2ETest {
         val created = vm.create(
             NotebookDraft(title = "E2E 글상자 노트", template = PaperTemplate.BLANK),
         )
-        val id = created.id
+        val id = created!!.id
         showEditor(vm)
         enableFingerWriting()
 
