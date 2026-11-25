@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.88
+# E2E test cases — My PDF Writer 0.8.89
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator. On the Windows PC the existing `myreader_pixel7` AVD
@@ -11,10 +11,10 @@ Instrumentation APKs can also be compiled without a device via
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 1066 | **Passing** — 0 failures, 0 errors, 0 skipped (0.8.88 run) |
-| Instrumentation/E2E (existing component + real-file suites) | 26 classes, 138 cases | Previously passing on `myreader_pixel7` (API 36); compiled again here |
-| Instrumentation/E2E (durable log suites, 0.8.88) | 2 classes, 5 cases | **Compiled**; on-device run pending (no adb device on this host) |
-| **Total instrumentation** | **28 classes, 143 cases** | **138 previously passing; 5 new compiled, device run pending** |
+| JVM unit tests | 1111 | **Passing** — 0 failures, 0 errors, 0 skipped (0.8.89 run) |
+| Instrumentation/E2E (existing component + real-file + durable-log suites) | 28 classes, 143 cases | Previously compiled; prior device results retained where recorded |
+| Instrumentation/E2E (usability suites, 0.8.89) | 14 cases | **Compiled**; on-device run pending (no adb device on this host) |
+| **Total instrumentation** | **28 classes, 157 cases** | **Compiled; on-device run pending for new/changed cases** |
 | Debug build (arm64-only) | 1 | Passing |
 | Instrumentation APK compilation | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally; sign with the upload key on PC/CI) |
@@ -66,6 +66,23 @@ adb shell am instrument -w \
   -e class com.hackerdjakodjo.mypdfwriter.e2e.DevLogE2ETest,com.hackerdjakodjo.mypdfwriter.e2e.PdfFlowTraceE2ETest \
   com.hackerdjakodjo.mypdfwriter.debug.test/androidx.test.runner.AndroidJUnitRunner
 ```
+
+### Usability E2E suites (added in 0.8.89)
+
+- `ui/PdfMenuFlowE2ETest.kt` drives the six-task easy menu, the `전체 도구 보기`
+  handoff, contextual help, save retry and Back ordering.
+- `ui/ViewerDockLongPressE2ETest.kt` keeps the six labeled dock slots and verifies
+  visible style access alongside the retained long-press shortcut.
+- `ui/HomeStartE2ETest.kt` proves a cold start is not blocked by onboarding and
+  that the optional `60초 안내` row opens the tutorial.
+- `ui/HomeAndHelpE2ETest.kt` checks contextual help topics and the corrected
+  navigation/zoom/undo guidance.
+- `ui/OrganizeScreenE2ETest.kt` verifies accessible Undo/Redo and truthful
+  delete-confirmation copy.
+
+The static behavioral references, artifact hashes and design rationale are in
+[`ux-simplification-0889.md`](ux-simplification-0889.md). No competitor code or
+assets were copied.
 
 ## E2E cases
 

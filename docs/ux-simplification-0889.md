@@ -103,6 +103,24 @@ licence to reuse competitor code or assets.
 - No export-format overhaul. My PDF Writer continues to export a separate,
   flattened annotated PDF; the original source remains unchanged.
 
+## Implementation status (0.8.89)
+
+Implemented in the product:
+
+- six labeled dock slots plus contextual Style/Undo/Redo;
+- six-task easy PDF menu with `전체 도구 보기`;
+- `PdfSaveStatus` driven by verified sidecar read-back, with retry;
+- actionable export success/failure feedback;
+- current-position page/outline lists;
+- 70% study-pane default;
+- organizer Undo/Redo and truthful delete copy;
+- optional first-run guide and contextual help deep links;
+- favorite pens in the PDF style sheet.
+
+Verification on the Termux host: 1111 JVM tests pass, 157 instrumentation cases
+compile, arm64 debug and R8 release builds pass. No adb device is attached, so
+instrumentation execution remains pending.
+
 ## Verification and limitations
 
 - Static evidence cannot establish animation quality, runtime visibility,
