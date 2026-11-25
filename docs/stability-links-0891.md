@@ -35,6 +35,17 @@ fonts, templates or branding are copied.
 - Annotation mutations use serialized/transactional writers in the stronger
   references.
 - A saved mark should retain a structured locator, not only a document URI.
+- MyReader/Ridi/Maru reinforce three applicable patterns: stable document ID
+  separate from mutable location, page/rect/quote anchors, and debounced state
+  flushed on pause/stop. Ridi's per-book metadata and MyReader's PDF highlight
+  geometry are the closest references for this patch.
+- Flexcil's serialized reference has one record with source and destination
+  endpoints (URI, name, page index, frames, text) plus explicit document/page key
+  remapping. Samsung Notes keeps a UUID document registry and stable `PageId`
+  for bookmarks across page insert/delete. StarNote exposes page-link and
+  excerpt-backlink resources with invalid-source/link-missing states. These
+  corroborate one durable bidirectional link with explicit resolution failure
+  states; full stable `PageSpec.id` migration is deferred.
 
 ## Current critical defects
 
