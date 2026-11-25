@@ -11,13 +11,12 @@ import kotlin.math.hypot
  * it presses: a brush flicks thin and dry, a fountain nib starves on a fast
  * pull and pools when it dwells, a ballpoint lays less ink on a quick scribble.
  * Every helper here is pure, deterministic, finite for NaN/Infinity, and an
- * EXACT identity for neutral (uniform/full pressure) ink, so legacy and finger
- * strokes keep rendering byte-for-byte as before.
+ * EXACT identity for neutral full-pressure ink, so legacy and finger strokes
+ * keep rendering byte-for-byte as before.
  *
- * Speeds are spatial (normalized page units scaled to pixels), matching the
- * existing [PenStrokeGeometry.simulatedPressure] convention: samples arrive at
- * a roughly uniform pointer-event rate, so distance per sample stands in for
- * velocity. All arrays are derived from the FULL stroke; replay slices them
+ * Timed strokes use physical page-point velocity (pixels/second) from central
+ * or one-sided differences. Legacy strokes keep the original distance-per-sample
+ * fallback. All arrays are derived from the FULL stroke; replay slices them
  * instead of recomputing from a truncated prefix.
  */
 object InkDynamics {
@@ -34,11 +33,24 @@ object InkDynamics {
     /** A ballpoint ball is fixed-size: pressure barely changes its width. */
     const val BALLPOINT_MIN_WIDTH_FACTOR = 0.88f
 
-    /** Consecutive samples closer than this (page px) count as a dwelling nib. */
-    const val DWELL_RADIUS_PX = 1.5f
+    /** Shortest timestamp span used for velocity; 1 ms prevents zero-dt spikes. */
+    const val MIN_SPEED_DT_MS = 1f
 
-    /** A dwell needs at least this many near-stationary samples to pool ink. */
+    /**
+     * Dwell radius as a fraction of the shorter page side. At 2x A4
+     * (1190 x 1684 page points) this is 1.4875 px, preserving the old 1.5 px
+     * feel while making screen, export and thumbnail decisions scale-invariant.
+     */
+    const val DWELL_RADIUS_PAGE_FRACTION = 0.00125f
+
+    /** Dwell duration at which a timed ink pool reaches full strength. */
+    const val DWELL_FULL_STRENGTH_MS = 200L
+
+    /** A dwell needs at least this many near-stationary legacy samples to pool ink. */
     const val DWELL_MIN_SAMPLES = 3
+
+    /** Timed dwells need 32 ms (about two 60 Hz intervals), independent of rate. */
+    const val DWELL_MIN_DURATION_MS = 32L
 
     /** Upper bound on pools per stroke so a long dwell cannot flood drawing. */
     const val MAX_DWELL_POOLS = 8
@@ -71,27 +83,90 @@ object InkDynamics {
     }
 
     /**
-     * Central-difference speed per sample in page pixels. Neighbour indices are
-     * clamped so the first and last samples keep a speed and are never dropped.
-     * An empty stroke yields an empty array.
+     * Central-difference speed per sample. With valid [timesMs], the result is
+     * physical page-point velocity in px/second; endpoints use a one-sided
+     * difference. Timestamp spans are clamped to [MIN_SPEED_DT_MS].
+     *
+     * Timing is deliberately all-or-nothing: a missing, length-mismatched,
+     * duplicated or non-monotonic array falls back to the exact legacy
+     * distance-per-sample series. An empty stroke yields an empty array.
      */
     fun strokeSpeeds(
         points: List<NormalizedPoint>,
         widthPx: Float,
         heightPx: Float,
+        timesMs: List<Long>? = null,
     ): FloatArray {
         val count = points.size
         if (count == 0) return FloatArray(0)
         val w = if (widthPx.isFinite() && widthPx > 0f) widthPx else 1f
         val h = if (heightPx.isFinite() && heightPx > 0f) heightPx else 1f
+        val times = timesMs?.takeIf { hasValidPointTimes(points, it) }
         return FloatArray(count) { index ->
-            val previous = points[(index - 1).coerceAtLeast(0)]
-            val next = points[(index + 1).coerceAtMost(count - 1)]
-            val dx = (next.x - previous.x) * w
-            val dy = (next.y - previous.y) * h
+            val previous = (index - 1).coerceAtLeast(0)
+            val next = (index + 1).coerceAtMost(count - 1)
+            val dx = (points[next].x - points[previous].x) * w
+            val dy = (points[next].y - points[previous].y) * h
             val span = hypot(dx, dy)
-            if (span.isFinite()) span * 0.5f else 0f
+            when {
+                !span.isFinite() -> 0f
+                times == null -> span * 0.5f
+                else -> physicalSpeed(span, times[next], times[previous])
+            }
         }
+    }
+
+    /**
+     * Per-segment pace for deposit policies. This preserves the pencil's legacy
+     * segment-distance fallback, but uses px/second when timestamps are valid.
+     * Entry zero is unused by segment renderers; keeping it zero also makes the
+     * mean over all samples equal to the historical `totalArc / sampleCount`.
+     */
+    fun strokeSegmentSpeeds(
+        points: List<NormalizedPoint>,
+        widthPx: Float,
+        heightPx: Float,
+        timesMs: List<Long>? = null,
+    ): FloatArray {
+        val count = points.size
+        if (count < 2) return FloatArray(count)
+        val w = if (widthPx.isFinite() && widthPx > 0f) widthPx else 1f
+        val h = if (heightPx.isFinite() && heightPx > 0f) heightPx else 1f
+        val times = timesMs?.takeIf { hasValidPointTimes(points, it) }
+        return FloatArray(count) { index ->
+            if (index == 0) return@FloatArray 0f
+            val previous = points[index - 1]
+            val current = points[index]
+            val dx = (current.x - previous.x) * w
+            val dy = (current.y - previous.y) * h
+            val span = hypot(dx, dy)
+            when {
+                !span.isFinite() -> 0f
+                times == null -> span
+                else -> physicalSpeed(span, times[index], times[index - 1])
+            }
+        }
+    }
+
+    /** True only for a complete, strictly increasing per-point timestamp array. */
+    internal fun hasValidPointTimes(
+        points: List<NormalizedPoint>,
+        timesMs: List<Long>?,
+    ): Boolean {
+        if (points.size < 2 || timesMs == null || timesMs.size != points.size) return false
+        if (timesMs[0] < 0L) return false
+        for (index in 1 until timesMs.size) {
+            if (timesMs[index] <= timesMs[index - 1]) return false
+        }
+        return true
+    }
+
+    private fun physicalSpeed(spanPx: Float, endMs: Long, startMs: Long): Float {
+        // Double subtraction avoids Long overflow for corrupt extreme timestamps.
+        val dtMs = (endMs.toDouble() - startMs.toDouble())
+            .coerceAtLeast(MIN_SPEED_DT_MS.toDouble())
+        val speed = (spanPx.toDouble() * 1000.0 / dtMs).toFloat()
+        return if (speed.isFinite()) speed.coerceAtLeast(0f) else 0f
     }
 
     /** Mean of [strokeSpeeds]; 0f for an empty stroke. */
@@ -111,24 +186,38 @@ object InkDynamics {
     data class InkPool(val index: Int, val strength: Float)
 
     /**
-     * Finds dwelling-nib runs: [DWELL_MIN_SAMPLES] or more consecutive samples
-     * whose pairwise movement stays under [DWELL_RADIUS_PX]. A real fountain
-     * nib or brush pools ink into a darker blob when it rests; a moving stroke
-     * never qualifies. Neutral ink returns an empty list so legacy strokes are
-     * untouched. At most [MAX_DWELL_POOLS] pools are returned, in stroke order.
+     * Finds dwelling-nib runs whose pairwise movement stays within
+     * [DWELL_RADIUS_PAGE_FRACTION] of the shorter page side. A real fountain nib
+     * or brush pools ink into a darker blob when it rests; a moving stroke never
+     * qualifies.
+     *
+     * Untimed legacy ink requires [DWELL_MIN_SAMPLES] and genuine pressure
+     * variation, keeping the bounded sample-count strength formula. Timed ink
+     * requires [DWELL_MIN_DURATION_MS] and measures strength from elapsed dwell
+     * time, so capture rate does not change the decision. Full-pressure neutral
+     * ink never pools, even when timed. At most [MAX_DWELL_POOLS] pools are
+     * returned, in stroke order.
      */
     fun dwellPools(
         points: List<NormalizedPoint>,
         widthPx: Float,
         heightPx: Float,
         variation: Float,
+        timesMs: List<Long>? = null,
     ): List<InkPool> {
-        if (!variation.isFinite() || variation <= PenStrokeGeometry.PRESSURE_VARIATION_EPSILON) {
+        val times = timesMs?.takeIf { hasValidPointTimes(points, it) }
+        if (times == null) {
+            if (!variation.isFinite() || variation <= PenStrokeGeometry.PRESSURE_VARIATION_EPSILON) {
+                return emptyList()
+            }
+        } else if (points.all { it.pressure >= 1f }) {
+            // Timing must not break the exact full-pressure neutral identity.
             return emptyList()
         }
-        if (points.size < DWELL_MIN_SAMPLES) return emptyList()
+        if (points.size < if (times == null) DWELL_MIN_SAMPLES else 2) return emptyList()
         val w = if (widthPx.isFinite() && widthPx > 0f) widthPx else 1f
         val h = if (heightPx.isFinite() && heightPx > 0f) heightPx else 1f
+        val radius = minOf(w, h) * DWELL_RADIUS_PAGE_FRACTION
         val pools = ArrayList<InkPool>()
         var runStart = 0
         for (index in 1 until points.size) {
@@ -137,13 +226,13 @@ object InkDynamics {
             val dx = (current.x - previous.x) * w
             val dy = (current.y - previous.y) * h
             val step = hypot(dx, dy)
-            val stationary = step.isFinite() && step <= DWELL_RADIUS_PX
+            val stationary = step.isFinite() && step <= radius
             if (!stationary) {
-                addPool(pools, runStart, index - 1)
+                addPool(pools, runStart, index - 1, times)
                 runStart = index
             }
         }
-        addPool(pools, runStart, points.lastIndex)
+        addPool(pools, runStart, points.lastIndex, times)
         return pools
     }
 
@@ -157,11 +246,23 @@ object InkDynamics {
         return pools.filter { it.index < count }
     }
 
-    private fun addPool(pools: ArrayList<InkPool>, runStart: Int, runEnd: Int) {
+    private fun addPool(
+        pools: ArrayList<InkPool>,
+        runStart: Int,
+        runEnd: Int,
+        timesMs: List<Long>?,
+    ) {
         if (pools.size >= MAX_DWELL_POOLS) return
         val run = runEnd - runStart + 1
-        if (run < DWELL_MIN_SAMPLES) return
-        val strength = ((run - (DWELL_MIN_SAMPLES - 1)).toFloat() / 10f).coerceIn(0.15f, 1f)
+        val strength = if (timesMs != null) {
+            val durationMs = (timesMs[runEnd].toDouble() - timesMs[runStart].toDouble())
+                .coerceAtLeast(0.0)
+            if (durationMs < DWELL_MIN_DURATION_MS) return
+            (durationMs / DWELL_FULL_STRENGTH_MS.toDouble()).toFloat().coerceIn(0.15f, 1f)
+        } else {
+            if (run < DWELL_MIN_SAMPLES) return
+            ((run - (DWELL_MIN_SAMPLES - 1)).toFloat() / 10f).coerceIn(0.15f, 1f)
+        }
         pools.add(InkPool(runEnd, strength))
     }
 
