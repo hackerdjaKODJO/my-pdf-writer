@@ -2,7 +2,6 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
-import com.hackerdjakodjo.mypdfwriter.data.StudySource
 import com.hackerdjakodjo.mypdfwriter.data.StudySourceLink
 import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
 
