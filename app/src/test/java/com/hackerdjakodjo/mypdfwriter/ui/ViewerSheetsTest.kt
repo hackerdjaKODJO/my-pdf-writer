@@ -84,7 +84,10 @@ class ViewerSheetsTest {
         assertEquals(
             1,
             nearestOutlineEntryIndex(
-                listOf(PdfOutlineEntry("2쪽", pageIndex = 2), PdfOutlineEntry("4쪽", pageIndex = 4)),
+                listOf(
+                    PdfOutlineEntry("2쪽", pageIndex = 2, level = 0),
+                    PdfOutlineEntry("4쪽", pageIndex = 4, level = 0),
+                ),
                 currentPage = 3,
             ),
         )
