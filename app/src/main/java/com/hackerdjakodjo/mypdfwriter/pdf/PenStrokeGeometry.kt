@@ -251,6 +251,9 @@ object PenStrokeGeometry {
      * default keeps the original fountain/brush band; a ballpoint passes
      * [InkDynamics.BALLPOINT_MIN_WIDTH_FACTOR] because its fixed-size ball
      * barely changes width — pressure there reads as ink flow, not swelling.
+     * [widthPx]/[heightPx] and [timesMs] feed the same aspect-aware velocity
+     * helper used by the nib renderers. [livePreview] suppresses only the
+     * final-length-dependent end envelope until commit/replay/export.
      */
     fun outlineWidthSeries(
         points: List<NormalizedPoint>,
@@ -259,6 +262,10 @@ object PenStrokeGeometry {
         baseWidth: Float,
         legacyWidth: Float,
         minWidthFactor: Float = MIN_PRESSURE_WIDTH_FACTOR,
+        widthPx: Float = 1f,
+        heightPx: Float = 1f,
+        timesMs: List<Long>? = null,
+        livePreview: Boolean = false,
     ): FloatArray {
         val count = points.size
         if (count == 0) return FloatArray(0)
@@ -275,18 +282,11 @@ object PenStrokeGeometry {
             MIN_PRESSURE_WIDTH_FACTOR
         }
 
-        // Central-difference speed in normalized units; neighbours are clamped so
-        // the first and last samples keep a speed and are never dropped.
-        val speeds = FloatArray(count)
-        for (i in 0 until count) {
-            val previous = points[(i - 1).coerceAtLeast(0)]
-            val next = points[(i + 1).coerceAtMost(count - 1)]
-            val span = hypot((next.x - previous.x).toDouble(), (next.y - previous.y).toDouble())
-            speeds[i] = (span * 0.5).toFloat()
-        }
-        var totalSpeed = 0f
-        speeds.forEach { totalSpeed += it }
-        val reference = totalSpeed / count.toFloat()
+        // Use the same aspect-aware, timestamp-aware distance as every nib
+        // renderer. In particular, a ballpoint outline must not revert to an
+        // isotropic normalized-unit speed on a non-square page.
+        val speeds = InkDynamics.strokeSpeeds(points, widthPx, heightPx, timesMs)
+        val reference = InkDynamics.speedReference(speeds)
 
         val floor = (base * 0.5f * minWidth * legacy).coerceAtLeast(0.02f)
         val ceiling = (base * 2f).coerceAtLeast(floor)
@@ -301,7 +301,14 @@ object PenStrokeGeometry {
                 } ?: 1f
                 val factor = (responseWidth + pressureWidth) * 0.5f
                 val t = if (count == 1) 0.5f else index.toFloat() / (count - 1).toFloat()
-                val half = base * 0.5f * legacy * factor * outlineEndEnvelope(t, range, OUTLINE_END_SPAN)
+                // A growing live stroke has no final tip yet. Suppress only this
+                // end-only component; commit/replay/export apply the full envelope.
+                val endEnvelope = if (livePreview) {
+                    1f
+                } else {
+                    outlineEndEnvelope(t, range, OUTLINE_END_SPAN)
+                }
+                val half = base * 0.5f * legacy * factor * endEnvelope
                 if (half.isFinite()) half.coerceIn(floor, ceiling) else floor
             }
         }
@@ -423,6 +430,34 @@ object PenStrokeGeometry {
         }
         ring.add(normalize(leftX[0], leftY[0]))
         return ring
+    }
+
+    /**
+     * Cumulative physical page-point arc length at every sample. Replay reuses
+     * the full-stroke prefix, keeping graphite texture and deposit phase stable.
+     * The Float math intentionally matches the legacy pencil renderer.
+     */
+    fun strokeArcLengths(
+        points: List<NormalizedPoint>,
+        widthPx: Float,
+        heightPx: Float,
+    ): FloatArray {
+        val count = points.size
+        if (count == 0) return FloatArray(0)
+        val w = if (widthPx.isFinite() && widthPx > 0f) widthPx else 1f
+        val h = if (heightPx.isFinite() && heightPx > 0f) heightPx else 1f
+        val arcs = FloatArray(count)
+        for (index in 1 until count) {
+            val previous = points[index - 1]
+            val current = points[index]
+            val dx = (current.x - previous.x) * w
+            val dy = (current.y - previous.y) * h
+            val step = hypot(dx, dy)
+            val safeStep = if (step.isFinite()) step.coerceAtLeast(0f) else 0f
+            val accumulated = arcs[index - 1] + safeStep
+            arcs[index] = if (accumulated.isFinite()) accumulated else Float.MAX_VALUE
+        }
+        return arcs
     }
 
     /**

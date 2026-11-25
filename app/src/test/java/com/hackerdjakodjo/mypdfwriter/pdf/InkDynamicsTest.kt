@@ -2,8 +2,10 @@ package com.hackerdjakodjo.mypdfwriter.pdf
 
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.roundToLong
 
 /**
  * Speed-aware pen dynamics: neutral ink stays an exact identity, varied ink
@@ -83,6 +85,118 @@ class InkDynamicsTest {
         corrupt.forEach { assertTrue("finite $it", it.isFinite()) }
     }
 
+    @Test
+    fun `timed speed is physical page-point velocity with central and one-sided differences`() {
+        val points = listOf(
+            NormalizedPoint(0.1f, 0.5f),
+            NormalizedPoint(0.2f, 0.5f),
+            NormalizedPoint(0.4f, 0.5f),
+        )
+        val speeds = InkDynamics.strokeSpeeds(points, 1000f, 500f, listOf(0L, 1000L, 3000L))
+        assertEquals(100f, speeds[0], 0.001f)
+        assertEquals(150f, speeds[1], 0.001f)
+        assertEquals(100f, speeds[2], 0.001f)
+
+        val diagonal = InkDynamics.strokeSpeeds(
+            listOf(NormalizedPoint(0.1f, 0.1f), NormalizedPoint(0.4f, 0.5f)),
+            1000f,
+            500f,
+            listOf(10L, 1010L),
+        )
+        assertEquals(500f, diagonal[0], 0.001f)
+    }
+
+    @Test
+    fun `same physical velocity at 60 120 and 240 Hz yields equivalent bounded factors`() {
+        fun stroke(rate: Int): Pair<List<NormalizedPoint>, List<Long>> {
+            val count = rate + 1
+            val points = List(count) {
+                NormalizedPoint(0.1f + 0.6f * it / (count - 1), 0.5f, 0.65f)
+            }
+            val times = List(count) { (it * 1000.0 / rate).roundToLong() }
+            return points to times
+        }
+
+        val captures = listOf(60, 120, 240).map { rate ->
+            val (points, times) = stroke(rate)
+            Triple(rate, points, InkDynamics.strokeSpeeds(points, 1000f, 800f, times))
+        }
+        captures.forEach { (_, _, speeds) ->
+            assertEquals("physical pace", 600f, InkDynamics.speedReference(speeds), 3f)
+            speeds.forEach { speed ->
+                val factor = InkDynamics.velocityWidthFactor(
+                    speed,
+                    600f,
+                    InkDynamics.BRUSH_SPEED_INFLUENCE,
+                    0.35f,
+                )
+                assertTrue("bounded factor $factor", factor in 0.65f..1.35f)
+                assertTrue("rate invariant factor $factor", factor in 0.98f..1.02f)
+            }
+        }
+        val base = captures.first()
+        captures.drop(1).forEach { capture ->
+            listOf(0.1f, 0.25f, 0.5f, 0.75f, 0.9f).forEach { position ->
+                val baseIndex = (position * base.third.lastIndex).roundToLong().toInt()
+                val index = (position * capture.third.lastIndex).roundToLong().toInt()
+                val baseFactor = InkDynamics.velocityWidthFactor(
+                    base.third[baseIndex], 600f, InkDynamics.BRUSH_SPEED_INFLUENCE, 0.35f,
+                )
+                val factor = InkDynamics.velocityWidthFactor(
+                    capture.third[index], 600f, InkDynamics.BRUSH_SPEED_INFLUENCE, 0.35f,
+                )
+                assertEquals("$position at ${capture.first} Hz", baseFactor, factor, 0.01f)
+            }
+        }
+    }
+
+    @Test
+    fun `timestamp dt is clamped and invalid timing uses the exact sample fallback`() {
+        val points = listOf(
+            NormalizedPoint(0.1f, 0.5f),
+            NormalizedPoint(0.2f, 0.5f),
+            NormalizedPoint(0.3f, 0.5f),
+        )
+        val clamped = InkDynamics.strokeSpeeds(points, 1000f, 1000f, listOf(0L, 1L, 2L))
+        assertEquals(100000f, clamped[0], 1f)
+        assertEquals(200000f, clamped[1], 1f)
+        assertTrue("1 ms floor prevents a spike", clamped.all { it.isFinite() && it > 0f })
+
+        val fallback = InkDynamics.strokeSpeeds(points, 1000f, 1000f)
+        listOf(
+            emptyList(),
+            listOf(0L, 10L),
+            listOf(0L, 10L, 10L),
+            listOf(0L, 20L, 10L),
+            listOf(-10L, 0L, 10L),
+        ).forEach { invalid ->
+            assertArrayEquals(
+                "invalid timing $invalid",
+                fallback,
+                InkDynamics.strokeSpeeds(points, 1000f, 1000f, invalid),
+            )
+        }
+    }
+
+    @Test
+    fun `segment pace is timed but keeps the legacy distance fallback`() {
+        val points = listOf(
+            NormalizedPoint(0.1f, 0.5f),
+            NormalizedPoint(0.3f, 0.5f),
+            NormalizedPoint(0.4f, 0.5f),
+        )
+        assertArrayEquals(
+            floatArrayOf(0f, 200f, 100f),
+            InkDynamics.strokeSegmentSpeeds(points, 1000f, 1000f),
+            0.001f,
+        )
+        assertArrayEquals(
+            floatArrayOf(0f, 100f, 200f),
+            InkDynamics.strokeSegmentSpeeds(points, 1000f, 1000f, listOf(0L, 2000L, 2500L)),
+            0.001f,
+        )
+    }
+
     // ---- dwellPools ----------------------------------------------------------
 
     private fun dwellStroke(): List<NormalizedPoint> = listOf(
@@ -131,6 +245,95 @@ class InkDynamicsTest {
         }
         val pools = InkDynamics.dwellPools(points, 1000f, 1000f, 0.7f)
         assertTrue("pools ${pools.size}", pools.size in 1..InkDynamics.MAX_DWELL_POOLS)
+    }
+
+    private fun timedHold(
+        rate: Int,
+        durationMs: Int = 200,
+        pressure: Float = 0.65f,
+    ): Pair<List<NormalizedPoint>, List<Long>> {
+        val holdSamples = durationMs * rate / 1000 + 1
+        val points = listOf(NormalizedPoint(0.1f, 0.5f, pressure)) +
+            List(holdSamples) { NormalizedPoint(0.3f, 0.5f, pressure) } +
+            listOf(NormalizedPoint(0.5f, 0.5f, pressure))
+        val times = listOf(0L) +
+            List(holdSamples) { index -> 20L + (index * 1000.0 / rate).roundToLong() } +
+            listOf(20L + durationMs + 20L)
+        return points to times
+    }
+
+    @Test
+    fun `constant pressure timed hold pools with bounded duration based strength`() {
+        val (points, times) = timedHold(60)
+        assertEquals(0f, PenStrokeGeometry.pressureVariation(points), 0f)
+        val pools = InkDynamics.dwellPools(points, 1190f, 1684f, 0f, times)
+        assertEquals(1, pools.size)
+        assertEquals(1f, pools[0].strength, 0f)
+
+        val (shortPoints, shortTimes) = timedHold(60, durationMs = 50)
+        val short = InkDynamics.dwellPools(shortPoints, 1190f, 1684f, 0f, shortTimes)
+        assertEquals(1, short.size)
+        assertEquals(0.25f, short[0].strength, 0.001f)
+        assertTrue(short[0].strength in 0.15f..1f)
+
+        val (neutralPoints, neutralTimes) = timedHold(60, pressure = 1f)
+        assertTrue(
+            InkDynamics.dwellPools(neutralPoints, 1190f, 1684f, 0f, neutralTimes).isEmpty(),
+        )
+    }
+
+    @Test
+    fun `timed dwell decisions and strength agree across capture rates and page scales`() {
+        val holds = listOf(60, 120, 240).map { rate ->
+            val (points, times) = timedHold(rate)
+            InkDynamics.dwellPools(points, 1190f, 1684f, 0f, times)
+        }
+        holds.forEach { pools ->
+            assertEquals(1, pools.size)
+            assertEquals(1f, pools.single().strength, 0f)
+        }
+
+        val (points, times) = timedHold(60)
+        val expected = InkDynamics.dwellPools(points, 1190f, 1684f, 0f, times)
+        listOf(2f, 2.2f, 2.5f).forEach { scale ->
+            assertEquals(
+                "pools at ${scale}x",
+                expected,
+                InkDynamics.dwellPools(points, 595f * scale, 842f * scale, 0f, times),
+            )
+        }
+    }
+
+    @Test
+    fun `timed dwell duration threshold is independent of capture rate`() {
+        listOf(60, 120, 240).forEach { rate ->
+            val (shortPoints, shortTimes) = timedHold(rate, durationMs = 20)
+            assertTrue(
+                "20 ms at $rate Hz is only sensor noise",
+                InkDynamics.dwellPools(shortPoints, 1190f, 1684f, 0f, shortTimes).isEmpty(),
+            )
+            val (holdPoints, holdTimes) = timedHold(rate, durationMs = 40)
+            assertEquals(
+                "40 ms at $rate Hz pools",
+                1,
+                InkDynamics.dwellPools(holdPoints, 1190f, 1684f, 0f, holdTimes).size,
+            )
+        }
+    }
+
+    @Test
+    fun `a timed moving stroke never pools`() {
+        val count = 41
+        val points = List(count) { NormalizedPoint(0.1f + it * 0.01f, 0.5f, 0.65f) }
+        val times = List(count) { it * 16L }
+        assertTrue(InkDynamics.dwellPools(points, 1190f, 1684f, 0f, times).isEmpty())
+    }
+
+    @Test
+    fun `legacy untimed dwell keeps its bounded sample count strength`() {
+        val pools = InkDynamics.dwellPools(dwellStroke(), 1000f, 1000f, 0.8f)
+        assertEquals(1, pools.size)
+        assertEquals(0.2f, pools.single().strength, 0f)
     }
 
     @Test

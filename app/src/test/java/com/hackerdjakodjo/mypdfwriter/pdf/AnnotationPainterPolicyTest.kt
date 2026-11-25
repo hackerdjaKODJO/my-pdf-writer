@@ -8,7 +8,9 @@ import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.inkPressureWidthFactor
 import com.hackerdjakodjo.mypdfwriter.data.inkResponseSeries
 import com.hackerdjakodjo.mypdfwriter.data.meanInkFlow
+import com.hackerdjakodjo.mypdfwriter.data.revealPointCount
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
@@ -29,6 +31,7 @@ class AnnotationPainterPolicyTest {
         style: PenStyle,
         pressures: List<Float>,
         type: AnnotationType = AnnotationType.PEN,
+        timesMs: List<Long>? = null,
     ): Annotation = Annotation(
         type = type,
         page = 0,
@@ -38,6 +41,8 @@ class AnnotationPainterPolicyTest {
             NormalizedPoint(0.1f * index, 0.2f, pressure)
         },
         penStyle = style,
+        timesMs = timesMs,
+        durationMs = timesMs?.let { (it.lastOrNull() ?: 0L) - (it.firstOrNull() ?: 0L) } ?: 0L,
     )
 
     @Test
@@ -438,6 +443,116 @@ class AnnotationPainterPolicyTest {
     }
 
     @Test
+    fun `timed replay delegates to annotation reveal count and legacy rounding is unchanged`() {
+        val pressures = List(10) { if (it < 3) 1f else 0.55f }
+        val legacy = stroke(PenStyle.PENCIL, pressures)
+        val timed = stroke(
+            PenStyle.PENCIL,
+            pressures,
+            timesMs = listOf(0L, 10L, 20L, 100L, 200L, 300L, 400L, 500L, 600L, 1000L),
+        )
+        val fractions = (1..20).map { it / 20f }
+        assertTrue(
+            "nonuniform timing must differ from sample rounding somewhere",
+            fractions.any { fraction ->
+                timed.revealPointCount(fraction) != (timed.points.size * fraction + 0.5f).toInt()
+            },
+        )
+        fractions.forEach { fraction ->
+            val revealed = AnnotationPainter.revealedPoints(timed, fraction)
+            assertEquals(timed.revealPointCount(fraction), revealed.size)
+            assertEquals(timed.points.take(revealed.size), revealed)
+            assertEquals(
+                AnnotationPainter.revealedPoints(legacy.points, fraction),
+                AnnotationPainter.revealedPoints(legacy, fraction),
+            )
+        }
+        val delayed = timed.copy(
+            timesMs = timed.timesMs?.map { it + 100L },
+            durationMs = 1100L,
+        )
+        assertTrue(AnnotationPainter.revealedPoints(delayed, 0.01f).isEmpty())
+    }
+
+    @Test
+    fun `ballpoint outline shares timed aspect aware speed with the nib renderers`() {
+        val samples = listOf(
+            NormalizedPoint(0.1f, 0.1f, 1f),
+            NormalizedPoint(0.2f, 0.7f, 0.8f),
+            NormalizedPoint(0.35f, 0.2f, 0.2f),
+            NormalizedPoint(0.6f, 0.8f, 0.7f),
+            NormalizedPoint(0.9f, 0.3f, 1f),
+        )
+        val annotation = Annotation(
+            type = AnnotationType.PEN,
+            page = 0,
+            color = 0xFF222222.toInt(),
+            width = 0.004f,
+            points = samples,
+            penStyle = PenStyle.BALLPOINT,
+            timesMs = listOf(0L, 20L, 60L, 180L, 200L),
+        )
+        val context = AnnotationPainter.inkContextCached(annotation, 1000f, 500f)
+        val expected = PenStrokeGeometry.outlineWidthSeries(
+            points = annotation.points,
+            series = context.series.map { it.width },
+            variation = context.variation,
+            baseWidth = 1f,
+            legacyWidth = 1f,
+            minWidthFactor = InkDynamics.BALLPOINT_MIN_WIDTH_FACTOR,
+            widthPx = 1000f,
+            heightPx = 500f,
+            timesMs = annotation.timesMs,
+        )
+        assertArrayEquals(expected, context.outlineWidths, 0f)
+        assertArrayEquals(
+            InkDynamics.strokeSpeeds(annotation.points, 1000f, 500f, annotation.timesMs),
+            context.speeds,
+            0f,
+        )
+        assertFalse(
+            "aspect-aware outline must not use isotropic normalized distance",
+            expected.contentEquals(
+                PenStrokeGeometry.outlineWidthSeries(
+                    annotation.points,
+                    context.series.map { it.width },
+                    context.variation,
+                    1f,
+                    1f,
+                    minWidthFactor = InkDynamics.BALLPOINT_MIN_WIDTH_FACTOR,
+                    timesMs = annotation.timesMs,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `live preview suppresses only final length end envelopes and has its own cache key`() {
+        AnnotationPainter.clearInkContextCache()
+        val annotation = stroke(PenStyle.BALLPOINT, listOf(1f, 0.9f, 0.4f, 0.8f, 1f))
+        val committed = AnnotationPainter.inkContextCached(annotation, 1000f, 1400f)
+        val preview = AnnotationPainter.inkContextCached(annotation, 1000f, 1400f, livePreview = true)
+        assertNotSame(committed, preview)
+        assertTrue(preview.livePreview)
+        assertTrue(preview.brushEnvelope.all { it == 1f })
+        assertTrue(committed.brushEnvelope.any { it != 1f })
+        assertTrue("live tip is not tapered", preview.outlineWidths.first() > committed.outlineWidths.first())
+        assertTrue("live far tip is not tapered", preview.outlineWidths.last() > committed.outlineWidths.last())
+        assertSame(
+            preview,
+            AnnotationPainter.inkContextCached(annotation.copy(opacity = 0.5f), 1000f, 1400f, livePreview = true),
+        )
+        val neutral = stroke(PenStyle.FOUNTAIN, List(5) { 1f })
+        assertTrue(
+            AnnotationPainter.inkContext(neutral.points, neutral.penStyle, livePreview = true)
+                .outlineWidths.contentEquals(
+                    AnnotationPainter.inkContext(neutral.points, neutral.penStyle, livePreview = false)
+                        .outlineWidths,
+                ),
+        )
+    }
+
+    @Test
     fun `stamp border never throws on a tiny text box`() {
         listOf(0.1f, 1f, 9f, 9.375f, 96f).forEach { boxHeight ->
             val border = stampBorderWidth(0.004f, 500f, boxHeight)
@@ -469,6 +584,29 @@ class AnnotationPainterPolicyTest {
         AnnotationPainter.clearInkContextCache()
         assertNotSame("clearing the cache forces a fresh derivation", first,
             AnnotationPainter.inkContextCached(pen, 1000f, 1400f))
+    }
+
+    @Test
+    fun `ink context cache distinguishes per-point timing for the same geometry`() {
+        AnnotationPainter.clearInkContextCache()
+        val points = List(6) { NormalizedPoint(0.1f * it, 0.2f, if (it == 3) 0.3f else 0.8f) }
+        val slow = Annotation(
+            type = AnnotationType.PEN,
+            page = 0,
+            color = 0,
+            width = 0.004f,
+            points = points,
+            timesMs = List(6) { it * 100L },
+        )
+        val fast = slow.copy(timesMs = List(6) { it * 10L })
+        val slowContext = AnnotationPainter.inkContextCached(slow, 1000f, 1000f)
+        val fastContext = AnnotationPainter.inkContextCached(fast, 1000f, 1000f)
+        assertNotSame(slowContext, fastContext)
+        assertFalse(slowContext.speeds.contentEquals(fastContext.speeds))
+        assertSame(
+            slowContext,
+            AnnotationPainter.inkContextCached(slow.copy(opacity = 0.4f), 1000f, 1000f),
+        )
     }
 
     @Test

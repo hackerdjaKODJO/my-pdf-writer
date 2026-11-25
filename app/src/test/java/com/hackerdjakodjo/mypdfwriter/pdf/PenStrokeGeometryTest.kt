@@ -239,6 +239,52 @@ class PenStrokeGeometryTest {
     }
 
     @Test
+    fun `outline live preview omits the final-length end envelope without changing neutral ink`() {
+        val varied = points(1f, 0.8f, 0.2f, 0.6f)
+        val variation = PenStrokeGeometry.pressureVariation(varied)
+        val committed = PenStrokeGeometry.outlineWidthSeries(
+            varied, List(4) { 1f }, variation, 10f, 1f,
+        )
+        val preview = PenStrokeGeometry.outlineWidthSeries(
+            varied, List(4) { 1f }, variation, 10f, 1f,
+            livePreview = true,
+        )
+        assertTrue("start tip waits for commit", preview.first() > committed.first())
+        assertTrue("end tip waits for commit", preview.last() > committed.last())
+
+        val neutral = points(1f, 1f, 1f, 1f)
+        assertTrue(
+            PenStrokeGeometry.outlineWidthSeries(
+                neutral, List(4) { 1f }, 0f, 10f, 1f, livePreview = true,
+            ).contentEquals(
+                PenStrokeGeometry.outlineWidthSeries(
+                    neutral, List(4) { 1f }, 0f, 10f, 1f, livePreview = false,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `cumulative arc length is aspect aware finite and deterministic`() {
+        val samples = listOf(
+            NormalizedPoint(0.1f, 0.1f),
+            NormalizedPoint(0.4f, 0.5f),
+            NormalizedPoint(0.4f, 0.7f),
+        )
+        val arcs = PenStrokeGeometry.strokeArcLengths(samples, 1000f, 500f)
+        assertEquals(0f, arcs[0], 0f)
+        assertEquals(500f, arcs[1], 0.001f)
+        assertEquals(600f, arcs[2], 0.001f)
+        assertTrue(arcs.contentEquals(PenStrokeGeometry.strokeArcLengths(samples, 1000f, 500f)))
+        val corrupt = PenStrokeGeometry.strokeArcLengths(
+            listOf(NormalizedPoint(Float.NaN, 0f), NormalizedPoint(1f, Float.NaN)),
+            Float.NaN,
+            0f,
+        )
+        corrupt.forEach { assertTrue(it.isFinite()) }
+    }
+
+    @Test
     fun `graphite wave and offsets are exact legacy constants at full grain`() {
         listOf(0, 2, 3, 7).forEach { pass ->
             val phase = 3 * 1.7 + pass * 4.3

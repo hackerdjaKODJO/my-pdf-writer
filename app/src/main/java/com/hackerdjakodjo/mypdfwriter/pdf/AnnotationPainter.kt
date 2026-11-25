@@ -13,6 +13,7 @@ import com.hackerdjakodjo.mypdfwriter.data.InkResponse
 import com.hackerdjakodjo.mypdfwriter.data.MIN_PRESSURE_WIDTH_FACTOR
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.inkResponseSeries
+import com.hackerdjakodjo.mypdfwriter.data.revealPointCount
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -30,7 +31,10 @@ import kotlin.math.sin
  * The same code is used for the on-screen overlay and for export, so the exported PDF
  * is pixel-faithful to what the student sees (including Korean text, stamps, signatures
  * and redaction blackouts). [progress] lets replay reveal each annotation gradually;
- * callers that want the normal result keep the default of `1f`.
+ * callers that want the normal result keep the default of `1f`. Growing pen
+ * previews may opt into `livePreview` to suppress final-length-dependent end
+ * profiles; committed replay and export keep the default `false`. Global
+ * stroke means and speed references remain full-stroke in this bounded patch.
  */
 /**
  * Non-throwing stamp border width. A very long stamp (or a tiny thumbnail)
@@ -58,8 +62,11 @@ object AnnotationPainter {
         width: Float,
         height: Float,
         progress: (Annotation) -> Float = { 1f },
+        livePreview: Boolean = false,
     ) {
-        annotations.forEach { drawOne(canvas, it, width, height, progress(it)) }
+        annotations.forEach {
+            drawOne(canvas, it, width, height, progress(it), livePreview = livePreview)
+        }
     }
 
     fun drawOne(
@@ -68,12 +75,13 @@ object AnnotationPainter {
         width: Float,
         height: Float,
         fraction: Float = 1f,
+        livePreview: Boolean = false,
     ) {
         if (annotation.points.isEmpty()) return
         val reveal = fraction.coerceIn(0f, 1f)
         if (reveal <= 0f) return
         if (reveal < 1f) {
-            drawPartial(canvas, annotation, width, height, reveal)
+            drawPartial(canvas, annotation, width, height, reveal, livePreview)
             return
         }
         when (annotation.type) {
@@ -82,7 +90,7 @@ object AnnotationPainter {
                 annotation,
                 width,
                 height,
-                inkContextFor(annotation, width, height),
+                inkContextFor(annotation, width, height, livePreview),
             )
             AnnotationType.HIGHLIGHT -> drawStroke(
                 canvas,
@@ -106,9 +114,9 @@ object AnnotationPainter {
     }
 
     /**
-     * Replay rendering for `0 < fraction < 1`. Strokes expose the first
-     * `ceil(points * fraction)` samples, two-point shapes grow their endpoint,
-     * and text-like annotations fade in. Fraction `1f` still uses the exact
+     * Replay rendering for `0 < fraction < 1`. Strokes use the annotation's
+     * timing-aware reveal count, two-point shapes grow their endpoint, and
+     * text-like annotations fade in. Fraction `1f` still uses the exact
      * original rendering path above.
      */
     private fun drawPartial(
@@ -117,6 +125,7 @@ object AnnotationPainter {
         width: Float,
         height: Float,
         fraction: Float,
+        livePreview: Boolean,
     ) {
         when (annotation.type) {
             AnnotationType.PEN, AnnotationType.HIGHLIGHT -> {
@@ -124,9 +133,13 @@ object AnnotationPainter {
                 // annotation, not the revealed prefix: ink density, outline
                 // widths, fountain nib factors and the brush envelope. Replay
                 // only slices those arrays so already revealed ink never shifts.
-                val ink = inkContextFor(annotation, width, height)
-                val points = revealedPoints(annotation.points, fraction)
-                val partial = annotation.copy(points = points)
+                val points = revealedPoints(annotation, fraction)
+                if (points.isEmpty()) return
+                val ink = inkContextFor(annotation, width, height, livePreview)
+                val partial = annotation.copy(
+                    points = points,
+                    timesMs = annotation.timesMs?.take(points.size),
+                )
                 if (annotation.type == AnnotationType.PEN) {
                     drawPen(
                         canvas,
@@ -139,6 +152,8 @@ object AnnotationPainter {
                             fountainSmoothed = ink.fountainSmoothed.copyOf(points.size),
                             brushEnvelope = ink.brushEnvelope.copyOf(points.size),
                             speeds = ink.speeds.copyOf(points.size),
+                            arcLengths = ink.arcLengths.copyOf(points.size),
+                            segmentSpeeds = ink.segmentSpeeds.copyOf(points.size),
                             pools = InkDynamics.poolsForReveal(ink.pools, points.size),
                         ),
                     )
@@ -168,9 +183,14 @@ object AnnotationPainter {
                 val points = if (annotation.points.size == 2) {
                     revealedEndpoints(annotation.points, fraction) ?: return
                 } else {
-                    revealedPoints(annotation.points, fraction)
+                    revealedPoints(annotation, fraction)
                 }
-                drawMarkupLine(canvas, annotation.copy(points = points), width, height)
+                if (points.isEmpty()) return
+                val partial = annotation.copy(
+                    points = points,
+                    timesMs = annotation.timesMs?.take(points.size),
+                )
+                drawMarkupLine(canvas, partial, width, height)
             }
 
             AnnotationType.TEXT -> drawText(canvas, annotation.faded(fraction), width, height)
@@ -180,12 +200,39 @@ object AnnotationPainter {
 
             AnnotationType.SIGNATURE -> {
                 if (annotation.points.size > 1) {
-                    val partial = annotation.copy(points = revealedPoints(annotation.points, fraction))
+                    val points = revealedPoints(annotation, fraction)
+                    if (points.isEmpty()) return
+                    val partial = annotation.copy(
+                        points = points,
+                        timesMs = annotation.timesMs?.take(points.size),
+                    )
                     drawSignature(canvas, partial, width, height)
                 } else {
                     drawSignature(canvas, annotation.faded(fraction), width, height)
                 }
             }
+        }
+    }
+
+    /**
+     * Timed replay delegates the count to the annotation so nonuniform capture
+     * timing is honored. The model's null-timing implementation is the legacy
+     * nearest-sample round used by [revealedPoints].
+     */
+    internal fun revealedPoints(
+        annotation: Annotation,
+        fraction: Float,
+    ): List<NormalizedPoint> {
+        val points = annotation.points
+        if (points.isEmpty()) return emptyList()
+        val count = annotation.revealPointCount(fraction.coerceIn(0f, 1f))
+            .coerceIn(0, points.size)
+        return if (count <= 0) {
+            emptyList()
+        } else if (count >= points.size) {
+            points
+        } else {
+            points.subList(0, count).toList()
         }
     }
 
@@ -247,8 +294,9 @@ object AnnotationPainter {
 
     /**
      * Everything the pen renderers need, derived once from the **full** annotation.
-     * Replay truncates only [series]; the mean, neutral flag and pressure variation
-     * stay those of the complete stroke, so ink density never shifts while revealing.
+     * Replay truncates per-point arrays; the mean, neutral flag, variation, total
+     * length and references stay those of the complete stroke, so ink density
+     * and dynamics never shift while revealing.
      */
     internal data class InkContext(
         val mean: InkResponse,
@@ -277,13 +325,26 @@ object AnnotationPainter {
          */
         val brushEnvelope: FloatArray,
         /**
-         * Central-difference speed per sample (page px) from the full stroke.
+         * Central-difference speed per sample from the full stroke: page px per
+          * sample for legacy input, page px/second when timestamps are valid.
          * Replay slices this array; speed dynamics never re-derive from a
          * truncated prefix.
          */
         val speeds: FloatArray,
         /** Mean of [speeds]; the pace at which speed dynamics are neutral. */
         val speedReference: Float,
+        /** Full-stroke cumulative page-point arc length, sliced during replay. */
+        val arcLengths: FloatArray,
+        /** Last full-stroke arc length; never replaced by a replay-prefix total. */
+        val totalArcLength: Float,
+        /** Full-stroke segment pace used by pencil deposit (px/s when timed). */
+        val segmentSpeeds: FloatArray,
+        /** Full-stroke mean of [segmentSpeeds], never a prefix-local reference. */
+        val segmentSpeedReference: Float,
+        /** Whether this context uses valid physical px/second timestamps. */
+        val timed: Boolean,
+        /** Suppresses final-length-dependent end profiles on a growing preview. */
+        val livePreview: Boolean,
         /**
          * Dwelling-nib ink pools from the full stroke. Replay keeps a pool
          * only once its anchor sample is revealed; its strength never changes.
@@ -309,12 +370,17 @@ object AnnotationPainter {
         isHighlight: Boolean = false,
         width: Float = 1f,
         height: Float = 1f,
+        timesMs: List<Long>? = null,
+        livePreview: Boolean = false,
     ): InkContext {
         val series = inkResponseSeries(points, penStyle, isHighlight)
         val variation = PenStrokeGeometry.pressureVariation(points)
         val mean = meanInkResponse(series)
-        val speeds = InkDynamics.strokeSpeeds(points, width, height)
+        val speeds = InkDynamics.strokeSpeeds(points, width, height, timesMs)
         val speedReference = InkDynamics.speedReference(speeds)
+        val arcLengths = PenStrokeGeometry.strokeArcLengths(points, width, height)
+        val segmentSpeeds = InkDynamics.strokeSegmentSpeeds(points, width, height, timesMs)
+        val segmentSpeedReference = InkDynamics.speedReference(segmentSpeeds)
         // A ballpoint's fixed-size ball barely changes width; its pressure
         // identity is ink flow. Every other style keeps the original band.
         val minWidthFactor = if (penStyle == PenStyle.BALLPOINT && !isHighlight) {
@@ -335,13 +401,23 @@ object AnnotationPainter {
                 baseWidth = 1f,
                 legacyWidth = 1f,
                 minWidthFactor = minWidthFactor,
+                widthPx = width,
+                heightPx = height,
+                timesMs = timesMs,
+                livePreview = livePreview,
             ),
             variableOutline = PenStrokeGeometry.useVariableWidthOutline(points),
             fountainSmoothed = fountainSmoothedFactors(points, width, height),
-            brushEnvelope = brushEnvelope(points),
+            brushEnvelope = brushEnvelope(points, livePreview),
             speeds = speeds,
             speedReference = speedReference,
-            pools = InkDynamics.dwellPools(points, width, height, variation),
+            arcLengths = arcLengths,
+            totalArcLength = arcLengths.lastOrNull() ?: 0f,
+            segmentSpeeds = segmentSpeeds,
+            segmentSpeedReference = segmentSpeedReference,
+            timed = InkDynamics.hasValidPointTimes(points, timesMs),
+            livePreview = livePreview,
+            pools = InkDynamics.dwellPools(points, width, height, variation, timesMs),
             depositFlow = if (penStyle == PenStyle.BALLPOINT && !isHighlight) {
                 InkDynamics.ballpointSpeedFlow(
                     flows = series.map { it.flow },
@@ -356,10 +432,10 @@ object AnnotationPainter {
     }
 
     /**
-     * Identity key for a derived ink context. Points lists are immutable and
-     * shared across `Annotation.copy`, so identity (not structural equality)
-     * is both correct and O(1) — structural equality on a 10k-point stroke
-     * would defeat the purpose of the cache.
+     * Identity key for a derived ink context. Points and timing lists are
+     * immutable and shared across `Annotation.copy`, so identity (not structural
+     * equality) is both correct and O(1) — structural equality on a 10k-point
+     * stroke would defeat the purpose of the cache.
      */
     private class InkContextKey(
         val points: List<NormalizedPoint>,
@@ -367,6 +443,8 @@ object AnnotationPainter {
         val isHighlight: Boolean,
         val width: Float,
         val height: Float,
+        val timesMs: List<Long>?,
+        val livePreview: Boolean,
     ) {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -375,7 +453,9 @@ object AnnotationPainter {
                 penStyle == other.penStyle &&
                 isHighlight == other.isHighlight &&
                 width == other.width &&
-                height == other.height
+                height == other.height &&
+                timesMs === other.timesMs &&
+                livePreview == other.livePreview
         }
 
         override fun hashCode(): Int {
@@ -384,6 +464,8 @@ object AnnotationPainter {
             hash = 31 * hash + isHighlight.hashCode()
             hash = 31 * hash + width.toBits()
             hash = 31 * hash + height.toBits()
+            hash = 31 * hash + System.identityHashCode(timesMs)
+            hash = 31 * hash + livePreview.hashCode()
             return hash
         }
     }
@@ -407,12 +489,14 @@ object AnnotationPainter {
         annotation: Annotation,
         width: Float = 1f,
         height: Float = 1f,
-    ): InkContext = inkContextFor(annotation, width, height)
+        livePreview: Boolean = false,
+    ): InkContext = inkContextFor(annotation, width, height, livePreview)
 
     private fun inkContextFor(
         annotation: Annotation,
         width: Float,
         height: Float,
+        livePreview: Boolean = false,
     ): InkContext {
         val key = InkContextKey(
             points = annotation.points,
@@ -420,6 +504,8 @@ object AnnotationPainter {
             isHighlight = annotation.type == AnnotationType.HIGHLIGHT,
             width = width,
             height = height,
+            timesMs = annotation.timesMs,
+            livePreview = livePreview,
         )
         return synchronized(inkContextCache) {
             inkContextCache.getOrPut(key) {
@@ -429,6 +515,8 @@ object AnnotationPainter {
                     isHighlight = annotation.type == AnnotationType.HIGHLIGHT,
                     width = width,
                     height = height,
+                    timesMs = annotation.timesMs,
+                    livePreview = livePreview,
                 )
             }
         }
@@ -464,8 +552,16 @@ object AnnotationPainter {
         }
     }
 
-    /** Full-stroke brush thickness envelope, independent of any replay prefix. */
-    internal fun brushEnvelope(points: List<NormalizedPoint>): FloatArray {
+    /**
+     * Full-stroke brush thickness envelope, independent of any replay prefix.
+     * A growing live preview defers this final-length-dependent envelope; the
+     * committed stroke, replay and export restore the original wash shape.
+     */
+    internal fun brushEnvelope(
+        points: List<NormalizedPoint>,
+        livePreview: Boolean = false,
+    ): FloatArray {
+        if (livePreview) return FloatArray(points.size) { 1f }
         val lastIndex = points.lastIndex
         return FloatArray(points.size) { index ->
             val t = if (lastIndex == 0) 0.5f else index.toFloat() / lastIndex
@@ -884,9 +980,12 @@ object AnnotationPainter {
                 influence = InkDynamics.FOUNTAIN_SPEED_INFLUENCE,
                 variation = variation,
             )
-            return base * smoothed[index] * pressure[index] * 0.5f *
-                PenStrokeGeometry.fountainTaper(t, variation) *
-                InkQuality.nibEndProfile(t, variation) * speed
+            // A live stroke has no committed end yet. Keep its already-dry nib
+            // width independent of the growing final-length taper; replay and
+            // export use both full-stroke end profiles.
+            val taper = if (ink.livePreview) 1f else PenStrokeGeometry.fountainTaper(t, variation)
+            val tip = if (ink.livePreview) 1f else InkQuality.nibEndProfile(t, variation)
+            return base * smoothed[index] * pressure[index] * 0.5f * taper * tip * speed
         }
         val path = ribbonPath(points, width, height) { index -> halfWidth(index) }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -997,16 +1096,10 @@ object AnnotationPainter {
         height: Float,
         pass: Int,
         grainAt: (Int) -> Float,
+        arcLengths: FloatArray? = null,
     ): List<NormalizedPoint> {
         if (pass == 1) return points
-        val arcs = FloatArray(points.size)
-        for (index in 1 until points.size) {
-            val previous = points[index - 1]
-            val current = points[index]
-            val dx = (current.x - previous.x) * width
-            val dy = (current.y - previous.y) * height
-            arcs[index] = arcs[index - 1] + hypot(dx, dy)
-        }
+        val arcs = arcLengths ?: PenStrokeGeometry.strokeArcLengths(points, width, height)
         return points.mapIndexed { index, point ->
             val grain = grainAt(index)
             val wave = PenStrokeGeometry.graphiteJitterByArc(
@@ -1020,6 +1113,105 @@ object AnnotationPainter {
             point.copy(
                 x = (point.x + wave * amplitude).coerceIn(0f, 1f),
                 y = (point.y + wave * amplitude * 0.65f).coerceIn(0f, 1f),
+            )
+        }
+    }
+
+    /**
+     * One varied-pencil segment's complete draw decision. Keeping this pure lets
+     * JVM regressions compare a replay prefix with the full-stroke plan without
+     * an Android Canvas. Arc phase, speed reference and tip position always come
+     * from the full [ink] context, never from the visible prefix.
+     */
+    internal data class PencilSegmentPlan(
+        val width: Float,
+        val alpha: Int,
+        val arcLength: Float,
+        val deposit: Float,
+        val depositGain: Float,
+        val tip: Float,
+        val speedFactor: Float,
+    )
+
+    internal fun pencilSegmentPlan(
+        ink: InkContext,
+        index: Int,
+        pass: Int,
+        base: Float,
+        baseAlpha: Int,
+        pressure: Float,
+    ): PencilSegmentPlan {
+        val totalSamples = ink.totalSamples.coerceAtLeast(2)
+        val safeIndex = index.coerceIn(1, totalSamples - 1)
+        val local = ink.series.getOrNull(safeIndex) ?: ink.mean
+        val t = safeIndex.toFloat() / (totalSamples - 1).toFloat()
+        val tip = if (ink.livePreview) 1f else InkQuality.nibEndProfile(t, ink.variation)
+        val speedFactor = InkDynamics.velocityWidthFactor(
+            speed = ink.speeds.getOrElse(safeIndex) { 0f },
+            reference = ink.speedReference,
+            influence = InkDynamics.PENCIL_SPEED_INFLUENCE,
+            variation = ink.variation,
+        )
+        val arc = ink.arcLengths.getOrNull(safeIndex) ?: ink.totalArcLength
+        val previousArc = ink.arcLengths.getOrNull(safeIndex - 1) ?: 0f
+        val segmentSpeed = ink.segmentSpeeds.getOrNull(safeIndex)
+            ?: (arc - previousArc).coerceAtLeast(0f)
+        val wave = PenStrokeGeometry.graphiteJitterByArc(
+            index = safeIndex,
+            arcLength = arc,
+            pass = pass,
+            grain = local.grain,
+            legacyPhase = safeIndex * 2.3 + 7.1,
+        )
+        val deposit = PenStrokeGeometry.graphiteDeposit(arc, pass, local.grain, wave)
+        // Timed deposit uses the same central/one-sided physical velocity and
+        // full-stroke reference as width. Untimed input keeps the historical
+        // per-segment distance reference exactly.
+        val depositSpeed = if (ink.timed) {
+            ink.speeds.getOrElse(safeIndex) { 0f }
+        } else {
+            segmentSpeed
+        }
+        val depositReference = if (ink.timed) ink.speedReference else ink.segmentSpeedReference
+        val gain = InkQuality.depositGain(
+            speed = depositSpeed,
+            reference = depositReference,
+            pressure = pressure,
+            variation = ink.variation,
+        )
+        return PencilSegmentPlan(
+            width = pencilStrokeWidth(base, local.width) * tip * speedFactor,
+            alpha = scaledInkAlpha(
+                baseAlpha,
+                PenStrokeGeometry.pencilSegmentAlpha(pass, local.flow) * deposit * gain,
+                min = 1,
+            ),
+            arcLength = arc,
+            deposit = deposit,
+            depositGain = gain,
+            tip = tip,
+            speedFactor = speedFactor,
+        )
+    }
+
+    internal fun pencilSegmentPlans(
+        ink: InkContext,
+        points: List<NormalizedPoint>,
+        pass: Int,
+        base: Float,
+        baseAlpha: Int,
+        revealedSamples: Int = ink.totalSamples,
+    ): List<PencilSegmentPlan> {
+        if (ink.totalSamples < 2) return emptyList()
+        val count = revealedSamples.coerceIn(1, ink.totalSamples)
+        return (1 until count).map { index ->
+            pencilSegmentPlan(
+                ink = ink,
+                index = index,
+                pass = pass,
+                base = base,
+                baseAlpha = baseAlpha,
+                pressure = points.getOrElse(index) { 1f },
             )
         }
     }
@@ -1043,9 +1235,6 @@ object AnnotationPainter {
         val neutral = ink.neutral
         val points = annotation.points
         val base = (annotation.width * width).coerceAtLeast(1f)
-        // Full-stroke variation: a replay prefix must not re-derive graphite
-        // dynamics from a shorter stroke.
-        val localVariation = ink.variation
         if (points.size == 1) {
             val local = if (neutral) response else series.first()
             drawPenDot(
@@ -1081,56 +1270,25 @@ object AnnotationPainter {
                 val jittered = pencilJitter(points, width, height, pass) { response.grain }
                 canvas.drawPath(smoothPath(jittered, width, height), paint)
             } else {
-                val jittered = pencilJitter(points, width, height, pass) { index ->
-                    series[index].grain
-                }
-                val arcs = FloatArray(points.size)
+                val jittered = pencilJitter(
+                    points,
+                    width,
+                    height,
+                    pass,
+                    grainAt = { index -> series[index].grain },
+                    arcLengths = ink.arcLengths,
+                )
                 for (index in 1 until points.size) {
-                    val previous = points[index - 1]
-                    val current = points[index]
-                    arcs[index] = arcs[index - 1] + hypot(
-                        (current.x - previous.x) * width,
-                        (current.y - previous.y) * height,
-                    )
-                }
-                val speedReference = (arcs.lastOrNull() ?: 0f) /
-                    points.size.coerceAtLeast(2).toFloat()
-                for (index in 1 until points.size) {
-                    val local = series[index]
-                    val tip = InkQuality.nibEndProfile(
-                        t = index.toFloat() / (points.size - 1).coerceAtLeast(1).toFloat(),
-                        variation = localVariation,
-                    )
-                    // Fast graphite strokes thin subtly; darkness already
-                    // responds to speed through depositGain below.
-                    val speed = InkDynamics.velocityWidthFactor(
-                        speed = ink.speeds.getOrElse(index) { 0f },
-                        reference = ink.speedReference,
-                        influence = InkDynamics.PENCIL_SPEED_INFLUENCE,
-                        variation = localVariation,
-                    )
-                    paint.strokeWidth = pencilStrokeWidth(base, local.width) * tip * speed
-                    val wave = PenStrokeGeometry.graphiteJitterByArc(
+                    val plan = pencilSegmentPlan(
+                        ink = ink,
                         index = index,
-                        arcLength = arcs[index],
                         pass = pass,
-                        grain = local.grain,
-                        legacyPhase = index * 2.3 + 7.1,
-                    )
-                    val deposit = PenStrokeGeometry.graphiteDeposit(
-                        arcs[index], pass, local.grain, wave,
-                    )
-                    val gain = InkQuality.depositGain(
-                        speed = arcs[index] - arcs[index - 1],
-                        reference = speedReference,
+                        base = base,
+                        baseAlpha = alpha,
                         pressure = points[index].pressure,
-                        variation = localVariation,
                     )
-                    paint.alpha = scaledInkAlpha(
-                        alpha,
-                        PenStrokeGeometry.pencilSegmentAlpha(pass, local.flow) * deposit * gain,
-                        min = 1,
-                    )
+                    paint.strokeWidth = plan.width
+                    paint.alpha = plan.alpha
                     canvas.drawPath(segmentPath(jittered, index, width, height), paint)
                 }
             }
