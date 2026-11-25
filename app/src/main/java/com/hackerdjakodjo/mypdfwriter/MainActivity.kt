@@ -52,6 +52,7 @@ import com.hackerdjakodjo.mypdfwriter.ui.StudySource
 import com.hackerdjakodjo.mypdfwriter.ui.ToolsScreen
 import com.hackerdjakodjo.mypdfwriter.ui.ViewerScreen
 import com.hackerdjakodjo.mypdfwriter.ui.MULTI_IMPORT_NOTICE
+import com.hackerdjakodjo.mypdfwriter.ui.NOTE_SAVE_FAILURE as NOTE_SAVE_FAILURE_MESSAGE
 import com.hackerdjakodjo.mypdfwriter.ui.clampStudyPaneFraction
 import com.hackerdjakodjo.mypdfwriter.ui.isMultiImport
 import com.hackerdjakodjo.mypdfwriter.ui.pdfImportActions
@@ -65,6 +66,8 @@ internal fun studyPanePageIndexAfterOpen(
     incomingId: String,
     currentIndex: Int,
 ): Int = if (currentId == incomingId) currentIndex.coerceAtLeast(0) else 0
+
+internal data class PendingViewIntent(val uri: Uri)
 
 class MainActivity : ComponentActivity() {
 
@@ -233,7 +236,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 val openStudyPane: (Notebook) -> Unit = { notebook ->
-                    if (mutationLease.isActive) return@lambda
+                    if (mutationLease.isActive) return@openStudyPane
                     // Capturing to an already-open pane appends a page and moves
                     // the pane there. Reopening the same notebook must not snap
                     // back to page 1 and hide the excerpt the user just added.
@@ -682,6 +685,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun flushHostState(): Boolean {
+        val notebookOk = notebookViewModel.saveNow()
+        viewModel.flushPdfSavesNow()
+        return notebookOk
+    }
+
+    private fun finishHostOperation() {
+        mutationLease.finish()
+        while (queuedViewIntents.isNotEmpty()) {
+            viewModel.openDocument(queuedViewIntents.removeFirst().uri, addToRecents = false)
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -703,6 +719,10 @@ class MainActivity : ComponentActivity() {
             } ?: emptyList(),
         )
         val rawUri = resolveImportUri(snapshot) ?: return
+        if (mutationLease.isActive) {
+            queuedViewIntents.add(PendingViewIntent(rawUri))
+            return
+        }
         if (isMultiImport(snapshot.clipUris.size)) {
             viewModel.postLibraryMessage(MULTI_IMPORT_NOTICE)
         }
@@ -764,12 +784,15 @@ internal fun onBackupRestored(
     refreshNotebook: () -> Unit,
     reloadLibrary: () -> Unit,
     discardNotebook: () -> Unit = {},
+    discardStudyPane: () -> Unit = {},
     closeDocument: () -> Unit,
     consumeRestored: () -> Unit,
     shouldCloseDocument: () -> Boolean = { true },
 ) {
     if (restoredAt == null) return
-    // A stale in-memory working notebook can be written back over restored JSON.
+    // A stale in-memory working notebook or detached pane can be written back
+    // over restored JSON. Drop both before any refresh or viewer close.
+    discardStudyPane()
     discardNotebook()
     refreshNotebook()
     reloadLibrary()

@@ -34,6 +34,9 @@ data class BackupUiState(
 
 enum class BackupOperationKind { BACKUP, RESTORE }
 
+/** Which operation a failed state can retry. */
+val BackupUiState.retryKind: BackupOperationKind? get() = operation
+
 /**
  * Single-entry gate for local backup/restore. The old `busy` check-then-set
  * raced when a second SAF result arrived before the first job observed the
@@ -275,6 +278,24 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 notifyOperationFinished(false)
             }
         }
+    }
+
+    /** Records a SAF-callback failure without throwing out of the Activity callback. */
+    fun reportBackupFailure(uri: Uri, includeSources: Boolean, error: Throwable) {
+        abortBeforeLaunch(
+            BackupRetryRequest(BackupOperationKind.BACKUP, uri, includeSources),
+            error as? Exception ?: RuntimeException(error),
+            "백업하지 못했습니다",
+        )
+    }
+
+    /** Records a restore failure with an exact retry snapshot. */
+    fun reportRestoreFailure(uri: Uri, error: Throwable) {
+        abortBeforeLaunch(
+            BackupRetryRequest(BackupOperationKind.RESTORE, uri),
+            error as? Exception ?: RuntimeException(error),
+            "복원하지 못했습니다",
+        )
     }
 
     /** Retries the exact URI/options snapshot; never substitutes current mutable state. */
