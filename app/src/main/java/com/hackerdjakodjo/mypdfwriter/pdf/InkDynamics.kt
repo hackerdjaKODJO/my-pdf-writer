@@ -148,7 +148,7 @@ object InkDynamics {
         }
     }
 
-    /** True only for a complete, strictly increasing per-point timestamp array. */
+    /** True only for a complete, nonnegative, nondecreasing per-point timestamp array. */
     internal fun hasValidPointTimes(
         points: List<NormalizedPoint>,
         timesMs: List<Long>?,
@@ -156,7 +156,9 @@ object InkDynamics {
         if (points.size < 2 || timesMs == null || timesMs.size != points.size) return false
         if (timesMs[0] < 0L) return false
         for (index in 1 until timesMs.size) {
-            if (timesMs[index] <= timesMs[index - 1]) return false
+            // Equal uptime values are legal (coalesced/batched frames). physicalSpeed
+            // clamps their dt to MIN_SPEED_DT_MS instead of discarding the whole stroke.
+            if (timesMs[index] < timesMs[index - 1]) return false
         }
         return true
     }

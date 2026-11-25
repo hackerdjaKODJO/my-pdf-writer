@@ -973,6 +973,7 @@ fun PdfCanvas(
                         ),
                         pageW,
                         pageH,
+                        livePreview = true,
                     )
                 }
 

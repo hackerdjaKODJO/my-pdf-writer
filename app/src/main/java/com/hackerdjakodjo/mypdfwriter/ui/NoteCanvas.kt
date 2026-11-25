@@ -841,6 +841,7 @@ fun NoteCanvas(
                         ),
                         width = pageWidth,
                         height = pageHeight,
+                        livePreview = true,
                     )
                 }
 
