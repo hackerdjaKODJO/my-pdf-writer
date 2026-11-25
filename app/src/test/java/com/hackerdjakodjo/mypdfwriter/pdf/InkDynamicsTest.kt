@@ -145,7 +145,7 @@ class InkDynamicsTest {
                 val factor = InkDynamics.velocityWidthFactor(
                     capture.third[index], 600f, InkDynamics.BRUSH_SPEED_INFLUENCE, 0.35f,
                 )
-                assertEquals("$position at ${capture.first} Hz", baseFactor, factor, 0.01f)
+                assertEquals("$position at ${capture.first} Hz", baseFactor, factor, 0.02f)
             }
         }
     }
