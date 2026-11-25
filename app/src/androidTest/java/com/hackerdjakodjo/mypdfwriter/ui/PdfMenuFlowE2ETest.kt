@@ -33,8 +33,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
-import androidx.test.espresso.Espresso
-import androidx.test.espresso.Espresso
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
@@ -147,7 +145,9 @@ class PdfMenuFlowE2ETest {
         }
 
         fun dispatchBack() {
-            Espresso.pressBack()
+            composeRule.runOnUiThread {
+                composeRule.activity.onBackPressedDispatcher.onBackPressed()
+            }
             composeRule.waitForIdle()
         }
 
