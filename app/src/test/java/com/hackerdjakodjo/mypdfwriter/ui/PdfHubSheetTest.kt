@@ -7,8 +7,48 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Pure policy tests for the student-first four-group 학습 메뉴. */
+/** Pure policy tests for the six-task easy menu and its complete expert hub. */
 class PdfHubSheetTest {
+
+    @Test
+    fun easyMenuHasExactlySixUniqueOrderedTasks() {
+        assertEquals(6, PdfEasyTask.entries.size)
+        assertEquals(
+            listOf("학습 노트", "페이지 메모", "현재 페이지 북마크", "PDF 내보내기", "공유", "도움말"),
+            pdfEasyMenuTasks.map { it.label },
+        )
+        assertEquals(pdfEasyMenuTasks.size, pdfEasyMenuTasks.map { it.label }.toSet().size)
+        assertEquals(
+            listOf(
+                PdfMenuAction.CAPTURE,
+                PdfMenuAction.PAGE_NOTES,
+                PdfMenuAction.BOOKMARK_TOGGLE,
+                PdfMenuAction.EXPORT,
+                PdfMenuAction.SHARE,
+                PdfMenuAction.HELP,
+            ),
+            pdfEasyMenuTasks.map { it.menuAction },
+        )
+    }
+
+    @Test
+    fun easyTaskHelpTopicsAreContextualWhereAvailable() {
+        assertEquals(HelpTopicKey.STUDY_NOTE, PdfEasyTask.STUDY_NOTE.helpTopic)
+        assertEquals(HelpTopicKey.WRITE_TOOLS, PdfEasyTask.PAGE_MEMO.helpTopic)
+        assertEquals(HelpTopicKey.OPEN_PDF, PdfEasyTask.BOOKMARK.helpTopic)
+        assertEquals(HelpTopicKey.BACKUP, PdfEasyTask.EXPORT.helpTopic)
+        assertEquals(null, PdfEasyTask.SHARE.helpTopic)
+        assertEquals(HelpTopicKey.QUICK_START, PdfEasyTask.HELP.helpTopic)
+    }
+
+    @Test
+    fun expertHandoffKeepsEveryExistingPdfMenuActionReachable() {
+        assertEquals(PdfMenuAction.entries.toSet(), pdfEasyMenuExpertActions)
+        assertEquals(PdfMenuAction.entries.size, pdfEasyMenuExpertActions.size)
+        assertTrue(PdfMenuAction.SEARCH in pdfEasyMenuExpertActions)
+        assertTrue(PdfMenuAction.READ_ALOUD in pdfEasyMenuExpertActions)
+        assertTrue(PdfMenuAction.PAGE_LOCK in pdfEasyMenuExpertActions)
+    }
 
     @Test
     fun firstLevelHasExactlyFourGroupsInTheStudentOrder() {

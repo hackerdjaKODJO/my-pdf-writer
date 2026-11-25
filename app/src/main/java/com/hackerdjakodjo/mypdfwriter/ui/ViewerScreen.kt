@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -42,11 +44,13 @@ import androidx.compose.material.icons.automirrored.outlined.TextSnippet
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DisplaySettings
 import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FitScreen
 import androidx.compose.material.icons.outlined.GridView
@@ -75,6 +79,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -95,8 +101,11 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -137,7 +146,8 @@ private const val SELECTION_MIRROR_SETTLE_MS = 120L
  * close the whole PDF while that sheet is still open.
  *
  * The unified `위치` sheet lives here too: opening it must not let Back close
- * the whole document while it is on screen.
+ * the whole document while it is on screen. The easy PDF 메뉴 and its expert
+ * hub are separate flags so Back always closes the visible layer first.
  */
 internal data class ViewerSheetFlags(
     val showPages: Boolean = false,
@@ -158,6 +168,7 @@ internal data class ViewerSheetFlags(
     val showProperties: Boolean = false,
     val showStyle: Boolean = false,
     val showDisplaySettings: Boolean = false,
+    val showEasyMenu: Boolean = false,
     val showHub: Boolean = false,
     val showReadModes: Boolean = false,
     val showAudioMenu: Boolean = false,
@@ -179,7 +190,7 @@ internal data class ViewerSheetFlags(
         showAnnotations || showOrganize || showExcerpts || showContinuous || showSpread ||
         showPopup || showAudioNotes || showAudioReplay || showStudyNote || showReflow ||
         showReadAloud || showProperties || showStyle || showDisplaySettings ||
-        showHub || showReadModes || showAudioMenu || showToolMore || showToolStyle ||
+        showEasyMenu || showHub || showReadModes || showAudioMenu || showToolMore || showToolStyle ||
         showSelectionMore || showTextEditDialog || showMemoCardsSheet || showViewerPenBox ||
         showRecentDocs || showTabOverflow || showLocations || showFileTools ||
         textTargetOpen || stampTargetOpen || signatureTargetOpen
@@ -229,6 +240,34 @@ internal fun dismissPdfCoach(state: PdfCoachState): PdfCoachState =
  */
 internal fun viewerHighlightQuery(rawQuery: String): String = rawQuery.trim()
 
+internal const val PDF_SAVE_STATUS_TAG = "pdf_save_status"
+internal const val PDF_RETRY_SAVE_TAG = "pdf_retry_save"
+
+/** Truthful save copy comes only from the view model's durable save status. */
+internal fun pdfSaveStatusLabel(status: PdfSaveStatus): String? = when (status) {
+    PdfSaveStatus.IDLE -> null
+    PdfSaveStatus.SAVING -> "자동 저장 중…"
+    PdfSaveStatus.SAVED -> "자동 저장됨 · 원본 PDF는 그대로"
+    PdfSaveStatus.FAILED -> "저장 실패 · 다시 시도"
+}
+
+internal fun pdfSaveRetryVisible(status: PdfSaveStatus): Boolean = status == PdfSaveStatus.FAILED
+
+internal enum class PdfMessageFeedback { NONE, EXPORT_SUCCESS, EXPORT_FAILURE }
+
+/** Keeps snackbar routing testable without guessing from unrelated messages. */
+internal fun pdfMessageFeedback(
+    message: String?,
+    exportDoneMessage: String,
+    exportFailurePrefix: String,
+): PdfMessageFeedback = when {
+    message.isNullOrBlank() -> PdfMessageFeedback.NONE
+    message == exportDoneMessage -> PdfMessageFeedback.EXPORT_SUCCESS
+    exportFailurePrefix.isNotBlank() && message.startsWith(exportFailurePrefix) ->
+        PdfMessageFeedback.EXPORT_FAILURE
+    else -> PdfMessageFeedback.NONE
+}
+
 internal object PdfViewerCoachSession {
     var shown: Boolean = false
 }
@@ -250,6 +289,8 @@ fun ViewerScreen(
     onOpenStudyNote: ((StudySource) -> Unit)? = null,
     /** Optional help hook. When present, the PDF hub offers a "도움말" action. */
     onOpenHelp: (() -> Unit)? = null,
+    /** Opens the help center directly on a task-specific topic when supported. */
+    onOpenHelpTopic: ((HelpTopicKey) -> Unit)? = null,
     /**
      * Height of the embedded study pane as a fraction of the PDF content area.
      * Ignored when [studyPane] is null.
@@ -353,6 +394,7 @@ fun ViewerScreen(
     var showProperties by remember { mutableStateOf(false) }
     var showStyle by remember { mutableStateOf(false) }
     var showDisplaySettings by remember { mutableStateOf(false) }
+    var showEasyMenu by remember { mutableStateOf(false) }
     var showHub by remember { mutableStateOf(false) }
     var showReadModes by remember { mutableStateOf(false) }
     var showAudioMenu by remember { mutableStateOf(false) }
@@ -396,6 +438,19 @@ fun ViewerScreen(
     }
     var chromeHidden by remember { mutableStateOf(false) }
     val selectedText = remember(selectedWords) { PdfTextLayout.selectionText(selectedWords) }
+    val openPdfHelp: (HelpTopicKey) -> Unit = { topic ->
+        if (onOpenHelpTopic != null) {
+            onOpenHelpTopic(topic)
+        } else {
+            onOpenHelp?.invoke()
+        }
+    }
+    // Progressive disclosure is session-only: every PDF 메뉴 entry starts easy.
+    val openPdfMenu: () -> Unit = {
+        chromeHidden = false
+        showEasyMenu = true
+        showHub = false
+    }
 
     // The replacement action lives in the view model, so mirror the local canvas
     // selection into it. This is transient UI state, never persisted or snapshotted.
@@ -573,6 +628,7 @@ fun ViewerScreen(
         showProperties = showProperties,
         showStyle = showStyle,
         showDisplaySettings = showDisplaySettings,
+        showEasyMenu = showEasyMenu,
         showHub = showHub,
         showReadModes = showReadModes,
         showAudioMenu = showAudioMenu,
@@ -701,13 +757,41 @@ fun ViewerScreen(
             onMerge = onOpenTools,
             onSplit = onOpenTools,
             onExport = { onExportRequest(vm.exportSuggestedName()) },
+            canUndo = state.canUndo,
+            canRedo = state.canRedo,
+            onUndo = vm::undo,
+            onRedo = vm::redo,
         )
         return
     }
 
     LaunchedEffect(state.message) {
         val message = state.message ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message)
+        val feedback = pdfMessageFeedback(
+            message = message,
+            exportDoneMessage = context.getString(R.string.export_done),
+            exportFailurePrefix = context.getString(R.string.export_failed, "").trimEnd(),
+        )
+        val result = when (feedback) {
+            PdfMessageFeedback.EXPORT_SUCCESS -> snackbarHostState.showSnackbar(
+                message = context.getString(R.string.export_done_with_notes),
+                actionLabel = "공유",
+                duration = SnackbarDuration.Long,
+            )
+            PdfMessageFeedback.EXPORT_FAILURE -> snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = "다시 시도",
+                duration = SnackbarDuration.Long,
+            )
+            PdfMessageFeedback.NONE -> snackbarHostState.showSnackbar(message)
+        }
+        if (result == SnackbarResult.ActionPerformed) {
+            when (feedback) {
+                PdfMessageFeedback.EXPORT_SUCCESS -> vm.shareCurrent()
+                PdfMessageFeedback.EXPORT_FAILURE -> onExportRequest(vm.exportSuggestedName())
+                PdfMessageFeedback.NONE -> Unit
+            }
+        }
         vm.clearMessage()
     }
 
@@ -852,8 +936,8 @@ fun ViewerScreen(
         PdfMenuAction.HELP -> PdfHubAction(
             action.label,
             Icons.AutoMirrored.Outlined.HelpOutline,
-            enabled = onOpenHelp != null,
-        ) { onOpenHelp?.invoke() }
+            enabled = onOpenHelp != null || onOpenHelpTopic != null,
+        ) { openPdfHelp(HelpTopicKey.QUICK_START) }
 
         PdfMenuAction.PAGE_EDIT -> PdfHubAction(action.label, Icons.Outlined.EditNote) {
             showPages = true
@@ -1056,6 +1140,16 @@ fun ViewerScreen(
             if (chromePolicy.showBottomBar) {
                 Surface(tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+                        PdfSaveStatusRow(
+                            status = state.saveStatus,
+                            onRetry = vm::retrySave,
+                        )
+                        ViewerContextActionRow(
+                            state = state,
+                            onStyle = { showToolStyle = true },
+                            onUndo = vm::undo,
+                            onRedo = vm::redo,
+                        )
                         if (textSelectMode) {
                             TextSelectionActionBar(
                                 text = selectedText,
@@ -1139,7 +1233,7 @@ fun ViewerScreen(
                     onOpenPages = { showPages = true },
                     onTitleClick = { openRecentDocs() },
                     onSearch = { showSearch = true },
-                    onOpenMenu = { showHub = true },
+                    onOpenMenu = openPdfMenu,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .zIndex(1f),
@@ -1415,7 +1509,7 @@ fun ViewerScreen(
                                     }
                                 },
                                 onOpenTools = { showToolMore = true },
-                                onOpenHub = { showHub = true },
+                                onOpenHub = openPdfMenu,
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
                                     .padding(top = 6.dp, start = 48.dp, end = 48.dp),
@@ -1678,6 +1772,24 @@ fun ViewerScreen(
     if (showDisplaySettings) {
         DisplaySettingsSheet(state = state, vm = vm, onDismiss = { showDisplaySettings = false })
     }
+    if (showEasyMenu) {
+        PdfEasyMenuSheet(
+            docName = state.docName,
+            pageIndex = state.pageIndex,
+            pageCount = state.pageCount,
+            bookmarked = currentBookmark != null,
+            taskEnabled = { task ->
+                task != PdfEasyTask.HELP || onOpenHelp != null || onOpenHelpTopic != null
+            },
+            onTask = { task -> hubAction(task.menuAction).onClick() },
+            onOpenExpert = {
+                showEasyMenu = false
+                showHub = true
+            },
+            onDismiss = { showEasyMenu = false },
+            onOpenHelpTopic = if (onOpenHelp != null || onOpenHelpTopic != null) openPdfHelp else null,
+        )
+    }
     if (showHub) {
         PdfHubSheet(
             docName = state.docName,
@@ -1859,6 +1971,13 @@ fun ViewerScreen(
             onPressureInk = vm::setPressureInk,
             onPressureCurve = vm::setPressureCurve,
             onHighlightOpacity = vm::setHighlightOpacity,
+            favorites = viewerFavorites,
+            currentPen = currentViewerPen(),
+            onApplyFavorite = { applyViewerFavorite(it) },
+            onOpenPenRegistry = {
+                showToolStyle = false
+                showViewerPenBox = true
+            },
             onDismiss = { showToolStyle = false },
         )
     }
@@ -1941,6 +2060,80 @@ fun ViewerScreen(
                 signatureTarget = null
             },
         )
+    }
+}
+
+@Composable
+internal fun PdfSaveStatusRow(
+    status: PdfSaveStatus,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val label = pdfSaveStatusLabel(status) ?: return
+    val failed = pdfSaveRetryVisible(status)
+    Surface(
+        color = if (failed) {
+            MaterialTheme.colorScheme.errorContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
+        },
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 28.dp)
+                .padding(start = 12.dp, top = 2.dp, bottom = 2.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            when (status) {
+                PdfSaveStatus.SAVING -> CircularProgressIndicator(
+                    modifier = Modifier.size(13.dp),
+                    strokeWidth = 1.5.dp,
+                )
+                PdfSaveStatus.FAILED -> Icon(
+                    Icons.Outlined.ErrorOutline,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+                PdfSaveStatus.SAVED -> Icon(
+                    Icons.Outlined.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                PdfSaveStatus.IDLE -> Unit
+            }
+            Spacer(Modifier.width(7.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (failed) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag(PDF_SAVE_STATUS_TAG)
+                    .semantics {
+                        contentDescription = label
+                        liveRegion = LiveRegionMode.Polite
+                    },
+            )
+            if (failed) {
+                TextButton(
+                    onClick = onRetry,
+                    modifier = Modifier
+                        .heightIn(min = MIN_TARGET_DP.dp)
+                        .testTag(PDF_RETRY_SAVE_TAG),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                ) {
+                    Text("다시 시도", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
     }
 }
 

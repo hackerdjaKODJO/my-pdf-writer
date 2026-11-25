@@ -33,7 +33,7 @@ class ViewerToolDockTest {
             listOf("보기", "형광펜", "펜", "지우개", "텍스트 선택", "노트"),
             viewerDockSlots.map { viewerDockSlotLabel(it) },
         )
-        // Undo/redo/style left the dock for the 학습 메뉴 quick chips.
+        // Contextual actions live above the dock, never as a seventh slot.
         assertFalse(viewerDockSlots.map { viewerDockSlotLabel(it) }.any { it == "스타일" })
     }
 
@@ -129,6 +129,49 @@ class ViewerToolDockTest {
         )
         assertTrue(!viewerDockLongPressOpensStyle(ViewerDockSlot.VIEW))
         assertTrue(!viewerDockLongPressOpensStyle(ViewerDockSlot.ERASER))
+    }
+
+    @Test
+    fun contextualActionsAppearOnlyWhenTheyApply() {
+        assertTrue(viewerContextActions(Tool.VIEW, canUndo = false, canRedo = false).isEmpty())
+        assertEquals(
+            listOf(ViewerContextAction.STYLE),
+            viewerContextActions(Tool.PEN, canUndo = false, canRedo = false),
+        )
+        assertEquals(
+            listOf(ViewerContextAction.STYLE),
+            viewerContextActions(Tool.HIGHLIGHT, canUndo = false, canRedo = false),
+        )
+        assertEquals(
+            listOf(ViewerContextAction.UNDO, ViewerContextAction.REDO),
+            viewerContextActions(Tool.VIEW, canUndo = true, canRedo = true),
+        )
+        assertEquals(
+            listOf(ViewerContextAction.STYLE, ViewerContextAction.UNDO, ViewerContextAction.REDO),
+            viewerContextActions(Tool.PEN, canUndo = true, canRedo = true),
+        )
+        assertEquals(
+            listOf("스타일", "실행 취소", "다시 실행"),
+            viewerContextActions(Tool.PEN, canUndo = true, canRedo = true).map { it.label },
+        )
+    }
+
+    @Test
+    fun contextualActionTagsAreStableForAccessibilityTests() {
+        assertEquals("pdf_style_action", ViewerContextAction.STYLE.testTag)
+        assertEquals("pdf_undo_action", ViewerContextAction.UNDO.testTag)
+        assertEquals("pdf_redo_action", ViewerContextAction.REDO.testTag)
+    }
+
+    @Test
+    fun favoritePensArePresentInBothWritingStyleSheetsWhenWired() {
+        assertTrue(viewerStyleShowsFavoritePens(Tool.PEN, true, true, true))
+        assertTrue(viewerStyleShowsFavoritePens(Tool.HIGHLIGHT, true, true, true))
+        assertFalse(viewerStyleShowsFavoritePens(Tool.TEXT, true, true, true))
+        assertFalse(viewerStyleShowsFavoritePens(Tool.VIEW, true, true, true))
+        assertFalse(viewerStyleShowsFavoritePens(Tool.PEN, false, true, true))
+        assertFalse(viewerStyleShowsFavoritePens(Tool.PEN, true, false, true))
+        assertFalse(viewerStyleShowsFavoritePens(Tool.PEN, true, true, false))
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -10,16 +11,18 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** Device-only: long-press pen/highlight dock slots open that tool's style sheet. */
+/** Device-only: visible style action and long-press pen/highlight both open style. */
 class ViewerDockLongPressE2ETest {
 
     @get:Rule
@@ -27,27 +30,44 @@ class ViewerDockLongPressE2ETest {
 
     private val selected = mutableListOf<Tool>()
     private val longPressed = mutableListOf<Tool>()
+    private val appliedFavorites = mutableListOf<PenPreset>()
+    private var registryOpened = 0
 
     private fun render(initial: Tool = Tool.PEN) {
         selected.clear()
         longPressed.clear()
+        appliedFavorites.clear()
+        registryOpened = 0
         composeRule.setContent {
+            var active by remember { mutableStateOf(initial) }
             var sheet by remember { mutableStateOf(false) }
+            val favorite = remember { PenPreset(id = "e2e-favorite", name = "시험 펜") }
             MaterialTheme {
-                ViewerToolDock(
-                    state = ViewerUiState(tool = initial),
-                    onSelectTool = { selected.add(it) },
-                    onLongPressTool = { tool ->
-                        longPressed.add(tool)
-                        sheet = true
-                    },
-                    onTextSelect = {},
-                    onNote = {},
-                )
+                Column {
+                    ViewerContextActionRow(
+                        state = ViewerUiState(tool = active),
+                        onStyle = { sheet = true },
+                        onUndo = {},
+                        onRedo = {},
+                    )
+                    ViewerToolDock(
+                        state = ViewerUiState(tool = active),
+                        onSelectTool = {
+                            selected.add(it)
+                            active = it
+                        },
+                        onLongPressTool = { tool ->
+                            longPressed.add(tool)
+                            active = tool
+                            sheet = true
+                        },
+                        onTextSelect = {},
+                        onNote = {},
+                    )
+                }
                 if (sheet) {
-                    val target = longPressed.lastOrNull() ?: initial
                     ViewerStyleSheet(
-                        state = ViewerUiState(tool = target),
+                        state = ViewerUiState(tool = active),
                         onColor = {},
                         onStrokeWidth = {},
                         onFontSize = {},
@@ -55,6 +75,10 @@ class ViewerDockLongPressE2ETest {
                         onPenStyle = {},
                         onHighlightWidth = {},
                         onDismiss = { sheet = false },
+                        favorites = listOf(favorite),
+                        currentPen = favorite,
+                        onApplyFavorite = { appliedFavorites.add(it) },
+                        onOpenPenRegistry = { registryOpened += 1 },
                     )
                 }
             }
@@ -63,14 +87,43 @@ class ViewerDockLongPressE2ETest {
     }
 
     @Test
+    fun styleActionIsVisibleForWritingToolsAndHiddenForView() {
+        render(Tool.VIEW)
+        composeRule.onNodeWithTag(PDF_STYLE_ACTION_TAG).assertDoesNotExist()
+
+        composeRule.onNodeWithContentDescription("펜").performClick()
+        composeRule.onNodeWithTag(PDF_STYLE_ACTION_TAG).assertExists().performClick()
+        composeRule.waitUntil("style sheet", 4_000L) {
+            composeRule.onAllNodesWithText("펜 종류").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(listOf(Tool.PEN), selected)
+    }
+
+    @Test
     fun longPressPenOpensItsStyleSheetWithoutSelectingTwice() {
         render(Tool.PEN)
+        composeRule.onNodeWithTag(PDF_STYLE_ACTION_TAG).assertExists()
         composeRule.onNodeWithContentDescription("펜").performTouchInput { longClick(center) }
         composeRule.waitUntil("style sheet", 4_000L) {
             composeRule.onAllNodesWithText("펜 종류").fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.onNodeWithText("즐겨찾는 펜").assertExists()
+        composeRule.onNodeWithContentDescription("즐겨찾는 펜 시험 펜, 볼펜, 선택됨").assertExists()
         assertEquals(listOf(Tool.PEN), longPressed)
         assertTrue("long press must not also select the tool: $selected", selected.isEmpty())
+    }
+
+    @Test
+    fun favoriteLongPressStillOpensThePenRegistryFromTheStyleSheet() {
+        render(Tool.PEN)
+        composeRule.onNodeWithTag(PDF_STYLE_ACTION_TAG).performClick()
+        composeRule.waitUntil("favorite strip", 4_000L) {
+            composeRule.onAllNodesWithText("즐겨찾는 펜").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription("즐겨찾는 펜 시험 펜, 볼펜, 선택됨")
+            .performTouchInput { longClick(center) }
+        composeRule.waitForIdle()
+        assertEquals(1, registryOpened)
     }
 
     @Test
@@ -80,6 +133,7 @@ class ViewerDockLongPressE2ETest {
         composeRule.waitForIdle()
         assertEquals(listOf(Tool.HIGHLIGHT), selected)
         assertTrue(longPressed.isEmpty())
+        composeRule.onNodeWithTag(PDF_STYLE_ACTION_TAG).assertExists()
         composeRule.onNodeWithText("펜 종류").assertDoesNotExist()
     }
 
@@ -94,6 +148,7 @@ class ViewerDockLongPressE2ETest {
         }
         composeRule.onNodeWithText("굵기").assertExists()
         composeRule.onNodeWithText("펜 종류").assertDoesNotExist()
+        composeRule.onNodeWithText("즐겨찾는 펜").assertExists()
         assertEquals(listOf(Tool.HIGHLIGHT), longPressed)
     }
 }
