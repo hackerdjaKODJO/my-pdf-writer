@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.88`** — `versionCode = 97`.
-- **Next version is `0.8.89` — `versionCode = 98`.**
+- Current delivered version: **`0.8.89`** — `versionCode = 98`.
+- **Next version is `0.8.90` — `versionCode = 99`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.89` | 98 | 2026-11-25 | — | Multi-agent usability overhaul informed by static reverse engineering of StarNote, Samsung Notes, Flexcil, All PDF Reader, Maru, MyReader and Ridi: kept the six labeled reader tools, added contextual style/undo/redo and truthful auto-save status, reduced the PDF menu to six tasks with an all-tools handoff, made export feedback actionable, opened page/outline lists at the current location, made page edits undoable, set the study pane default to 70%, corrected help/gesture copy and replaced forced onboarding with an optional 60-second guide. No third-party code/assets copied; offline/privacy constraints preserved |
 | `0.8.88` | 97 | 2026-11-25 | — | Three-agent E2E/logging pass: debug-only durable structured JSONL dev log (per-day files, 7-file rotation, 1 MB cap, session id, logcat + NoteTrace mirrors) installed at app start; `PdfFlowTrace` hooks on PDF open/annotate/history/page-edit/search/export/close; 5 new instrumentation cases assert the real-file flow is replayable from the on-disk log; AGENTS.md/docs refreshed. 1066 JVM tests pass; 143 E2E cases (5 new compiled, device run pending); debug/instrumentation/release builds pass |
 | `0.8.87` | 96 | 2026-11-25 | — | Four-agent screenshot review: retired top coach card, constrained page-count pill from fillMaxSize to 128dp max, offset single-page canvas and continuous list below status bar + compact controls so the PDF top is not obscured; navigator width regression test |
 | `0.8.86` | 95 | 2026-11-24 | `v0.8.86` | Three-agent regression review: fixed Compose sibling z-order that let PDF content cover the transparent top overlay; explicit zIndex(1f) in single/continuous readers and real-touch next-page/page-jump E2E |
@@ -245,6 +246,33 @@ change without a matching trace assertion is incomplete.
 **Privacy is hard:** never log PDF text, search queries, file names, paths,
 URIs or annotation text — only counts, opaque ids, kinds and timings.
 `DevLogStore.record()` must never throw; logging must never break the app.
+
+## PDF usability contract (0.8.89+)
+
+The default reader must stay easy without a global “simple/expert” mode:
+
+- Keep the six labeled dock slots (`보기·형광펜·펜·지우개·텍스트 선택·노트`).
+  Put style, undo and redo in a compact contextual action row; do not add a
+  seventh permanent tool or replace labels with unexplained icons.
+- `PDF 메뉴` opens six task rows first (`학습 노트`, `페이지 메모`,
+  `현재 페이지 북마크`, `PDF 내보내기`, `공유`, `도움말`). `전체 도구 보기`
+  opens the complete existing action inventory. Every `PdfMenuAction` must stay
+  reachable; add a pure inventory regression test when changing the menu.
+- Auto-save is quiet but truthful: show `저장 중 → 저장됨` only after the real
+  IO writer succeeds, and expose retry on failure. A stale document write must
+  never relabel the active document. Export/share are deliberate output actions
+  and get explicit success/failure feedback.
+- Open page/outline lists at the current location; keep the study-pane default
+  at 70% so the source PDF remains useful beside the note.
+- Help must match current behavior: top page navigator, PDF zoom in `보기`,
+  note-editor-only two-finger undo. Prefer point-of-need help over a long forced
+  tour. The first-run guide is optional and replayable.
+- Page editing is recoverable: expose undo/redo and do not claim an undoable
+  delete is irreversible.
+
+Behavioral reference evidence and limitations are in
+`docs/ux-simplification-0889.md`. Static reverse engineering is for behavior
+only: never copy competitor code, assets, fonts, templates or branding.
 
 ## Release checklist
 
