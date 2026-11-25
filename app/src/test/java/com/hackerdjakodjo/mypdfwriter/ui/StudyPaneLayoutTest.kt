@@ -12,7 +12,14 @@ class StudyPaneLayoutTest {
         assertEquals(STUDY_PANE_MIN_FRACTION, clampStudyPaneFraction(0.10f), 0.0001f)
         assertEquals(STUDY_PANE_MAX_FRACTION, clampStudyPaneFraction(0.99f), 0.0001f)
         assertEquals(0.62f, clampStudyPaneFraction(0.62f), 0.0001f)
-        assertEquals(STUDY_PANE_DEFAULT_FRACTION, clampStudyPaneFraction(Float.NaN), 0.0001f)
+    }
+
+    @Test
+    fun nonFiniteFractionsFallBackToTheNewDefault() {
+        listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY).forEach { invalid ->
+            assertEquals(0.70f, clampStudyPaneFraction(invalid), 0.0001f)
+            assertEquals(0.30f, visiblePdfFractionForPaneRequest(invalid), 0.0001f)
+        }
     }
 
     @Test
@@ -26,13 +33,13 @@ class StudyPaneLayoutTest {
     }
 
     @Test
-    fun defaultPaneOpensAtEightyFivePercentWithAPdfStripVisible() {
-        assertEquals(0.85f, STUDY_PANE_DEFAULT_FRACTION, 0.0001f)
-        assertEquals(STUDY_PANE_MAX_FRACTION, STUDY_PANE_DEFAULT_FRACTION, 0.0001f)
-        assertEquals("85%", studyPanePresetLabel(STUDY_PANE_DEFAULT_FRACTION))
-        assertTrue(isStudyPanePresetSelected(STUDY_PANE_DEFAULT_FRACTION, 0.85f))
+    fun defaultPaneOpensAtSeventyPercentWithAPdfStripVisible() {
+        assertEquals(0.70f, STUDY_PANE_DEFAULT_FRACTION, 0.0001f)
+        assertEquals(0.85f, STUDY_PANE_MAX_FRACTION, 0.0001f)
+        assertEquals("70%", studyPanePresetLabel(STUDY_PANE_DEFAULT_FRACTION))
+        assertTrue(isStudyPanePresetSelected(STUDY_PANE_DEFAULT_FRACTION, 0.70f))
         assertEquals(
-            STUDY_PANE_MIN_VISIBLE_PDF_FRACTION,
+            0.30f,
             visiblePdfFractionForPaneRequest(STUDY_PANE_DEFAULT_FRACTION),
             0.0001f,
         )
@@ -52,7 +59,7 @@ class StudyPaneLayoutTest {
         assertTrue(ninetyFive < STUDY_PANE_MIN_VISIBLE_PDF_FRACTION)
         assertEquals(0.05f, ninetyFive, 0.0001f)
         assertEquals(
-            STUDY_PANE_MIN_VISIBLE_PDF_FRACTION,
+            0.30f,
             visiblePdfFractionForPaneRequest(Float.NaN),
             0.0001f,
         )
@@ -135,10 +142,10 @@ class StudyPaneLayoutTest {
     @Test
     fun dividerLabelShowsTheKoreanNotePercent() {
         assertEquals("노트 70%", studyPaneDividerLabel(0.70f))
-        assertEquals("노트 85%", studyPaneDividerLabel(STUDY_PANE_DEFAULT_FRACTION))
+        assertEquals("노트 70%", studyPaneDividerLabel(STUDY_PANE_DEFAULT_FRACTION))
         // In-between drag values are shown rounded, not snapped to a preset.
         assertEquals("노트 62%", studyPaneDividerLabel(0.62f))
-        assertEquals("노트 85%", studyPaneDividerLabel(Float.NaN))
+        assertEquals("노트 70%", studyPaneDividerLabel(Float.NaN))
     }
 
     @Test

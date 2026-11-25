@@ -9,14 +9,14 @@ import kotlin.math.roundToInt
  * full-screen mode, or against the full safe area when the split chrome removes
  * those bars.
  *
- * The pane opens at 85%, which is also the maximum: it leaves a 15% PDF strip
- * visible so the source page stays readable while the note takes most of a
- * phone screen. A 95% pane would leave only 5% of the PDF, which is too thin to
- * keep the page in view, so 95% is intentionally not a preset.
+ * The pane opens at 70%, leaving a 30% PDF strip visible so the source page is
+ * easy to reference while there is still ample room for notes. The maximum is
+ * 85%, which leaves a 15% PDF strip; 95% is intentionally not a preset because
+ * it would leave only 5% of the PDF in view.
  */
 internal const val STUDY_PANE_MIN_FRACTION = 0.35f
 internal const val STUDY_PANE_MAX_FRACTION = 0.85f
-internal const val STUDY_PANE_DEFAULT_FRACTION = 0.85f
+internal const val STUDY_PANE_DEFAULT_FRACTION = 0.70f
 
 /** Minimum share of the PDF content area that must remain visible above the pane. */
 internal const val STUDY_PANE_MIN_VISIBLE_PDF_FRACTION = 0.15f
