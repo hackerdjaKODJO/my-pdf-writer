@@ -1211,7 +1211,7 @@ object AnnotationPainter {
                 pass = pass,
                 base = base,
                 baseAlpha = baseAlpha,
-                pressure = points.getOrElse(index) { 1f },
+                pressure = points.getOrNull(index)?.pressure ?: 1f,
             )
         }
     }
@@ -1267,7 +1267,7 @@ object AnnotationPainter {
             if (neutral) {
                 paint.strokeWidth = pencilStrokeWidth(base, response.width)
                 paint.alpha = pencilPassAlpha(alpha, pass, response.flow)
-                val jittered = pencilJitter(points, width, height, pass) { response.grain }
+                val jittered = pencilJitter(points, width, height, pass, grainAt = { response.grain })
                 canvas.drawPath(smoothPath(jittered, width, height), paint)
             } else {
                 val jittered = pencilJitter(
