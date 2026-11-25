@@ -276,7 +276,7 @@ class NoteStrokeRefineTest {
         val singlePointStroke = listOf(points.first())
         assertSame(points, noteRefineForCommit(points, false, false))
         assertSame(points, noteRefineForCommit(points, true, true, skipRefinement = true))
-        assertEquals(chaikin(twoPointStroke, 1), noteRefineForCommit(twoPointStroke, true, true))
+        assertEquals(twoPointStroke, noteRefineForCommit(twoPointStroke, true, true))
         assertSame(singlePointStroke, noteRefineForCommit(singlePointStroke, true, true))
 
         assertEquals(

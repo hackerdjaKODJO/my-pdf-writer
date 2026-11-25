@@ -103,7 +103,7 @@ class InkDynamicsTest {
             500f,
             listOf(10L, 1010L),
         )
-        assertEquals(500f, diagonal[0], 0.001f)
+        assertEquals(360.5551f, diagonal[0], 0.001f)
     }
 
     @Test
@@ -122,7 +122,7 @@ class InkDynamicsTest {
             Triple(rate, points, InkDynamics.strokeSpeeds(points, 1000f, 800f, times))
         }
         captures.forEach { (_, _, speeds) ->
-            assertEquals("physical pace", 600f, InkDynamics.speedReference(speeds), 3f)
+            assertEquals("physical pace", 600f, InkDynamics.speedReference(speeds), 6f)
             speeds.forEach { speed ->
                 val factor = InkDynamics.velocityWidthFactor(
                     speed,

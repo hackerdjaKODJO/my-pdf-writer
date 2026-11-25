@@ -63,7 +63,7 @@ class EraserGeometryTest {
             1e-6f,
         )
         assertEquals(
-            0.25f,
+            1f,
             EraserGeometry.pointSegmentDistanceSquared(2f, 0f, 0f, 0f, 1f, 0f),
             1e-6f,
         )
