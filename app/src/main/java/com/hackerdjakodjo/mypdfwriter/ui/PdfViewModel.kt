@@ -39,7 +39,11 @@ import com.hackerdjakodjo.mypdfwriter.data.PdfReadingState
 import com.hackerdjakodjo.mypdfwriter.data.PdfReadingStore
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
+import com.hackerdjakodjo.mypdfwriter.data.StudyLinkResolution
+import com.hackerdjakodjo.mypdfwriter.data.StudySourceLink
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.data.resolveStudyLink as resolveStudyLinkAgainstPages
+import com.hackerdjakodjo.mypdfwriter.debug.DevLog
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
 import com.hackerdjakodjo.mypdfwriter.pdf.EraserGeometry
@@ -56,6 +60,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextEdit
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLine
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
+import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTools
 import com.hackerdjakodjo.mypdfwriter.pdf.isIdentityPageSpecs
 import kotlinx.coroutines.CancellationException
@@ -73,6 +78,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
+import org.json.JSONObject
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -81,6 +87,10 @@ import kotlin.math.sin
 data class ViewerUiState(
     val docId: String = "",
     val docName: String = "",
+    /** SHA-256 of the original source bytes; empty only before a document is ready. */
+    val contentFingerprint: String = "",
+    /** True when this URI now holds different bytes and old sidecars were isolated. */
+    val sourceReplaced: Boolean = false,
     val pageCount: Int = 0,
     val pageIndex: Int = 0,
     val displayWidthPt: Float = 595f,
@@ -137,6 +147,92 @@ data class ViewerUiState(
     /** Latest auto-save durability for this viewer session; enqueue alone is not success. */
     val saveStatus: PdfSaveStatus = PdfSaveStatus.IDLE,
 )
+
+/**
+ * One document-bound PDF capture. [sourcePage] is always the original source
+ * ordinal, never the current viewer index (which can move after page edits).
+ */
+data class StudyCapture(
+    val text: String,
+    val sourcePage: Int,
+    val rect: NormalizedRect?,
+    val excerptId: String?,
+    val source: StudySource,
+    val rotation: Int = 0,
+)
+
+/** Exact union of usable selected words on one viewer page, without cover padding. */
+internal fun selectedWordsUnionRect(
+    words: List<PdfTextWord>,
+    pageIndex: Int,
+): NormalizedRect? {
+    val usable = words.filter { word ->
+        word.pageIndex == pageIndex && word.text.isNotBlank() &&
+            word.rect.width > 0f && word.rect.height > 0f &&
+            listOf(word.rect.left, word.rect.top, word.rect.right, word.rect.bottom)
+                .all { it.isFinite() }
+    }
+    if (usable.isEmpty()) return null
+    val union = usable.drop(1).fold(usable.first().rect) { acc, word -> acc.union(word.rect) }
+    return NormalizedRect(
+        left = union.left.coerceIn(0f, 1f),
+        top = union.top.coerceIn(0f, 1f),
+        right = union.right.coerceIn(0f, 1f),
+        bottom = union.bottom.coerceIn(0f, 1f),
+    ).takeIf { it.width > 0f && it.height > 0f }
+}
+
+/** Pure provenance builder shared by selection, drag and excerpt capture. */
+internal fun buildStudyCapture(
+    state: ViewerUiState,
+    pageIndex: Int,
+    text: String,
+    words: List<PdfTextWord> = emptyList(),
+    excerptId: String? = null,
+): StudyCapture? {
+    val value = text.trim()
+    val spec = state.pages.getOrNull(pageIndex) ?: return null
+    val sourcePage = spec.sourcePage?.takeIf { it >= 0 } ?: return null
+    if (value.isEmpty() || state.docId.isBlank() || state.contentFingerprint.isBlank()) return null
+    return StudyCapture(
+        text = value,
+        sourcePage = sourcePage,
+        rect = selectedWordsUnionRect(words, pageIndex),
+        excerptId = excerptId,
+        source = StudySource(
+            docName = state.docName,
+            docUri = null,
+            docId = state.docId,
+            contentFingerprint = state.contentFingerprint,
+        ),
+        rotation = PageSpec.normalizeRotation(
+            (words.firstOrNull { it.pageIndex == pageIndex }?.rotation ?: 0) +
+                spec.extraRotation,
+        ),
+    )
+}
+
+/** Resolves an original source ordinal after insert/delete/move/duplicate/rotate. */
+internal fun resolveOriginalSourcePage(
+    pages: List<PageSpec>,
+    sourcePage: Int,
+): StudyLinkResolution {
+    if (sourcePage < 0 || pages.isEmpty()) return StudyLinkResolution.PageMissing
+    val matches = pages.indices.filter { pages[it].sourcePage == sourcePage }
+    return when (matches.size) {
+        0 -> StudyLinkResolution.PageMissing
+        1 -> StudyLinkResolution.Found(
+            viewPageIndex = matches.first(),
+            rect = null,
+            ambiguous = false,
+        )
+        else -> StudyLinkResolution.Found(
+            viewPageIndex = matches.first(),
+            rect = null,
+            ambiguous = true,
+        )
+    }
+}
 
 /** Pure memo-card list transitions; JVM-tested without an Android ViewModel. */
 internal fun memoCardsOnPage(cards: List<MemoCard>, page: Int): List<MemoCard> =
@@ -233,15 +329,35 @@ internal data class DocSaveQueue(
     }
 
     /** Returns the updated queue and one state to write, or null when drained. */
-    fun take(): Pair<DocSaveQueue, DocSaveRequest?> {
+    fun take(): Pair<DocSaveQueue, DocSaveRequest?> = takeFor(null)
+
+    /**
+     * Drains one document without disturbing another document's pending state.
+     * Used by the synchronous same-document reopen barrier.
+     */
+    fun takeFor(docId: String?): Pair<DocSaveQueue, DocSaveRequest?> {
         if (pending.isEmpty()) return copy(running = false) to null
-        val entry = pending.entries.first()
-        return copy(pending = pending - entry.key, running = true) to entry.value
+        val entry = if (docId == null) {
+            pending.entries.first()
+        } else {
+            pending.entries.firstOrNull { it.key == docId }
+        }
+        if (entry == null) return this to null
+        val remaining = pending - entry.key
+        return copy(pending = remaining, running = remaining.isNotEmpty()) to entry.value
     }
+
+    fun hasPending(docId: String): Boolean = pending.containsKey(docId)
 
     /** False once a newer request for this document has superseded [request]. */
     fun isLatest(request: DocSaveRequest): Boolean = latestSequences[request.state.docId] == request.sequence
 }
+
+/** One debounced/immediate reading write, retained until a reopen barrier drains it. */
+internal data class PendingReadingWrite(
+    val docId: String,
+    val state: PdfReadingState,
+)
 
 /** Cancellation is control flow, not a failure: never let it become a UI error. */
 internal fun rethrowIfCancelled(error: Throwable) {
@@ -284,6 +400,66 @@ internal fun mayPublishOpenResult(
     token: Int?,
     currentToken: Int,
 ): Boolean = isActive && (token == null || token == currentToken)
+
+/**
+ * Remembers the fingerprint last associated with a URI-derived docId. Kept apart
+ * from DocState so a changed source can be detected before that state is loaded.
+ */
+private class SourceIdentityStore(context: Context) {
+    private val dir = File(context.filesDir, "source-identities").apply { mkdirs() }
+
+    fun load(docId: String): String? {
+        if (docId.isBlank()) return null
+        val file = File(dir, "$docId.json")
+        if (!file.exists()) return null
+        return runCatching {
+            JSONObject(file.readText()).optString("fingerprint").takeIf { it.isNotBlank() }
+        }.getOrNull()
+    }
+
+    fun save(docId: String, fingerprint: String) {
+        if (docId.isBlank() || fingerprint.isBlank()) return
+        dir.mkdirs()
+        val target = File(dir, "$docId.json")
+        val tmp = File(dir, "$docId.json.tmp")
+        tmp.writeText(JSONObject().put("docId", docId).put("fingerprint", fingerprint).toString())
+        if (!tmp.renameTo(target)) {
+            tmp.copyTo(target, overwrite = true)
+            tmp.delete()
+        }
+    }
+}
+
+/**
+ * Moves stale canonical/tmp sidecars aside before a changed source gets a fresh
+ * neutral state. Failure to preserve a backup never causes old bytes to be
+ * adopted; the caller still ignores them.
+ */
+internal fun quarantineReplacedSidecars(
+    filesDir: File,
+    docId: String,
+    previousFingerprint: String,
+    nowMs: Long = System.currentTimeMillis(),
+): List<File> {
+    val suffix = "replaced-${previousFingerprint.take(12)}-$nowMs"
+    return listOf("docstates", "excerpts", "reading").flatMap { directory ->
+        listOf("$docId.json", "$docId.json.tmp").mapNotNull { name ->
+            val source = File(File(filesDir, directory), name)
+            if (!source.exists()) return@mapNotNull null
+            val backup = File(source.parentFile, "$name.$suffix")
+            val preserved = runCatching {
+                if (source.renameTo(backup)) {
+                    backup
+                } else {
+                    source.copyTo(backup, overwrite = true)
+                    source.delete()
+                    backup
+                }
+            }.getOrNull()
+            preserved?.takeIf { it.exists() }
+        }
+    }
+}
 
 /** Immutable export payload captured at SAF-launch time, bound to one document. */
 data class PdfExportSnapshot(
@@ -522,6 +698,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private val libraryStore = LibraryStore(application)
     private val excerptStore = ExcerptStore(application)
     private val readingStore = PdfReadingStore(application)
+    private val sourceIdentityStore = SourceIdentityStore(application)
     private val inkStore = InkSettingsStore(application)
     private val resolver = application.contentResolver
 
@@ -571,6 +748,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private val openGate = OpenGenerationGate()
     private var searchJob: Job? = null
     private var readingSaveJob: Job? = null
+    private var pendingReadingWrite: PendingReadingWrite? = null
     private var textLayoutJob: Job? = null
     private var linkLoadJob: Job? = null
     private var textLayoutLines: List<PdfTextLine> = emptyList()
@@ -583,6 +761,11 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private val docSaveLock = Any()
     /** Serialises the two docstate writers (drain + pre-backup flush). */
     private val docWriteLock = Any()
+    /** Excerpt writes use the same lock order (write, then queue), never Main callbacks. */
+    private val excerptWriteLock = Any()
+    private val excerptQueueLock = Any()
+    private val pendingExcerptWrites = LinkedHashMap<String, List<Excerpt>>()
+    private var excerptSaveJob: Job? = null
     /** Changes only when the active viewer session changes, not on a failed open. */
     private var viewerSaveGeneration = 0L
     /** Main-thread baseline used to distinguish real changes from no-op persistence. */
@@ -602,11 +785,25 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openDocument(uri: Uri, addToRecents: Boolean = true) {
         // Capture the page request synchronously so a stale open cannot clear a
-        // newer one, then cancel and invalidate every earlier open.
+        // newer one. A same-document reopen is a disk barrier: every previously
+        // queued doc/reading write for this docId must be canonical before load().
         val requestedPage = pendingInitialPage
         pendingInitialPage = null
+        val reopeningDocId = docIdFor(uri)
         saveReadingNow()
+        if (_viewer.value?.docId == reopeningDocId) {
+            // Supersede Main-thread completions from the previous session. Without
+            // this, an old writer can publish after the barrier and enqueue again
+            // while the new open is already reading the sidecar.
+            viewerSaveGeneration++
+            persistNow()
+        }
+        flushPdfSavesNow(reopeningDocId)
+        flushReadingSaveNow(reopeningDocId)
+        flushExcerptSavesNow(reopeningDocId)
         searchJob?.cancel()
+        textLayoutJob?.cancel()
+        linkLoadJob?.cancel()
         openJob?.cancel()
         val token = openGate.begin()
         val openStartedAt = System.currentTimeMillis()
@@ -624,20 +821,43 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val name = repo.queryDisplayName(uri)
                 val docId = docIdFor(uri)
-                // Reuse this session's copy when possible; page edits never touch it.
+                // Always refresh the URI copy, then hash it off Main. The stored
+                // fingerprint is checked before any annotation-bearing sidecar loads.
                 val source = repo.sourceFileFor(uri, File(sourceDir, "$docId.pdf"))
+                val fingerprint = repo.fingerprint(source)
+                val previousFingerprint = sourceIdentityStore.load(docId)
+                val sourceReplaced = previousFingerprint != null && previousFingerprint != fingerprint
+                if (sourceReplaced) {
+                    quarantineReplacedSidecars(
+                        getApplication<Application>().filesDir,
+                        docId,
+                        previousFingerprint!!,
+                    )
+                    DevLog.event(
+                        PdfFlowTrace.COMPONENT,
+                        "source_replaced",
+                        "docId" to docId,
+                        "sidecars" to "isolated",
+                    )
+                }
                 // One PDDocument load replaces the old pageCount() + sourcePageSizes() pair.
                 val info = repo.documentInfo(source)
                 val sourceCount = info.pageCount
                 val sizes = info.pageSizes
+                sourceIdentityStore.save(docId, fingerprint)
                 val style = docStyleStore.load(docId)
-                val saved = docStore.load(docId)?.normalized(sourceCount)
+                val saved = if (sourceReplaced) null else docStore.load(docId)?.normalized(sourceCount)
                 val pages = saved?.pages ?: List(sourceCount) { PageSpec(it) }
                 val annotations = saved?.annotations ?: emptyList()
                 val notes = saved?.notes ?: emptyMap()
                 val memoCards = saved?.memoCards ?: emptyList()
                 val displayPrefs = saved?.displayPrefs ?: DisplayPrefs()
-                val reading = (readingStore.load(docId) ?: PdfReadingState()).normalized(pages.size)
+                val reading = if (sourceReplaced) {
+                    PdfReadingState()
+                } else {
+                    (readingStore.load(docId) ?: PdfReadingState()).normalized(pages.size)
+                }
+                val excerpts = if (sourceReplaced) emptyList() else excerptStore.load(docId)
                 // An unchanged layout needs no load+save pass: render the source directly.
                 // Cache keys already include lastModified, so reopening an unchanged
                 // document must not evict bitmaps for every other open document.
@@ -657,7 +877,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 currentUriString = uri.toString()
                 sourceSizes = sizes
                 resetTextLayout()
-                _excerpts.value = excerptStore.load(docId)
+                _excerpts.value = excerpts
                 _bookmarks.value = reading.bookmarks
                 pageTexts = null
                 currentPageTextsKey = null
@@ -685,6 +905,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     pressureCurve = ink.pressureCurve,
                     highlightOpacity = ink.highlightOpacity,
                     docName = displayName,
+                    contentFingerprint = fingerprint,
+                    sourceReplaced = sourceReplaced,
                     pageCount = pages.size,
                     pageIndex = restoredPage,
                     pages = pages,
@@ -697,6 +919,11 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     busy = true,
                     busyLabel = text(R.string.rendering_page),
                     noteDraft = notes[restoredPage] ?: "",
+                    message = if (sourceReplaced) {
+                        "원본 PDF가 바뀌었습니다. 이전 주석과 발췌는 새 문서에 적용하지 않고 보관했습니다."
+                    } else {
+                        null
+                    },
                     documentStyle = style,
                     nightMode = displayPrefs.nightMode,
                     brightness = displayPrefs.brightness,
@@ -751,6 +978,70 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun currentDocumentUri(): String? = currentUriString
+
+    /** Stable identity of the document currently rendered by the viewer. */
+    fun currentStudySource(): StudySource? {
+        val state = _viewer.value ?: return null
+        if (state.docId.isBlank() || state.contentFingerprint.isBlank()) return null
+        return StudySource(
+            docName = state.docName,
+            docUri = currentUriString,
+            docId = state.docId,
+            contentFingerprint = state.contentFingerprint,
+        )
+    }
+
+    /** Checks document/fingerprint/page identity without moving the viewer. */
+    fun resolveStudyLink(link: StudySourceLink): StudyLinkResolution {
+        val state = _viewer.value ?: return StudyLinkResolution.SourceUnavailable
+        val source = currentStudySource() ?: return StudyLinkResolution.SourceUnavailable
+        return resolveStudyLinkAgainstPages(
+            link = link,
+            currentDocId = source.docId,
+            currentFingerprint = source.contentFingerprint,
+            pages = state.pages,
+        )
+    }
+
+    /**
+     * Explicit source jump. Page lock is intentionally bypassed, but a wrong,
+     * changed, missing or ambiguous source never silently clamps to another page.
+     */
+    fun jumpToStudyLink(link: StudySourceLink): StudyLinkResolution {
+        val resolution = resolveStudyLink(link)
+        if (resolution is StudyLinkResolution.Found && !resolution.ambiguous) {
+            if (PageLockGate.allowsNavigation(
+                    _viewer.value?.pageLocked == true,
+                    explicitSourceJump = true,
+                )
+            ) {
+                goToPageUnlocked(resolution.viewPageIndex)
+            }
+        }
+        DevLog.event(
+            PdfFlowTrace.COMPONENT,
+            "study_link_jump",
+            "result" to resolution::class.java.simpleName,
+            "ambiguous" to (resolution is StudyLinkResolution.Found && resolution.ambiguous),
+        )
+        return resolution
+    }
+
+    /** Maps a persisted excerpt's original source ordinal through current page ops. */
+    fun jumpToExcerpt(excerpt: Excerpt): StudyLinkResolution {
+        val source = currentStudySource() ?: return StudyLinkResolution.SourceUnavailable
+        return jumpToStudyLink(
+            StudySourceLink(
+                uri = source.docUri.orEmpty(),
+                docId = source.docId,
+                sourcePage = excerpt.pageIndex,
+                fingerprint = source.contentFingerprint,
+                rect = null,
+                excerptId = excerpt.id,
+                rotation = 0,
+            ),
+        )
+    }
 
     fun createBlankDocument(uri: Uri) {
         viewModelScope.launch {
@@ -828,6 +1119,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         // sidecar with the backed-up last page/bookmarks.
         readingSaveJob?.cancel()
         readingSaveJob = null
+        pendingReadingWrite = null
         _viewer.value = null
         _pageBitmap.value = null
         _pageLinks.value = emptyList()
@@ -908,10 +1200,16 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
      * Study-note source links keep working while the page is locked: they are an
      * explicit "take me to the cited page" action, not incidental page stepping.
      */
-    fun jumpToSourcePage(index: Int) {
-        val state = _viewer.value ?: return
-        if (!PageLockGate.allowsNavigation(state.pageLocked, explicitSourceJump = true)) return
-        goToPageUnlocked(index)
+    fun jumpToSourcePage(index: Int): StudyLinkResolution {
+        val state = _viewer.value ?: return StudyLinkResolution.SourceUnavailable
+        if (!PageLockGate.allowsNavigation(state.pageLocked, explicitSourceJump = true)) {
+            return StudyLinkResolution.SourceUnavailable
+        }
+        val resolution = resolveOriginalSourcePage(state.pages, index)
+        if (resolution is StudyLinkResolution.Found && !resolution.ambiguous) {
+            goToPageUnlocked(resolution.viewPageIndex)
+        }
+        return resolution
     }
 
     fun togglePageLock() {
@@ -1814,14 +2112,20 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             if (_viewer.value?.docId != state.docId) return@launch
+            val capture = buildStudyCapture(state, state.pageIndex, excerptText)
+                ?.copy(source = currentStudySource() ?: return@launch)
+            if (capture == null) {
+                _viewer.update { it?.copy(message = "원본 PDF 페이지를 확인하지 못했습니다.") }
+                return@launch
+            }
             val excerpt = Excerpt(
-                pageIndex = state.pageIndex,
+                pageIndex = capture.sourcePage,
                 text = excerptText,
                 title = title.trim(),
             )
             val updated = (listOf(excerpt) + _excerpts.value).sortedByDescending { it.createdAt }
             _excerpts.value = updated
-            withContext(Dispatchers.IO) { excerptStore.save(state.docId, updated) }
+            queueExcerptSave(state.docId, updated)
             _viewer.update { it?.copy(message = "발췌를 저장했습니다.") }
         }
     }
@@ -1831,7 +2135,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val updated = _excerpts.value.filterNot { it.id == id }
         if (updated.size == _excerpts.value.size) return
         _excerpts.value = updated
-        viewModelScope.launch(Dispatchers.IO) { excerptStore.save(state.docId, updated) }
+        queueExcerptSave(state.docId, updated)
         _viewer.update { it?.copy(message = "발췌를 삭제했습니다.") }
     }
 
@@ -1842,7 +2146,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (updated == _excerpts.value) return
         _excerpts.value = updated
-        viewModelScope.launch(Dispatchers.IO) { excerptStore.save(state.docId, updated) }
+        queueExcerptSave(state.docId, updated)
     }
 
     /** Current page text for the excerpt sheet; extracts once and reuses the page-text cache. */
@@ -1878,6 +2182,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
         textLayoutJob?.cancel()
         textLayoutLoadingKey = key
+        val generation = viewerSaveGeneration
         _textWords.value = emptyList()
         // Flip the loading state before launching so the selection UI never
         // shows a false "no text" empty state while extraction is starting.
@@ -1890,7 +2195,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             } catch (_: Throwable) {
                 null
             }
-            if (_viewer.value?.docId != state.docId) return@launch
+            if (!isCurrentViewerSession(state, generation)) return@launch
 
             textLayoutLoadingKey = null
             if (lines == null) {
@@ -1925,7 +2230,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun textLayoutKeyFor(state: ViewerUiState, file: File): String =
-        "${state.docId}:${file.absolutePath}:${file.lastModified()}:${state.pages.size}:${state.revision}"
+        "${state.docId}:${state.contentFingerprint}:${file.absolutePath}:${file.lastModified()}:${state.pages.size}:${state.revision}"
 
     private fun resetTextLayout() {
         synchronized(pageLinkCache) { pageLinkCache.clear() }
@@ -2102,18 +2407,54 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun addExcerptFromSelection(pageIndex: Int, text: String) {
-        val state = _viewer.value ?: return
-        val value = text.trim()
-        if (value.isEmpty() || pageIndex !in 0 until state.pageCount) {
-            _viewer.update { it?.copy(message = "발췌할 텍스트가 없습니다.") }
-            return
+    /** Selection provenance without creating a persisted excerpt (used at drag start). */
+    fun studyCaptureForSelection(pageIndex: Int, text: String): StudyCapture? =
+        buildStudyCapture(_viewer.value ?: return null, pageIndex, text, _viewer.value?.selectedWords.orEmpty())
+            ?.copy(source = currentStudySource() ?: return null)
+
+    /** Adds a selection capture and returns its persisted excerpt identity. */
+    fun addExcerptFromSelection(pageIndex: Int, text: String): StudyCapture? =
+        studyCaptureForSelection(pageIndex, text)?.let(::addStudyCapture)
+
+    /**
+     * Accepts a drag/drop capture only when it still belongs to the active source
+     * bytes. The saved Excerpt keeps the original source ordinal, not a viewer index.
+     */
+    fun addStudyCapture(capture: StudyCapture): StudyCapture? {
+        val state = _viewer.value ?: return null
+        val source = currentStudySource() ?: return null
+        if (capture.text.isBlank() || capture.sourcePage < 0) return null
+        if (capture.source.docId != source.docId ||
+            capture.source.contentFingerprint != source.contentFingerprint
+        ) {
+            _viewer.update { it?.copy(message = "다른 문서 또는 바뀐 PDF의 발췌는 추가할 수 없습니다.") }
+            return null
         }
-        val excerpt = Excerpt(pageIndex = pageIndex, text = value)
+        if (state.pages.none { it.sourcePage == capture.sourcePage }) {
+            _viewer.update { it?.copy(message = "원본 PDF에서 해당 페이지를 찾지 못했습니다.") }
+            return null
+        }
+        val excerpt = Excerpt(pageIndex = capture.sourcePage, text = capture.text.trim())
         val updated = (listOf(excerpt) + _excerpts.value).sortedByDescending { it.createdAt }
         _excerpts.value = updated
-        viewModelScope.launch(Dispatchers.IO) { excerptStore.save(state.docId, updated) }
+        queueExcerptSave(state.docId, updated)
         _viewer.update { it?.copy(message = "선택한 텍스트를 노트에 담았습니다.") }
+        return capture.copy(excerptId = excerpt.id, source = source)
+    }
+
+    /** Rebuilds a document-bound capture for an already persisted excerpt. */
+    fun studyCaptureForExcerpt(excerpt: Excerpt): StudyCapture? {
+        val state = _viewer.value ?: return null
+        val source = currentStudySource() ?: return null
+        if (excerpt.pageIndex < 0 || state.pages.none { it.sourcePage == excerpt.pageIndex }) return null
+        return StudyCapture(
+            text = excerpt.text,
+            sourcePage = excerpt.pageIndex,
+            rect = null,
+            excerptId = excerpt.id,
+            source = source,
+            rotation = 0,
+        )
     }
 
     // ---------------------------------------------------------------- reading
@@ -2182,11 +2523,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         searchJob = viewModelScope.launch {
+            val generation = viewerSaveGeneration
             delay(220)
-            if (!mayPublishViewerResult(isActive, _viewer.value?.docId, state.docId)) return@launch
+            if (!isCurrentViewerSession(state, generation)) return@launch
             _viewer.update { it?.copy(searching = true, searchFailed = false) }
             val file = workingFile ?: return@launch
-            val key = "${state.docId}:${file.lastModified()}:${state.pages.size}"
+            val key = "${state.docId}:${state.contentFingerprint}:${file.lastModified()}:${state.pages.size}"
             val texts = pageTexts?.takeIf { currentPageTextsKey == key } ?: try {
                 repo.extractPagesText(file)
             } catch (error: Throwable) {
@@ -2194,7 +2536,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 null
             }
             if (texts == null) {
-                if (mayPublishViewerResult(isActive, _viewer.value?.docId, state.docId)) {
+                if (isCurrentViewerSession(state, generation)) {
                     _viewer.update { it?.copy(searching = false, searchFailed = true) }
                 }
                 return@launch
@@ -2202,7 +2544,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             pageTexts = texts
             currentPageTextsKey = key
             val hits = SearchNavigation.hitsForPages(texts, trimmed)
-            if (!mayPublishViewerResult(isActive, _viewer.value?.docId, state.docId)) return@launch
+            if (!isCurrentViewerSession(state, generation)) return@launch
             // Only the query *length* is logged — the query itself may be user data.
             PdfFlowTrace.search(trimmed.length, hits.size)
             _viewer.update { current ->
@@ -2367,6 +2709,38 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------------------------------------------------------------- helpers
 
+    /** Coalesces excerpt writes per document without dropping a previous doc's last state. */
+    private fun queueExcerptSave(docId: String, excerpts: List<Excerpt>) {
+        val startWriter: Boolean
+        synchronized(excerptQueueLock) {
+            pendingExcerptWrites[docId] = excerpts
+            startWriter = excerptSaveJob?.isActive != true
+        }
+        if (startWriter) excerptSaveJob = viewModelScope.launch(Dispatchers.IO) { drainExcerptSaves() }
+    }
+
+    private suspend fun drainExcerptSaves() {
+        while (true) {
+            synchronized(excerptWriteLock) {
+                val entry = synchronized(excerptQueueLock) {
+                    pendingExcerptWrites.entries.firstOrNull()
+                } ?: return
+                synchronized(excerptQueueLock) { pendingExcerptWrites.remove(entry.key) }
+                excerptStore.save(entry.key, entry.value)
+            }
+        }
+    }
+
+    /** Synchronous target-document barrier; unrelated excerpt writes remain queued. */
+    private fun flushExcerptSavesNow(docId: String) {
+        synchronized(excerptWriteLock) {
+            while (true) {
+                val next = synchronized(excerptQueueLock) { pendingExcerptWrites.remove(docId) } ?: return
+                excerptStore.save(docId, next)
+            }
+        }
+    }
+
     private data class DocSaveWriteResult(
         val succeeded: Boolean,
         val failureReason: String? = null,
@@ -2469,12 +2843,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
      * see it. Each write holds the same lock as the async writer, so a backup can
      * never capture a half-written tmp.
      */
-    fun flushPdfSavesNow() {
+    fun flushPdfSavesNow(docId: String? = null) {
         synchronized(docWriteLock) {
             while (true) {
                 val next: DocSaveRequest?
                 synchronized(docSaveLock) {
-                    val (updated, request) = docSaveQueue.take()
+                    val (updated, request) = docSaveQueue.takeFor(docId)
                     docSaveQueue = updated
                     next = request
                 }
@@ -2509,30 +2883,49 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     /** Saves the page the user landed on after a short pause so page flipping stays cheap. */
     private fun scheduleReadingSave(pageIndex: Int) {
         val state = _viewer.value ?: return
-        val reading = PdfReadingState(
+        queueReadingSave(PendingReadingWrite(state.docId, readingStateFor(state, pageIndex)), delayed = true)
+    }
+
+    private fun readingStateFor(state: ViewerUiState, pageIndex: Int = state.pageIndex): PdfReadingState =
+        PdfReadingState(
             lastPage = pageIndex.coerceIn(0, (state.pageCount - 1).coerceAtLeast(0)),
             bookmarks = _bookmarks.value,
         ).normalized(state.pageCount)
+
+    private fun queueReadingSave(request: PendingReadingWrite, delayed: Boolean) {
         readingSaveJob?.cancel()
+        pendingReadingWrite = request
+        val queued = request
         readingSaveJob = viewModelScope.launch {
-            delay(READING_SAVE_DELAY_MS)
-            withContext(Dispatchers.IO) { readingStore.save(state.docId, reading) }
+            if (delayed) delay(READING_SAVE_DELAY_MS)
+            withContext(Dispatchers.IO) { readingStore.save(queued.docId, queued.state) }
+            if (pendingReadingWrite === queued) pendingReadingWrite = null
         }
     }
 
     /** Flushes progress and bookmarks without debounce (bookmark edits, document close). */
     private fun saveReadingNow() {
+        val state = _viewer.value ?: return
+        queueReadingSave(PendingReadingWrite(state.docId, readingStateFor(state)), delayed = false)
+    }
+
+    /**
+     * Synchronous target-document reading barrier. The store itself serialises IO
+     * and never calls Main, so cancelling/joining a coroutine here cannot invert
+     * the Main/IO lock order used by docstate writes.
+     */
+    private fun flushReadingSaveNow(docId: String) {
+        val pending = pendingReadingWrite?.takeIf { it.docId == docId } ?: return
         readingSaveJob?.cancel()
         readingSaveJob = null
-        val state = _viewer.value ?: return
-        val reading = PdfReadingState(
-            lastPage = state.pageIndex.coerceIn(0, (state.pageCount - 1).coerceAtLeast(0)),
-            bookmarks = _bookmarks.value,
-        ).normalized(state.pageCount)
-        readingSaveJob = viewModelScope.launch(Dispatchers.IO) {
-            readingStore.save(state.docId, reading)
-        }
+        pendingReadingWrite = null
+        readingStore.save(pending.docId, pending.state)
     }
+
+    private fun isCurrentViewerSession(state: ViewerUiState, generation: Long): Boolean =
+        viewerSaveGeneration == generation &&
+            _viewer.value?.docId == state.docId &&
+            _viewer.value?.contentFingerprint == state.contentFingerprint
 
     private fun text(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
 

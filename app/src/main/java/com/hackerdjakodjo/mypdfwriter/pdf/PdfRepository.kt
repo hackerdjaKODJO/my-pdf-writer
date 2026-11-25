@@ -20,10 +20,58 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.OutputStream
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
 import kotlin.math.roundToInt
+
+/** Filesystem identity of one source snapshot; content can change at the same path. */
+internal data class SourceFileStamp(
+    val path: String,
+    val length: Long,
+    val lastModified: Long,
+) {
+    companion object {
+        fun of(file: File): SourceFileStamp = SourceFileStamp(
+            path = file.absolutePath,
+            length = file.length(),
+            lastModified = file.lastModified(),
+        )
+    }
+}
+
+/**
+ * Process-local SHA-256 cache. The key deliberately includes path, length and
+ * mtime: replacing a source at the same path must produce a new key, while an
+ * unchanged reopen does not read/hash the whole PDF again.
+ */
+internal class SourceFingerprintCache(maxEntries: Int = 8) {
+    private val entries = object :
+        LinkedHashMap<SourceFileStamp, String>(maxEntries, 0.75f, true) {
+        override fun removeEldestEntry(
+            eldest: Mutable.Map.MutableEntry<SourceFileStamp, String>?,
+        ): Boolean = size > maxEntries
+    }
+
+    fun fingerprint(file: File, compute: (File) -> String): String = synchronized(entries) {
+        val stamp = SourceFileStamp.of(file)
+        entries[stamp] ?: compute(file).also { entries[stamp] = it }
+    }
+
+    fun clear() = synchronized(entries) { entries.clear() }
+}
+
+internal fun sha256File(file: File): String = file.inputStream().use { input ->
+    val digest = MessageDigest.getInstance("SHA-256")
+    val buffer = ByteArray(64 * 1024)
+    while (true) {
+        val read = input.read(buffer)
+        if (read < 0) break
+        digest.update(buffer, 0, read)
+    }
+    digest.digest().joinToString("") { "%02x".format(it) }
+}
 
 /** Page count and per-page display sizes obtained from a single PDDocument load. */
 data class DocumentInfo(val pageCount: Int, val pageSizes: List<PageSize>)
@@ -99,14 +147,14 @@ fun readDocumentInfo(file: File): DocumentInfo = PDDocument.load(file).use { doc
 class PdfRepository(private val context: Context) {
 
     /**
-     * Session-only map from a URI string to the file we copied from it. It lives
-     * only as long as this repository (one ViewModel / app process): reopening the
-     * same URI reuses the bytes instead of copying them again, and nothing is
-     * persisted. Page edits never touch these files — assemble() always writes a
-     * separate working copy — so the cached source stays pristine. Stale entries
-     * are dropped when the file is gone/empty or when any step of opening fails.
+     * Session-only record of the local copy for each URI. The live URI is copied
+     * again on every open: a provider may replace bytes without changing its
+     * display name or URI, and serving the old session copy would silently attach
+     * old annotations/excerpts to the new document. Page edits never touch these
+     * files; assemble() always writes a separate working copy.
      */
     private val sourceCache = HashMap<String, File>()
+    private val fingerprintCache = SourceFingerprintCache()
 
     private val renderMutex = Mutex()
     private val version = AtomicInteger(0)
@@ -144,30 +192,28 @@ class PdfRepository(private val context: Context) {
     }
 
     /**
-     * Returns the local source file for [uri], reusing this session's copy when
-     * available. Otherwise the live URI is copied first, so a replaced original
-     * always refreshes [target] and a stale file is never served. Only when that
-     * copy fails (e.g. the original was deleted after a backup restore) do we fall
-     * back to [target] itself, and only if it is a valid on-disk PDF. An
-     * unrecoverable copy failure drops the cache entry and throws as before.
+     * Refreshes the local source from the live URI on every open. Only when that
+     * read fails (e.g. the original was deleted after a backup restore) do we fall
+     * back to [target] itself, and only after full PDF validation. This is the
+     * first line of defence against same-URI byte replacement; the caller also
+     * compares a content fingerprint before restoring any sidecars.
      */
     suspend fun sourceFileFor(uri: Uri, target: File): File = withContext(Dispatchers.IO) {
         val key = uri.toString()
-        val cached = synchronized(sourceCache) { reusableCachedSource(sourceCache[key]) }
-        if (cached != null) return@withContext cached
-
         val copied = runCatching { copyFromUri(uri, target) }
         val result = copied.getOrNull() ?: run {
-            // Original unreadable (deleted/moved/permission revoked). A backup
-            // with sources may have restored [target]; reuse it only after full
-            // validation so a truncated/garbage file can never be served.
             reusableRestoredSource(target) ?: run {
                 synchronized(sourceCache) { sourceCache.remove(key) }
-                copied.getOrThrow() // rethrow the original copy error
+                copied.getOrThrow()
             }
         }
         synchronized(sourceCache) { sourceCache[key] = result }
         result
+    }
+
+    /** SHA-256 of the current source bytes, computed and cached off Main. */
+    suspend fun fingerprint(file: File): String = withContext(Dispatchers.IO) {
+        fingerprintCache.fingerprint(file, ::sha256File)
     }
 
     /** Drops the session-only source copy for a URI (e.g. after a failed open or a delete). */
