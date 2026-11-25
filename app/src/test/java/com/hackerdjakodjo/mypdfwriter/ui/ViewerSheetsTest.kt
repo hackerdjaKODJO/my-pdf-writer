@@ -82,7 +82,7 @@ class ViewerSheetsTest {
         assertEquals(3, nearestOutlineEntryIndex(entries, currentPage = 4))
         // Equal distances keep the earlier outline position.
         assertEquals(
-            1,
+            0,
             nearestOutlineEntryIndex(
                 listOf(
                     PdfOutlineEntry("2쪽", pageIndex = 2, level = 0),
