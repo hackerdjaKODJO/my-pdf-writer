@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
@@ -75,6 +77,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -109,6 +112,8 @@ import com.hackerdjakodjo.mypdfwriter.pdf.PdfCrop
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfOutlineEntry
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -303,12 +308,50 @@ internal fun parsePageJump(input: String, pageCount: Int): Int? {
     return if (pageCount > 0 && number in 1..pageCount) number - 1 else null
 }
 
+/** A one-shot lazy-list destination, expressed without a Compose dependency. */
+internal data class InitialListScrollTarget(val index: Int, val offsetPx: Int = 0)
+
+/**
+ * Guards position restoration against repeated equivalent requests. The caller
+ * marks a target applied only after its scroll completes, so cancellation can
+ * retry while an ordinary recomposition cannot pull the list away from the user.
+ */
+internal class InitialListScrollPolicy {
+    private var applied: InitialListScrollTarget? = null
+
+    fun shouldApply(target: InitialListScrollTarget?): Boolean =
+        target != null && target != applied
+
+    fun markApplied(target: InitialListScrollTarget) {
+        applied = target
+    }
+}
+
+/** Current page aligned to the top; an empty document has no destination. */
+internal fun pageSheetInitialScrollTarget(currentPage: Int, pageCount: Int): InitialListScrollTarget? {
+    if (pageCount <= 0) return null
+    return InitialListScrollTarget(index = currentPage.coerceIn(0, pageCount - 1))
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PageSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var confirmDelete by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
+    val initialScroll = pageSheetInitialScrollTarget(state.pageIndex, state.pages.size)
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialScroll?.index ?: 0)
+    val scrollPolicy = remember { InitialListScrollPolicy() }
+
+    // Page changes are navigation, not recomposition: jump only when the current
+    // page (or a page edit that changes the valid index range) actually changes.
+    LaunchedEffect(state.pageIndex, state.pages.size) {
+        val target = pageSheetInitialScrollTarget(state.pageIndex, state.pages.size)
+            ?: return@LaunchedEffect
+        if (!scrollPolicy.shouldApply(target)) return@LaunchedEffect
+        listState.scrollToItem(target.index, target.offsetPx)
+        scrollPolicy.markApplied(target)
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
@@ -356,11 +399,12 @@ fun PageSheet(state: ViewerUiState, vm: PdfViewModel, onDismiss: () -> Unit) {
             Spacer(Modifier.size(12.dp))
 
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
-                items(state.pages.size) { index ->
+                items(count = state.pages.size, key = { index -> index }) { index ->
                     val spec = state.pages[index]
                     PageRow(
                         index = index,
@@ -1403,6 +1447,43 @@ internal fun locationsAnnotationGroups(
         .groupBy { it.page }
         .toSortedMap()
 
+/** Share of the visible outline viewport kept above the current-position row. */
+internal const val LOCATIONS_OUTLINE_CURRENT_VIEWPORT_FRACTION = 0.40f
+
+/**
+ * Exact current-page entry wins; otherwise the closest page entry wins. Ties and
+ * duplicate page entries keep the earlier outline position, and entries without
+ * a usable page cannot represent the reader's current position.
+ */
+internal fun nearestOutlineEntryIndex(entries: List<PdfOutlineEntry>, currentPage: Int): Int? {
+    if (currentPage < 0) return null
+    var nearestIndex: Int? = null
+    var nearestDistance = Int.MAX_VALUE
+    entries.forEachIndexed { index, entry ->
+        val page = entry.pageIndex?.takeIf { it >= 0 } ?: return@forEachIndexed
+        val distance = abs(page - currentPage)
+        if (distance < nearestDistance) {
+            nearestIndex = index
+            nearestDistance = distance
+        }
+    }
+    return nearestIndex
+}
+
+/** Negative lazy-list offset places the row about 40% down the viewport. */
+internal fun locationsOutlineScrollOffsetPx(viewportHeightPx: Int): Int =
+    -(viewportHeightPx.coerceAtLeast(0) * LOCATIONS_OUTLINE_CURRENT_VIEWPORT_FRACTION).roundToInt()
+
+internal fun locationsOutlineInitialScrollTarget(
+    nearestIndex: Int?,
+    viewportHeightPx: Int,
+): InitialListScrollTarget? = nearestIndex?.let { index ->
+    InitialListScrollTarget(
+        index = index.coerceAtLeast(0),
+        offsetPx = locationsOutlineScrollOffsetPx(viewportHeightPx),
+    )
+}
+
 /**
  * One panel for 북마크 / 목차 / 주석 with the tabs pinned above a scrolling list.
  * Bookmarks and outlines are the lists already loaded by the viewer; this sheet
@@ -1488,6 +1569,7 @@ fun LocationsSheet(
 
                 LocationsTab.OUTLINE -> LocationsOutlineTab(
                     entries = outline,
+                    currentPage = currentPage,
                     onJump = actions::jump,
                 )
 
@@ -1578,6 +1660,7 @@ private fun LocationsBookmarksTab(
 @Composable
 private fun LocationsOutlineTab(
     entries: List<PdfOutlineEntry>,
+    currentPage: Int,
     onJump: (Int) -> Unit,
 ) {
     if (entries.isEmpty()) {
@@ -1589,16 +1672,55 @@ private fun LocationsOutlineTab(
         )
         return
     }
+    val nearestIndex = remember(entries, currentPage) { nearestOutlineEntryIndex(entries, currentPage) }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = nearestIndex ?: 0)
+    val scrollPolicy = remember { InitialListScrollPolicy() }
+
+    // The tab is recreated on each open. Seed the nearest row, then place it at
+    // 40% once the actual viewport is measured; recomposition never repositions it.
+    LaunchedEffect(nearestIndex) {
+        if (nearestIndex == null) return@LaunchedEffect
+        val viewportHeightPx = snapshotFlow {
+            val layout = listState.layoutInfo
+            (layout.viewportEndOffset - layout.viewportStartOffset -
+                layout.beforeContentPadding - layout.afterContentPadding).coerceAtLeast(0)
+        }.first { it > 0 }
+        val target = locationsOutlineInitialScrollTarget(nearestIndex, viewportHeightPx)
+            ?: return@LaunchedEffect
+        if (!scrollPolicy.shouldApply(target)) return@LaunchedEffect
+        listState.scrollToItem(target.index, target.offsetPx)
+        scrollPolicy.markApplied(target)
+    }
+
     LazyColumn(
+        state = listState,
         Modifier.fillMaxWidth().heightIn(max = 400.dp),
         contentPadding = PaddingValues(bottom = 8.dp),
     ) {
-        items(entries) { entry ->
+        itemsIndexed(entries) { index, entry ->
             val page = entry.pageIndex
+            val isNearest = index == nearestIndex
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(
+                        if (isNearest) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                        } else {
+                            Color.Transparent
+                        },
+                        RoundedCornerShape(10.dp),
+                    )
                     .clickable(enabled = page != null) { page?.let(onJump) }
+                    .semantics(mergeDescendants = true) {
+                        if (isNearest) {
+                            stateDescription = if (page == currentPage) {
+                                "현재 페이지 목차"
+                            } else {
+                                "현재 페이지와 가장 가까운 목차"
+                            }
+                        }
+                    }
                     .padding(
                         start = (entry.level.coerceIn(0, 6) * 16).dp,
                         top = 10.dp,

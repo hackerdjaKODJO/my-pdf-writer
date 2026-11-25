@@ -28,6 +28,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Redo
+import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
@@ -68,6 +70,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -76,6 +80,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hackerdjakodjo.mypdfwriter.R
 import com.hackerdjakodjo.mypdfwriter.data.PageOps
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
 import kotlin.math.roundToInt
@@ -85,7 +90,8 @@ import kotlin.math.roundToInt
  *
  * The screen is deliberately stateless: selection and every mutation are
  * delegated to the caller so it can be backed by [PdfViewModel] (or any other
- * page store) without touching the viewer implementation.
+ * page store) without touching the viewer implementation. Undo/redo default to
+ * disabled for standalone callers; the viewer supplies its snapshot history.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,9 +112,12 @@ fun OrganizeScreen(
     onMerge: () -> Unit,
     onSplit: () -> Unit,
     onExport: () -> Unit,
+    canUndo: Boolean = false,
+    canRedo: Boolean = false,
+    onUndo: () -> Unit = {},
+    onRedo: () -> Unit = {},
 ) {
     val selection = selected.filter { it in pages.indices }.toSet()
-    val allSelected = pages.isNotEmpty() && selection.size == pages.size
     var pendingDelete by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
     BackHandler(onBack = onBack)
@@ -117,12 +126,17 @@ fun OrganizeScreen(
         AlertDialog(
             onDismissRequest = { pendingDelete = emptySet() },
             title = { Text("${pendingDelete.size}개 페이지 삭제") },
-            text = { Text("선택한 페이지가 문서에서 제거됩니다. 이 작업은 실행 취소로 되돌릴 수 없습니다.") },
+            text = {
+                Text("선택한 페이지가 문서에서 제거됩니다. 실행 취소로 되돌릴 수 있습니다.")
+            },
             confirmButton = {
-                TextButton(onClick = {
-                    onDelete(pendingDelete)
-                    pendingDelete = emptySet()
-                }) { Text("삭제") }
+                TextButton(
+                    onClick = {
+                        onDelete(pendingDelete)
+                        pendingDelete = emptySet()
+                    },
+                    modifier = Modifier.testTag("organize_delete_confirm"),
+                ) { Text("삭제") }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDelete = emptySet() }) { Text("취소") }
@@ -150,20 +164,35 @@ fun OrganizeScreen(
                             "${docName.ifBlank { "문서" }} · ${pages.size}개 페이지",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 },
                 actions = {
-                    TextButton(
-                        onClick = {
-                            onSelectionChange(
-                                if (allSelected) emptySet() else PageOps.selectAllIndices(pages.size),
-                            )
-                        },
-                        enabled = pages.isNotEmpty(),
-                        modifier = Modifier.heightIn(min = 48.dp),
+                    IconButton(
+                        onClick = onUndo,
+                        enabled = canUndo,
+                        modifier = Modifier
+                            .size(MIN_TARGET_DP.dp)
+                            .testTag("organize_undo"),
                     ) {
-                        Text(if (allSelected) "선택 해제" else "전체 선택")
+                        Icon(
+                            Icons.AutoMirrored.Outlined.Undo,
+                            contentDescription = stringResource(R.string.undo),
+                        )
+                    }
+                    IconButton(
+                        onClick = onRedo,
+                        enabled = canRedo,
+                        modifier = Modifier
+                            .size(MIN_TARGET_DP.dp)
+                            .testTag("organize_redo"),
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.Redo,
+                            contentDescription = stringResource(R.string.redo),
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -434,6 +463,7 @@ private fun OrganizeBottomBar(
     onExport: () -> Unit,
 ) {
     val hasSelection = selection.isNotEmpty()
+    val allSelected = pageCount > 0 && selection.size == pageCount
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val scale = chromeScale(maxWidth.value.roundToInt(), LocalDensity.current.fontScale)
@@ -457,15 +487,31 @@ private fun OrganizeBottomBar(
                             "${selection.size}개 페이지 선택됨",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
                         )
                     } else {
                         Text(
                             "페이지를 골라 정리하세요",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
                         )
                     }
-                    Spacer(Modifier.weight(1f))
+                    TextButton(
+                        onClick = {
+                            onSelectionChange(
+                                if (allSelected) emptySet() else PageOps.selectAllIndices(pageCount),
+                            )
+                        },
+                        enabled = pageCount > 0,
+                        modifier = Modifier.heightIn(min = MIN_TARGET_DP.dp),
+                    ) {
+                        Text(if (allSelected) "선택 해제" else "전체 선택")
+                    }
                 }
 
                 val pageActions = listOf(
