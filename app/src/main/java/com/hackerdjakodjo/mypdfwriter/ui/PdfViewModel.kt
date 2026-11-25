@@ -6,6 +6,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hackerdjakodjo.mypdfwriter.R
@@ -40,6 +42,7 @@ import com.hackerdjakodjo.mypdfwriter.data.SearchHit
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
+import com.hackerdjakodjo.mypdfwriter.pdf.EraserGeometry
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfCrop
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfExporter
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfFlowTrace
@@ -70,6 +73,10 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 data class ViewerUiState(
     val docId: String = "",
@@ -325,6 +332,185 @@ internal fun linkCacheKey(
 
 private const val LINK_CACHE_MAX = 48
 
+/** Pure commit builder shared by PDF stroke persistence and JVM regressions. */
+internal fun pdfStrokeAnnotation(
+    state: ViewerUiState,
+    type: AnnotationType,
+    points: List<NormalizedPoint>,
+    durationMs: Long,
+    nowMs: Long = System.currentTimeMillis(),
+): Annotation {
+    val usablePoints = if (isTwoPointType(type)) {
+        listOf(points.first(), points.last())
+    } else {
+        points
+    }
+    val safeDuration = durationMs.coerceAtLeast(0L)
+    return Annotation(
+        type = type,
+        page = state.pageIndex,
+        color = state.color,
+        width = when (type) {
+            AnnotationType.HIGHLIGHT -> HighlightInk.clamp(state.highlightWidth)
+            AnnotationType.RECT,
+            AnnotationType.ARROW,
+            AnnotationType.LINE,
+            AnnotationType.ELLIPSE,
+            AnnotationType.UNDERLINE,
+            AnnotationType.STRIKEOUT -> maxOf(state.strokeWidth, 0.0025f)
+            else -> state.strokeWidth
+        },
+        points = usablePoints,
+        timesMs = pointTimesMs(usablePoints),
+        penStyle = if (type == AnnotationType.PEN) state.penStyle else PenStyle.BALLPOINT,
+        opacity = when (type) {
+            AnnotationType.HIGHLIGHT -> HighlightInk.clampOpacity(state.highlightOpacity)
+            AnnotationType.REDACT -> 1f
+            else -> state.opacity
+        },
+        createdAt = nowMs - safeDuration,
+        durationMs = safeDuration,
+    )
+}
+
+private fun isTwoPointType(type: AnnotationType): Boolean = when (type) {
+    AnnotationType.RECT,
+    AnnotationType.ARROW,
+    AnnotationType.LINE,
+    AnnotationType.ELLIPSE,
+    AnnotationType.UNDERLINE,
+    AnnotationType.STRIKEOUT,
+    AnnotationType.REDACT,
+    AnnotationType.COVER_TEXT -> true
+    else -> false
+}
+
+/** PDF eraser preview and hit testing share this exact normalized radius. */
+internal fun pdfEraserRadius(pressure: Float, pressureSensitive: Boolean): Float =
+    EraserGeometry.radiusForPressure(EraserGeometry.NORMALIZED_RADIUS, pressure, pressureSensitive)
+
+/** Pure PDF annotation hit policy, extracted so JVM tests cover the real geometry. */
+internal fun pdfEraserHitsAnnotation(
+    annotation: Annotation,
+    trail: List<NormalizedPoint>,
+    radius: Float,
+): Boolean {
+    if (trail.isEmpty() || radius <= 0f || !radius.isFinite()) return false
+    val eraser = EraserGeometry.densifyTrail(trail)
+    return when (annotation.type) {
+        AnnotationType.PEN,
+        AnnotationType.HIGHLIGHT,
+        AnnotationType.ARROW,
+        AnnotationType.LINE,
+        AnnotationType.UNDERLINE,
+        AnnotationType.STRIKEOUT -> EraserGeometry.eraserHitsStroke(annotation.points, eraser, radius)
+
+        AnnotationType.RECT -> {
+            if (annotation.points.size < 2) return false
+            EraserGeometry.eraserHitsStroke(
+                pdfRectangleBorder(annotation.points[0], annotation.points[1]),
+                eraser,
+                radius,
+            )
+        }
+
+        AnnotationType.ELLIPSE -> {
+            if (annotation.points.size < 2) return false
+            EraserGeometry.eraserHitsStroke(
+                pdfEllipseBorder(annotation.points[0], annotation.points[1]),
+                eraser,
+                radius,
+            )
+        }
+
+        AnnotationType.TEXT -> {
+            if (annotation.points.isEmpty()) return false
+            val p = annotation.points.first()
+            val lines = annotation.text.split('\n')
+            val width = (lines.maxOfOrNull { it.length } ?: 0) * annotation.fontSize * 0.56f
+            val height = lines.size * annotation.fontSize * 1.35f
+            eraser.any { e ->
+                e.x in (p.x - radius)..(p.x + width + radius) &&
+                    e.y in (p.y - radius)..(p.y + height + radius)
+            }
+        }
+
+        AnnotationType.STAMP -> {
+            if (annotation.points.isEmpty()) return false
+            val p = annotation.points.first()
+            val label = annotation.stamp.ifBlank { "APPROVED" }
+            val width = (label.length * annotation.fontSize * 0.66f + annotation.fontSize * 1.2f)
+                .coerceAtMost(0.85f)
+            val height = annotation.fontSize * 1.9f
+            eraser.any { e ->
+                e.x in (p.x - width / 2f - radius)..(p.x + width / 2f + radius) &&
+                    e.y in (p.y - height / 2f - radius)..(p.y + height / 2f + radius)
+            }
+        }
+
+        AnnotationType.SIGNATURE -> {
+            if (annotation.points.isEmpty()) return false
+            if (annotation.points.size > 1) {
+                EraserGeometry.eraserHitsStroke(annotation.points, eraser, radius)
+            } else {
+                val p = annotation.points.first()
+                val label = annotation.text.ifBlank { annotation.stamp }
+                val width = (label.length * annotation.fontSize * 0.52f).coerceAtMost(0.85f)
+                val height = annotation.fontSize * 1.5f
+                eraser.any { e ->
+                    e.x in (p.x - radius)..(p.x + width + radius) &&
+                        e.y in (p.y - radius)..(p.y + height + radius)
+                }
+            }
+        }
+
+        AnnotationType.REDACT,
+        AnnotationType.COVER_TEXT -> {
+            if (annotation.points.size < 2) return false
+            val a = annotation.points[0]
+            val b = annotation.points[1]
+            val minX = minOf(a.x, b.x)
+            val maxX = maxOf(a.x, b.x)
+            val minY = minOf(a.y, b.y)
+            val maxY = maxOf(a.y, b.y)
+            eraser.any { e ->
+                e.x in (minX - radius)..(maxX + radius) &&
+                    e.y in (minY - radius)..(maxY + radius)
+            }
+        }
+    }
+}
+
+private fun pdfRectangleBorder(a: NormalizedPoint, b: NormalizedPoint): List<NormalizedPoint> {
+    val left = minOf(a.x, b.x)
+    val right = maxOf(a.x, b.x)
+    val top = minOf(a.y, b.y)
+    val bottom = maxOf(a.y, b.y)
+    return listOf(
+        NormalizedPoint(left, top),
+        NormalizedPoint(right, top),
+        NormalizedPoint(right, bottom),
+        NormalizedPoint(left, bottom),
+        NormalizedPoint(left, top),
+    )
+}
+
+private fun pdfEllipseBorder(a: NormalizedPoint, b: NormalizedPoint): List<NormalizedPoint> {
+    val cx = (a.x + b.x) * 0.5f
+    val cy = (a.y + b.y) * 0.5f
+    val rx = abs(a.x - b.x) * 0.5f
+    val ry = abs(a.y - b.y) * 0.5f
+    if (rx <= 1e-6f || ry <= 1e-6f) return listOf(a, b)
+    val samples = 64
+    return List(samples + 1) { index ->
+        val angle = 2.0 * PI * index / samples
+        NormalizedPoint(
+            cx + rx * cos(angle).toFloat(),
+            cy + ry * sin(angle).toFloat(),
+        )
+    }
+}
+
 class PdfViewModel(application: Application) : AndroidViewModel(application) {
     /** Parsed link targets survive page revisits; a full PDF parse per page is expensive. */
     private val pageLinkCache =
@@ -405,6 +591,13 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private val undoStack = ArrayDeque<DocSnapshot>()
     private val redoStack = ArrayDeque<DocSnapshot>()
 
+    /** One pre-erase snapshot for a timestamped, densified pointer-up trail. */
+    private var pointEraserUndoSnapshot: DocSnapshot? = null
+    private var pointEraserUndoChanged = false
+    private var pointEraserPageIndex: Int? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val finishPointEraserUndo = Runnable { finishPointEraserBatch() }
+
     // ---------------------------------------------------------------- opening
 
     fun openDocument(uri: Uri, addToRecents: Boolean = true) {
@@ -472,6 +665,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 _metadata.value = null
                 undoStack.clear()
                 redoStack.clear()
+                mainHandler.removeCallbacks(finishPointEraserUndo)
+                clearPointEraserUndo()
 
                 val displayName = saved?.displayName?.takeIf { it.isNotBlank() } ?: name
                 val restoredPage = (requestedPage ?: reading.lastPage)
@@ -573,6 +768,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closeDocument() {
+        mainHandler.removeCallbacks(finishPointEraserUndo)
+        clearPointEraserUndo()
         AnnotationPainter.clearInkContextCache()
         openJob?.cancel()
         openGate.invalidate()
@@ -610,6 +807,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
      * stale viewer here would immediately overwrite the restored annotations.
      */
     fun discardDocument() {
+        mainHandler.removeCallbacks(finishPointEraserUndo)
+        clearPointEraserUndo()
         AnnotationPainter.clearInkContextCache()
         openJob?.cancel()
         openGate.invalidate()
@@ -1008,36 +1207,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             Tool.REDACT -> AnnotationType.REDACT
             else -> return
         }
-        val usablePoints = if (isTwoPointType(type)) {
-            listOf(points.first(), points.last())
-        } else {
-            points
-        }
-        val safeDuration = durationMs.coerceAtLeast(0L)
-        val annotation = Annotation(
-            type = type,
-            page = state.pageIndex,
-            color = state.color,
-            width = when (type) {
-                AnnotationType.HIGHLIGHT -> HighlightInk.clamp(state.highlightWidth)
-                AnnotationType.RECT,
-                AnnotationType.ARROW,
-                AnnotationType.LINE,
-                AnnotationType.ELLIPSE,
-                AnnotationType.UNDERLINE,
-                AnnotationType.STRIKEOUT -> maxOf(state.strokeWidth, 0.0025f)
-                else -> state.strokeWidth
-            },
-            points = usablePoints,
-            penStyle = if (type == AnnotationType.PEN) state.penStyle else PenStyle.BALLPOINT,
-            opacity = when (type) {
-                AnnotationType.HIGHLIGHT -> HighlightInk.clampOpacity(state.highlightOpacity)
-                AnnotationType.REDACT -> 1f
-                else -> state.opacity
-            },
-            createdAt = System.currentTimeMillis() - safeDuration,
-            durationMs = safeDuration,
-        )
+        val annotation = pdfStrokeAnnotation(state, type, points, durationMs)
         mutateAnnotations { it + annotation }
         PdfFlowTrace.annotate(
             type = type.name,
@@ -1056,6 +1226,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             color = state.color,
             width = state.strokeWidth,
             points = listOf(point),
+            timesMs = pointTimesMs(listOf(point)),
             text = text,
             fontSize = state.fontSize,
             opacity = state.opacity,
@@ -1073,6 +1244,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             color = state.color,
             width = maxOf(state.strokeWidth, 0.003f),
             points = listOf(point),
+            timesMs = pointTimesMs(listOf(point)),
             fontSize = maxOf(state.fontSize, 0.03f),
             opacity = state.opacity,
             stamp = label,
@@ -1090,6 +1262,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             color = state.color,
             width = maxOf(state.strokeWidth, 0.0025f),
             points = listOf(point),
+            timesMs = pointTimesMs(listOf(point)),
             text = signature,
             fontSize = maxOf(state.fontSize, 0.03f),
             opacity = state.opacity,
@@ -1106,161 +1279,69 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun annotationsForPage(page: Int): List<Annotation> =
         _viewer.value?.annotations?.filter { it.page == page }.orEmpty()
 
-    fun eraseStroke(points: List<NormalizedPoint>) {
+    /** Legacy trail callback retained for existing canvas call sites and method references. */
+    fun eraseStroke(points: List<NormalizedPoint>) = eraseStroke(points, 1f, false)
+
+    /** Whole-stroke PDF erase with continuous, pressure-aware hit geometry. */
+    fun eraseStroke(
+        points: List<NormalizedPoint>,
+        pressure: Float,
+        pressureSensitive: Boolean,
+    ) {
         val state = _viewer.value ?: return
         if (points.isEmpty()) return
         val page = state.pageIndex
+        val radius = pdfEraserRadius(pressure, pressureSensitive)
         val remaining = state.annotations.filterNot { annotation ->
-            annotation.page == page && isHit(annotation, points)
+            annotation.page == page && pdfEraserHitsAnnotation(annotation, points, radius)
         }
         if (remaining.size != state.annotations.size) {
             mutateAnnotations { remaining }
         }
     }
 
-    private fun isHit(annotation: Annotation, eraser: List<NormalizedPoint>): Boolean {
-        val radius = 0.028f
-        fun near(p: NormalizedPoint): Boolean = eraser.any { e ->
-            val dx = p.x - e.x
-            val dy = p.y - e.y
-            dx * dx + dy * dy <= radius * radius
+    /** Pointer-event entry point used by pressure-aware input integration. */
+    fun eraseAt(
+        point: NormalizedPoint,
+        pressure: Float = 1f,
+        pressureSensitive: Boolean = false,
+    ) {
+        val state = _viewer.value ?: return
+        if (pointEraserPageIndex != null && pointEraserPageIndex != state.pageIndex) {
+            mainHandler.removeCallbacks(finishPointEraserUndo)
+            commitPointEraserUndo()
         }
-        return when (annotation.type) {
-            AnnotationType.PEN, AnnotationType.HIGHLIGHT -> annotation.points.any { near(it) }
-            AnnotationType.RECT -> {
-                if (annotation.points.size < 2) return false
-                val a = annotation.points[0]
-                val b = annotation.points[1]
-                val minX = minOf(a.x, b.x); val maxX = maxOf(a.x, b.x)
-                val minY = minOf(a.y, b.y); val maxY = maxOf(a.y, b.y)
-                eraser.any { e ->
-                    val insideX = e.x in (minX - radius)..(maxX + radius)
-                    val insideY = e.y in (minY - radius)..(maxY + radius)
-                    val onEdge = (e.x in minX..maxX && (kotlin.math.abs(e.y - minY) <= radius || kotlin.math.abs(e.y - maxY) <= radius)) ||
-                        (e.y in minY..maxY && (kotlin.math.abs(e.x - minX) <= radius || kotlin.math.abs(e.x - maxX) <= radius))
-                    insideX && insideY && onEdge
-                }
-            }
-            AnnotationType.ARROW,
-            AnnotationType.LINE,
-            AnnotationType.UNDERLINE,
-            AnnotationType.STRIKEOUT -> nearPolyline(annotation, eraser, radius)
-            AnnotationType.ELLIPSE -> {
-                if (annotation.points.size < 2) return false
-                nearEllipse(annotation.points[0], annotation.points[1], eraser, radius)
-            }
-            AnnotationType.TEXT -> {
-                if (annotation.points.isEmpty()) return false
-                val p = annotation.points.first()
-                val lines = annotation.text.split('\n')
-                val width = (lines.maxOfOrNull { it.length } ?: 0) * annotation.fontSize * 0.56f
-                val height = lines.size * annotation.fontSize * 1.35f
-                eraser.any { e ->
-                    e.x in (p.x - radius)..(p.x + width + radius) &&
-                        e.y in (p.y - radius)..(p.y + height + radius)
-                }
-            }
-            AnnotationType.STAMP -> {
-                if (annotation.points.isEmpty()) return false
-                val p = annotation.points.first()
-                val label = annotation.stamp.ifBlank { "APPROVED" }
-                val width = (label.length * annotation.fontSize * 0.66f + annotation.fontSize * 1.2f)
-                    .coerceAtMost(0.85f)
-                val height = annotation.fontSize * 1.9f
-                eraser.any { e ->
-                    e.x in (p.x - width / 2f - radius)..(p.x + width / 2f + radius) &&
-                        e.y in (p.y - height / 2f - radius)..(p.y + height / 2f + radius)
-                }
-            }
-            AnnotationType.SIGNATURE -> {
-                if (annotation.points.isEmpty()) return false
-                if (annotation.points.size > 1) {
-                    nearPolyline(annotation, eraser, radius)
-                } else {
-                    val p = annotation.points.first()
-                    val label = annotation.text.ifBlank { annotation.stamp }
-                    val width = (label.length * annotation.fontSize * 0.52f).coerceAtMost(0.85f)
-                    val height = annotation.fontSize * 1.5f
-                    eraser.any { e ->
-                        e.x in (p.x - radius)..(p.x + width + radius) &&
-                            e.y in (p.y - radius)..(p.y + height + radius)
-                    }
-                }
-            }
-            AnnotationType.REDACT,
-            AnnotationType.COVER_TEXT -> {
-                if (annotation.points.size < 2) return false
-                val a = annotation.points[0]
-                val b = annotation.points[1]
-                val minX = minOf(a.x, b.x); val maxX = maxOf(a.x, b.x)
-                val minY = minOf(a.y, b.y); val maxY = maxOf(a.y, b.y)
-                eraser.any { e ->
-                    e.x in (minX - radius)..(maxX + radius) &&
-                        e.y in (minY - radius)..(maxY + radius)
-                }
-            }
+        if (pointEraserUndoSnapshot == null) {
+            pointEraserUndoSnapshot = snapshot(state)
+            pointEraserUndoChanged = false
+            pointEraserPageIndex = state.pageIndex
         }
+        val radius = pdfEraserRadius(pressure, pressureSensitive)
+        val remaining = state.annotations.filterNot { annotation ->
+            annotation.page == state.pageIndex && pdfEraserHitsAnnotation(annotation, listOf(point), radius)
+        }
+        if (remaining.size != state.annotations.size) {
+            if (!pointEraserUndoChanged) redoStack.clear()
+            pointEraserUndoChanged = true
+            _viewer.value = state.copy(
+                annotations = remaining,
+                canUndo = true,
+                canRedo = false,
+            )
+        }
+        // The canvas feeds every densified sample synchronously on pointer-up.
+        // Finalizing after the current Main-looper message keeps that whole swipe
+        // in one undo step without requiring a second gesture-end callback.
+        mainHandler.removeCallbacks(finishPointEraserUndo)
+        mainHandler.post(finishPointEraserUndo)
     }
 
-    private fun nearPolyline(
-        annotation: Annotation,
-        eraser: List<NormalizedPoint>,
-        radius: Float,
-    ): Boolean {
-        val points = annotation.points
-        if (points.size < 2) return false
-        return points.zipWithNext().any { (a, b) ->
-            eraser.any { e -> distanceToSegment(e, a, b) <= radius }
-        }
-    }
-
-    private fun nearEllipse(
-        a: NormalizedPoint,
-        b: NormalizedPoint,
-        eraser: List<NormalizedPoint>,
-        radius: Float,
-    ): Boolean {
-        val cx = (a.x + b.x) / 2f
-        val cy = (a.y + b.y) / 2f
-        val rx = kotlin.math.abs(a.x - b.x) / 2f
-        val ry = kotlin.math.abs(a.y - b.y) / 2f
-        if (rx <= 0f || ry <= 0f) return false
-        val samples = 48
-        return eraser.any { e ->
-            if (e.x !in (cx - rx - radius)..(cx + rx + radius) ||
-                e.y !in (cy - ry - radius)..(cy + ry + radius)
-            ) {
-                return@any false
-            }
-            (0 until samples).any { i ->
-                val angle = i * (2.0 * Math.PI / samples)
-                val dx = e.x - (cx + rx * kotlin.math.cos(angle).toFloat())
-                val dy = e.y - (cy + ry * kotlin.math.sin(angle).toFloat())
-                dx * dx + dy * dy <= radius * radius
-            }
-        }
-    }
-
-    private fun isTwoPointType(type: AnnotationType): Boolean = when (type) {
-        AnnotationType.RECT,
-        AnnotationType.ARROW,
-        AnnotationType.LINE,
-        AnnotationType.ELLIPSE,
-        AnnotationType.UNDERLINE,
-        AnnotationType.STRIKEOUT,
-        AnnotationType.REDACT,
-        AnnotationType.COVER_TEXT -> true
-        else -> false
-    }
-
-    private fun distanceToSegment(p: NormalizedPoint, a: NormalizedPoint, b: NormalizedPoint): Float {
-        val dx = b.x - a.x
-        val dy = b.y - a.y
-        val lengthSquared = dx * dx + dy * dy
-        if (lengthSquared == 0f) return kotlin.math.hypot(p.x - a.x, p.y - a.y)
-        val t = (((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared).coerceIn(0f, 1f)
-        return kotlin.math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
-    }
+    /** Keeps the existing `vm::eraseStroke` method-reference call site compiling. */
+    fun eraseStroke(
+        point: NormalizedPoint,
+        pressure: Float,
+        pressureSensitive: Boolean,
+    ) = eraseAt(point, pressure, pressureSensitive)
 
     private fun snapshot(state: ViewerUiState, bookmarks: List<PdfBookmark> = _bookmarks.value) = DocSnapshot(
         pages = state.pages,
@@ -1271,7 +1352,32 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         bookmarks = bookmarks,
     )
 
+    private fun finishPointEraserBatch() {
+        val changed = pointEraserUndoChanged
+        commitPointEraserUndo()
+        if (changed) persistNow()
+    }
+
+    private fun commitPointEraserUndo() {
+        mainHandler.removeCallbacks(finishPointEraserUndo)
+        val before = pointEraserUndoSnapshot
+        val changed = pointEraserUndoChanged
+        clearPointEraserUndo()
+        if (changed && before != null) {
+            undoStack.addLast(before)
+            if (undoStack.size > 60) undoStack.removeFirst()
+            redoStack.clear()
+        }
+    }
+
+    private fun clearPointEraserUndo() {
+        pointEraserUndoSnapshot = null
+        pointEraserUndoChanged = false
+        pointEraserPageIndex = null
+    }
+
     private fun pushHistory(state: ViewerUiState) {
+        commitPointEraserUndo()
         undoStack.addLast(snapshot(state))
         if (undoStack.size > 60) undoStack.removeFirst()
         redoStack.clear()
@@ -1349,6 +1455,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     fun undo() {
         val state = _viewer.value ?: return
+        commitPointEraserUndo()
         val previous = undoStack.removeLastOrNull() ?: return
         redoStack.addLast(snapshot(state))
         restoreSnapshot(state, previous)
@@ -1357,6 +1464,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     fun redo() {
         val state = _viewer.value ?: return
+        commitPointEraserUndo()
         val next = redoStack.removeLastOrNull() ?: return
         undoStack.addLast(snapshot(state))
         restoreSnapshot(state, next)
@@ -2431,6 +2539,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private fun docIdFor(uri: Uri): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(uri.toString().toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
+    }
+
+    override fun onCleared() {
+        mainHandler.removeCallbacks(finishPointEraserUndo)
+        clearPointEraserUndo()
+        super.onCleared()
     }
 
     private companion object {

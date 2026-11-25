@@ -7,6 +7,7 @@ import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.MemoTint
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
+import com.hackerdjakodjo.mypdfwriter.pdf.EraserGeometry
 import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -77,6 +78,97 @@ class PdfViewModelTest {
         pages = request.state.pages,
         notes = request.state.notes,
     )
+
+    @Test
+    fun pdfStrokeCommitPropagatesCompleteTimestampsAndReplayTimes() {
+        val state = ViewerUiState(pageIndex = 2, color = 0xFF123456.toInt())
+        val points = listOf(
+            NormalizedPoint(0.1f, 0.2f, timeMs = 100L),
+            NormalizedPoint(0.3f, 0.4f, timeMs = 200L),
+            NormalizedPoint(0.5f, 0.6f, timeMs = 300L),
+        )
+
+        val stroke = pdfStrokeAnnotation(state, AnnotationType.PEN, points, 500L, nowMs = 2000L)
+        val line = pdfStrokeAnnotation(state, AnnotationType.LINE, points, 500L, nowMs = 2000L)
+        val partial = pdfStrokeAnnotation(
+            state,
+            AnnotationType.PEN,
+            listOf(points.first(), points.last().copy(timeMs = null)),
+            500L,
+            nowMs = 2000L,
+        )
+
+        assertEquals(listOf(100L, 200L, 300L), stroke.timesMs)
+        assertEquals(1500L, stroke.createdAt)
+        assertEquals(500L, stroke.durationMs)
+        assertEquals(2, stroke.page)
+        assertEquals(listOf(points.first(), points.last()), line.points)
+        assertEquals(listOf(100L, 300L), line.timesMs)
+        assertNull(partial.timesMs)
+    }
+
+    // ---------------------------------------------------------------- eraser geometry
+
+    @Test
+    fun pdfAndNoteErasersUseTheSamePressureAwareRadius() {
+        assertEquals(EraserGeometry.NORMALIZED_RADIUS, NOTE_ERASE_RADIUS, 0f)
+        listOf(0f, 0.5f, 1f).forEach { pressure ->
+            listOf(false, true).forEach { sensitive ->
+                assertEquals(
+                    EraserGeometry.radiusForPressure(NOTE_ERASE_RADIUS, pressure, sensitive),
+                    pdfEraserRadius(pressure, sensitive),
+                    0f,
+                )
+            }
+        }
+        assertEquals(NOTE_ERASE_RADIUS, pdfEraserRadius(0f, false), 0f)
+    }
+
+    @Test
+    fun pdfPolylineEraserDetectsCrossingsBetweenSparseSamples() {
+        val stroke = listOf(
+            NormalizedPoint(0.5f, 0.1f),
+            NormalizedPoint(0.5f, 0.9f),
+        )
+        val trail = listOf(
+            NormalizedPoint(0.1f, 0.5f),
+            NormalizedPoint(0.9f, 0.5f),
+        )
+        val types = listOf(
+            AnnotationType.PEN,
+            AnnotationType.HIGHLIGHT,
+            AnnotationType.LINE,
+            AnnotationType.ARROW,
+            AnnotationType.UNDERLINE,
+            AnnotationType.STRIKEOUT,
+            AnnotationType.SIGNATURE,
+        )
+        types.forEach { type ->
+            val annotation = annotation("crossing-$type", 0).copy(type = type, points = stroke)
+            assertTrue(type.name, pdfEraserHitsAnnotation(annotation, trail, pdfEraserRadius(1f, false)))
+            assertFalse(
+                type.name,
+                pdfEraserHitsAnnotation(
+                    annotation,
+                    listOf(NormalizedPoint(0.1f, 0.2f), NormalizedPoint(0.9f, 0.2f)),
+                    pdfEraserRadius(1f, false),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun pdfShapeEraserUsesBorderSegmentsRatherThanOnlyCornerSamples() {
+        val rect = annotation("rect", 0).copy(
+            type = AnnotationType.RECT,
+            points = listOf(NormalizedPoint(0.3f, 0.4f), NormalizedPoint(0.7f, 0.6f)),
+        )
+        val crossing = listOf(NormalizedPoint(0.5f, 0.1f), NormalizedPoint(0.5f, 0.9f))
+        val throughInside = listOf(NormalizedPoint(0.1f, 0.5f), NormalizedPoint(0.9f, 0.5f))
+
+        assertTrue(pdfEraserHitsAnnotation(rect, crossing, pdfEraserRadius(1f, false)))
+        assertFalse(pdfEraserHitsAnnotation(rect, throughInside, pdfEraserRadius(1f, false)))
+    }
 
     // ---------------------------------------------------------------- undo
 
