@@ -82,7 +82,7 @@ class NotebookSaveRaceTest {
         val order = mutableListOf<String>()
 
         val summary = withFlushedSaves(
-            { order += "flush" },
+            { order += "flush"; true },
             {
                 order += "archive"
                 "summary"
@@ -128,7 +128,7 @@ class NotebookSaveRaceTest {
         var archived = false
         assertThrows(NotebookSaveException::class.java) {
             withFlushedSaves(
-                { session.requireBackupFlush() },
+                { session.requireBackupFlush(); true },
                 { archived = true },
             )
         }
