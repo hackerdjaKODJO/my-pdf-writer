@@ -135,3 +135,19 @@ These remain documented risks; 0.8.91 does not claim they are complete.
 - A disk load observes every previously queued write for that document.
 - No user-data mutation starts during backup/restore.
 - After `ON_STOP`, current notebook/PDF/reading state is canonical.
+
+## Verification
+
+JVM tests cover link identity/resolution, persistence verification, deletion,
+fingerprints, source-page remapping and backup gating. Instrumentation tests
+compile. Real process-death, restore-interruption and stylus validation remain
+pending.
+
+### 0.8.91 host verification
+
+- 1217 JVM tests pass with 0 failures/errors/skips.
+- 161 instrumentation cases across 28 classes compile.
+- Arm64 debug APK and R8 release APK build successfully.
+- Release manifest has no `INTERNET`; `RECORD_AUDIO` remains the only sensitive
+  app permission.
+- No adb device or pressure-sensitive stylus was available.

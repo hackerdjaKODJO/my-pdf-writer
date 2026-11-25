@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.90
+# E2E test cases — My PDF Writer 0.8.91
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator. On the Windows PC the existing `myreader_pixel7` AVD
@@ -11,10 +11,10 @@ Instrumentation APKs can also be compiled without a device via
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 1170 | **Passing** — 0 failures, 0 errors, 0 skipped (0.8.90 run) |
-| Instrumentation/E2E (existing component + real-file + durable-log suites) | 28 classes, 143 cases | Previously compiled; prior device results retained where recorded |
-| Instrumentation/E2E (usability suites, 0.8.89) | 14 cases | **Compiled**; on-device run pending (no adb device on this host) |
-| **Total instrumentation** | **28 classes, 157 cases** | **Compiled; on-device run pending for new/changed cases** |
+| JVM unit tests | 1217 | **Passing** — 0 failures, 0 errors, 0 skipped (0.8.91 run) |
+| Instrumentation/E2E (existing component + real-file + durable-log + usability suites) | 28 classes, 157 cases | Previously compiled; prior device results retained where recorded |
+| Instrumentation/E2E (stability/link suites, 0.8.91) | 4 cases | **Compiled**; on-device/process-death run pending |
+| **Total instrumentation** | **28 classes, 161 cases** | **Compiled; on-device run pending for new/changed cases** |
 | Debug build (arm64-only) | 1 | Passing |
 | Instrumentation APK compilation | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally; sign with the upload key on PC/CI) |
@@ -94,6 +94,19 @@ capsule eraser crossings. Real stylus feel, calibration range and latency still
 require a hardware run.
 
 Evidence and scope are in [`ink-quality-0890.md`](ink-quality-0890.md).
+
+### Stability and link E2E suites (0.8.91)
+
+- `e2e/StudyLinkRealFileE2ETest.kt` drives real capture → note → source-link
+  resolution after page edits and reopen.
+- `ui/StudyPaneRestoreE2ETest.kt` verifies restore discards the detached pane and
+  cannot overwrite restored notebook JSON.
+- Updated `BackupRestoreE2ETest`, `DocumentSwitchE2ETest` and
+  `NotebookRealFileE2ETest` cover mutation gating, same-document reopen flush and
+  verified notebook writes.
+
+Detailed evidence, scope and deferred risks are in
+[`stability-links-0891.md`](stability-links-0891.md).
 
 ## E2E cases
 
