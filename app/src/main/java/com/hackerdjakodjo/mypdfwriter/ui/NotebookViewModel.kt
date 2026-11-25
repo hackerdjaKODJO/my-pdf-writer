@@ -858,7 +858,7 @@ internal fun duplicatePageInNotebook(notebook: Notebook, index: Int): Notebook? 
 private fun logAnnotationDecreases(previous: Notebook, target: Notebook) {
     val previousCounts = previous.pages.associate { it.id to it.annotations.size }
     target.pages.forEachIndexed { index, page ->
-        val before = previousCounts[page.id] ?: return@forEachIndex
+        val before = previousCounts[page.id] ?: return@forEachIndexed
         val after = page.annotations.size
         if (after < before) {
             NoteTrace.event(

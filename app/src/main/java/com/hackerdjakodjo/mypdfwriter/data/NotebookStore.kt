@@ -17,8 +17,10 @@ class NotebookStore private constructor(
         FileNotebookStoreIo,
     )
 
-    /** JVM-testable file-backed constructor with optional IO fault injection. */
-    internal constructor(dir: File, io: NotebookStoreIo = FileNotebookStoreIo) : this(dir, io)
+    internal constructor(dir: File) : this(dir, FileNotebookStoreIo)
+
+    /** JVM-testable file-backed constructor with IO fault injection. */
+    internal constructor(dir: File, io: NotebookStoreIo) : this(dir, io)
 
     fun loadAll(): List<Notebook> {
         val ids = dir.listFiles { file -> file.isFile && sidecarId(file) != null }
