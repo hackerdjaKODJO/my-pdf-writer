@@ -1,5 +1,6 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -7,29 +8,57 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
+import com.hackerdjakodjo.mypdfwriter.MainActivity
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
+import com.hackerdjakodjo.mypdfwriter.data.OnboardingStore
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import com.hackerdjakodjo.mypdfwriter.ui.theme.MyPdfWriterTheme
+import org.junit.After
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
 /**
  * Home smoke coverage: the first screen a new user sees must expose the primary
- * actions and a persistent create FAB, and must remember the selected tab when
- * the user opens a document and comes back.
+ * actions and a persistent create FAB without a blocking tutorial, offer the
+ * optional 60-second prompt, and remember the selected tab when the user opens a
+ * document and comes back.
  */
 class HomeStartE2ETest {
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    private val context: Context
+        get() = ApplicationProvider.getApplicationContext()
+
+    @Before
+    fun resetOnboarding() {
+        context.getSharedPreferences(OnboardingStore.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+    }
+
+    @After
+    fun leaveOnboardingUnseen() {
+        resetOnboarding()
+    }
 
     @Composable
     private fun home(
@@ -37,6 +66,9 @@ class HomeStartE2ETest {
         pdfs: List<RecentDoc> = emptyList(),
         libraryMessage: String? = null,
         onDismissLibraryMessage: () -> Unit = {},
+        showOnboardingPrompt: Boolean = false,
+        onOpenOnboarding: () -> Unit = {},
+        onDismissOnboardingPrompt: () -> Unit = {},
     ) {
         NotebookHomeScreen(
             notebooks = notebooks,
@@ -57,6 +89,9 @@ class HomeStartE2ETest {
             onOpenBackup = {},
             libraryMessage = libraryMessage,
             onDismissLibraryMessage = onDismissLibraryMessage,
+            showOnboardingPrompt = showOnboardingPrompt,
+            onOpenOnboarding = onOpenOnboarding,
+            onDismissOnboardingPrompt = onDismissOnboardingPrompt,
         )
     }
 
@@ -83,6 +118,89 @@ class HomeStartE2ETest {
         listOf("노트 섹션", "PDF 섹션", "태그 섹션").forEach { label ->
             composeRule.onNodeWithContentDescription(label).assertExists()
         }
+    }
+
+    @Test
+    fun coldStartShowsOptionalPromptWithoutOpeningTutorial() {
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        try {
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithContentDescription(UiCopy.HOME_ONBOARDING_PROMPT)
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithContentDescription(UiCopy.HOME_ONBOARDING_PROMPT).assertIsDisplayed()
+            composeRule.onNodeWithContentDescription(OnboardingLabels.SKIP).assertDoesNotExist()
+            assertFalse("showing Home must not consume the tutorial", OnboardingStore(context).hasSeen())
+
+            composeRule.onNodeWithContentDescription(UiCopy.HOME_ONBOARDING_PROMPT).performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithContentDescription(OnboardingLabels.SKIP).assertIsDisplayed()
+            assertTrue("starting the tutorial must mark it seen", OnboardingStore(context).hasSeen())
+        } finally {
+            scenario.close()
+        }
+    }
+
+    @Test
+    fun dismissingOptionalPromptMarksItSeenWithoutOpeningTutorial() {
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        try {
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithContentDescription(UiCopy.HOME_ONBOARDING_PROMPT)
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithContentDescription(UiCopy.HOME_ONBOARDING_DISMISS).performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithContentDescription(UiCopy.HOME_ONBOARDING_PROMPT).assertDoesNotExist()
+            composeRule.onNodeWithContentDescription(OnboardingLabels.SKIP).assertDoesNotExist()
+            assertTrue(OnboardingStore(context).hasSeen())
+        } finally {
+            scenario.close()
+        }
+    }
+
+    @Test
+    fun unseenPromptKeeps48dpTargetsAndOpensTutorialOnlyOnTap() {
+        var seen by mutableStateOf(false)
+        var tutorialOpen by mutableStateOf(false)
+        composeRule.setContent {
+            MyPdfWriterTheme {
+                home(
+                    showOnboardingPrompt = !seen,
+                    onOpenOnboarding = {
+                        seen = true
+                        tutorialOpen = true
+                    },
+                    onDismissOnboardingPrompt = { seen = true },
+                )
+                if (tutorialOpen) {
+                    OnboardingSheet(
+                        onDismiss = { tutorialOpen = false },
+                        onComplete = { tutorialOpen = false },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText(UiCopy.HOME_ONBOARDING_PROMPT)
+            .assertIsDisplayed()
+            .assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithContentDescription(UiCopy.HOME_ONBOARDING_DISMISS)
+            .assertIsDisplayed()
+            .assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithText("처음 사용법").assertDoesNotExist()
+        composeRule.onNodeWithText("PDF 가져오기").assertExists()
+
+        composeRule.onNodeWithText(UiCopy.HOME_ONBOARDING_PROMPT).performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("처음 사용법").assertIsDisplayed()
+        composeRule.onNodeWithText(UiCopy.HOME_ONBOARDING_PROMPT).assertDoesNotExist()
     }
 
     @Test

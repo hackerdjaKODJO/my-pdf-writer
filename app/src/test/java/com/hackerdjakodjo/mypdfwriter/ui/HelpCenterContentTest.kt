@@ -2,6 +2,7 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,7 +19,7 @@ class HelpCenterContentTest {
                 "60초 빠른 시작",
                 "PDF 열기/읽기",
                 "텍스트 선택·형광펜",
-                "PDF 위 노트에 담기 + 높이 드래그",
+                "PDF 위 학습 노트 + 높이 드래그",
                 "필기 도구·가리기 카드",
                 "검색 다음/이전",
                 "백업/내보내기",
@@ -174,6 +175,18 @@ class HelpCenterContentTest {
         assertTrue("view tool", all.contains("보기 도구"))
         assertFalse("no ghost view mode", all.contains("보기 모드"))
         assertFalse("no 발췌 on the selection bar", all.contains("복사·발췌"))
+        listOf(
+            UiCopy.STUDY_NOTE,
+            UiCopy.STUDY_NOTE_DESCRIPTION,
+            UiCopy.PAGE_MEMO,
+            UiCopy.PAGE_MEMO_DESCRIPTION,
+            UiCopy.POST_IT,
+            UiCopy.POST_IT_DESCRIPTION,
+            UiCopy.CAPTURE_TO_NOTE,
+            UiCopy.CAPTURE_TO_NOTE_DESCRIPTION,
+        ).forEach { canonical ->
+            assertTrue("missing canonical copy '$canonical'", all.contains(canonical))
+        }
     }
 
     @Test
@@ -182,17 +195,57 @@ class HelpCenterContentTest {
             quickCards().joinToString("\n") { it.sentence }
         listOf(
             "5분 빠른 시작", "PDF 상단의 노트", "홈의 백업/복원",
-            "학습·도구·보기", "학습 메뉴의 기타",
+            "학습·도구·보기", "학습 메뉴의 기타", "하단 페이지 바",
             "설정 → 파일 도구에 페이지 잠금·문서 정보·PDF 내보내기가",
         ).forEach { stale ->
             assertFalse("stale help path '$stale'", all.contains(stale))
         }
         listOf(
             "60초 빠른 시작", "하단 도구 독의 노트", "홈 설정의 백업/복원",
-            "보기·주석·노트·파일·설정", "PDF 내보내기", "추가 도구", "하단 페이지 바", "스와이프",
+            "보기·주석·노트·파일·설정", "PDF 내보내기", "추가 도구", "위쪽 페이지 이동", "스와이프",
         ).forEach { current ->
             assertTrue("missing current help path '$current'", all.contains(current))
         }
+    }
+
+    @Test
+    fun contextualTopicPolicySelectsRevealsAndScrollsToRequestedTopic() {
+        val topics = helpTopics()
+        val normal = initialHelpSelection(topics, initialTopic = null)
+        assertEquals(HelpTopicKey.QUICK_START, normal.selectedKey)
+        assertFalse(normal.showMore)
+        assertNull(normal.scrollTopicKey)
+
+        val backup = initialHelpSelection(topics, initialTopic = HelpTopicKey.BACKUP)
+        assertEquals(HelpTopicKey.BACKUP, backup.selectedKey)
+        assertTrue(backup.showMore)
+        assertEquals(HelpTopicKey.BACKUP, backup.scrollTopicKey)
+
+        val topicIndex = topics.indexOfFirst { it.key == HelpTopicKey.BACKUP }
+        assertEquals(topicIndex + 4, helpTopicScrollIndex(hasReplay = false, topicIndex = topicIndex))
+        assertEquals(topicIndex + 5, helpTopicScrollIndex(hasReplay = true, topicIndex = topicIndex))
+    }
+
+    @Test
+    fun navigationZoomAndUndoGuidanceAreModeAccurate() {
+        val topics = helpTopics().associateBy { it.key }
+        val openPdf = topics.getValue(HelpTopicKey.OPEN_PDF).allText()
+        val writeTools = topics.getValue(HelpTopicKey.WRITE_TOOLS).allText()
+        assertTrue(openPdf.contains(PDF_HINT_PAGE_NAVIGATION_TEXT))
+        assertTrue(openPdf.contains(PDF_HINT_VIEW_ZOOM_TEXT))
+        assertFalse(openPdf.contains("하단 페이지 바"))
+        assertTrue(writeTools.contains("노트 편집기에서만 두 손가락 탭"))
+        assertTrue(writeTools.contains("PDF에서는 실행 취소·다시 실행 버튼"))
+        assertTrue(writeTools.contains(PDF_HINT_STYLE_UNDO_TEXT))
+        assertTrue(helpTopics().first { it.key == HelpTopicKey.STUDY_NOTE }.allText().contains("기본 높이는 70%"))
+        assertFalse(writeTools.contains("두 손가락 탭은 실행 취소, 세 손가락 탭은 다시 실행입니다(필기 중에는 동작하지 않음)."))
+    }
+
+    @Test
+    fun exportGuidanceDistinguishesSavedWorkFromANewPdf() {
+        val backup = helpTopics().first { it.key == HelpTopicKey.BACKUP }.allText()
+        assertTrue(backup.contains("앱 안에 저장"))
+        assertTrue(backup.contains("주석을 포함한 새 PDF"))
     }
 
     private fun containsKorean(value: String): Boolean =

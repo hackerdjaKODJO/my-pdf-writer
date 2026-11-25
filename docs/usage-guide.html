@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>My PDF Writer 0.8.68 사용법</title>
+  <title>My PDF Writer 0.8.89 사용법</title>
   <style>
     :root {
       --bg: #f6f3ec;
@@ -280,7 +280,7 @@
     광고·계정·인터넷 없이 기기 안에서만 동작합니다.
   </p>
   <div class="meta">
-    <span class="pill">버전 0.8.68</span>
+    <span class="pill">버전 0.8.89</span>
     <span class="pill">Android 8.0+</span>
     <span class="pill">arm64 APK</span>
     <span class="pill">오프라인</span>
@@ -288,12 +288,12 @@
   <nav class="toc" aria-label="목차">
     <a href="#quickstart">60초 빠른 시작</a>
     <a href="#help">앱 안 도움말</a>
-    <a href="#onboarding">첫 실행 안내</a>
+    <a href="#onboarding">선택형 60초 안내</a>
     <a href="#install">설치와 시작</a>
     <a href="#home">홈 화면</a>
     <a href="#pdf">PDF 열기</a>
     <a href="#selection">텍스트 선택·하이라이트</a>
-    <a href="#study">PDF 위 노트 패널</a>
+    <a href="#study">PDF 위 학습 노트 패널</a>
     <a href="#locations">위치·문서 탭·자동 숨김</a>
     <a href="#divider">PDF/노트 높이 조절</a>
     <a href="#write">필기 도구</a>
@@ -315,7 +315,7 @@
   <ol class="steps">
     <li><div><b>PDF 열기</b><br>홈에서 <b>PDF 가져오기</b>를 눌러 강의자료를 엽니다. 최근에 연 문서는 <b>이어서 읽기</b>로 바로 다시 열립니다.</div></li>
     <li><div><b>표시하며 읽기</b><br>하단의 <b>텍스트 선택</b>으로 중요한 문장을 고르고 플로팅 바의 <b>형광펜</b>을 누릅니다.</div></li>
-    <li><div><b>노트에 담기</b><br>하단 도구 독의 <b>노트</b>를 눌러 아래 노트 패널을 펼치고, 발췌를 끌어다 넣고 펜으로 필기합니다.</div></li>
+    <li><div><b>노트에 담기</b><br>하단 도구 독의 <b>노트</b>를 눌러 <b>학습 노트</b>(PDF와 연결된 노트 패널)를 펼치고, 담은 내용을 원본 링크와 함께 저장합니다.</div></li>
     <li><div><b>복습하기</b><br>노트 메뉴의 <b>카드 → 가리기 카드</b>에서 질문을 가리고 정답을 스스로 확인합니다.</div></li>
     <li><div><b>이어서 하기</b><br>여러 PDF는 <b>문서 탭</b>으로 오가고, 홈 설정의 <b>백업/복원</b>으로 작업을 기기 안에 보관합니다.</div></li>
   </ol>
@@ -326,25 +326,29 @@
   <h2>앱 안 도움말</h2>
   <p class="sub">이 HTML을 열지 않아도 앱 안에서 같은 안내를 볼 수 있습니다.</p>
   <ul>
-    <li><b>홈 상단의 도움말 버튼 또는 설정 → 사용법/도움말</b></li>
+    <li><b>홈 상단의 도움말 버튼 또는 홈 설정 → 도움말</b></li>
     <li><b>PDF 메뉴 → 도움말</b></li>
-    <li><b>노트 ⋮ / 플로팅 독 ⋮ → 사용법/도움말</b></li>
+    <li><b>노트 메뉴 → 도움말</b></li>
   </ul>
-  <p>도움말의 첫 화면은 4장의 빠른 시작 카드입니다. 카드를 누르면 해당 안내로 이동하고,
-    <b>더보기</b>를 누르면 8개의 전체 주제가 펼쳐집니다.</p>
+  <p>도움말의 첫 화면은 4장의 빠른 시작 카드입니다. 카드를 누르면 현재 화면에서 지원되는 동작을
+    실행하거나 해당 안내로 이동하고, <b>더보기</b>를 누르면 8개의 전체 주제가 펼쳐집니다.
+    PDF의 상황에 맞는 안내를 열면 해당 주제가 선택된 채로 이동합니다.</p>
   <div class="tip"><strong>팁:</strong> 더보기에는 60초 빠른 시작, 텍스트 선택, 노트 패널, 가리기 카드,
     검색, 백업, 문제 해결이 들어 있습니다.</div>
 </section>
 
 <section id="onboarding">
-  <h2>첫 실행 안내</h2>
-  <p>처음 설치하면 <b>60초 빠른 시작</b> 안내 3장이 자동으로 열립니다.</p>
+  <h2>선택형 60초 안내</h2>
+  <p>처음 실행해도 안내 모달이 자동으로 열리지 않습니다. 홈의 작은
+    <b>처음 사용하나요? 60초 안내</b> 행을 누를 때만 3장의 튜토리얼이 열립니다.
+    오른쪽 <b>닫기</b>로 행을 숨길 수도 있습니다.</p>
   <ul>
     <li>홈에서 바로 시작</li>
     <li>선택하고 하이라이트</li>
-    <li>노트에 담기</li>
+    <li>노트에 담기 — 학습 노트(PDF와 연결된 노트 패널)에 저장</li>
   </ul>
-  <p>다음/이전으로 넘기고 <b>시작</b>이나 <b>건너뛰기</b>로 닫습니다.
+  <p><b>다음/이전</b>으로 넘기고, 마지막의 <b>PDF 가져오기</b>로 파일 선택기를 엽니다.
+    <b>건너뛰기</b>로 닫을 수도 있습니다. 안내를 시작하거나 닫으면 홈 행은 다시 표시되지 않으며,
     다시 보려면 도움말의 <b>튜토리얼 다시 보기</b>를 누르세요.</p>
 </section>
 
@@ -355,7 +359,7 @@
     <li>
       <div>
         <b>My Files에서 APK 열기</b><br>
-        <code>/sdcard/Download/MyPDFWriter-0.8.68-arm64.apk</code>를 탭합니다.
+        <code>/sdcard/Download/MyPDFWriter-0.8.89-arm64.apk</code>를 탭합니다.
         파일이 보이지 않으면 My Files의 <b>Downloads</b>에서 확인하세요.
       </div>
     </li>
@@ -394,32 +398,31 @@
     <div>
       <p class="sub">앱을 열면 내 노트와 최근 작업이 먼저 보입니다.</p>
       <ul>
-        <li><b>이어서 읽기 / 이어서 쓰기</b>: 마지막 PDF와 노트를 바로 엽니다.</li>
+        <li><b>이어서 읽기</b>: 마지막 PDF 또는 <b>학습 노트</b>(PDF와 연결된 노트 패널)를 바로 엽니다.</li>
         <li><b>PDF 탭</b>: 최근 문서를 먼저 보여 주고, 정렬·보기만 바꿀 수 있고, PDF 도구는 홈 설정에 있습니다.</li>
-        <li><b>＋ 만들기</b>: 어느 탭에서든 새 노트·PDF 가져오기를 만듭니다. 빈 PDF는 홈 설정에 있습니다.</li>
-        <li><b>PDF 열기</b>: PDF 파일을 가져옵니다.</li>
-        <li><b>새 노트</b>: 빈 노트북을 만듭니다.</li>
-        <li><b>PDF 도구</b>: 합치기·분할·OCR·보안 같은 작업대를 엽니다.</li>
-        <li><b>백업/복원</b>(홈 설정): 노트·필기·설정을 ZIP으로 보관합니다.</li>
+        <li><b>＋ 만들기</b>: 어느 탭에서든 <b>새 노트</b>·<b>PDF 가져오기</b>를 만듭니다. 빈 PDF는 홈 설정에 있습니다.</li>
+        <li><b>처음 사용하나요? 60초 안내</b>: 행이 보이면 탭해서 시작하거나 오른쪽 닫기로 숨길 수 있는 선택형 튜토리얼입니다.</li>
+        <li><b>홈 설정</b>: 백업/복원·휴지통·태그·PDF 도구·도움말을 한곳에서 엽니다.</li>
       </ul>
       <p>상단 세그먼트에서 <b>노트 / PDF / 태그</b>를 바꾸고, 상단 검색과 폴더·태그 필터로
       문서를 찾습니다. 홈의 정렬 버튼으로 이름·최근 수정순·최근 열기·페이지 수순을 바꿀 수 있습니다.</p>
       <div class="tip"><strong>팁:</strong> 탭을 바꾸거나 검색·폴더 필터를 켜도 오른쪽 아래
-      <b>＋</b>는 그대로 있습니다. 필터·정렬·보기는 한 줄로 모였고, 상단 <b>설정</b>에서
+      <b>＋</b>는 그대로 있습니다. 필터·정렬·보기는 한 줄로 모였고, <b>홈 설정</b>에서
       백업·휴지통·태그·PDF 도구·도움말을 언제든 열 수 있습니다.</div>
     </div>
     <div class="phone" aria-label="홈 화면 개념도">
       <div class="screen">
-        <div class="topbar">내 노트 <span class="spacer"></span> 검색 · ⋮</div>
+        <div class="topbar">내 노트 <span class="spacer"></span> 검색 · 도움말 · 설정</div>
         <div style="padding:10px 10px 0">
           <div style="background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:9px;font-size:11px;margin-bottom:8px">
             <b>이어서 읽기</b><br><span style="color:var(--muted)">강의자료.pdf · 12쪽</span>
           </div>
+          <div style="border:1px solid var(--line);border-radius:10px;padding:7px;font-size:10px;margin-bottom:6px">
+            처음 사용하나요? 60초 안내 &nbsp; ×
+          </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;text-align:center">
-            <div style="border:1px solid var(--line);border-radius:10px;padding:9px"><b>PDF 열기</b></div>
+            <div style="border:1px solid var(--line);border-radius:10px;padding:9px"><b>이어서 읽기</b></div>
             <div style="border:1px solid var(--line);border-radius:10px;padding:9px"><b>새 노트</b></div>
-            <div style="border:1px solid var(--line);border-radius:10px;padding:9px"><b>PDF 도구</b></div>
-            <div style="border:1px solid var(--line);border-radius:10px;padding:9px"><b>백업/복원</b></div>
           </div>
           <div style="margin-top:10px;font-size:11px;color:var(--muted)">노트 · PDF · 태그</div>
         </div>
@@ -432,14 +435,15 @@
   <h2>3. PDF 열기</h2>
   <p> 문서 정보 읽기와 페이지 구성을 한 번으로 줄여 열기가 빨라졌습니다. 원본 구성 그대로인 PDF는 다시 조립하지 않습니다.</p>
   <ol class="steps">
-    <li><div><b>PDF 열기</b>를 누르고 파일 선택기에서 PDF를 고릅니다. 다른 앱의 공유 시트에서 My PDF Writer를 선택해도 바로 가져올 수 있습니다.</div></li>
-    <li><div>페이지가 열리면 상단에 문서명과 페이지, 하단에 도구가 보입니다.</div></li>
-    <li><div>화면을 두 손가락으로 벌려 확대하고, 한 손가락으로 이동합니다.</div></li>
+    <li><div><b>PDF 가져오기</b>를 누르고 파일 선택기에서 PDF를 고릅니다. 다른 앱의 공유 시트에서 My PDF Writer를 선택해도 바로 가져올 수 있습니다.</div></li>
+    <li><div>페이지가 열리면 <b>위쪽 페이지 이동</b>(‹ 번호 ›)과 하단 도구가 보입니다. 번호를 누르면 원하는 페이지로 바로 갈 수 있습니다.</div></li>
+    <li><div><b>보기</b> 도구를 선택한 뒤 화면을 두 손가락으로 벌려 확대하고, 페이지를 더블 탭하면 화면 맞춤과 200%가 전환됩니다. 확대 후에는 한 손가락으로 페이지를 이동합니다.</div></li>
     <li><div><b>화면 설정</b>에서 문서별 야간 모드와 밝기를 조절하고, <b>페이지 잠금</b>으로 실수로 넘어가는 페이지를 막을 수 있습니다.</div></li>
     <li><div>내부 링크가 있는 PDF는 보기 도구에서 링크를 탭하면 해당 페이지로 이동합니다. 외부 주소는 인터넷 없이 열리지 않고 복사만 됩니다.</div></li>
-    <li><div><b>노트 메뉴 → 카드 → 포스트잇</b>에서 PDF 페이지에도 포스트잇을 넣을 수 있습니다. 카드의 <b>닫기</b>는 숨기기이며 삭제가 아닙니다.</div></li>
+    <li><div><b>페이지 메모</b>는 한 PDF 페이지에 남기는 텍스트 메모이고, <b>포스트잇</b>은 페이지 위에 자유롭게 배치하는 카드 메모입니다. PDF 메뉴의 <b>페이지 메모</b> 또는 <b>전체 도구 보기 → 추가 도구 → 포스트잇</b>에서 엽니다. 카드의 <b>닫기</b>는 숨기기이며 삭제가 아닙니다.</div></li>
     <li><div>PDF 상단의 <b>검색</b> 아이콘은 PDF 검색을 바로 열고, <b>PDF 메뉴</b>는
-      <b>보기 · 주석 · 노트 · 파일·설정</b> 그룹으로 정리되어 있습니다. <b>PDF 내보내기</b>는 첫 화면에 있고, 페이지 잠금·문서 정보·텍스트 복사는 <b>추가 도구</b>에 모여 있습니다.</div></li>
+      <b>학습 노트 · 페이지 메모 · 현재 페이지 북마크 · PDF 내보내기 · 공유 · 도움말</b> 여섯 작업을 먼저 보여 줍니다.
+      <b>전체 도구 보기</b> 뒤에는 <b>보기 · 주석 · 노트 · 파일·설정</b> 묶음과 <b>추가 도구</b>가 이어집니다.</div></li>
   </ol>
   <div class="note"><strong>PDF 하단 독 6개:</strong>
     보기 · 형광펜 · 펜 · 지우개 · 텍스트 선택 · 노트. 글상자·도형·스탬프·서명·가림은
@@ -460,7 +464,8 @@
     <li><div><b>여러 단어 선택:</b> 첫 단어에서 끝 단어까지 드래그합니다.</div></li>
     <li><div>선택하면 플로팅 선택 바가 나타납니다. <b>형광펜·밑줄·취소선</b>을
       누르면 PDF에 표시가 저장됩니다.</div></li>
-    <li><div>복사·번역·노트에 담기도 같은 바에서 실행합니다. 번역을 누르면
+    <li><div>복사·번역·<b>노트에 담기</b>도 같은 바에서 실행합니다. <b>노트에 담기</b>는 선택한 내용을
+      <b>학습 노트</b>(PDF와 연결된 노트 패널)에 저장합니다. 번역을 누르면
       선택한 문구가 <b>항상 클립보드에 복사</b>되고, 번역 앱에서 붙여넣을 수 있습니다.</div></li>
   </ol>
   <div class="warn"><strong>이미지 PDF(스캔)는 선택할 수 없습니다.</strong>
@@ -472,16 +477,16 @@
 </section>
 
 <section id="study">
-  <h2>5. PDF 위 노트 패널</h2>
-  <p class="sub">PDF를 닫지 않고 노트를 펼칩니다. Flexcil처럼 PDF와 노트를 위아래로
-  같이 보는 화면입니다.</p>
+  <h2>5. PDF 위 학습 노트 패널</h2>
+  <p class="sub"><b>학습 노트</b>는 PDF와 연결된 노트 패널입니다. PDF를 닫지 않고 펼쳐서
+    발췌와 필기를 함께 저장합니다.</p>
   <ol class="steps">
-    <li><div>하단 도구 독의 <b>노트</b>를 누릅니다. 연결된 노트가 없으면
-      새 노트를 만듭니다.</div></li>
-    <li><div>아래쪽에 노트가 열리고, 위에는 PDF 페이지가 남습니다. 기본 높이는
-      85%입니다.</div></li>
+    <li><div>하단 도구 독의 <b>노트</b>를 누릅니다. 연결된 학습 노트가 없으면
+      새로 만듭니다.</div></li>
+    <li><div>아래쪽에 학습 노트가 열리고, 위에는 PDF 페이지가 남습니다. 기본 높이는
+      70%입니다.</div></li>
     <li><div>노트 헤더의 <b>PDF 발췌 놓기</b>를 누르면 발췌를 추가할 수 있습니다.
-      PDF에서 선택한 텍스트는 선택 바의 <b>패널에 추가</b>로도 넣을 수 있습니다.</div></li>
+      PDF에서 선택한 텍스트는 선택 바의 <b>노트에 담기</b>로도 학습 노트에 저장할 수 있습니다.</div></li>
     <li><div>헤더의 링크 아이콘을 누르면 노트 페이지별 원본 PDF 페이지 목록이
       나옵니다. 항목을 누르면 노트와 PDF가 함께 이동합니다.</div></li>
     <li><div>노트를 닫아도 자동 저장되고 PDF는 같은 페이지에 남습니다.</div></li>
@@ -527,19 +532,19 @@
         <li>노트 헤더의 크기 팝업이나 분할 손잡이에서 50/70/85%를 고를 수 있습니다.</li>
         <li>노트 헤더의 <b>도구 표시/숨기기</b>로 하단 도구 독을 숨기면, 오른쪽 아래의 작은 <b>도구</b> 버튼으로 다시 엽니다.</li>
       </ul>
-      <div class="tip"><strong>필기할 때는 85%</strong>로 두고, PDF를 더 읽고 싶을 때만
-        아래로 내리세요.</div>
+      <div class="tip"><strong>필기할 때는 70%</strong>에서 시작하고, 더 넓은 종이 공간이
+        필요할 때만 85%로 올리세요. PDF를 더 읽고 싶을 때는 아래로 내립니다.</div>
     </div>
     <div class="phone" aria-label="PDF와 노트 분할 개념도">
       <div class="screen">
         <div class="pdf-strip">
           PDF 페이지
-          <div class="floatbar">‹ 3 / 12 › &nbsp; 선택 &nbsp; ★ &nbsp; 도구 &nbsp; 메뉴</div>
+          <div class="floatbar">위쪽 페이지 이동 &nbsp; ‹ 3 / 12 › &nbsp; 선택 &nbsp; ★ &nbsp; 도구 &nbsp; 메뉴</div>
         </div>
         <div class="divider"><span>≡ 높이 조절 ≡</span></div>
         <div class="note-pane">
           <div class="ruled"></div>
-          <div class="note-header"><b>노트 패널</b><span style="flex:1"></span>85% &nbsp; ⌁ &nbsp; ×</div>
+          <div class="note-header"><b>학습 노트</b><span style="flex:1"></span>70% &nbsp; ⌁ &nbsp; ×</div>
           <div class="note-dock">
             <div class="row">
               <span class="tool active">✎</span><span class="tool">▮</span><span class="tool">⌫</span><span class="tool">◌</span><span class="tool">T</span><span class="tool">□</span>
@@ -557,7 +562,7 @@
   <table>
     <thead><tr><th>도구</th><th>사용법</th></tr></thead>
     <tbody>
-      <tr><td>펜</td><td>색·굵기·펜 종류(볼펜/만년필/붓/연필)를 스타일에서 고릅니다.</td></tr>
+      <tr><td>펜</td><td>색·굵기·펜 종류(볼펜/만년필/붓/연필)를 스타일에서 고릅니다. PDF에서는 펜·형광펜을 길게 누르거나 <b>도구 독 위의 스타일</b> 버튼을 엽니다.</td></tr>
       <tr><td>형광펜</td><td>넓은 반투명 획으로 표시합니다.</td></tr>
       <tr><td>지우개</td><td>기본은 닿은 부분만 지우는 부분 지우개입니다. 설정에서 끄면 획 전체를 지웁니다.</td></tr>
       <tr><td>선택</td><td>필기를 선택한 뒤 편집 시트에서 이동·확대·회전·복사/붙여넣기.</td></tr>
@@ -568,8 +573,9 @@
       <tr><td>위치·탭</td><td><b>PDF 메뉴 → 보기 → 위치</b>에서 북마크·목차·주석을 한 번에 보고, 주석 요약을 저장할 수 있습니다. 여러 PDF는 상단 <b>문서 탭</b>으로 빠르게 전환합니다. <b>스타일러스 압력 범위를 자동 학습</b>해 얕은 압력도 끝까지 사용합니다. 펜(볼펜)은 굵기가 고정이고 가볍게 누르면 잉크가 끊겨요. 만년필은 닙 각도와 압력에 따라 굵기가 변하고 끝이 가늘어져요. 연필은 누를수록 진해지고 넓어지며 흑연 입자가 살아납니다. 붓은 번짐과 농도가 변합니다.</td></tr>
     </tbody>
   </table>
-  <div class="note"><strong>제스처:</strong> 두 손가락으로 짧게 탭하면 실행 취소,
-    세 손가락으로 짧게 탭하면 다시 실행입니다. 필기 중에는 발동하지 않습니다.</div>
+  <div class="note"><strong>되돌리기:</strong> <b>노트 편집기에서만</b> 두 손가락으로 짧게 탭하면 실행 취소,
+    세 손가락으로 짧게 탭하면 다시 실행입니다. 필기 중에는 발동하지 않습니다.
+    PDF에서는 <b>도구 독 위의 실행 취소·다시 실행</b> 버튼을 사용하세요.</div>
   <div class="warn"><strong>필압은 실기기 검증이 필요합니다.</strong> 앱에는 부드럽게/
     선형/강하게 곡선이 들어 있지만, 실제 태블릿의 필압 범위는 기기마다 다릅니다.
     기기에서 직접 곡선을 골라 보세요.</div>
@@ -595,7 +601,7 @@
 </section>
 
 <section id="memopen">
-  <h2>포스트잇와 즐겨찾는 펜</h2>
+  <h2>포스트잇과 즐겨찾는 펜</h2>
   <p class="sub">삼성 노트의 스티커 메모 패턴과 Flexcil의 펜 프리셋 패턴을
     오프라인 앱에 맞게 다시 구현했습니다.</p>
   <ul>
@@ -647,7 +653,7 @@
 <section id="continuous">
   <h2>연속 보기와 텍스트 수정</h2>
   <p><b>PDF 메뉴 → 보기 → 읽기 모드 → 연속 보기</b>에서 페이지를 세로로 이어서 봅니다. 페이지 번호
-    라벨은 제거되어 간격이 좁아졌습니다. 확대는 <b>두 손가락 핀치</b>로 하며,
+    라벨은 제거되어 간격이 좁아졌습니다. <b>보기</b> 도구를 선택한 뒤 확대는 <b>두 손가락 핀치</b>로 하며,
     현재 페이지만이 아니라 <b>문서의 모든 페이지가 같은 배율</b>로 확대됩니다.
     확대 시 상단 퍼센트뿐 아니라 <b>페이지 자체가 실제로 커지고</b>, 좌우로 밀어
     확대된 페이지의 다른 부분을 볼 수 있습니다. 확대 상태에서는 페이지가
@@ -656,7 +662,7 @@
     확대 중에는 이전 페이지 화면을 유지해 흰 화면이 깜박이지 않습니다.
     한 손가락 세로 스크롤은 그대로 동작합니다. 맞춤 배율(100%)에서는 좌우 스와이프로
     <b>다음/이전 페이지로 이동</b>하고, 확대 후 같은 드래그는 페이지를 옮깁니다.
-    페이지 이동은 상단 타이틀 바 가운데의 <b>작은 페이지 탐색</b>(‹ 번호 ›)으로 하며, 한 페이지 보기와 연속 보기에 동일하게 적용됩니다. 별도의 하단 바·위치 백분율·확대 배율 문구는 없어 PDF가 화면 전체 높이를 사용합니다.
+    페이지 이동은 <b>위쪽 페이지 이동</b>(‹ 번호 ›)으로 하며, 한 페이지 보기와 연속 보기에 동일하게 적용됩니다. 별도의 하단 바·위치 백분율·확대 배율 문구는 없어 PDF가 화면 전체 높이를 사용합니다.
     번호를 누르면 원하는 쪽으로 바로 이동할 수 있습니다.</p>
   <p>확대 상태에서는 좌우 드래그로 페이지를 옮길 수 있고, 이 좌우 위치도 모든
     페이지에 공유됩니다. 페이지를 더블탭하면 맞춤 배율(100%)과 200% 사이를 오갑니다. 배율이 바뀌면
@@ -685,7 +691,10 @@
       교체됩니다.</div></li>
   </ol>
   <p>커스텀 템플릿 이미지·PDF 첫 페이지 배경도 백업에 포함됩니다.</p>
-  <h3>PDF 내보내기</h3>
+  <h3>저장과 PDF 내보내기는 다릅니다</h3>
+  <p>PDF 필기·페이지 메모와 학습 노트는 앱 안의 작업 데이터로 저장됩니다.
+    <b>PDF 내보내기</b>는 주석을 포함한 <b>새 PDF</b>를 선택한 위치에 저장합니다.
+    다른 앱에서 바로 열어 볼 파일이 필요할 때 내보내기를 사용하세요.</p>
   <p>PDF 메뉴의 <b>PDF 내보내기</b>는 화면에 보이는 주석을 평탄화한 PDF를
     저장합니다. 노트의 <b>PDF로 내보내기</b>는 전체/현재/선택 페이지와 숨긴 레이어
     포함 여부를 고를 수 있습니다.</p>
@@ -739,7 +748,7 @@
 </main>
 
 <footer>
-  My PDF Writer 0.8.68 · 로컬 전용 · 소스와 테스트는 GitHub 저장소 참고<br>
+  My PDF Writer 0.8.89 · 로컬 전용 · 소스와 테스트는 GitHub 저장소 참고<br>
   이 문서는 오프라인에서 열 수 있는 단일 HTML 파일입니다.
 </footer>
 </div>

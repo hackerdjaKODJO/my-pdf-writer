@@ -122,6 +122,14 @@ class HomeStartTest {
     }
 
     @Test
+    fun optionalOnboardingPromptIsShownOnlyBeforeItIsSeen() {
+        assertTrue(showHomeOnboardingPrompt(hasSeenOnboarding = false))
+        assertFalse(showHomeOnboardingPrompt(hasSeenOnboarding = true))
+        assertEquals("처음 사용하나요? 60초 안내", UiCopy.HOME_ONBOARDING_PROMPT)
+        assertEquals("60초 안내 닫기", UiCopy.HOME_ONBOARDING_DISMISS)
+    }
+
+    @Test
     fun favoriteStarDescriptionCarriesSelectedState() {
         assertEquals("즐겨찾기", favoriteToggleDescription(false))
         assertEquals("즐겨찾기, 선택됨", favoriteToggleDescription(true))

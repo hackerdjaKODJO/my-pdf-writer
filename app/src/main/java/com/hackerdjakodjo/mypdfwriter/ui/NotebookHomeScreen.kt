@@ -147,6 +147,9 @@ internal fun homePrimaryAction(hasContent: Boolean): HomePrimaryAction =
 /** The secondary create action that is always present beside the primary one. */
 internal const val HOME_NEW_NOTE_LABEL = "새 노트"
 
+/** Optional first-run entry: visible until the student starts or dismisses it. */
+internal fun showHomeOnboardingPrompt(hasSeenOnboarding: Boolean): Boolean = !hasSeenOnboarding
+
 /**
  * Home quick buttons collapse to two slots: the primary action (resume for a
  * returning student, import for a new one) and 새 노트. Tools, backup and empty
@@ -220,6 +223,9 @@ fun NotebookHomeScreen(
     onOpenBackup: () -> Unit = {},
     onOpenTrace: (() -> Unit)? = null,
     onOpenHelp: () -> Unit = {},
+    showOnboardingPrompt: Boolean = false,
+    onOpenOnboarding: () -> Unit = {},
+    onDismissOnboardingPrompt: () -> Unit = {},
     onRemovePdfRecent: (String) -> Unit = {},
     libraryMessage: String? = null,
     onDismissLibraryMessage: () -> Unit = {},
@@ -450,6 +456,13 @@ fun NotebookHomeScreen(
             },
         ) { innerPadding ->
             Column(Modifier.fillMaxSize().padding(innerPadding)) {
+                if (showOnboardingPrompt) {
+                    HomeOnboardingPrompt(
+                        onOpen = onOpenOnboarding,
+                        onDismiss = onDismissOnboardingPrompt,
+                        horizontalPadding = horizontalPadding,
+                    )
+                }
                 if (showStart && continuation.hasContent) {
                     Box(
                         Modifier
@@ -671,6 +684,54 @@ fun NotebookHomeScreen(
             onImportPdf = onImportPdf,
             hasRecentPdf = continuation.lastPdf != null,
         )
+    }
+}
+
+/** Small, dismissible first-run entry; it never blocks the Home actions. */
+@Composable
+private fun HomeOnboardingPrompt(
+    onOpen: () -> Unit,
+    onDismiss: () -> Unit,
+    horizontalPadding: Dp,
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = horizontalPadding, end = horizontalPadding, top = 4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Outlined.HelpOutline,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.padding(start = 12.dp).size(18.dp),
+            )
+            TextButton(
+                onClick = onOpen,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = MIN_TARGET_DP.dp)
+                    .semantics { contentDescription = UiCopy.HOME_ONBOARDING_PROMPT },
+            ) {
+                Text(
+                    UiCopy.HOME_ONBOARDING_PROMPT,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = STUDENT_LABEL_MAX_LINES,
+                    overflow = TextOverflow.Clip,
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(MIN_TARGET_DP.dp),
+            ) {
+                Icon(
+                    Icons.Outlined.Close,
+                    contentDescription = UiCopy.HOME_ONBOARDING_DISMISS,
+                )
+            }
+        }
     }
 }
 
