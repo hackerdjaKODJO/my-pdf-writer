@@ -32,6 +32,7 @@ import com.hackerdjakodjo.mypdfwriter.ui.BackupMutationLease
 import com.hackerdjakodjo.mypdfwriter.ui.BackupSheet
 import com.hackerdjakodjo.mypdfwriter.ui.BackupOperationKind
 import com.hackerdjakodjo.mypdfwriter.ui.BackupViewModel
+import com.hackerdjakodjo.mypdfwriter.ui.retryKind
 import com.hackerdjakodjo.mypdfwriter.ui.HelpCenterSheet
 import com.hackerdjakodjo.mypdfwriter.ui.HelpTopicKey
 import com.hackerdjakodjo.mypdfwriter.ui.ImportIntentSnapshot
@@ -67,7 +68,7 @@ internal fun studyPanePageIndexAfterOpen(
     currentIndex: Int,
 ): Int = if (currentId == incomingId) currentIndex.coerceAtLeast(0) else 0
 
-internal data class PendingViewIntent(val uri: Uri)
+internal data class PendingViewIntent(val uri: String)
 
 class MainActivity : ComponentActivity() {
 
@@ -236,17 +237,18 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 val openStudyPane: (Notebook) -> Unit = { notebook ->
-                    if (mutationLease.isActive) return@openStudyPane
-                    // Capturing to an already-open pane appends a page and moves
-                    // the pane there. Reopening the same notebook must not snap
-                    // back to page 1 and hide the excerpt the user just added.
-                    studyPanePageIndex = studyPanePageIndexAfterOpen(
-                        studyPaneNotebook?.id,
-                        notebook.id,
-                        studyPanePageIndex,
-                    )
-                    studyPaneNotebook = notebook
-                    studyPaneDocId = viewer?.docId
+                    if (!mutationLease.isActive) {
+                        // Capturing to an already-open pane appends a page and moves
+                        // the pane there. Reopening the same notebook must not snap
+                        // back to page 1 and hide the excerpt the user just added.
+                        studyPanePageIndex = studyPanePageIndexAfterOpen(
+                            studyPaneNotebook?.id,
+                            notebook.id,
+                            studyPanePageIndex,
+                        )
+                        studyPaneNotebook = notebook
+                        studyPaneDocId = viewer?.docId
+                    }
                 }
                 val closeStudyPane: () -> Boolean = {
                     val pane = studyPaneNotebook
@@ -694,7 +696,7 @@ class MainActivity : ComponentActivity() {
     private fun finishHostOperation() {
         mutationLease.finish()
         while (queuedViewIntents.isNotEmpty()) {
-            viewModel.openDocument(queuedViewIntents.removeFirst().uri, addToRecents = false)
+            viewModel.openDocument(Uri.parse(queuedViewIntents.removeFirst().uri), addToRecents = false)
         }
     }
 
