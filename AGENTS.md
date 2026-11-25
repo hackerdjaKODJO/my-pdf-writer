@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.89`** — `versionCode = 98`.
-- **Next version is `0.8.90` — `versionCode = 99`.**
+- Current delivered version: **`0.8.90`** — `versionCode = 99`.
+- **Next version is `0.8.91` — `versionCode = 100`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.90` | 99 | 2026-11-25 | — | Multi-agent commercial ink-quality pass informed by static reverse engineering of Samsung Notes, StarNote and Flexcil: pressure capture/calibration, temporal response, velocity coupling, stroke geometry and preview/commit/replay/export parity are being hardened with JVM and E2E regressions; no third-party code/assets copied |
 | `0.8.89` | 98 | 2026-11-25 | — | Multi-agent usability overhaul informed by static reverse engineering of StarNote, Samsung Notes, Flexcil, All PDF Reader, Maru, MyReader and Ridi: kept the six labeled reader tools, added contextual style/undo/redo and truthful auto-save status, reduced the PDF menu to six tasks with an all-tools handoff, made export feedback actionable, opened page/outline lists at the current location, made page edits undoable, set the study pane default to 70%, corrected help/gesture copy and replaced forced onboarding with an optional 60-second guide. No third-party code/assets copied; offline/privacy constraints preserved. 1111 JVM tests pass; 157 E2E cases compile (14 new/changed, device run pending); debug/instrumentation/release builds pass |
 | `0.8.88` | 97 | 2026-11-25 | — | Three-agent E2E/logging pass: debug-only durable structured JSONL dev log (per-day files, 7-file rotation, 1 MB cap, session id, logcat + NoteTrace mirrors) installed at app start; `PdfFlowTrace` hooks on PDF open/annotate/history/page-edit/search/export/close; 5 new instrumentation cases assert the real-file flow is replayable from the on-disk log; AGENTS.md/docs refreshed. 1066 JVM tests pass; 143 E2E cases (5 new compiled, device run pending); debug/instrumentation/release builds pass |
 | `0.8.87` | 96 | 2026-11-25 | — | Four-agent screenshot review: retired top coach card, constrained page-count pill from fillMaxSize to 128dp max, offset single-page canvas and continuous list below status bar + compact controls so the PDF top is not obscured; navigator width regression test |
