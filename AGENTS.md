@@ -25,8 +25,8 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.90`** — `versionCode = 99`.
-- **Next version is `0.8.91` — `versionCode = 100`.**
+- Current delivered version: **`0.8.91`** — `versionCode = 100`.
+- **Next version is `0.8.92` — `versionCode = 101`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +54,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.91` | 100 | 2026-11-25 | — | Multi-agent stability and PDF↔note linking pass informed by static comparison with Samsung Notes, Flexcil, StarNote, MyReader, Ridi and Maru: persistence/lifecycle races, source-link identity, page remapping, reopen/restore recovery and orphan-link handling are being hardened with JVM/E2E regressions; no third-party code/assets copied |
 | `0.8.90` | 99 | 2026-11-25 | — | Multi-agent commercial ink-quality pass informed by static reverse engineering of Samsung Notes, StarNote and Flexcil: added backward-compatible per-point timing (`ptms`), time-aware pressure smoothing and physical speed, true timed dwell pooling, scale-invariant ink effects, stable pencil replay, shared note preview/commit preparation, and one pressure-aware capsule eraser for PDF/notes with PDF stylus-eraser routing. Fixed non-finite pressure handling. No third-party code/assets copied. 1170 JVM tests pass; 157 E2E cases compile; debug/instrumentation/release builds pass. Real stylus feel/latency validation remains pending |
 | `0.8.89` | 98 | 2026-11-25 | — | Multi-agent usability overhaul informed by static reverse engineering of StarNote, Samsung Notes, Flexcil, All PDF Reader, Maru, MyReader and Ridi: kept the six labeled reader tools, added contextual style/undo/redo and truthful auto-save status, reduced the PDF menu to six tasks with an all-tools handoff, made export feedback actionable, opened page/outline lists at the current location, made page edits undoable, set the study pane default to 70%, corrected help/gesture copy and replaced forced onboarding with an optional 60-second guide. No third-party code/assets copied; offline/privacy constraints preserved. 1111 JVM tests pass; 157 E2E cases compile (14 new/changed, device run pending); debug/instrumentation/release builds pass |
 | `0.8.88` | 97 | 2026-11-25 | — | Three-agent E2E/logging pass: debug-only durable structured JSONL dev log (per-day files, 7-file rotation, 1 MB cap, session id, logcat + NoteTrace mirrors) installed at app start; `PdfFlowTrace` hooks on PDF open/annotate/history/page-edit/search/export/close; 5 new instrumentation cases assert the real-file flow is replayable from the on-disk log; AGENTS.md/docs refreshed. 1066 JVM tests pass; 143 E2E cases (5 new compiled, device run pending); debug/instrumentation/release builds pass |
