@@ -204,6 +204,7 @@ fun OrganizeScreen(
             OrganizeBottomBar(
                 selection = selection,
                 pageCount = pages.size,
+                onSelectionChange = onSelectionChange,
                 onRotate = onRotate,
                 onDelete = { pendingDelete = it },
                 onDuplicate = onDuplicate,
@@ -452,6 +453,7 @@ private fun SelectionBadge(selected: Boolean, modifier: Modifier = Modifier) {
 private fun OrganizeBottomBar(
     selection: Set<Int>,
     pageCount: Int,
+    onSelectionChange: (Set<Int>) -> Unit,
     onRotate: (Set<Int>, Int) -> Unit,
     onDelete: (Set<Int>) -> Unit,
     onDuplicate: (Set<Int>) -> Unit,

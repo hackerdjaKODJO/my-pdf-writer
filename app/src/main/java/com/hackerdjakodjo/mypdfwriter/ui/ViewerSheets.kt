@@ -1694,7 +1694,7 @@ private fun LocationsOutlineTab(
 
     LazyColumn(
         state = listState,
-        Modifier.fillMaxWidth().heightIn(max = 400.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
         contentPadding = PaddingValues(bottom = 8.dp),
     ) {
         itemsIndexed(entries) { index, entry ->
