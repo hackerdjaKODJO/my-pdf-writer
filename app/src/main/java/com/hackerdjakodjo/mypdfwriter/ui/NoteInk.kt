@@ -4,21 +4,25 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.clampInkPressure
+import com.hackerdjakodjo.mypdfwriter.pdf.EraserGeometry
 import java.util.ArrayDeque
 import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
-import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToLong
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** Default eraser radius in normalized page units. */
-const val NOTE_ERASE_RADIUS = 0.03f
+/** Default eraser radius in normalized page units, shared with PDF annotations. */
+const val NOTE_ERASE_RADIUS = EraserGeometry.NORMALIZED_RADIUS
+
+/** Minimum visible width for two-point note shapes, shared by preview and commit. */
+const val NOTE_SHAPE_MIN_WIDTH = 0.0025f
 
 /** Gentle default stabilization strength used by "필기 보정". */
 const val NOTE_STABILIZE_STRENGTH = 0.25f
@@ -60,6 +64,58 @@ data class NoteEraseResult(
     val changed: Boolean get() = removed > 0 || split > 0
 }
 
+/** Session-only geometry policy shared by the live note preview and commit. */
+data class NoteStrokePreparation(
+    val stabilizeStrength: Float = NOTE_STABILIZE_STRENGTH,
+    val smoothHandwriting: Boolean = NOTE_SMOOTH_HANDWRITING_DEFAULT,
+    val simplifyPoints: Boolean = NOTE_SIMPLIFY_POINTS_DEFAULT,
+)
+
+/**
+ * Prepares one freehand note stroke for both preview and storage.
+ *
+ * The order is stabilization, lazy brush, Chaikin and finally RDP. There is no
+ * short-stroke bypass: even 3–7 samples receive the selected refinement. Shape
+ * recognition is deliberately commit-only and happens before this function; a
+ * recognized shape uses a neutral policy because its two points are final.
+ */
+fun prepareNoteStroke(
+    raw: List<NormalizedPoint>,
+    policy: NoteStrokePreparation,
+): List<NormalizedPoint> {
+    if (raw.isEmpty()) return raw
+    val stabilization = if (policy.stabilizeStrength.isFinite()) {
+        policy.stabilizeStrength.coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    if (stabilization <= 0f && !policy.smoothHandwriting && !policy.simplifyPoints) {
+        return raw
+    }
+    var points = sanitizeStroke(raw)
+    if (stabilization > 0f) {
+        points = NoteInk.stabilize(points, stabilization)
+    }
+    return NoteInk.refineStroke(
+        points = points,
+        brushRadius = if (policy.smoothHandwriting) NOTE_LAZY_BRUSH_RADIUS else 0f,
+        simplifyTolerance = if (policy.simplifyPoints) NOTE_SIMPLIFY_TOLERANCE else 0f,
+        chaikinIterations = if (policy.smoothHandwriting) 1 else 0,
+    )
+}
+
+/**
+ * Parallel timestamps for a committed point list. Legacy or partially timed
+ * strokes stay backward compatible by returning null unless every point has a
+ * timestamp.
+ */
+internal fun pointTimesMs(points: List<NormalizedPoint>): List<Long>? =
+    if (points.isNotEmpty() && points.all { it.timeMs != null }) {
+        points.map { it.timeMs!! }
+    } else {
+        null
+    }
+
 /**
  * Pure, offline ink helpers for the note editor.
  *
@@ -74,6 +130,7 @@ object NoteInk {
      * Each interior point is blended toward a 1:2:1 average of its neighbours. The
      * blend factor is half of [strength], so even strength 1.0 stays a local filter
      * rather than collapsing the stroke. Distinct input points are not merged.
+     * Pressure extrema and timestamps stay attached to their original samples.
      */
     fun stabilize(points: List<NormalizedPoint>, strength: Float): List<NormalizedPoint> {
         if (points.size < 3) return points
@@ -91,13 +148,20 @@ object NoteInk {
             val averageY = (previous.y + current.y * 2f + next.y) * 0.25f
             val averagePressure =
                 (previous.pressure + current.pressure * 2f + next.pressure) * 0.25f
+            val pressure = if (isPressureExtremum(points, index)) {
+                // Stabilize position, not the nib-force signal: local peaks and
+                // valleys must survive so pressure-sensitive width keeps its range.
+                current.pressure
+            } else {
+                clampInkPressure(
+                    current.pressure + (averagePressure - current.pressure) * blend,
+                )
+            }
             output.add(
                 current.copy(
                     x = current.x + (averageX - current.x) * blend,
                     y = current.y + (averageY - current.y) * blend,
-                    pressure = clampInkPressure(
-                        current.pressure + (averagePressure - current.pressure) * blend,
-                    ),
+                    pressure = pressure,
                 ),
             )
         }
@@ -119,7 +183,8 @@ object NoteInk {
      * that projection is their intersection nearest the previous pointer sample,
      * which bounds the per-sample step and keeps direction changes continuous.
      * The result has the same number of samples as the input with the same
-     * index-aligned pressure, and the first and last positions are returned exact.
+     * index-aligned pressure and timestamps, and the first and last positions are
+     * returned exact.
      */
     fun lazyBrush(points: List<NormalizedPoint>, radius: Float): List<NormalizedPoint> {
         if (points.isEmpty()) return points
@@ -190,8 +255,10 @@ object NoteInk {
     /**
      * Ramer-Douglas-Peucker simplification. Points farther than [tolerance]
      * from the chord of their segment are kept; the rest are dropped. Endpoints
-     * are always kept and the surviving samples retain their original pressure.
-     * An iterative stack keeps long strokes safe from recursion overflow.
+     * are always kept and the surviving samples retain their original pressure
+     * and timestamps. Global pressure extrema are retained even when the
+     * geometric chord would otherwise drop them. An iterative stack keeps long
+     * strokes safe from recursion overflow.
      */
     fun simplifyRdp(
         points: List<NormalizedPoint>,
@@ -204,6 +271,14 @@ object NoteInk {
         val keep = BooleanArray(samples.size)
         keep[0] = true
         keep[samples.lastIndex] = true
+        val minPressure = samples.minOf { it.pressure }
+        val maxPressure = samples.maxOf { it.pressure }
+        if (minPressure != maxPressure) {
+            // RDP is allowed to drop geometry, never the force extrema that give
+            // a pressure-sensitive stroke its narrowest and widest samples.
+            keep[samples.indexOfFirst { it.pressure == minPressure }] = true
+            keep[samples.indexOfFirst { it.pressure == maxPressure }] = true
+        }
         val pending = ArrayDeque<IntArray>()
         pending.addLast(intArrayOf(0, samples.lastIndex))
         while (!pending.isEmpty()) {
@@ -232,7 +307,9 @@ object NoteInk {
     /**
      * Chaikin corner cutting: each segment contributes points at 1/4 and 3/4,
      * with the original endpoints retained. Pressure is interpolated from its
-     * neighbours and stays inside 0..1. Iterations are bounded to protect memory.
+     * neighbours except that local extrema are anchored to preserve nib-force
+     * range. Timestamps are interpolated when both endpoints have one. Iterations
+     * are bounded to protect memory.
      */
     fun chaikin(
         points: List<NormalizedPoint>,
@@ -248,8 +325,22 @@ object NoteInk {
             for (index in 0 until current.lastIndex) {
                 val a = current[index]
                 val b = current[index + 1]
-                cut.add(interpolateStrokePoint(a, b, 0.25f))
-                cut.add(interpolateStrokePoint(a, b, 0.75f))
+                val quarter = interpolateStrokePoint(a, b, 0.25f)
+                val threeQuarter = interpolateStrokePoint(a, b, 0.75f)
+                cut.add(
+                    if (isPressureExtremum(current, index)) {
+                        quarter.copy(pressure = a.pressure)
+                    } else {
+                        quarter
+                    },
+                )
+                cut.add(
+                    if (isPressureExtremum(current, index + 1)) {
+                        threeQuarter.copy(pressure = b.pressure)
+                    } else {
+                        threeQuarter
+                    },
+                )
             }
             cut.add(current.last())
             current = cut
@@ -329,6 +420,7 @@ object NoteInk {
      * stroke path and can be split. Only annotations on [targetLayerId] are
      * considered; pass null to erase regardless of layer. [defaultLayerId] mirrors
      * the editor's legacy behavior for annotations with no explicit layer.
+     * [pressure] scales [radius] only when [pressureSensitive] is true.
      */
     fun eraseAnnotations(
         annotations: List<Annotation>,
@@ -338,12 +430,15 @@ object NoteInk {
         defaultLayerId: String? = null,
         partial: Boolean = true,
         idFactory: () -> String = { UUID.randomUUID().toString() },
+        pressure: Float = 1f,
+        pressureSensitive: Boolean = false,
     ): NoteEraseResult {
         if (trail.isEmpty() || annotations.isEmpty()) {
             return NoteEraseResult(annotations, removed = 0, split = 0, segments = 0)
         }
-        val safeRadius = radius.coerceAtLeast(0.0001f)
-        val probes = eraserProbes(trail, safeRadius)
+        val safeRadius = EraserGeometry.radiusForPressure(radius, pressure, pressureSensitive)
+            .coerceAtLeast(0.0001f)
+        val probes = EraserGeometry.densifyTrail(trail)
 
         var removed = 0
         var split = 0
@@ -382,7 +477,11 @@ object NoteInk {
                         listOf(run.first(), run.last())
                     else -> run
                 }
-                annotation.copy(id = idFactory(), points = points)
+                annotation.copy(
+                    id = idFactory(),
+                    points = points,
+                    timesMs = if (annotation.timesMs != null) pointTimesMs(points) else null,
+                )
             }
             output.addAll(replacement)
             split++
@@ -405,6 +504,8 @@ object NoteInk {
         targetLayerId: String? = null,
         defaultLayerId: String? = null,
         idFactory: () -> String = { UUID.randomUUID().toString() },
+        pressure: Float = 1f,
+        pressureSensitive: Boolean = false,
     ): NoteEraseResult = eraseAnnotations(
         annotations = annotations,
         trail = trail,
@@ -413,6 +514,8 @@ object NoteInk {
         defaultLayerId = defaultLayerId,
         partial = true,
         idFactory = idFactory,
+        pressure = pressure,
+        pressureSensitive = pressureSensitive,
     )
 
     private val PARTIAL_SPLIT_TYPES = setOf(
@@ -709,21 +812,46 @@ private fun sanitizeStroke(points: List<NormalizedPoint>): List<NormalizedPoint>
         if (x == point.x && y == point.y) {
             point.copy(pressure = clampInkPressure(point.pressure))
         } else {
-            NormalizedPoint(x, y, clampInkPressure(point.pressure))
+            point.copy(
+                x = x,
+                y = y,
+                pressure = clampInkPressure(point.pressure),
+            )
         }
     }
 }
 
-/** Linear interpolation for refinement; endpoints and pressure stay finite. */
+/** Linear interpolation for refinement; endpoints, pressure and time stay finite. */
 private fun interpolateStrokePoint(
     a: NormalizedPoint,
     b: NormalizedPoint,
     fraction: Float,
-): NormalizedPoint = a.copy(
-    x = a.x + (b.x - a.x) * fraction,
-    y = a.y + (b.y - a.y) * fraction,
-    pressure = clampInkPressure(a.pressure + (b.pressure - a.pressure) * fraction),
-)
+): NormalizedPoint {
+    val aTime = a.timeMs
+    val bTime = b.timeMs
+    return a.copy(
+        x = a.x + (b.x - a.x) * fraction,
+        y = a.y + (b.y - a.y) * fraction,
+        pressure = clampInkPressure(a.pressure + (b.pressure - a.pressure) * fraction),
+        timeMs = if (aTime != null && bTime != null) {
+            val delta = ((bTime.toDouble() - aTime.toDouble()) * fraction).roundToLong()
+            aTime + delta
+        } else {
+            null
+        },
+    )
+}
+
+private fun isPressureExtremum(points: List<NormalizedPoint>, index: Int): Boolean {
+    val pressure = points[index].pressure
+    val previous = points.getOrNull(index - 1)?.pressure
+    val next = points.getOrNull(index + 1)?.pressure
+    val peak = (previous == null || pressure >= previous) &&
+        (next == null || pressure >= next)
+    val valley = (previous == null || pressure <= previous) &&
+        (next == null || pressure <= next)
+    return peak || valley
+}
 
 private fun dedupeConsecutive(points: List<NormalizedPoint>): List<NormalizedPoint> {
     if (points.size < 2) return points
@@ -771,36 +899,31 @@ private fun distanceToSegment(
     return sqrt(ex * ex + ey * ey)
 }
 
-private fun distanceToPolyline(point: NormalizedPoint, points: List<NormalizedPoint>): Float {
-    if (points.isEmpty()) return Float.MAX_VALUE
-    if (points.size == 1) return distance(point, points[0])
-    var best = Float.MAX_VALUE
-    for (index in 1 until points.size) {
-        best = min(best, distanceToSegment(point, points[index - 1], points[index]))
-    }
-    return best
-}
-
-private fun distanceToRectBorder(
-    point: NormalizedPoint,
-    a: NormalizedPoint,
-    b: NormalizedPoint,
-): Float {
+private fun rectangleBorder(a: NormalizedPoint, b: NormalizedPoint): List<NormalizedPoint> {
     val left = min(a.x, b.x)
     val right = max(a.x, b.x)
     val top = min(a.y, b.y)
     val bottom = max(a.y, b.y)
-    val corners = listOf(
+    return listOf(
         NormalizedPoint(left, top),
         NormalizedPoint(right, top),
         NormalizedPoint(right, bottom),
         NormalizedPoint(left, bottom),
+        NormalizedPoint(left, top),
     )
-    var best = Float.MAX_VALUE
-    for (index in corners.indices) {
-        best = min(best, distanceToSegment(point, corners[index], corners[(index + 1) % corners.size]))
+}
+
+private fun ellipseBorder(a: NormalizedPoint, b: NormalizedPoint): List<NormalizedPoint> {
+    val cx = (a.x + b.x) * 0.5f
+    val cy = (a.y + b.y) * 0.5f
+    val rx = abs(a.x - b.x) * 0.5f
+    val ry = abs(a.y - b.y) * 0.5f
+    if (rx <= 1e-6f || ry <= 1e-6f) return listOf(a, b)
+    val samples = 64
+    return List(samples + 1) { index ->
+        val angle = 2f * PI.toFloat() * index / samples
+        NormalizedPoint(cx + rx * cos(angle), cy + ry * sin(angle))
     }
-    return best
 }
 
 private fun insideRect(
@@ -813,36 +936,6 @@ private fun insideRect(
     val top = min(a.y, b.y)
     val bottom = max(a.y, b.y)
     return point.x in left..right && point.y in top..bottom
-}
-
-/**
- * Densifies the eraser trail so fast swipes still produce a continuous capsule.
- * Samples are at most half a radius apart.
- */
-private fun eraserProbes(trail: List<NormalizedPoint>, radius: Float): List<NormalizedPoint> {
-    if (trail.size < 2) return trail
-    val targetStep = max(radius * 0.5f, 0.001f)
-    val probes = ArrayList<NormalizedPoint>()
-    for (index in 0 until trail.lastIndex) {
-        val a = trail[index]
-        val b = trail[index + 1]
-        val length = distance(a, b)
-        val steps = ceil(length / targetStep).toInt().coerceIn(1, 128)
-        for (step in 0 until steps) {
-            val t = step.toFloat() / steps
-            probes.add(
-                a.copy(
-                    x = a.x + (b.x - a.x) * t,
-                    y = a.y + (b.y - a.y) * t,
-                    pressure = clampInkPressure(
-                        a.pressure + (b.pressure - a.pressure) * t,
-                    ),
-                ),
-            )
-        }
-    }
-    probes.add(trail.last())
-    return probes
 }
 
 private fun noteAnnotationHit(
@@ -858,18 +951,25 @@ private fun noteAnnotationHit(
         AnnotationType.UNDERLINE,
         AnnotationType.STRIKEOUT,
         AnnotationType.LINE,
-        AnnotationType.ARROW -> probes.any {
-            distanceToPolyline(it, annotation.points) <= radius
-        }
+        AnnotationType.ARROW -> EraserGeometry.eraserHitsStroke(annotation.points, probes, radius)
 
-        AnnotationType.RECT,
-        AnnotationType.ELLIPSE -> annotation.points.size >= 2 && probes.any {
-            distanceToRectBorder(it, annotation.points[0], annotation.points[1]) <= radius
-        }
+        AnnotationType.RECT -> annotation.points.size >= 2 &&
+            EraserGeometry.eraserHitsStroke(
+                rectangleBorder(annotation.points[0], annotation.points[1]),
+                probes,
+                radius,
+            )
+
+        AnnotationType.ELLIPSE -> annotation.points.size >= 2 &&
+            EraserGeometry.eraserHitsStroke(
+                ellipseBorder(annotation.points[0], annotation.points[1]),
+                probes,
+                radius,
+            )
 
         AnnotationType.TEXT,
         AnnotationType.STAMP -> annotation.points.firstOrNull()?.let { anchor ->
-            distanceToPolyline(anchor, probes) <= radius * 2.4f
+            EraserGeometry.eraserHitsStroke(listOf(anchor), probes, radius * 2.4f)
         } ?: false
 
         AnnotationType.REDACT,
@@ -981,11 +1081,20 @@ private fun cutIntervals(
     return merged
 }
 
-private fun interpolate(a: NormalizedPoint, b: NormalizedPoint, t: Float): NormalizedPoint =
-    a.copy(
+private fun interpolate(a: NormalizedPoint, b: NormalizedPoint, t: Float): NormalizedPoint {
+    val aTime = a.timeMs
+    val bTime = b.timeMs
+    return a.copy(
         x = a.x + (b.x - a.x) * t,
         y = a.y + (b.y - a.y) * t,
         pressure = clampInkPressure(
             a.pressure + (b.pressure - a.pressure) * t,
         ),
+        timeMs = if (aTime != null && bTime != null) {
+            val delta = ((bTime.toDouble() - aTime.toDouble()) * t).roundToLong()
+            aTime + delta
+        } else {
+            null
+        },
     )
+}

@@ -4,6 +4,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import com.hackerdjakodjo.mypdfwriter.pdf.EraserGeometry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -487,6 +488,102 @@ class NoteInkTest {
         )
     }
 
+    @Test
+    fun `sparse eraser crossing splits a stroke between pointer events`() {
+        val original = annotation(
+            id = "crossing",
+            type = AnnotationType.PEN,
+            points = listOf(point(0.1f, 0.5f), point(0.9f, 0.5f)),
+        )
+
+        val result = NoteInk.erasePartial(
+            annotations = listOf(original),
+            trail = listOf(point(0.5f, 0.1f), point(0.5f, 0.9f)),
+            radius = NOTE_ERASE_RADIUS,
+        )
+
+        assertEquals(1, result.split)
+        assertEquals(2, result.segments)
+        assertEquals(0.03f, NOTE_ERASE_RADIUS, 0f)
+        assertEquals(EraserGeometry.NORMALIZED_RADIUS, NOTE_ERASE_RADIUS, 0f)
+    }
+
+    @Test
+    fun `note eraser pressure scales only for a pressure sensitive pointer`() {
+        val original = annotation(
+            id = "pressure-radius",
+            type = AnnotationType.PEN,
+            points = listOf(point(0.1f, 0.5f), point(0.9f, 0.5f)),
+        )
+        val trail = listOf(point(0.5f, 0.52f))
+
+        val light = NoteInk.erasePartial(
+            annotations = listOf(original),
+            trail = trail,
+            pressure = 0f,
+            pressureSensitive = true,
+        )
+        val firm = NoteInk.erasePartial(
+            annotations = listOf(original),
+            trail = trail,
+            pressure = 1f,
+            pressureSensitive = true,
+        )
+        val finger = NoteInk.erasePartial(
+            annotations = listOf(original),
+            trail = trail,
+            pressure = 0f,
+            pressureSensitive = false,
+        )
+
+        assertFalse(light.changed)
+        assertEquals(1, firm.split)
+        assertEquals(1, finger.split)
+    }
+
+    @Test
+    fun `partial erase keeps timestamp arrays aligned with interpolated cut points`() {
+        val points = (0..4).map { index ->
+            NormalizedPoint(0.1f + index * 0.2f, 0.5f, timeMs = 100L + index * 100L)
+        }
+        val original = annotation(
+            id = "timed",
+            type = AnnotationType.PEN,
+            points = points,
+            createdAt = 1234L,
+            durationMs = 5678L,
+            timesMs = points.map { it.timeMs!! },
+        )
+
+        val result = NoteInk.erasePartial(
+            annotations = listOf(original),
+            trail = listOf(point(0.5f, 0.5f)),
+            radius = 0.03f,
+        )
+
+        assertEquals(2, result.segments)
+        result.annotations.forEach { segment ->
+            assertEquals(segment.points.size, segment.timesMs?.size)
+            assertEquals(segment.points.map { it.timeMs }, segment.timesMs)
+            assertTrue(segment.timesMs!!.all { it in 100L..500L })
+            assertEquals(original.createdAt, segment.createdAt)
+            assertEquals(original.durationMs, segment.durationMs)
+        }
+    }
+
+    @Test
+    fun `point timestamps are all or null for backward compatibility`() {
+        val complete = listOf(
+            NormalizedPoint(0.1f, 0.5f, timeMs = 1L),
+            NormalizedPoint(0.2f, 0.5f, timeMs = 2L),
+        )
+        val partial = listOf(complete.first(), NormalizedPoint(0.2f, 0.5f))
+
+        assertEquals(listOf(1L, 2L), pointTimesMs(complete))
+        assertNull(pointTimesMs(partial))
+        assertNull(pointTimesMs(emptyList()))
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private fun annotation(
@@ -500,6 +597,7 @@ class NoteInkTest {
         layerId: String? = "layer-a",
         createdAt: Long = 100L,
         durationMs: Long = 200L,
+        timesMs: List<Long>? = null,
         text: String = "",
         stamp: String = "",
     ) = Annotation(
@@ -516,6 +614,7 @@ class NoteInkTest {
         layerId = layerId,
         createdAt = createdAt,
         durationMs = durationMs,
+        timesMs = timesMs,
     )
 
     private fun point(x: Float, y: Float): NormalizedPoint = NormalizedPoint(x, y)

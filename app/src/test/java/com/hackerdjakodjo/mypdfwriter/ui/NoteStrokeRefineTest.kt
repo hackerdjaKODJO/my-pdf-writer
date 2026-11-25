@@ -276,7 +276,7 @@ class NoteStrokeRefineTest {
         val singlePointStroke = listOf(points.first())
         assertSame(points, noteRefineForCommit(points, false, false))
         assertSame(points, noteRefineForCommit(points, true, true, skipRefinement = true))
-        assertSame(twoPointStroke, noteRefineForCommit(twoPointStroke, true, true))
+        assertEquals(chaikin(twoPointStroke, 1), noteRefineForCommit(twoPointStroke, true, true))
         assertSame(singlePointStroke, noteRefineForCommit(singlePointStroke, true, true))
 
         assertEquals(
@@ -294,6 +294,80 @@ class NoteStrokeRefineTest {
     }
 
     @Test
+    fun `stabilization preserves pressure extrema and original timestamps`() {
+        val points = listOf(
+            point(0.1f, 0.5f, 0.8f, 0L),
+            point(0.3f, 0.5f, 0.7f, 10L),
+            point(0.5f, 0.6f, 0.2f, 20L),
+            point(0.7f, 0.4f, 0.6f, 30L),
+            point(0.9f, 0.5f, 0.9f, 40L),
+        )
+
+        val stabilized = NoteInk.stabilize(points, 1f)
+
+        assertEquals(points.first(), stabilized.first())
+        assertEquals(points.last(), stabilized.last())
+        assertEquals(points.map { it.timeMs }, stabilized.map { it.timeMs })
+        assertEquals(points.minOf { it.pressure }, stabilized.minOf { it.pressure }, 0f)
+        assertEquals(points.maxOf { it.pressure }, stabilized.maxOf { it.pressure }, 0f)
+    }
+
+    @Test
+    fun `chaikin preserves pressure extrema and interpolates timestamps`() {
+        val points = listOf(
+            point(0.1f, 0.5f, 0.6f, 0L),
+            point(0.3f, 0.5f, 0.1f, 10L),
+            point(0.5f, 0.5f, 0.9f, 20L),
+            point(0.7f, 0.5f, 0.4f, 30L),
+            point(0.9f, 0.5f, 0.7f, 40L),
+        )
+
+        val rounded = chaikin(points, 1)
+
+        assertEquals(points.first(), rounded.first())
+        assertEquals(points.last(), rounded.last())
+        assertEquals(0.1f, rounded.minOf { it.pressure }, 0f)
+        assertEquals(0.9f, rounded.maxOf { it.pressure }, 0f)
+        assertTrue(rounded.all { it.timeMs != null })
+        val times = rounded.map { it.timeMs!! }
+        assertEquals(times, times.sorted())
+        assertTrue(rounded[1].timeMs!! in 0L..10L)
+    }
+
+    @Test
+    fun `rdp keeps pressure extrema with their original timestamps`() {
+        val points = listOf(
+            point(0.1f, 0.5f, 0.8f, 0L),
+            point(0.2f, 0.5f, 0.7f, 10L),
+            point(0.4f, 0.5f, 0.2f, 20L),
+            point(0.6f, 0.5f, 0.6f, 30L),
+            point(0.8f, 0.5f, 0.9f, 40L),
+            point(0.9f, 0.5f, 0.5f, 50L),
+        )
+
+        val simplified = simplifyRdp(points, 0.01f)
+
+        assertEquals(listOf(0L, 20L, 40L, 50L), simplified.map { it.timeMs })
+        assertEquals(0.2f, simplified.minOf { it.pressure }, 0f)
+        assertEquals(0.9f, simplified.maxOf { it.pressure }, 0f)
+    }
+
+    @Test
+    fun `full preparation preserves endpoints pressure extrema and complete timestamps`() {
+        val points = spikeStroke()
+
+        val prepared = prepareNoteStroke(points, NoteStrokePreparation())
+
+        assertEquals(points.first(), prepared.first())
+        assertEquals(points.last(), prepared.last())
+        assertEquals(points.minOf { it.pressure }, prepared.minOf { it.pressure }, 0f)
+        assertEquals(points.maxOf { it.pressure }, prepared.maxOf { it.pressure }, 0f)
+        assertTrue(prepared.all { it.timeMs != null })
+        val times = prepared.map { it.timeMs!! }
+        assertEquals(times, times.sorted())
+    }
+
+    @Test
     fun `commit helper applies refinement exactly once`() {
         val points = spikeStroke()
 
@@ -306,13 +380,13 @@ class NoteStrokeRefineTest {
         assertEquals(points.last(), once.last())
     }
 
-    private fun point(x: Float, y: Float, pressure: Float = 1f): NormalizedPoint =
-        NormalizedPoint(x, y, pressure)
+    private fun point(x: Float, y: Float, pressure: Float = 1f, timeMs: Long? = null): NormalizedPoint =
+        NormalizedPoint(x, y, pressure, timeMs = timeMs)
 
     /** Dense horizontal stroke with occasional isolated vertical spikes. */
     private fun spikeStroke(): List<NormalizedPoint> = (0..100).map { index ->
         val x = 0.1f + index * 0.008f
         val spike = if (index % 10 == 5) 0.004f else 0f
-        point(x, 0.5f + spike, 0.3f + index * 0.006f)
+        point(x, 0.5f + spike, 0.3f + index * 0.006f, index * 10L)
     }
 }

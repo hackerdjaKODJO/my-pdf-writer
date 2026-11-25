@@ -1,14 +1,15 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
+import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * WYSIWYG handwriting: ink already drawn behind the finger must not change
- * shape when a new sample arrives or when the stroke is committed.
- */
+/** WYSIWYG note ink: final preview and commit use one pure preparation pipeline. */
 class NotePreviewGeometryTest {
 
     private fun stroke(count: Int): List<NormalizedPoint> =
@@ -18,46 +19,72 @@ class NotePreviewGeometryTest {
                 (0.1f + 0.7f * t + 0.01f * kotlin.math.sin(i * 1.3f)).coerceIn(0f, 1f),
                 (0.2f + 0.5f * t + 0.01f * kotlin.math.cos(i * 0.7f)).coerceIn(0f, 1f),
                 0.45f + 0.4f * kotlin.math.abs(kotlin.math.sin(i * 0.21f)),
+                timeMs = 100L + i * 17L,
             )
         }
 
     @Test
-    fun `short strokes are previewed verbatim`() {
-        val raw = stroke(6)
-        assertEquals(raw, notePreviewPoints(raw))
-    }
-
-    @Test
-    fun `already drawn ink stays stable when a sample arrives`() {
-        val raw = stroke(40)
-        var previous: List<NormalizedPoint>? = null
-        for (k in 12..36) {
-            val current = notePreviewPoints(raw.take(k))
-            // Comparison window excludes the guarded tail only.
-            val stableCount = k - 2 * NOTE_PREVIEW_STABLE_GUARD - 2
-            if (previous != null) {
-                for (i in 0 until stableCount) {
-                    assertEquals(
-                        "sample $i moved when stroke grew from ${k - 1} to $k",
-                        previous[i].x,
-                        current[i].x,
-                        0.0001f,
-                    )
-                    assertEquals(
-                        "sample $i y moved when stroke grew from ${k - 1} to $k",
-                        previous[i].y,
-                        current[i].y,
-                        0.0001f,
-                    )
+    fun `preview equals commit preparation for every short and long count`() {
+        val counts = listOf(3, 4, 6, 7, 8, 40)
+        for (count in counts) {
+            val raw = stroke(count)
+            for (stabilize in listOf(0f, NOTE_STABILIZE_STRENGTH)) {
+                for (smooth in listOf(false, true)) {
+                    for (simplify in listOf(false, true)) {
+                        val policy = NoteStrokePreparation(
+                            stabilizeStrength = stabilize,
+                            smoothHandwriting = smooth,
+                            simplifyPoints = simplify,
+                        )
+                        val preview = notePreviewPoints(
+                            raw,
+                            stabilizeStrength = stabilize,
+                            smoothHandwriting = smooth,
+                            simplifyPoints = simplify,
+                        )
+                        assertEquals(
+                            "count=$count stabilize=$stabilize smooth=$smooth simplify=$simplify",
+                            prepareNoteStroke(raw, policy),
+                            preview,
+                        )
+                        if (stabilize == 0f) {
+                            assertEquals(
+                                noteRefineForCommit(raw, smooth, simplify),
+                                preview,
+                            )
+                        }
+                    }
                 }
             }
-            previous = current
         }
     }
 
     @Test
-    fun `preview geometry is finite and bounded`() {
-        val preview = notePreviewPoints(stroke(30))
+    fun `three to seven point strokes no longer bypass preparation`() {
+        for (count in 3..7) {
+            val raw = stroke(count)
+            assertNotEquals(
+                "stabilization must run for $count points",
+                raw,
+                prepareNoteStroke(raw, NoteStrokePreparation(stabilizeStrength = 0.25f)),
+            )
+            assertNotEquals(
+                "refinement must run for $count points",
+                raw,
+                prepareNoteStroke(
+                    raw,
+                    NoteStrokePreparation(stabilizeStrength = 0f, smoothHandwriting = true),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `prepared preview keeps exact endpoints and finite normalized geometry`() {
+        val raw = stroke(40)
+        val preview = notePreviewPoints(raw)
+        assertEquals(raw.first(), preview.first())
+        assertEquals(raw.last(), preview.last())
         assertTrue(preview.isNotEmpty())
         preview.forEach { point ->
             assertTrue(point.x in 0f..1f)
@@ -67,9 +94,9 @@ class NotePreviewGeometryTest {
     }
 
     @Test
-    fun `disabled smoothing keeps raw points`() {
+    fun `disabled preparation keeps raw points`() {
         val raw = stroke(30)
-        assertEquals(
+        assertSame(
             raw,
             notePreviewPoints(
                 raw,
@@ -78,5 +105,84 @@ class NotePreviewGeometryTest {
                 simplifyPoints = false,
             ),
         )
+    }
+
+    @Test
+    fun `shape width floor is identical for preview and commit`() {
+        val shapeTypes = listOf(
+            AnnotationType.RECT,
+            AnnotationType.ARROW,
+            AnnotationType.LINE,
+            AnnotationType.ELLIPSE,
+            AnnotationType.UNDERLINE,
+            AnnotationType.STRIKEOUT,
+            AnnotationType.REDACT,
+        )
+        assertEquals(0.0025f, NOTE_SHAPE_MIN_WIDTH, 0f)
+        shapeTypes.forEach { type ->
+            assertEquals(
+                "$type preview floor",
+                maxOf(0.001f, NOTE_SHAPE_MIN_WIDTH),
+                noteCommittedStrokeWidth(type, 0.001f),
+                0f,
+            )
+            assertEquals(
+                "$type must keep a wider chosen stroke",
+                0.006f,
+                noteCommittedStrokeWidth(type, 0.006f),
+                0f,
+            )
+        }
+        assertEquals(
+            maxOf(0.001f, 0.018f),
+            noteCommittedStrokeWidth(AnnotationType.HIGHLIGHT, 0.001f),
+            0f,
+        )
+    }
+
+    @Test
+    fun noteStrokeCommitPropagatesCompleteTimestampsAndReplayTimes() {
+        val points = listOf(
+            NormalizedPoint(0.1f, 0.2f, timeMs = 100L),
+            NormalizedPoint(0.3f, 0.4f, timeMs = 200L),
+            NormalizedPoint(0.5f, 0.6f, timeMs = 300L),
+        )
+        val stroke = noteStrokeAnnotation(
+            type = AnnotationType.PEN,
+            color = 0xFF123456.toInt(),
+            strokeWidth = 0.004f,
+            points = points,
+            opacity = 0.8f,
+            penStyle = PenStyle.FOUNTAIN,
+            layerId = "layer-a",
+            durationMs = 500L,
+            nowMs = 2000L,
+        )
+        val partial = noteStrokeAnnotation(
+            type = AnnotationType.PEN,
+            color = 0,
+            strokeWidth = 0.004f,
+            points = listOf(points.first(), points.last().copy(timeMs = null)),
+            opacity = 1f,
+            penStyle = PenStyle.BALLPOINT,
+            layerId = null,
+            durationMs = 0L,
+            nowMs = 2000L,
+        )
+
+        assertEquals(listOf(100L, 200L, 300L), stroke.timesMs)
+        assertEquals(1500L, stroke.createdAt)
+        assertEquals(500L, stroke.durationMs)
+        assertEquals("layer-a", stroke.layerId)
+        assertEquals(PenStyle.FOUNTAIN, stroke.penStyle)
+        assertNull(partial.timesMs)
+    }
+
+    @Test
+    fun `recognized shapes are the documented commit only exception`() {
+        val raw = NoteInk.rectanglePoints()
+        val shape = NoteInk.recognizeShape(raw)!!
+        assertSame(shape.points, noteRefineForCommit(shape.points, true, true, skipRefinement = true))
+        assertNotEquals(raw, notePreviewPoints(raw))
     }
 }

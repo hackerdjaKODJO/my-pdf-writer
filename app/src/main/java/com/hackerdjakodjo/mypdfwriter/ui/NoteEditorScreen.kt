@@ -893,6 +893,11 @@ fun NoteEditorScreen(
         var committedPoints = points
         var recognizedShape = false
         val safeDuration = durationMs.coerceAtLeast(0L)
+        val preparation = NoteStrokePreparation(
+            stabilizeStrength = if (strokeStabilization) NOTE_STABILIZE_STRENGTH else 0f,
+            smoothHandwriting = smoothHandwriting,
+            simplifyPoints = simplifyPoints,
+        )
 
         if (tool == Tool.PEN && type == AnnotationType.PEN && shapeRecognition) {
             val recognized = NoteInk.recognizeShape(points)
@@ -912,24 +917,6 @@ fun NoteEditorScreen(
             }
         }
 
-        if (strokeStabilization && !recognizedShape &&
-            (type == AnnotationType.PEN || type == AnnotationType.HIGHLIGHT)
-        ) {
-            // Refine the recognized/final geometry, never the original raw
-            // points: otherwise stabilization overwrote a recognized shape.
-            val stabilized = NoteInk.stabilize(committedPoints, NOTE_STABILIZE_STRENGTH)
-            NoteTrace.event(
-                NOTE_TRACE_TAG,
-                "stabilize",
-                "tool" to tool.name,
-                "before" to committedPoints.size,
-                "after" to stabilized.size,
-                "strength" to NOTE_STABILIZE_STRENGTH,
-                "applied" to (stabilized !== committedPoints),
-            )
-            committedPoints = stabilized
-        }
-
         if (type == AnnotationType.PEN || type == AnnotationType.HIGHLIGHT) {
             val pressured = committedPoints.count { it.pressure < 1f }
             NoteTrace.event(
@@ -945,42 +932,39 @@ fun NoteEditorScreen(
             )
         }
 
-        // Refine exactly once, after recognition and stabilization have decided the
-        // final geometry. The live canvas keeps drawing raw input; only the stored
-        // annotation (and therefore the PDF export) sees this refined polyline.
-        val beforeRefine = committedPoints
-        committedPoints = noteRefineForCommit(
-            points = beforeRefine,
-            smoothHandwriting = smoothHandwriting,
-            simplifyPoints = simplifyPoints,
-            skipRefinement = recognizedShape,
-        )
+        // Preview and commit call this exact pipeline. Recognized shapes are the
+        // sole exception: their two points are final and must not be refined.
+        val beforePreparation = committedPoints
+        val activePreparation = if (!recognizedShape &&
+            (type == AnnotationType.PEN || type == AnnotationType.HIGHLIGHT)
+        ) {
+            preparation
+        } else {
+            preparation.copy(stabilizeStrength = 0f, smoothHandwriting = false, simplifyPoints = false)
+        }
+        committedPoints = prepareNoteStroke(beforePreparation, activePreparation)
         NoteTrace.event(
             NOTE_TRACE_TAG,
-            "refine",
-            "smooth" to smoothHandwriting,
-            "simplify" to simplifyPoints,
+            "prepare",
+            "smooth" to activePreparation.smoothHandwriting,
+            "simplify" to activePreparation.simplifyPoints,
+            "stabilize" to activePreparation.stabilizeStrength,
             "skipped" to recognizedShape,
-            "before" to beforeRefine.size,
+            "before" to beforePreparation.size,
             "after" to committedPoints.size,
-            "applied" to (committedPoints !== beforeRefine),
+            "applied" to (committedPoints !== beforePreparation),
         )
 
-        val annotation = Annotation(
+        val annotation = noteStrokeAnnotation(
             type = type,
-            page = 0,
             color = color,
-            width = noteStrokeWidth(type, strokeWidth),
+            strokeWidth = strokeWidth,
             points = committedPoints,
-            opacity = if (type == AnnotationType.HIGHLIGHT) {
-                HighlightInk.clampOpacity(highlightOpacity)
-            } else {
-                opacity
-            },
-            penStyle = if (type == AnnotationType.PEN) penStyle else PenStyle.BALLPOINT,
+            opacity = opacity,
+            penStyle = penStyle,
             layerId = layer.id,
-            createdAt = System.currentTimeMillis() - safeDuration,
             durationMs = safeDuration,
+            highlightOpacity = highlightOpacity,
         )
         val before = workingNotebook
         val next = noteAppendAnnotation(before, safeIndex, annotation)
@@ -1203,7 +1187,11 @@ fun NoteEditorScreen(
         refreshFavoritePens()
     }
 
-    fun erase(trail: List<NormalizedPoint>) {
+    fun erase(
+        trail: List<NormalizedPoint>,
+        pressure: Float = 1f,
+        pressureSensitive: Boolean = false,
+    ) {
         if (trail.isEmpty()) return
         val layer = activeLayer ?: return
         if (layer.locked) return
@@ -1218,6 +1206,8 @@ fun NoteEditorScreen(
                 targetLayerId = layer.id,
                 defaultLayerId = pageToEdit.layers.firstOrNull()?.id,
                 partial = partialEraser,
+                pressure = pressure,
+                pressureSensitive = pressureSensitive,
             )
             removed = result.removed
             split = result.split
@@ -1796,8 +1786,9 @@ fun NoteEditorScreen(
                         type = AnnotationType.TEXT,
                         page = 0,
                         color = color,
-                        width = maxOf(strokeWidth, 0.0025f),
+                        width = maxOf(strokeWidth, NOTE_SHAPE_MIN_WIDTH),
                         points = listOf(point),
+                        timesMs = pointTimesMs(listOf(point)),
                         text = value,
                         fontSize = fontSize,
                         opacity = opacity,
@@ -4204,14 +4195,62 @@ internal fun noteToolHint(tool: Tool): String = when (tool) {
     else -> "필기"
 }
 
+/** Pure note stroke commit builder, including timestamp and width policy. */
+internal fun noteStrokeAnnotation(
+    type: AnnotationType,
+    color: Int,
+    strokeWidth: Float,
+    points: List<NormalizedPoint>,
+    opacity: Float,
+    penStyle: PenStyle,
+    layerId: String?,
+    durationMs: Long,
+    highlightOpacity: Float = 1f,
+    nowMs: Long = System.currentTimeMillis(),
+): Annotation {
+    val safeDuration = durationMs.coerceAtLeast(0L)
+    return Annotation(
+        type = type,
+        page = 0,
+        color = color,
+        width = noteCommittedStrokeWidth(type, strokeWidth),
+        points = points,
+        timesMs = pointTimesMs(points),
+        opacity = if (type == AnnotationType.HIGHLIGHT) {
+            HighlightInk.clampOpacity(highlightOpacity)
+        } else {
+            opacity
+        },
+        penStyle = if (type == AnnotationType.PEN) penStyle else PenStyle.BALLPOINT,
+        layerId = layerId,
+        createdAt = nowMs - safeDuration,
+        durationMs = safeDuration,
+    )
+}
+
 /**
- * Single commit-time refinement decision, kept pure so the "applied once"
- * contract is testable without a Compose host.
+ * Commit width policy for note ink. Two-point shapes use the same 0.0025 floor
+ * as the canvas preview; highlighter keeps its independent wider floor.
+ */
+internal fun noteCommittedStrokeWidth(type: AnnotationType, strokeWidth: Float): Float = when (type) {
+    AnnotationType.HIGHLIGHT -> noteStrokeWidth(type, strokeWidth)
+    AnnotationType.RECT,
+    AnnotationType.ARROW,
+    AnnotationType.LINE,
+    AnnotationType.ELLIPSE,
+    AnnotationType.UNDERLINE,
+    AnnotationType.STRIKEOUT,
+    AnnotationType.REDACT -> maxOf(strokeWidth, NOTE_SHAPE_MIN_WIDTH)
+    else -> strokeWidth
+}
+
+/**
+ * Compatibility wrapper for callers that only need the refinement portion of
+ * commit preparation. The editor itself builds the full [NoteStrokePreparation]
+ * so stabilization and refinement cannot drift between preview and commit.
  *
  * Recognized shapes already carry final two-point geometry and must not be
- * refined. Short/atomic strokes have nothing to smooth. When both toggles are
- * off the exact input list is returned, so legacy behavior is byte-for-byte
- * unchanged.
+ * refined. With every setting neutral the exact input list is returned.
  */
 internal fun noteRefineForCommit(
     points: List<NormalizedPoint>,
@@ -4219,42 +4258,34 @@ internal fun noteRefineForCommit(
     simplifyPoints: Boolean,
     skipRefinement: Boolean = false,
 ): List<NormalizedPoint> {
-    if (skipRefinement || points.size < 3) return points
-    if (!smoothHandwriting && !simplifyPoints) return points
-    return refineStroke(
-        points = points,
-        brushRadius = if (smoothHandwriting) NOTE_LAZY_BRUSH_RADIUS else 0f,
-        simplifyTolerance = if (simplifyPoints) NOTE_SIMPLIFY_TOLERANCE else 0f,
-        chaikinIterations = if (smoothHandwriting) 1 else 0,
+    if (skipRefinement) return points
+    return prepareNoteStroke(
+        points,
+        NoteStrokePreparation(
+            stabilizeStrength = 0f,
+            smoothHandwriting = smoothHandwriting,
+            simplifyPoints = simplifyPoints,
+        ),
     )
 }
 
 /**
- * Samples kept "behind the finger" are refined with the same policy as the
- * committed stroke, so the ink no longer snaps into shape on pointer-up. Only
- * a short guarded tail stays raw; [NOTE_PREVIEW_STABLE_GUARD] samples are the
- * maximum that lazy-brush, Chaikin and stabilization can rewrite when a new
- * point arrives. The commit path is untouched.
+ * Final live preview geometry. This is the same pure preparation used at commit,
+ * including short strokes; only commit-time shape recognition may differ.
  */
-internal const val NOTE_PREVIEW_STABLE_GUARD = 2
-
 internal fun notePreviewPoints(
     raw: List<NormalizedPoint>,
     stabilizeStrength: Float = NOTE_STABILIZE_STRENGTH,
     smoothHandwriting: Boolean = NOTE_SMOOTH_HANDWRITING_DEFAULT,
     simplifyPoints: Boolean = NOTE_SIMPLIFY_POINTS_DEFAULT,
-    guard: Int = NOTE_PREVIEW_STABLE_GUARD,
-): List<NormalizedPoint> {
-    if (raw.size <= guard + 5) return raw
-    val split = raw.size - guard
-    var stable = raw.take(split)
-    if (stabilizeStrength > 0f) {
-        stable = NoteInk.stabilize(stable, stabilizeStrength)
-    }
-    val refined = noteRefineForCommit(stable, smoothHandwriting, simplifyPoints)
-    val emit = if (smoothHandwriting) refined.dropLast(guard) else refined
-    return emit + raw.drop(split)
-}
+): List<NormalizedPoint> = prepareNoteStroke(
+    raw,
+    NoteStrokePreparation(
+        stabilizeStrength = stabilizeStrength,
+        smoothHandwriting = smoothHandwriting,
+        simplifyPoints = simplifyPoints,
+    ),
+)
 
 internal fun notebookAnnotationCount(notebook: Notebook): Int =
     notebook.pages.sumOf { it.annotations.size }
