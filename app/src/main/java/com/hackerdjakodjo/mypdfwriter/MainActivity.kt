@@ -221,9 +221,8 @@ class MainActivity : ComponentActivity() {
                             docName = doc.docName,
                             docUri = viewModel.currentDocumentUri(),
                         )
-                        val notebook = notebookViewModel.studyNoteFor(source)
-                            ?: notebookViewModel.createBlankStudyNote(source)
-                        openStudyPane(notebook)
+                        (notebookViewModel.studyNoteFor(source)
+                            ?: notebookViewModel.createBlankStudyNote(source))?.let(::openStudyPane)
                     }
                 }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -360,9 +359,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onOpenStudyNote = { source ->
-                                    val notebook = notebookViewModel.studyNoteFor(source)
-                                        ?: notebookViewModel.createBlankStudyNote(source)
-                                    openStudyPane(notebook)
+                                    (notebookViewModel.studyNoteFor(source)
+                                        ?: notebookViewModel.createBlankStudyNote(source))?.let(::openStudyPane)
                                 },
                                 onOpenHelp = {
                                     helpTopic = null
