@@ -5,6 +5,7 @@ import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -180,7 +181,21 @@ class NotePreviewGeometryTest {
 
     @Test
     fun `recognized shapes are the documented commit only exception`() {
-        val raw = NoteInk.rectanglePoints()
+        val raw = listOf(
+            NormalizedPoint(0.2f, 0.2f),
+            NormalizedPoint(0.4f, 0.2f),
+            NormalizedPoint(0.6f, 0.2f),
+            NormalizedPoint(0.8f, 0.2f),
+            NormalizedPoint(0.8f, 0.4f),
+            NormalizedPoint(0.8f, 0.6f),
+            NormalizedPoint(0.8f, 0.8f),
+            NormalizedPoint(0.6f, 0.8f),
+            NormalizedPoint(0.4f, 0.8f),
+            NormalizedPoint(0.2f, 0.8f),
+            NormalizedPoint(0.2f, 0.6f),
+            NormalizedPoint(0.2f, 0.4f),
+            NormalizedPoint(0.2f, 0.2f),
+        )
         val shape = NoteInk.recognizeShape(raw)!!
         assertSame(shape.points, noteRefineForCommit(shape.points, true, true, skipRefinement = true))
         assertNotEquals(raw, notePreviewPoints(raw))

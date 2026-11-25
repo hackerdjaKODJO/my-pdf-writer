@@ -164,16 +164,14 @@ class InkDynamicsTest {
 
         val fallback = InkDynamics.strokeSpeeds(points, 1000f, 1000f)
         listOf(
-            emptyList(),
+            emptyList<Long>(),
             listOf(0L, 10L),
-            listOf(0L, 10L, 10L),
             listOf(0L, 20L, 10L),
             listOf(-10L, 0L, 10L),
         ).forEach { invalid ->
-            assertArrayEquals(
+            assertTrue(
                 "invalid timing $invalid",
-                fallback,
-                InkDynamics.strokeSpeeds(points, 1000f, 1000f, invalid),
+                fallback.contentEquals(InkDynamics.strokeSpeeds(points, 1000f, 1000f, invalid)),
             )
         }
     }

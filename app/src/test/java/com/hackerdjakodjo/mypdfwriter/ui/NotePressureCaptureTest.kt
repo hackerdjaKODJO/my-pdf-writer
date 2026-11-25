@@ -2,6 +2,7 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.compose.ui.input.pointer.PointerType
 import com.hackerdjakodjo.mypdfwriter.data.DEFAULT_INK_PRESSURE
+import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PressureCalibrator
 import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import com.hackerdjakodjo.mypdfwriter.data.PressureSmoother
