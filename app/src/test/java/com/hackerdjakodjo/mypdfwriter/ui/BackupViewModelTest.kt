@@ -3,9 +3,10 @@ package com.hackerdjakodjo.mypdfwriter.ui
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
-/** JVM coverage for BackupViewModel's atomic single-entry guard. */
+/** JVM coverage for backup gates, pre-flush ordering and mutation leases. */
 class BackupViewModelTest {
 
     @Test
@@ -13,16 +14,11 @@ class BackupViewModelTest {
         val gate = BackupOperationGate()
         var managerCalls = 0
 
-        // First SAF result acquires the gate and starts BackupManager.restore.
         assertTrue(gate.tryStart())
         managerCalls++
-
-        // A second result arriving before the first job exits must be a no-op:
-        // the old `if (busy) return` check-then-set could start a second restore.
         assertFalse(gate.tryStart())
         assertEquals(1, managerCalls)
 
-        // The first job's finally clears the gate; a later restore is allowed.
         gate.finish()
         assertFalse(gate.isActive)
         assertTrue(gate.tryStart())
@@ -35,19 +31,75 @@ class BackupViewModelTest {
     fun gateIsClearedOnFailureAndCancellationExit() {
         val gate = BackupOperationGate()
         assertTrue(gate.tryStart())
-
-        // Mirror the real launch body: `finally` runs for success, failure and
-        // CancellationException alike.
         try {
             throw IllegalStateException("read failed")
-        } catch (error: Exception) {
+        } catch (ignored: Exception) {
             // surfaced as a UI message by the ViewModel
         } finally {
             gate.finish()
         }
-
         assertFalse(gate.isActive)
         assertTrue(gate.tryStart())
         gate.finish()
+    }
+
+    @Test
+    fun successfulFlushRunsBeforeArchiveAndOnlyOnce() {
+        val order = mutableListOf<String>()
+        val result = withFlushedSaves(
+            flush = { order += "flush"; true },
+            action = { order += "archive"; "summary" },
+        )
+
+        assertEquals("summary", result)
+        assertEquals(listOf("flush", "archive"), order)
+    }
+
+    @Test
+    fun falseFlushAbortsBeforeArchiveTouchesOutput() {
+        val order = mutableListOf<String>()
+        val failure = runCatching {
+            withFlushedSaves(
+                flush = { order += "flush"; false },
+                action = { order += "archive"; "must-not-run" },
+            )
+        }.exceptionOrNull()
+
+        assertTrue(failure is BackupFlushException)
+        assertEquals(listOf("flush"), order)
+    }
+
+    @Test
+    fun mutationLeaseStartsBeforeFlushAndLastsThroughOperation() {
+        val lease = BackupMutationLease()
+        val order = mutableListOf<String>()
+
+        assertTrue(
+            lease.begin {
+                assertTrue(lease.isActive)
+                order += "flush"
+                true
+            },
+        )
+        order += "archive"
+        assertTrue(lease.isActive)
+        order += "host-refresh"
+        assertTrue(lease.isActive)
+
+        lease.finish()
+        order += "complete"
+        assertFalse(lease.isActive)
+        assertEquals(listOf("flush", "archive", "host-refresh", "complete"), order)
+    }
+
+    @Test
+    fun failedMutationLeaseStillRequiresExplicitCompletion() {
+        val lease = BackupMutationLease()
+        assertFalse(lease.begin { false })
+        // The ViewModel's failure callback owns release, so the gate cannot open
+        // between the failed pre-flush and retryable error state publication.
+        assertTrue(lease.isActive)
+        lease.finish()
+        assertFalse(lease.isActive)
     }
 }
