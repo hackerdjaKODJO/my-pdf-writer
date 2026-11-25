@@ -298,6 +298,26 @@ only: never copy competitor code, assets, fonts, templates or branding.
 
 Evidence and scope are recorded in `docs/ink-quality-0890.md`.
 
+## Stability and PDF↔note link contract (0.8.91+)
+
+- Never merge study sources by display name when both have a URI. Identity is
+  exact URI/docId, with optional content fingerprint for replacement detection.
+- New note pages may persist an additive `sourceLink` containing URI, docId,
+  original source-page ordinal, optional fingerprint/rect/excerptId/rotation.
+  Legacy root URI + `sourcePage` remains a fallback.
+- Resolve links through `PageSpec.sourcePage`, not the saved viewer index.
+  Wrong document, changed source, missing page and unavailable source are
+  explicit states; never silently clamp to the last page.
+- Pane capture/jump and drag payloads are document-bound. A stale pane must not
+  accept another PDF's content.
+- Restore discards the detached pane without saving it. Backup/restore blocks
+  dismissal and data mutation until completion.
+- Notebook save/close/capture success requires canonical readback. Deletion
+  removes canonical and `.tmp` files. Same-document reopen flushes pending saves
+  before loading. `ON_STOP` flushes current notebook/PDF/reading state.
+
+Evidence, scope and deferred risks are in `docs/stability-links-0891.md`.
+
 ## Release checklist
 
 1. Bump PATCH version and versionCode per policy.
