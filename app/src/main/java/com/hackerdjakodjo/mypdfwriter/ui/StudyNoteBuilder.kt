@@ -10,10 +10,29 @@ import com.hackerdjakodjo.mypdfwriter.data.NotePaper
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
+import com.hackerdjakodjo.mypdfwriter.data.StudySourceLink
+import com.hackerdjakodjo.mypdfwriter.data.effectiveStudyLink
+import com.hackerdjakodjo.mypdfwriter.data.isFiniteNormalized
+import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
 import kotlin.math.floor
 
 /** The PDF a study notebook was captured from. [docUri] is optional on purpose. */
-data class StudySource(val docName: String, val docUri: String? = null)
+data class StudySource(
+    val docName: String,
+    val docUri: String? = null,
+    val docId: String? = null,
+    val contentFingerprint: String? = null,
+)
+
+/** One capture with all source identity/location data needed for a durable backlink. */
+data class StudyCapture(
+    val text: String,
+    val source: StudySource,
+    val sourcePageIndex: Int,
+    val rect: NormalizedRect? = null,
+    val excerptId: String? = null,
+    val rotation: Int = 0,
+)
 
 /**
  * Turns PDF excerpts into an ordinary [Notebook] so the existing note editor,
@@ -43,16 +62,74 @@ object StudyNoteBuilder {
         excerpts: List<Excerpt>,
         coverColor: Int = DEFAULT_COVER_COLOR,
         coverStyle: CoverStyle = CoverStyle.SOLID,
+    ): Notebook = fromCaptures(
+        title = title,
+        source = source,
+        captures = excerpts.map { excerpt ->
+            StudyCapture(
+                text = excerpt.text,
+                source = source,
+                sourcePageIndex = excerpt.pageIndex,
+                excerptId = excerpt.id,
+            )
+        },
+        coverColor = coverColor,
+        coverStyle = coverStyle,
+    )
+
+    /** Single-capture convenience wrapper around [fromCaptures]. */
+    fun fromCapture(
+        title: String,
+        capture: StudyCapture,
+        coverColor: Int = DEFAULT_COVER_COLOR,
+        coverStyle: CoverStyle = CoverStyle.SOLID,
+    ): Notebook = fromCaptures(
+        title = title,
+        source = capture.source,
+        captures = listOf(capture),
+        coverColor = coverColor,
+        coverStyle = coverStyle,
+    )
+
+    /**
+     * Builds a notebook from document-bound captures. Captures that do not match
+     * the notebook source are ignored rather than creating a mixed-source notebook.
+     */
+    fun fromCaptures(
+        title: String,
+        source: StudySource,
+        captures: List<StudyCapture>,
+        coverColor: Int = DEFAULT_COVER_COLOR,
+        coverStyle: CoverStyle = CoverStyle.SOLID,
     ): Notebook {
         val now = System.currentTimeMillis()
-        val selected = excerpts.filter { it.text.isNotBlank() }
+        val sourceUri = source.docUri?.trim().orEmpty()
+        val seed = Notebook(
+            sourceDocumentName = source.docName.trim(),
+            sourceDocumentUri = sourceUri,
+            pages = listOf(
+                NotePage(
+                    sourceLink = sourceUri.takeIf { it.isNotBlank() }?.let { uri ->
+                        StudySourceLink(
+                            uri = uri,
+                            docId = source.docId,
+                            sourcePage = 0,
+                            fingerprint = source.contentFingerprint,
+                        )
+                    },
+                ),
+            ),
+        )
+        val selected = captures.filter { capture ->
+            capture.text.isNotBlank() && captureMatchesSource(source, capture.source, seed)
+        }
         return Notebook(
             title = title.trim().ifBlank { suggestedTitle(source) },
             coverColor = coverColor,
             coverStyle = coverStyle,
-            pages = selected.map(::excerptPage),
+            pages = selected.map(::capturePage),
             sourceDocumentName = source.docName.trim(),
-            sourceDocumentUri = source.docUri?.trim().orEmpty(),
+            sourceDocumentUri = sourceUri,
             createdAt = now,
             updatedAt = now,
         ).normalized()
@@ -71,14 +148,32 @@ object StudyNoteBuilder {
         source: StudySource,
         excerpt: Excerpt,
         coverColor: Int? = null,
+    ): Notebook = appendCapture(
+        notebook = notebook,
+        capture = StudyCapture(
+            text = excerpt.text,
+            source = source,
+            sourcePageIndex = excerpt.pageIndex,
+            excerptId = excerpt.id,
+        ),
+        coverColor = coverColor,
+    )
+
+    /** Appends only when [capture] belongs to the notebook's document. */
+    fun appendCapture(
+        notebook: Notebook,
+        capture: StudyCapture,
+        coverColor: Int? = null,
     ): Notebook {
-        if (excerpt.text.isBlank()) return notebook
+        if (capture.text.isBlank()) return notebook
         val base = notebook.normalized()
+        if (!studySourcesMatch(base, capture.source)) return notebook
+        val sourceUri = capture.source.docUri?.trim().orEmpty()
         return base.copy(
             coverColor = coverColor ?: base.coverColor,
-            pages = base.pages + excerptPage(excerpt),
-            sourceDocumentName = base.sourceDocumentName.ifBlank { source.docName.trim() },
-            sourceDocumentUri = base.sourceDocumentUri.ifBlank { source.docUri?.trim().orEmpty() },
+            pages = base.pages + capturePage(capture),
+            sourceDocumentName = base.sourceDocumentName.ifBlank { capture.source.docName.trim() },
+            sourceDocumentUri = base.sourceDocumentUri.ifBlank { sourceUri },
             updatedAt = System.currentTimeMillis(),
         ).normalized()
     }
@@ -88,7 +183,7 @@ object StudyNoteBuilder {
      * can use this to show a "원본 PDF로" action without depending on note internals.
      */
     fun sourcePage(notebook: Notebook, pageIndex: Int): Int? =
-        notebook.pages.getOrNull(pageIndex)?.sourcePageIndex
+        notebook.pages.getOrNull(pageIndex)?.effectiveStudyLink(notebook)?.sourcePage
 
     fun suggestedTitle(source: StudySource): String {
         val base = source.docName
@@ -112,31 +207,61 @@ object StudyNoteBuilder {
     ).normalized()
 
     /**
-     * Finds the notebook already linked to [source] in a library snapshot. A
-     * source URI match wins over a document-name or suggested-title match, and
-     * trashed notebooks are never selected. Pure so the PDF pane's detached
-     * lookup can be tested without an Android view model.
+     * Finds the notebook already linked to [source] in a library snapshot. Exact
+     * URI identity wins; display-name/title fallback is reserved for URI-less
+     * legacy notebooks by [studySourcesMatch]. Trashed notebooks are never selected.
      */
     fun findStudyNote(notebooks: List<Notebook>, source: StudySource): Notebook? {
         val candidates = notebooks.filterNot { it.trashed }
         val uri = source.docUri?.trim().orEmpty()
         if (uri.isNotBlank()) {
-            candidates.firstOrNull { it.sourceDocumentUri.equals(uri, ignoreCase = true) }
-                ?.let { return it }
+            candidates.firstOrNull {
+                it.sourceDocumentUri.trim() == uri && studySourcesMatch(it, source)
+            }?.let { return it }
+            candidates.firstOrNull { notebook ->
+                notebook.pages.any { it.sourceLink?.normalized()?.uri == uri } &&
+                    studySourcesMatch(notebook, source)
+            }?.let { return it }
         }
-        val docName = source.docName.trim()
-        if (docName.isBlank()) return null
-        val suggestedTitle = suggestedTitle(source)
-        return candidates.firstOrNull { notebook ->
-            notebook.sourceDocumentName.equals(docName, ignoreCase = true) ||
-                notebook.title.equals(suggestedTitle, ignoreCase = true)
-        }
+        return candidates.firstOrNull { studySourcesMatch(it, source) }
     }
 
-    private fun excerptPage(excerpt: Excerpt): NotePage {
-        val sourcePage = excerpt.pageIndex.takeIf { it >= 0 }
+    private fun captureMatchesSource(source: StudySource, candidate: StudySource, seed: Notebook): Boolean {
+        if (hasIdentityConflict(source, candidate)) return false
+        val sourceDocId = source.docId?.trim()?.takeIf { it.isNotEmpty() }
+        val candidateDocId = candidate.docId?.trim()?.takeIf { it.isNotEmpty() }
+        val sourceFingerprint = source.contentFingerprint?.trim()?.takeIf { it.isNotEmpty() }
+        val candidateFingerprint = candidate.contentFingerprint?.trim()?.takeIf { it.isNotEmpty() }
+        if (source.docUri.isNullOrBlank() &&
+            ((!sourceDocId.isNullOrBlank() && sourceDocId == candidateDocId) ||
+                (!sourceFingerprint.isNullOrBlank() && sourceFingerprint == candidateFingerprint))
+        ) {
+            return true
+        }
+        if (source.isUnbound() && candidate.isUnbound()) return true
+        return studySourcesMatch(seed, candidate)
+    }
+
+    private fun StudySource.isUnbound(): Boolean =
+        docName.isBlank() && docUri.isNullOrBlank() && docId.isNullOrBlank() &&
+            contentFingerprint.isNullOrBlank()
+
+    private fun hasIdentityConflict(first: StudySource, second: StudySource): Boolean {
+        val firstDocId = first.docId?.trim()?.takeIf { it.isNotEmpty() }
+        val secondDocId = second.docId?.trim()?.takeIf { it.isNotEmpty() }
+        if (!firstDocId.isNullOrBlank() && !secondDocId.isNullOrBlank() && firstDocId != secondDocId) {
+            return true
+        }
+        val firstFingerprint = first.contentFingerprint?.trim()?.takeIf { it.isNotEmpty() }
+        val secondFingerprint = second.contentFingerprint?.trim()?.takeIf { it.isNotEmpty() }
+        return !firstFingerprint.isNullOrBlank() && !secondFingerprint.isNullOrBlank() &&
+            firstFingerprint != secondFingerprint
+    }
+
+    private fun capturePage(capture: StudyCapture): NotePage {
+        val sourcePage = capture.sourcePageIndex.takeIf { it >= 0 }
         val layer = NoteLayer(name = "발췌")
-        val layout = layoutExcerpt(excerpt.text)
+        val layout = layoutExcerpt(capture.text)
         val annotation = Annotation(
             type = AnnotationType.TEXT,
             page = 0,
@@ -148,11 +273,26 @@ object StudyNoteBuilder {
             opacity = 1f,
             layerId = layer.id,
         )
+        val sourceUri = capture.source.docUri?.trim().orEmpty()
+        val sourceLink = if (sourcePage != null && sourceUri.isNotBlank()) {
+            StudySourceLink(
+                uri = sourceUri,
+                docId = capture.source.docId,
+                sourcePage = sourcePage,
+                fingerprint = capture.source.contentFingerprint,
+                rect = capture.rect?.takeIf { it.isFiniteNormalized() },
+                excerptId = capture.excerptId,
+                rotation = capture.rotation,
+            ).normalized()
+        } else {
+            null
+        }
         return NotePage(
             template = PaperTemplate.LINED,
             annotations = listOf(annotation),
             memo = sourcePage?.let { "원본 PDF p.${it + 1}" } ?: "원본 PDF",
             sourcePageIndex = sourcePage,
+            sourceLink = sourceLink,
             layers = listOf(layer),
         )
     }

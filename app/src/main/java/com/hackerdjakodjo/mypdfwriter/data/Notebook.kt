@@ -163,6 +163,8 @@ data class NotePage(
     val memoCards: List<MemoCard> = emptyList(),
     /** Zero-based page in the linked source PDF, or null for a plain notebook page. */
     val sourcePageIndex: Int? = null,
+    /** Durable document-bound source locator; absent on legacy pages. */
+    val sourceLink: StudySourceLink? = null,
 ) {
     fun normalized(): NotePage {
         val safeLayers = layers.ifEmpty { listOf(NoteLayer()) }
@@ -170,6 +172,7 @@ data class NotePage(
         val safeBackground = CustomTemplatePaths.sanitizeKey(customBackground)
         return copy(
             sourcePageIndex = sourcePageIndex?.takeIf { it >= 0 },
+            sourceLink = sourceLink?.normalized(),
             customBackground = safeBackground,
             customBackgroundName = if (safeBackground == null) {
                 ""
@@ -198,6 +201,7 @@ data class NotePage(
         put("memo", memo)
         put("annotations", JSONArray().apply { annotations.forEach { put(it.toJson()) } })
         sourcePageIndex?.let { put("sourcePage", it) }
+        sourceLink?.let { put("sourceLink", it.toJson()) }
         put("layers", JSONArray().apply { layers.forEach { put(it.toJson()) } })
         if (maskingCards.isNotEmpty()) {
             put("maskingCards", JSONArray().apply { maskingCards.forEach { put(it.toJson()) } })
@@ -258,10 +262,20 @@ data class NotePage(
                 checklists = checklists,
                 memoCards = memoCards,
                 sourcePageIndex = o.optInt("sourcePage", -1).takeIf { it >= 0 },
+                sourceLink = o.optJSONObject("sourceLink")?.let(StudySourceLink::fromJson),
                 layers = layers.ifEmpty { listOf(NoteLayer()) },
             ).normalized()
         }
     }
+}
+
+/** Prefers the durable per-page locator, then the root URI/page legacy fields. */
+fun NotePage.effectiveStudyLink(notebook: Notebook): StudySourceLink? {
+    sourceLink?.normalized()?.let { return it }
+    val uri = notebook.sourceDocumentUri.trim()
+    val sourcePage = sourcePageIndex?.takeIf { it >= 0 } ?: return null
+    if (uri.isEmpty()) return null
+    return StudySourceLink(uri = uri, sourcePage = sourcePage)
 }
 
 /**
