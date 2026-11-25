@@ -158,7 +158,7 @@ class PdfFlowTraceTest {
         assertEquals(events().map { it.event }, mirror.map { it.event })
         assertTrue(mirror.all { it.tag == PdfFlowTrace.COMPONENT })
         assertEquals("IOException", reason)
-        assertTrue(log.exportedJsonl().none { it.contains(secret) })
+        assertTrue(!log.exportedJsonl().contains(secret))
         assertEquals(mapOf("docId" to "doc-1", "reason" to "IOException"), events().last().fields)
     }
 
@@ -204,7 +204,7 @@ class PdfFlowTraceTest {
             assertTrue(entry.fields.values.none { it.contains("/") || it.contains("://") })
         }
         assertTrue(log.exportedJsonl().lineSequence().all { it.startsWith("{") })
-        assertTrue(log.exportedJsonl().none { it.contains(secret) })
+        assertTrue(!log.exportedJsonl().contains(secret))
     }
 
     private companion object {
