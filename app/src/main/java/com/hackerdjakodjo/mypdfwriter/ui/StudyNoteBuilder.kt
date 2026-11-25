@@ -182,8 +182,10 @@ object StudyNoteBuilder {
      * Source PDF page for a notebook page, or null for plain pages. The integration
      * can use this to show a "원본 PDF로" action without depending on note internals.
      */
-    fun sourcePage(notebook: Notebook, pageIndex: Int): Int? =
-        notebook.pages.getOrNull(pageIndex)?.effectiveStudyLink(notebook)?.sourcePage
+    fun sourcePage(notebook: Notebook, pageIndex: Int): Int? {
+        val page = notebook.pages.getOrNull(pageIndex) ?: return null
+        return page.sourceLink?.sourcePage ?: page.sourcePageIndex
+    }
 
     fun suggestedTitle(source: StudySource): String {
         val base = source.docName

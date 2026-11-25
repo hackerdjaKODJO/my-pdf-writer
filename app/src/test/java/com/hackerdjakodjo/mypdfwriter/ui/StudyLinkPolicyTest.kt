@@ -124,7 +124,7 @@ class StudyLinkPolicyTest {
         val sourceLink = link(sourcePage = 2)
 
         assertEquals(
-            StudyLinkResolution.Found(1, null),
+            StudyLinkResolution.Found(2, null),
             resolveStudyLink(
                 sourceLink,
                 "doc-a",
