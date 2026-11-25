@@ -39,10 +39,8 @@ import com.hackerdjakodjo.mypdfwriter.data.PdfReadingState
 import com.hackerdjakodjo.mypdfwriter.data.PdfReadingStore
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
-import com.hackerdjakodjo.mypdfwriter.data.StudyLinkResolution
 import com.hackerdjakodjo.mypdfwriter.data.StudySourceLink
 import com.hackerdjakodjo.mypdfwriter.data.Tool
-import com.hackerdjakodjo.mypdfwriter.data.resolveStudyLink as resolveStudyLinkAgainstPages
 import com.hackerdjakodjo.mypdfwriter.debug.DevLog
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
@@ -152,7 +150,7 @@ data class ViewerUiState(
  * One document-bound PDF capture. [sourcePage] is always the original source
  * ordinal, never the current viewer index (which can move after page edits).
  */
-data class StudyCapture(
+data class PdfStudyCapture(
     val text: String,
     val sourcePage: Int,
     val rect: NormalizedRect?,
@@ -183,18 +181,18 @@ internal fun selectedWordsUnionRect(
 }
 
 /** Pure provenance builder shared by selection, drag and excerpt capture. */
-internal fun buildStudyCapture(
+internal fun buildPdfStudyCapture(
     state: ViewerUiState,
     pageIndex: Int,
     text: String,
     words: List<PdfTextWord> = emptyList(),
     excerptId: String? = null,
-): StudyCapture? {
+): PdfStudyCapture? {
     val value = text.trim()
     val spec = state.pages.getOrNull(pageIndex) ?: return null
     val sourcePage = spec.sourcePage?.takeIf { it >= 0 } ?: return null
     if (value.isEmpty() || state.docId.isBlank() || state.contentFingerprint.isBlank()) return null
-    return StudyCapture(
+    return PdfStudyCapture(
         text = value,
         sourcePage = sourcePage,
         rect = selectedWordsUnionRect(words, pageIndex),
@@ -995,7 +993,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     fun resolveStudyLink(link: StudySourceLink): StudyLinkResolution {
         val state = _viewer.value ?: return StudyLinkResolution.SourceUnavailable
         val source = currentStudySource() ?: return StudyLinkResolution.SourceUnavailable
-        return resolveStudyLinkAgainstPages(
+        return com.hackerdjakodjo.mypdfwriter.ui.resolveStudyLink(
             link = link,
             currentDocId = source.docId,
             currentFingerprint = source.contentFingerprint,
@@ -2112,7 +2110,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             if (_viewer.value?.docId != state.docId) return@launch
-            val capture = buildStudyCapture(state, state.pageIndex, excerptText)
+            val capture = buildPdfStudyCapture(state, state.pageIndex, excerptText)
                 ?.copy(source = currentStudySource() ?: return@launch)
             if (capture == null) {
                 _viewer.update { it?.copy(message = "원본 PDF 페이지를 확인하지 못했습니다.") }
@@ -2408,19 +2406,19 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Selection provenance without creating a persisted excerpt (used at drag start). */
-    fun studyCaptureForSelection(pageIndex: Int, text: String): StudyCapture? =
-        buildStudyCapture(_viewer.value ?: return null, pageIndex, text, _viewer.value?.selectedWords.orEmpty())
+    fun studyCaptureForSelection(pageIndex: Int, text: String): PdfStudyCapture? =
+        buildPdfStudyCapture(_viewer.value ?: return null, pageIndex, text, _viewer.value?.selectedWords.orEmpty())
             ?.copy(source = currentStudySource() ?: return null)
 
     /** Adds a selection capture and returns its persisted excerpt identity. */
-    fun addExcerptFromSelection(pageIndex: Int, text: String): StudyCapture? =
-        studyCaptureForSelection(pageIndex, text)?.let(::addStudyCapture)
+    fun addExcerptFromSelection(pageIndex: Int, text: String): PdfStudyCapture? =
+        studyCaptureForSelection(pageIndex, text)?.let(::addPdfStudyCapture)
 
     /**
      * Accepts a drag/drop capture only when it still belongs to the active source
      * bytes. The saved Excerpt keeps the original source ordinal, not a viewer index.
      */
-    fun addStudyCapture(capture: StudyCapture): StudyCapture? {
+    fun addPdfStudyCapture(capture: PdfStudyCapture): PdfStudyCapture? {
         val state = _viewer.value ?: return null
         val source = currentStudySource() ?: return null
         if (capture.text.isBlank() || capture.sourcePage < 0) return null
@@ -2443,11 +2441,11 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Rebuilds a document-bound capture for an already persisted excerpt. */
-    fun studyCaptureForExcerpt(excerpt: Excerpt): StudyCapture? {
+    fun studyCaptureForExcerpt(excerpt: Excerpt): PdfStudyCapture? {
         val state = _viewer.value ?: return null
         val source = currentStudySource() ?: return null
         if (excerpt.pageIndex < 0 || state.pages.none { it.sourcePage == excerpt.pageIndex }) return null
-        return StudyCapture(
+        return PdfStudyCapture(
             text = excerpt.text,
             sourcePage = excerpt.pageIndex,
             rect = null,
