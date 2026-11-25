@@ -2,6 +2,7 @@ package com.hackerdjakodjo.mypdfwriter.ui
 
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -23,13 +24,16 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import androidx.test.espresso.Espresso
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
@@ -43,10 +47,10 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * Compose coverage for the 0.8.37 student-menu rewrite: four first-level 학습 메뉴
- * groups, one unified 위치 entry, the four-control top chrome, the self-dismissing
- * coach and the session-only document tab strip. Compiles with
- * `assembleDebugAndroidTest`; running the gestures needs a device/emulator.
+ * Compose coverage for the progressive PDF 메뉴: six easy tasks first, an Expert
+ * footer into the complete hub, contextual help, save retry and the existing
+ * viewer chrome contracts. Compiles with `assembleDebugAndroidTest`; running the
+ * gestures needs a device/emulator.
  */
 class PdfMenuFlowE2ETest {
 
@@ -54,59 +58,150 @@ class PdfMenuFlowE2ETest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun learningMenuShowsFourOrderedGroupsAndOneLocationsEntry() {
-        // Policy literals first: the composable below draws a compact version of
-        // exactly this grouping so every group is visible in one sheet.
-        assertEquals(PDF_HUB_MAX_TOP_LEVEL_GROUPS, 4)
+    fun pdfMenuStartsEasyAndExpertFooterKeepsTheFullInventory() {
         assertEquals(
-            listOf("읽기", "필기", "담기", "설정"),
-            pdfMenuTopLevelGroups.map { it.title },
+            listOf("학습 노트", "페이지 메모", "현재 페이지 북마크", "PDF 내보내기", "공유", "도움말"),
+            pdfEasyMenuTasks.map { it.label },
         )
-        assertEquals(4, pdfMenuTopLevelGroups.size)
-        assertTrue(pdfMenuTopLevelGroups.none { it.expandable })
+        assertEquals(PdfMenuAction.entries.toSet(), pdfEasyMenuExpertActions)
 
-        val labels = PdfMenuAction.entries.map { it.label }
-        assertEquals(labels.size, labels.toSet().size)
-        listOf("목차", "북마크 목록", "주석 목록").forEach { old ->
-            assertFalse("'$old' must be folded into 위치", old in labels)
+        var expert by mutableStateOf(false)
+        val sections = pdfMenuTopLevelGroups.map { group ->
+            PdfHubSection(
+                title = group.title,
+                actions = pdfMenuActions(group).map { menuAction(it.label) },
+            )
         }
-        assertEquals(1, labels.count { it == PDF_HUB_LOCATIONS_LABEL })
-        assertEquals(1, pdfMenuActions(PdfMenuGroup.READ).count { it == PdfMenuAction.LOCATIONS })
-
-        var opened = 0
-        var dismissed = 0
-        val location = pdfLocationsAction { opened += 1 }
-        val sections = listOf(
-            PdfHubSection(pdfMenuTopLevelGroups[0].title, listOf(location)),
-            PdfHubSection(pdfMenuTopLevelGroups[1].title, listOf(menuAction("주석 도구"))),
-            PdfHubSection(pdfMenuTopLevelGroups[2].title, listOf(menuAction(PDF_HUB_CAPTURE_LABEL))),
-            PdfHubSection(pdfMenuTopLevelGroups[3].title, listOf(menuAction("파일 도구"))),
-        )
-
         composeRule.setContent {
             MaterialTheme {
-                PdfHubSheet(
+                if (!expert) {
+                    PdfEasyMenuSheet(
+                        docName = "lecture.pdf",
+                        pageIndex = 2,
+                        pageCount = 10,
+                        onTask = {},
+                        onOpenExpert = { expert = true },
+                        onDismiss = {},
+                    )
+                } else {
+                    PdfHubSheet(
+                        docName = "lecture.pdf",
+                        pageIndex = 2,
+                        pageCount = 10,
+                        sections = sections,
+                        onDismiss = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(PDF_EASY_MENU_TAG).assertExists()
+        pdfEasyMenuTasks.forEach { task ->
+            composeRule.onNodeWithTag("pdf_easy_task_${task.name.lowercase()}").assertExists()
+        }
+        composeRule.onNodeWithTag(PDF_EXPERT_MENU_TAG).assertDoesNotExist()
+        composeRule.onNodeWithText("화면 설정").assertDoesNotExist()
+
+        composeRule.onNodeWithTag(PDF_ALL_TOOLS_TAG).performScrollTo().performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(PDF_EASY_MENU_TAG).assertDoesNotExist()
+        composeRule.onNodeWithTag(PDF_EXPERT_MENU_TAG).assertExists()
+        composeRule.onNodeWithText(PDF_HUB_LOCATIONS_LABEL).assertExists()
+        composeRule.onNodeWithText("주석 도구").assertExists()
+        composeRule.onNodeWithText(PDF_HUB_CAPTURE_LABEL).assertExists()
+    }
+
+    @Test
+    fun easyAndExpertBackDismissTheirSheetBeforeTheViewerCanClose() {
+        var phase by mutableStateOf("easy")
+        var closed = 0
+        composeRule.setContent {
+            val flags = ViewerSheetFlags(
+                showEasyMenu = phase == "easy",
+                showHub = phase == "expert",
+            )
+            MaterialTheme {
+                // Mirrors ViewerScreen's document-close gate.
+                BackHandler(enabled = flags.anyOpen) { /* the modal sheet consumes Back */ }
+                BackHandler(enabled = !flags.anyOpen) { closed += 1 }
+                when (phase) {
+                    "easy" -> PdfEasyMenuSheet(
+                        docName = "lecture.pdf",
+                        pageIndex = 0,
+                        pageCount = 10,
+                        onTask = {},
+                        onOpenExpert = {},
+                        onDismiss = { phase = "idle" },
+                    )
+                    "expert" -> PdfHubSheet(
+                        docName = "lecture.pdf",
+                        pageIndex = 0,
+                        pageCount = 10,
+                        sections = emptyList(),
+                        onDismiss = { phase = "idle" },
+                    )
+                }
+            }
+        }
+
+        fun dispatchBack() {
+            Espresso.pressBack()
+            composeRule.waitForIdle()
+        }
+
+        dispatchBack()
+        assertEquals("idle", phase)
+        assertEquals(0, closed)
+
+        composeRule.runOnIdle { phase = "expert" }
+        composeRule.waitForIdle()
+        dispatchBack()
+        assertEquals("idle", phase)
+        assertEquals(0, closed)
+
+        dispatchBack()
+        assertEquals(1, closed)
+    }
+
+    @Test
+    fun easyTaskHelpAffordanceOpensTheMatchingTopic() {
+        var openedTopic: HelpTopicKey? = null
+        composeRule.setContent {
+            MaterialTheme {
+                PdfEasyMenuSheet(
                     docName = "lecture.pdf",
-                    pageIndex = 2,
+                    pageIndex = 0,
                     pageCount = 10,
-                    sections = sections,
-                    onDismiss = { dismissed += 1 },
+                    onTask = {},
+                    onOpenExpert = {},
+                    onDismiss = {},
+                    onOpenHelpTopic = { openedTopic = it },
                 )
             }
         }
 
-        pdfMenuTopLevelGroups.forEach { group ->
-            composeRule.onNodeWithText(group.title).assertExists()
-        }
-        assertEquals(
-            "위치 must be the only navigation entry in the composed hub",
-            1,
-            composeRule.onAllNodesWithText(PDF_HUB_LOCATIONS_LABEL).fetchSemanticsNodes().size,
-        )
-        composeRule.onNodeWithText(PDF_HUB_LOCATIONS_LABEL).performClick()
+        composeRule.onNodeWithContentDescription("학습 노트 도움말").performClick()
+        composeRule.waitForIdle()
+        assertEquals(HelpTopicKey.STUDY_NOTE, openedTopic)
+    }
 
-        assertEquals(1, opened)
-        assertEquals(1, dismissed)
+    @Test
+    fun failedSaveStatusShowsRetryAndDispatchesIt() {
+        var retries = 0
+        composeRule.setContent {
+            MaterialTheme {
+                PdfSaveStatusRow(
+                    status = PdfSaveStatus.FAILED,
+                    onRetry = { retries += 1 },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(PDF_SAVE_STATUS_TAG).assertTextEquals("저장 실패 · 다시 시도")
+        composeRule.onNodeWithTag(PDF_RETRY_SAVE_TAG).performClick()
+        composeRule.waitForIdle()
+        assertEquals(1, retries)
     }
 
     @Test
@@ -191,7 +286,7 @@ class PdfMenuFlowE2ETest {
     fun topChromeKeepsExactlyFourControlsAndCoachDismissFreesCanvasGestures() {
         assertEquals(PDF_TOP_CHROME_MAX_CONTROLS, 4)
         assertEquals(
-            listOf("뒤로", "문서 이름", "검색", "학습 메뉴"),
+            listOf("뒤로", "문서 이름", "검색", UiCopy.PDF_MENU),
             pdfTopChromeControls.map { it.label },
         )
         assertFalse(PdfMenuAction.SEARCH in pdfMenuActions(PdfMenuGroup.READ))

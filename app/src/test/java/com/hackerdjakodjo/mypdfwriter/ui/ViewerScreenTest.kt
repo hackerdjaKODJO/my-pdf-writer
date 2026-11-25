@@ -1,16 +1,83 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
+import com.hackerdjakodjo.mypdfwriter.data.Tool
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * System Back must dismiss the topmost viewer layer. Closing the document while
- * a sheet is open is the regression covered here, with special attention to the
- * sheets introduced by the simplified student menus.
+ * Pure viewer policies for contextual controls, truthful save/export feedback and
+ * progressive menus. System Back must dismiss the topmost viewer layer; closing
+ * the document while a sheet is open is the regression covered here.
  */
 class ViewerScreenTest {
+
+    @Test
+    fun saveStatusUsesOnlyDurableViewModelStates() {
+        assertEquals(null, pdfSaveStatusLabel(PdfSaveStatus.IDLE))
+        assertEquals("자동 저장 중…", pdfSaveStatusLabel(PdfSaveStatus.SAVING))
+        assertEquals("자동 저장됨 · 원본 PDF는 그대로", pdfSaveStatusLabel(PdfSaveStatus.SAVED))
+        assertEquals("저장 실패 · 다시 시도", pdfSaveStatusLabel(PdfSaveStatus.FAILED))
+        assertFalse(pdfSaveRetryVisible(PdfSaveStatus.IDLE))
+        assertFalse(pdfSaveRetryVisible(PdfSaveStatus.SAVING))
+        assertFalse(pdfSaveRetryVisible(PdfSaveStatus.SAVED))
+        assertTrue(pdfSaveRetryVisible(PdfSaveStatus.FAILED))
+        assertEquals("pdf_save_status", PDF_SAVE_STATUS_TAG)
+        assertEquals("pdf_retry_save", PDF_RETRY_SAVE_TAG)
+    }
+
+    @Test
+    fun exportMessagesRouteToExplicitSuccessAndRetryFeedback() {
+        assertEquals(
+            PdfMessageFeedback.EXPORT_SUCCESS,
+            pdfMessageFeedback("PDF를 내보냈습니다", "PDF를 내보냈습니다", "내보내지 못했습니다:"),
+        )
+        assertEquals(
+            PdfMessageFeedback.EXPORT_FAILURE,
+            pdfMessageFeedback("내보내지 못했습니다: 디스크가 가득 참", "PDF를 내보냈습니다", "내보내지 못했습니다:"),
+        )
+        assertEquals(
+            PdfMessageFeedback.NONE,
+            pdfMessageFeedback("현재 페이지 텍스트를 복사했습니다.", "PDF를 내보냈습니다", "내보내지 못했습니다:"),
+        )
+        assertEquals(
+            PdfMessageFeedback.NONE,
+            pdfMessageFeedback(null, "PDF를 내보냈습니다", "내보내지 못했습니다:"),
+        )
+        assertEquals(
+            PdfMessageFeedback.NONE,
+            pdfMessageFeedback("다른 메시지", "PDF를 내보냈습니다", ""),
+        )
+    }
+
+    @Test
+    fun contextualActionsFollowTheActiveToolAndHistoryAvailability() {
+        assertTrue(viewerContextActions(Tool.VIEW, canUndo = false, canRedo = false).isEmpty())
+        assertEquals(
+            listOf(ViewerContextAction.STYLE),
+            viewerContextActions(Tool.HIGHLIGHT, canUndo = false, canRedo = false),
+        )
+        assertEquals(
+            listOf(ViewerContextAction.UNDO),
+            viewerContextActions(Tool.VIEW, canUndo = true, canRedo = false),
+        )
+        assertEquals(
+            listOf(ViewerContextAction.REDO),
+            viewerContextActions(Tool.VIEW, canUndo = false, canRedo = true),
+        )
+    }
+
+    @Test
+    fun easyAndExpertMenusBothInterceptBackBeforeDocumentClose() {
+        assertTrue(ViewerSheetFlags(showEasyMenu = true).anyOpen)
+        assertTrue(ViewerSheetFlags(showHub = true).anyOpen)
+        assertFalse(ViewerSheetFlags().anyOpen)
+        assertEquals("pdf_easy_menu", PDF_EASY_MENU_TAG)
+        assertEquals("pdf_all_tools", PDF_ALL_TOOLS_TAG)
+        assertEquals("전체 도구 보기", PDF_EASY_MENU_ALL_TOOLS_LABEL)
+        assertEquals(PdfMenuAction.entries.toSet(), pdfEasyMenuExpertActions)
+    }
 
     @Test
     fun idleViewerLetsBackCloseTheDocument() {
@@ -112,6 +179,7 @@ class ViewerScreenTest {
             idle.copy(showProperties = true),
             idle.copy(showStyle = true),
             idle.copy(showDisplaySettings = true),
+            idle.copy(showEasyMenu = true),
             idle.copy(showHub = true),
             idle.copy(showReadModes = true),
             idle.copy(showAudioMenu = true),

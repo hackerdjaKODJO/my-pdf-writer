@@ -39,15 +39,17 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /**
- * Stable grouping for the single PDF 메뉴. Students see only four first-level
- * task groups, in this order: 보기 → 주석 → 노트 → 파일·설정. Less-frequent
- * utilities live inside 추가 도구 so the first screen stays short. The order of
- * [pdfMenuTopLevelGroups] is the visible order; every [PdfMenuAction] belongs to
- * exactly one surface, so adding an action cannot silently drop it from the sheet.
+ * Stable grouping for the expert PDF 메뉴 reached from the easy task sheet.
+ * Power users see four first-level task groups, in this order: 보기 → 주석 →
+ * 노트 → 파일·설정. Less-frequent utilities live inside 추가 도구 so the expert
+ * screen stays scannable. The order of [pdfMenuTopLevelGroups] is the visible
+ * order; every [PdfMenuAction] belongs to exactly one surface, so adding an
+ * action cannot silently drop it from the sheet.
  */
 internal enum class PdfMenuGroup(val title: String, val expandable: Boolean = false) {
     READ("보기"),
@@ -228,6 +230,7 @@ internal fun pdfLocationsAction(onOpen: () -> Unit): PdfHubAction = PdfHubAction
 
 internal const val PDF_HUB_NARROW_WIDTH_DP = 320
 internal const val PDF_HUB_LARGE_FONT_SCALE = 1.5f
+internal const val PDF_EXPERT_MENU_TAG = "pdf_expert_menu"
 
 /** Narrow screens and large fonts get two-line rows; every target stays ≥48dp. */
 internal data class PdfHubRowLayout(val minHeightDp: Int, val labelMaxLines: Int)
@@ -242,11 +245,11 @@ internal fun pdfHubRowLayout(widthDp: Int, fontScale: Float): PdfHubRowLayout {
 }
 
 /**
- * The single PDF 메뉴: four fixed first-level groups, no quick-action row and
- * no duplicate navigation entries. Undo/redo/style live in 필기 → 주석 도구, and
- * advanced file operations live in 설정 → 파일 도구, so the first screen stays
- * short enough to read at a glance. Every row dismisses the menu before running
- * its callback so the target sheet appears without stacking a second modal.
+ * The expert PDF 메뉴 reached from the easy sheet's 전체 도구 보기 footer: four
+ * fixed first-level groups, no quick-action row and no duplicate navigation
+ * entries. Undo/redo/style also remain in 필기 → 주석 도구, and advanced file
+ * operations live in 설정 → 추가 도구. Every row dismisses the menu before
+ * running its callback so the target sheet appears without stacking a second modal.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -275,7 +278,9 @@ fun PdfHubSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(PDF_EXPERT_MENU_TAG),
             contentPadding = PaddingValues(bottom = 28.dp),
         ) {
             item(key = "hub_header") {

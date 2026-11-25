@@ -176,8 +176,8 @@ internal fun dockAnnotationIcon(tool: Tool): ImageVector = when (tool) {
 
 /**
  * Exactly six primary dock slots in study order: 보기 · 형광펜 · 펜 · 지우개 ·
- * 텍스트 · 노트. Undo/redo/style moved to the 학습 메뉴 quick chips, and 글상자,
- * shapes and the rest stay one tap into 주석 도구 from that menu.
+ * 텍스트 선택 · 노트. Style/undo/redo sit in a compact contextual row above the
+ * dock, and 글상자, shapes and the rest stay one tap into 주석 도구.
  */
 internal enum class ViewerDockSlot {
     VIEW,
@@ -204,6 +204,85 @@ internal fun viewerDockSlotLabel(slot: ViewerDockSlot): String = when (slot) {
 internal fun viewerDockLongPressOpensStyle(slot: ViewerDockSlot): Boolean =
     slot == ViewerDockSlot.PEN || slot == ViewerDockSlot.HIGHLIGHT
 
+internal const val PDF_STYLE_ACTION_TAG = "pdf_style_action"
+internal const val PDF_UNDO_ACTION_TAG = "pdf_undo_action"
+internal const val PDF_REDO_ACTION_TAG = "pdf_redo_action"
+
+internal enum class ViewerContextAction(val label: String, val testTag: String) {
+    STYLE("스타일", PDF_STYLE_ACTION_TAG),
+    UNDO("실행 취소", PDF_UNDO_ACTION_TAG),
+    REDO("다시 실행", PDF_REDO_ACTION_TAG),
+}
+
+/** Compact actions beside the dock; no disabled placeholders are composed. */
+internal fun viewerContextActions(
+    tool: Tool,
+    canUndo: Boolean,
+    canRedo: Boolean,
+): List<ViewerContextAction> = buildList {
+    if (tool == Tool.PEN || tool == Tool.HIGHLIGHT) add(ViewerContextAction.STYLE)
+    if (canUndo) add(ViewerContextAction.UNDO)
+    if (canRedo) add(ViewerContextAction.REDO)
+}
+
+@Composable
+internal fun ViewerContextActionRow(
+    state: ViewerUiState,
+    onStyle: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val actions = viewerContextActions(state.tool, state.canUndo, state.canRedo)
+    if (actions.isEmpty()) return
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        actions.forEach { action ->
+            Surface(
+                onClick = when (action) {
+                    ViewerContextAction.STYLE -> onStyle
+                    ViewerContextAction.UNDO -> onUndo
+                    ViewerContextAction.REDO -> onRedo
+                },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .sizeIn(
+                        minWidth = MIN_TARGET_DP.dp,
+                        minHeight = MIN_TARGET_DP.dp,
+                    )
+                    .testTag(action.testTag)
+                    .semantics { contentDescription = action.label },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(
+                        when (action) {
+                            ViewerContextAction.STYLE -> Icons.Outlined.Tune
+                            ViewerContextAction.UNDO -> Icons.AutoMirrored.Outlined.Undo
+                            ViewerContextAction.REDO -> Icons.AutoMirrored.Outlined.Redo
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp),
+                    )
+                    Text(action.label, style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+    }
+}
+
 private data class DockEntry(
     val label: String,
     val icon: ImageVector,
@@ -213,9 +292,9 @@ private data class DockEntry(
 )
 
 /**
- * Single six-slot study dock: 보기 · 형광펜 · 펜 · 지우개 · 텍스트 · 노트.
- * Undo/redo/style are quick chips at the top of 학습 메뉴, and the annotation
- * extras stay in 주석 도구, so the dock never needs a second row.
+ * Single six-slot study dock: 보기 · 형광펜 · 펜 · 지우개 · 텍스트 선택 · 노트.
+ * The separate contextual row carries style/undo/redo, and annotation extras
+ * stay in 주석 도구, so the dock never needs a second row.
  */
 @Composable
 fun ViewerToolDock(
@@ -840,7 +919,16 @@ private fun ToolOptionTile(
     }
 }
 
-/** Contextual style sheet: palette, size, opacity and related tools. */
+/** Favorite pens belong beside the active pen controls, not behind another menu. */
+internal fun viewerStyleShowsFavoritePens(
+    tool: Tool,
+    hasCurrentPen: Boolean,
+    canApplyFavorite: Boolean,
+    canOpenRegistry: Boolean,
+): Boolean = (tool == Tool.PEN || tool == Tool.HIGHLIGHT) &&
+    hasCurrentPen && canApplyFavorite && canOpenRegistry
+
+/** Contextual style sheet: palette, size, opacity, favorite pens and related tools. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViewerStyleSheet(
@@ -855,6 +943,10 @@ fun ViewerStyleSheet(
     onPressureInk: ((Boolean) -> Unit)? = null,
     onPressureCurve: ((PressureCurve) -> Unit)? = null,
     onHighlightOpacity: ((Float) -> Unit)? = null,
+    favorites: List<PenPreset> = emptyList(),
+    currentPen: PenPreset? = null,
+    onApplyFavorite: ((PenPreset) -> Unit)? = null,
+    onOpenPenRegistry: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -882,6 +974,27 @@ fun ViewerStyleSheet(
                 TextButton(onClick = onDismiss) { Text("완료") }
             }
             Spacer(Modifier.height(10.dp))
+
+            if (viewerStyleShowsFavoritePens(
+                    tool = state.tool,
+                    hasCurrentPen = currentPen != null,
+                    canApplyFavorite = onApplyFavorite != null,
+                    canOpenRegistry = onOpenPenRegistry != null,
+                )
+            ) {
+                Text(
+                    "즐겨찾는 펜",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                FavoritePenStrip(
+                    favorites = favorites,
+                    current = requireNotNull(currentPen),
+                    onApply = requireNotNull(onApplyFavorite),
+                    onOpenRegistry = requireNotNull(onOpenPenRegistry),
+                )
+                Spacer(Modifier.height(10.dp))
+            }
 
             if (state.tool == Tool.PEN || state.tool == Tool.HIGHLIGHT) {
                 PenStudioControls(
