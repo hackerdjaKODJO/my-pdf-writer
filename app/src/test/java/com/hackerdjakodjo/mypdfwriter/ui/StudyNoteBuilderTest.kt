@@ -424,7 +424,7 @@ class StudyNoteBuilderTest {
             sourceDocumentName = "lecture.pdf",
             sourceDocumentUri = "content://docs/lecture-b",
         )
-        val exactUri = wrongUri.copy(id = "exact", sourceDocumentUri = source.docUri)
+        val exactUri = wrongUri.copy(id = "exact", sourceDocumentUri = source.docUri.orEmpty())
 
         assertEquals(
             "exact",

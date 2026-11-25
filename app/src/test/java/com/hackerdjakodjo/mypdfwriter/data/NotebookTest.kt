@@ -310,7 +310,7 @@ class NotebookTest {
         val linkJson = pageJson.getJSONObject("sourceLink")
         assertEquals(
             setOf("uri", "docId", "sourcePage", "fingerprint", "rect", "excerptId", "rotation"),
-            linkJson.keySet().toSet(),
+            linkJson.keys().asSequence().toSet(),
         )
         assertEquals(270, linkJson.getInt("rotation"))
 
