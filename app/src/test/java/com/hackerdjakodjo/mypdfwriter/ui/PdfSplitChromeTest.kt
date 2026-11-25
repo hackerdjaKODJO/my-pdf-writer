@@ -163,8 +163,8 @@ class PdfSplitChromeTest {
     @Test
     fun splitPaneKeepsTheDocumentedPdfStrip() {
         val paneFraction = clampStudyPaneFraction(STUDY_PANE_DEFAULT_FRACTION)
-        assertEquals(0.15f, 1f - paneFraction, 0.0001f)
-        assertEquals(0.85f, paneFraction, 0.0001f)
+        assertEquals(0.30f, 1f - paneFraction, 0.0001f)
+        assertEquals(0.70f, paneFraction, 0.0001f)
     }
 
     @Test
@@ -181,9 +181,9 @@ class PdfSplitChromeTest {
     fun shortStripsKeepOnlyEssentialPdfControls() {
         assertEquals(SplitPdfChromeDensity.ESSENTIAL, splitPdfChromeDensity(0.81f))
         assertEquals(SplitPdfChromeDensity.ESSENTIAL, splitPdfChromeDensity(0.85f))
-        // Invalid values resolve through the default 85% pane.
-        assertEquals(SplitPdfChromeDensity.ESSENTIAL, splitPdfChromeDensity(Float.NaN))
-        assertEquals(SplitPdfChromeDensity.ESSENTIAL, splitPdfChromeDensity(2f))
+        // Invalid values resolve through the new 70% default, which keeps the full strip.
+        assertEquals(SplitPdfChromeDensity.FULL, splitPdfChromeDensity(Float.NaN))
+        assertEquals(SplitPdfChromeDensity.FULL, splitPdfChromeDensity(2f))
     }
 
     @Test
