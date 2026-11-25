@@ -53,8 +53,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
 import com.hackerdjakodjo.mypdfwriter.pdf.DocumentOverlayPainter
-import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
-import com.hackerdjakodjo.mypdfwriter.ui.SearchHighlightOverlay
+import com.hackerdjakodjo.mypdfwriter.pdf.EraserGeometry
 import com.hackerdjakodjo.mypdfwriter.pdf.InkQuality
 import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfCrop
@@ -62,6 +61,9 @@ import com.hackerdjakodjo.mypdfwriter.pdf.PdfLink
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfLinks
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
+import com.hackerdjakodjo.mypdfwriter.pdf.SearchMatchRect
+import com.hackerdjakodjo.mypdfwriter.ui.SearchHighlightOverlay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -114,6 +116,7 @@ private class CanvasTransform {
     fun normalize(
         position: Offset,
         pressure: Float = DEFAULT_INK_PRESSURE,
+        timeMs: Long? = null,
     ): NormalizedPoint {
         val displayX = (position.x - viewW / 2f - pan.x) / (visibleW * total) + 0.5f
         val displayY = (position.y - viewH / 2f - topAnchorOffset - pan.y) /
@@ -123,6 +126,7 @@ private class CanvasTransform {
             page.x.coerceIn(0f, 1f),
             page.y.coerceIn(0f, 1f),
             pressure,
+            timeMs,
         )
     }
 }
@@ -181,7 +185,8 @@ fun PdfCanvas(
     onDeleteMemoCard: (String) -> Unit = {},
     onZoomChange: (Float) -> Unit,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
-    onEraseStroke: (List<NormalizedPoint>) -> Unit,
+    /** One normalized eraser contact plus raw pressure and stylus policy. */
+    onEraseStroke: (NormalizedPoint, Float, Boolean) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
     onRequestStamp: (NormalizedPoint) -> Unit,
     onRequestSignature: (NormalizedPoint) -> Unit,
@@ -231,6 +236,7 @@ fun PdfCanvas(
     var shapeStart by remember { mutableStateOf<NormalizedPoint?>(null) }
     var shapeEnd by remember { mutableStateOf<NormalizedPoint?>(null) }
     var eraserPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
+    var eraserPressureSensitive by remember { mutableStateOf(false) }
     var selectionStart by remember { mutableStateOf<NormalizedPoint?>(null) }
     var selectionEnd by remember { mutableStateOf<NormalizedPoint?>(null) }
     val eraserTrail = remember { mutableStateListOf<NormalizedPoint>() }
@@ -253,6 +259,7 @@ fun PdfCanvas(
     val currentRequestSelectionAt by rememberUpdatedState(onRequestSelectionAt)
     val currentLinks by rememberUpdatedState(links)
     val currentOnLinkTapped by rememberUpdatedState(onLinkTapped)
+    val currentOnEraseStroke by rememberUpdatedState(onEraseStroke)
 
     LaunchedEffect(pageKey) {
         pan = Offset.Zero
@@ -262,6 +269,7 @@ fun PdfCanvas(
         shapeStart = null
         shapeEnd = null
         eraserPoint = null
+        eraserPressureSensitive = false
         selectionStart = null
         selectionEnd = null
     }
@@ -558,153 +566,293 @@ fun PdfCanvas(
         } else {
             Modifier.pointerInput(tool, docId, pageIndex, pressureEnabled, pressureCurve) {
                 when (tool) {
-                    Tool.TEXT -> detectTapGestures { position ->
-                        if (!currentMemoHitTest(position)) onRequestText(transform.normalize(position))
-                    }
-
-                    Tool.STAMP -> detectTapGestures { position ->
-                        if (!currentMemoHitTest(position)) onRequestStamp(transform.normalize(position))
-                    }
-
-                    Tool.SIGNATURE -> detectTapGestures { position ->
-                        if (!currentMemoHitTest(position)) onRequestSignature(transform.normalize(position))
-                    }
-
-                    Tool.ERASER -> awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        if (currentMemoHitTest(down.position)) {
-                            down.consume()
-                            return@awaitEachGesture
-                        }
-                        down.consume()
-                        eraserTrail.clear()
-                        val start = transform.normalize(down.position)
-                        eraserTrail.add(start)
-                        eraserPoint = start
-                        var pressed = true
-                        while (pressed) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if (!change.pressed) {
-                                change.consume()
-                                pressed = false
-                            } else if (change.positionChanged()) {
-                                val point = transform.normalize(change.position)
-                                eraserTrail.add(point)
-                                eraserPoint = point
-                                change.consume()
-                            }
-                        }
-                        onEraseStroke(eraserTrail.toList())
-                        eraserTrail.clear()
-                        eraserPoint = null
-                    }
-
-                    Tool.RECT,
-                    Tool.ARROW,
-                    Tool.LINE,
-                    Tool.ELLIPSE,
-                    Tool.UNDERLINE,
-                    Tool.STRIKEOUT,
-                    Tool.REDACT -> awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        if (currentMemoHitTest(down.position)) {
-                            down.consume()
-                            return@awaitEachGesture
-                        }
-                        down.consume()
-                        val start = transform.normalize(down.position)
-                        shapeStart = start
-                        shapeEnd = start
-                        var pressed = true
-                        while (pressed) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if (!change.pressed) {
-                                change.consume()
-                                pressed = false
-                            } else if (change.positionChanged()) {
-                                shapeEnd = transform.normalize(change.position)
-                                change.consume()
-                            }
-                        }
-                        val startPoint = shapeStart
-                        val endPoint = shapeEnd
-                        if (startPoint != null && endPoint != null) {
-                            val dx = endPoint.x - startPoint.x
-                            val dy = endPoint.y - startPoint.y
-                            if (dx * dx + dy * dy > 0.000025f) {
-                                onAddStroke(listOf(startPoint, endPoint), 0L)
-                            }
-                        }
-                        shapeStart = null
-                        shapeEnd = null
-                    }
-
                     else -> awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        if (currentMemoHitTest(down.position)) {
+                            down.consume()
+                            return@awaitEachGesture
+                        }
+                        down.consume()
+                        val strokeStartUptimeMs = down.uptimeMillis
+                        val gestureTool = gestureToolForPointer(tool, down.type)
+
+                        if (gestureTool == Tool.ERASER) {
+                            eraserTrail.clear()
+                            eraserPressureSensitive = eraserUsesPressure(down.type, pressureEnabled)
+                            val startPressure = eraserInputPressure(
+                                down.type,
+                                down.pressure,
+                                pressureEnabled,
+                            )
+                            val start = transform.normalize(
+                                down.position,
+                                startPressure,
+                                relativePointTimeMs(down.uptimeMillis, strokeStartUptimeMs),
+                            )
+                            eraserTrail.add(start)
+                            eraserPoint = start
+                            var lastPosition = down.position
+                            var pressed = true
+                            while (pressed) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    change.consume()
+                                    pressed = false
+                                } else {
+                                    val movement = change.position - lastPosition
+                                    val pressure = eraserInputPressure(
+                                        change.type,
+                                        change.pressure,
+                                        pressureEnabled,
+                                    )
+                                    if (InkQuality.hasMeaningfulPositionChange(movement.x, movement.y)) {
+                                        lastPosition = change.position
+                                        val point = transform.normalize(
+                                            change.position,
+                                            pressure,
+                                            relativePointTimeMs(
+                                                change.uptimeMillis,
+                                                strokeStartUptimeMs,
+                                            ),
+                                        )
+                                        eraserTrail.add(point)
+                                        eraserPoint = point
+                                    } else {
+                                        // Pressure may change while the eraser is
+                                        // still; keep its preview kernel live without
+                                        // adding jitter geometry to the trail.
+                                        eraserPoint = transform.normalize(
+                                            lastPosition,
+                                            pressure,
+                                            relativePointTimeMs(
+                                                change.uptimeMillis,
+                                                strokeStartUptimeMs,
+                                            ),
+                                        )
+                                    }
+                                    change.consume()
+                                }
+                            }
+                            // Preserve commit-on-up semantics while feeding the
+                            // ViewModel's shared, pressure-aware point API.
+                            val pressureSensitive = eraserPressureSensitive
+                            EraserGeometry.densifyTrail(eraserTrail.toList()).forEach { point ->
+                                currentOnEraseStroke(point, point.pressure, pressureSensitive)
+                            }
+                            eraserTrail.clear()
+                            eraserPoint = null
+                            eraserPressureSensitive = false
+                            return@awaitEachGesture
+                        }
+
+                        if (gestureTool == Tool.TEXT || gestureTool == Tool.STAMP ||
+                            gestureTool == Tool.SIGNATURE
+                        ) {
+                            var traveled = 0f
+                            var lastPosition = down.position
+                            var pressed = true
+                            while (pressed) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    change.consume()
+                                    pressed = false
+                                    if (traveled <= viewConfiguration.touchSlop) {
+                                        val point = transform.normalize(change.position)
+                                        when (gestureTool) {
+                                            Tool.TEXT -> onRequestText(point)
+                                            Tool.STAMP -> onRequestStamp(point)
+                                            Tool.SIGNATURE -> onRequestSignature(point)
+                                            else -> Unit
+                                        }
+                                    }
+                                } else {
+                                    val movement = change.position - lastPosition
+                                    traveled += movement.getDistance()
+                                    lastPosition = change.position
+                                    change.consume()
+                                }
+                            }
+                            return@awaitEachGesture
+                        }
+
+                        val isShape = when (gestureTool) {
+                            Tool.RECT,
+                            Tool.ARROW,
+                            Tool.LINE,
+                            Tool.ELLIPSE,
+                            Tool.UNDERLINE,
+                            Tool.STRIKEOUT,
+                            Tool.REDACT -> true
+                            else -> false
+                        }
+                        if (isShape) {
+                            val start = transform.normalize(
+                                down.position,
+                                DEFAULT_INK_PRESSURE,
+                                relativePointTimeMs(down.uptimeMillis, strokeStartUptimeMs),
+                            )
+                            shapeStart = start
+                            shapeEnd = start
+                            var pressed = true
+                            while (pressed) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    change.consume()
+                                    pressed = false
+                                } else if (change.positionChanged()) {
+                                    shapeEnd = transform.normalize(
+                                        change.position,
+                                        DEFAULT_INK_PRESSURE,
+                                        relativePointTimeMs(
+                                            change.uptimeMillis,
+                                            strokeStartUptimeMs,
+                                        ),
+                                    )
+                                    change.consume()
+                                }
+                            }
+                            val startPoint = shapeStart
+                            val endPoint = shapeEnd ?: startPoint
+                            if (startPoint != null && endPoint != null) {
+                                val dx = endPoint.x - startPoint.x
+                                val dy = endPoint.y - startPoint.y
+                                if (dx * dx + dy * dy > 0.000025f) {
+                                    onAddStroke(listOf(startPoint, endPoint), 0L)
+                                }
+                            }
+                            shapeStart = null
+                            shapeEnd = null
+                            return@awaitEachGesture
+                        }
+
                         // Shared, session-scoped calibration keeps ink weight
                         // consistent stroke-to-stroke. Finger/mouse stay neutral.
-                        fun capture(change: PointerInputChange): Float = effectiveInkPressure(
-                            pointerType = change.type,
-                            rawPressure = change.pressure,
-                            pressureEnabled = pressureEnabled,
-                            pressureCurve = pressureCurve,
-                            calibrator = inkCalibrator,
-                            pressed = change.pressed,
-                            smoother = inkSmoother,
-                        )
-
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        if (currentMemoHitTest(down.position)) {
-                            down.consume()
-                            return@awaitEachGesture
+                        var lastPressureUptimeMs = strokeStartUptimeMs
+                        fun capture(
+                            change: PointerInputChange,
+                            eventUptimeMs: Long = change.uptimeMillis,
+                        ): Float {
+                            val elapsedMs = (eventUptimeMs - lastPressureUptimeMs).coerceAtLeast(0L)
+                            lastPressureUptimeMs = maxOf(lastPressureUptimeMs, eventUptimeMs)
+                            return effectiveInkPressure(
+                                pointerType = change.type,
+                                rawPressure = change.pressure,
+                                pressureEnabled = pressureEnabled,
+                                pressureCurve = pressureCurve,
+                                calibrator = inkCalibrator,
+                                pressed = change.pressed,
+                                smoother = inkSmoother,
+                                elapsedMs = elapsedMs,
+                            )
                         }
-                        down.consume()
-                        val strokeStartMs = SystemClock.elapsedRealtime()
+
                         livePoints.clear()
                         // Each stroke starts with an exact first pressure sample.
                         inkSmoother.reset()
                         val downPressure = capture(down)
-                        livePoints.add(transform.normalize(down.position, downPressure))
+                        livePoints.add(
+                            transform.normalize(
+                                down.position,
+                                downPressure,
+                                relativePointTimeMs(down.uptimeMillis, strokeStartUptimeMs),
+                            ),
+                        )
                         var lastPressure = downPressure
-                        var lastPressureAtMs = SystemClock.elapsedRealtime()
+                        var lastEmittedAtUptimeMs = strokeStartUptimeMs
                         var lastPosition = down.position
+                        var lastChange = down
                         var stationaryEmitted = 0
+
+                        fun emitStationarySample(
+                            change: PointerInputChange,
+                            pressure: Float,
+                            nowUptimeMs: Long,
+                        ) {
+                            if (!pressureEnabled || change.type != PointerType.Stylus ||
+                                !change.pressed || !change.pressure.isFinite() ||
+                                (gestureTool != Tool.PEN && gestureTool != Tool.HIGHLIGHT)
+                            ) {
+                                return
+                            }
+                            if (!InkQuality.shouldEmitPressureSample(
+                                    previousPressure = lastPressure,
+                                    nextPressure = pressure,
+                                    positionChanged = false,
+                                    elapsedMs = (nowUptimeMs - lastEmittedAtUptimeMs)
+                                        .coerceAtLeast(0L),
+                                    emitted = stationaryEmitted,
+                                )
+                            ) {
+                                return
+                            }
+                            stationaryEmitted++
+                            livePoints.add(
+                                transform.normalize(
+                                    lastPosition,
+                                    pressure,
+                                    relativePointTimeMs(
+                                        nowUptimeMs,
+                                        strokeStartUptimeMs,
+                                        lastEmittedAtUptimeMs - strokeStartUptimeMs,
+                                    ),
+                                ),
+                            )
+                            lastPressure = pressure
+                            lastEmittedAtUptimeMs = nowUptimeMs
+                        }
+
                         var pressed = true
                         while (pressed) {
-                            val event = awaitPointerEvent()
+                            val event = withTimeoutOrNull(InkQuality.MIN_STATIONARY_SAMPLE_MS) {
+                                awaitPointerEvent()
+                            }
+                            if (event == null) {
+                                if (pressureEnabled && lastChange.type == PointerType.Stylus &&
+                                    (gestureTool == Tool.PEN || gestureTool == Tool.HIGHLIGHT)
+                                ) {
+                                    val now = SystemClock.uptimeMillis()
+                                    val pressure = capture(lastChange, now)
+                                    emitStationarySample(lastChange, pressure, now)
+                                }
+                                continue
+                            }
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            lastChange = change
                             if (!change.pressed) {
                                 change.consume()
                                 pressed = false
-                            } else if (change.positionChanged()) {
-                                lastPosition = change.position
-                                lastPressure = capture(change)
-                                lastPressureAtMs = SystemClock.elapsedRealtime()
-                                livePoints.add(transform.normalize(change.position, lastPressure))
-                                change.consume()
-                            } else if (tool == Tool.PEN || tool == Tool.HIGHLIGHT) {
-                                val nextPressure = capture(change)
-                                if (InkQuality.shouldEmitPressureSample(
-                                        previousPressure = lastPressure,
-                                        nextPressure = nextPressure,
-                                        positionChanged = false,
-                                        elapsedMs = SystemClock.elapsedRealtime() - lastPressureAtMs,
-                                        emitted = stationaryEmitted,
+                            } else {
+                                val pressure = capture(change)
+                                val movement = change.position - lastPosition
+                                if (InkQuality.hasMeaningfulPositionChange(movement.x, movement.y)) {
+                                    lastPosition = change.position
+                                    livePoints.add(
+                                        transform.normalize(
+                                            change.position,
+                                            pressure,
+                                            relativePointTimeMs(
+                                                change.uptimeMillis,
+                                                strokeStartUptimeMs,
+                                                lastEmittedAtUptimeMs - strokeStartUptimeMs,
+                                            ),
+                                        ),
                                     )
-                                ) {
-                                    stationaryEmitted++
-                                    lastPressure = nextPressure
-                                    lastPressureAtMs = SystemClock.elapsedRealtime()
-                                    livePoints.add(transform.normalize(lastPosition, nextPressure))
+                                    lastPressure = pressure
+                                    lastEmittedAtUptimeMs = maxOf(
+                                        lastEmittedAtUptimeMs,
+                                        change.uptimeMillis,
+                                    )
+                                } else {
+                                    emitStationarySample(change, pressure, change.uptimeMillis)
                                 }
                                 change.consume()
                             }
                         }
                         if (livePoints.isNotEmpty()) {
-                            val durationMs = (SystemClock.elapsedRealtime() - strokeStartMs)
-                                .coerceAtLeast(0L)
-                            onAddStroke(livePoints.toList(), durationMs)
+                            onAddStroke(livePoints.toList(), inkStrokeDurationMs(livePoints))
                         }
                         livePoints.clear()
                     }
@@ -853,10 +1001,12 @@ fun PdfCanvas(
 
                 val eraser = eraserPoint
                 if (eraser != null) {
-                    AnnotationPainter.drawEraserPreview(
+                    drawSharedEraserPreview(
                         native,
-                        NormalizedPoint(eraser.x * pageW, eraser.y * pageH),
-                        0.028f * pageW,
+                        eraser,
+                        pageW,
+                        pageH,
+                        pressureSensitive = eraserPressureSensitive,
                     )
                 }
 

@@ -9,17 +9,26 @@ import org.junit.Test
 class InkQualityTest {
 
     @Test
-    fun stationaryPressureChangesAreEmittedButJitterIsNot() {
+    fun stationaryPressureSamplesAreTimeBoundedEvenWhenPressureIsConstant() {
+        assertTrue(InkQuality.shouldEmitPressureSample(0.5f, 0.5f, false, 32L))
         assertTrue(InkQuality.shouldEmitPressureSample(0.2f, 0.5f, false, 32L))
         assertTrue(InkQuality.shouldEmitPressureSample(0.8f, 0.4f, false, 32L))
-        assertFalse(InkQuality.shouldEmitPressureSample(0.2f, 0.205f, false, 32L))
-        assertFalse(InkQuality.shouldEmitPressureSample(0.2f, 0.5f, false, 2L))
-        assertFalse(InkQuality.shouldEmitPressureSample(0.2f, 0.9f, true, 32L))
+        assertFalse(InkQuality.shouldEmitPressureSample(0.5f, 0.5f, false, 31L))
+        assertFalse(InkQuality.shouldEmitPressureSample(0.2f, 0.5f, true, 32L))
         assertFalse(InkQuality.shouldEmitPressureSample(0.2f, 0.9f, false, 32L, eps = Float.NaN))
+        assertFalse(InkQuality.shouldEmitPressureSample(Float.NaN, 0.9f, false, 32L))
         assertFalse(
             InkQuality.shouldEmitPressureSample(0.2f, 0.9f, false, 32L,
                 emitted = InkQuality.MAX_STATIONARY_SAMPLES),
         )
+    }
+
+    @Test
+    fun subPixelJitterIsDwellButIntentionalTravelIsNot() {
+        assertFalse(InkQuality.hasMeaningfulPositionChange(0.05f, -0.05f))
+        assertFalse(InkQuality.hasMeaningfulPositionChange(Float.NaN, 0f))
+        assertTrue(InkQuality.hasMeaningfulPositionChange(0.1f, 0f))
+        assertTrue(InkQuality.hasMeaningfulPositionChange(0f, -0.2f))
     }
 
     @Test

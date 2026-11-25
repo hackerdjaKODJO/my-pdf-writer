@@ -11,14 +11,17 @@ import java.util.UUID
  *
  * [pressure] is the stylus pressure sample at this point in 0..1; 1 is the
  * neutral value used by fingers, mice, legacy files and recognized shapes.
- * The constructor clamps it so no path can store NaN or an out-of-range value.
- * This is deliberately a regular class rather than a data class: Kotlin cannot
- * clamp a data-class primary-constructor value without exposing the raw one.
+ * [timeMs] is the optional monotonic sample time relative to stroke start.
+ * The constructor clamps pressure so no path can store NaN or an out-of-range
+ * value. This is deliberately a regular class rather than a data class: Kotlin
+ * cannot clamp a data-class primary-constructor value without exposing the raw
+ * one.
  */
 class NormalizedPoint(
     val x: Float,
     val y: Float,
     pressure: Float = DEFAULT_INK_PRESSURE,
+    val timeMs: Long? = null,
 ) {
     val pressure: Float = clampInkPressure(pressure)
 
@@ -26,27 +29,30 @@ class NormalizedPoint(
         x: Float = this.x,
         y: Float = this.y,
         pressure: Float = this.pressure,
-    ): NormalizedPoint = NormalizedPoint(x, y, pressure)
+        timeMs: Long? = this.timeMs,
+    ): NormalizedPoint = NormalizedPoint(x, y, pressure, timeMs)
 
     operator fun component1(): Float = x
     operator fun component2(): Float = y
     operator fun component3(): Float = pressure
+    operator fun component4(): Long? = timeMs
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is NormalizedPoint) return false
-        return x == other.x && y == other.y && pressure == other.pressure
+        return x == other.x && y == other.y && pressure == other.pressure && timeMs == other.timeMs
     }
 
     override fun hashCode(): Int {
         var result = x.hashCode()
         result = 31 * result + y.hashCode()
         result = 31 * result + pressure.hashCode()
+        result = 31 * result + (timeMs?.hashCode() ?: 0)
         return result
     }
 
     override fun toString(): String =
-        "NormalizedPoint(x=$x, y=$y, pressure=$pressure)"
+        "NormalizedPoint(x=$x, y=$y, pressure=$pressure, timeMs=$timeMs)"
 }
 
 enum class AnnotationType {
@@ -127,6 +133,12 @@ data class Annotation(
      * whole once their [createdAt] is reached. Legacy documents default to `0`.
      */
     val durationMs: Long = 0L,
+    /**
+     * Optional per-point milliseconds relative to stroke start. Kept separate
+     * from `pts`/`prs` so legacy files retain their exact JSON shape. When valid,
+     * replay uses these samples instead of assuming uniform point spacing.
+     */
+    val timesMs: List<Long>? = null,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -154,6 +166,9 @@ data class Annotation(
         if (stamp.isNotEmpty()) put("st", stamp)
         put("ct", createdAt)
         put("dur", durationMs)
+        timesMs?.let { times ->
+            put("ptms", JSONArray().apply { times.forEach { put(it) } })
+        }
     }
 
     companion object {
@@ -161,6 +176,8 @@ data class Annotation(
             val type = runCatching { AnnotationType.valueOf(o.optString("t")) }.getOrNull() ?: return null
             val flat = o.optJSONArray("pts") ?: JSONArray()
             val pressures = o.optJSONArray("prs")
+            val rawTimes = o.optJSONArray("ptms")
+            val timesMs = parsePointTimes(rawTimes, flat.length() / 2)
             val points = ArrayList<NormalizedPoint>(flat.length() / 2)
             var i = 0
             var pointIndex = 0
@@ -177,6 +194,7 @@ data class Annotation(
                         flat.optDouble(i).toFloat(),
                         flat.optDouble(i + 1).toFloat(),
                         pressure,
+                        timesMs?.getOrNull(pointIndex),
                     ),
                 )
                 i += 2
@@ -201,9 +219,71 @@ data class Annotation(
                 // Older documents have no timestamp; keep them visible in replay.
                 createdAt = o.optLong("ct", 0L),
                 durationMs = o.optLong("dur", 0L).coerceAtLeast(0L),
+                timesMs = timesMs,
             )
         }
+
+        /** Invalid optional timing never invalidates the legacy annotation. */
+        private fun parsePointTimes(array: JSONArray?, pointCount: Int): List<Long>? {
+            if (array == null || array.length() != pointCount) return null
+            val parsed = ArrayList<Long>(pointCount)
+            var previousMillis = 0.0
+            for (index in 0 until array.length()) {
+                val value = array.opt(index)
+                if (value !is Number) return null
+                val milliseconds = value.toDouble()
+                if (!milliseconds.isFinite() || milliseconds < 0.0 ||
+                    milliseconds > Long.MAX_VALUE.toDouble() ||
+                    (index > 0 && milliseconds < previousMillis)
+                ) {
+                    return null
+                }
+                parsed.add(milliseconds.toLong())
+                previousMillis = milliseconds
+            }
+            return parsed
+        }
     }
+}
+
+/**
+ * Number of samples due at [fraction] of this annotation's replay window.
+ * Timed strokes reveal by their actual sample times (including dwell gaps);
+ * legacy strokes retain the historical near-uniform rounding. A non-empty
+ * legacy stroke keeps its initial down sample visible at fraction zero.
+ */
+fun Annotation.revealPointCount(fraction: Float): Int {
+    val count = points.size
+    if (count == 0) return 0
+    val safeFraction = when {
+        fraction.isFinite() -> fraction.coerceIn(0f, 1f)
+        fraction > 0f -> 1f
+        else -> 0f
+    }
+    if (safeFraction >= 1f) return count
+    val times = timesMs
+    if (times == null || durationMs <= 0L || !isValidPointTimes(times, count)) {
+        return (count * safeFraction + 0.5f).toInt().coerceIn(1, count)
+    }
+    // Fractions are Float values; a half-millisecond tolerance keeps an exact
+    // sample boundary (for example 0.9f of 1000 ms) from disappearing due to
+    // binary rounding.
+    val elapsedMs = durationMs.toDouble() * safeFraction.toDouble() + 0.5
+    var revealed = 0
+    while (revealed < count && times[revealed].toDouble() <= elapsedMs) {
+        revealed++
+    }
+    return revealed.coerceIn(0, count)
+}
+
+private fun isValidPointTimes(times: List<Long>, pointCount: Int): Boolean {
+    if (times.size != pointCount) return false
+    var previous = 0L
+    times.forEachIndexed { index, time ->
+        if (time < 0L || (index > 0 && time < previous)) return false
+        previous = time
+    }
+    return true
 }
 
 /**
