@@ -1,6 +1,7 @@
 package com.hackerdjakodjo.mypdfwriter.data
 
 import com.hackerdjakodjo.mypdfwriter.ui.DocSaveQueue
+import com.hackerdjakodjo.mypdfwriter.ui.DocSaveRequest
 import com.hackerdjakodjo.mypdfwriter.ui.OpenGenerationGate
 import com.hackerdjakodjo.mypdfwriter.ui.PdfExportSnapshot
 import com.hackerdjakodjo.mypdfwriter.ui.ViewerUiState
@@ -36,6 +37,12 @@ class DocumentSwitchE2ETest {
         notes = mapOf(0 to note),
     )
 
+    private fun request(docId: String, note: String) = DocSaveRequest(
+        state = state(docId, note),
+        viewerGeneration = 1L,
+        reportStatus = true,
+    )
+
     // ------------------------------------------------------------- save queue
 
     @Test
@@ -44,27 +51,27 @@ class DocumentSwitchE2ETest {
         assertFalse(queue.running)
         assertTrue(queue.pending.isEmpty())
 
-        val (afterA, startA) = queue.offer(state("A", "a1"))
+        val (afterA, startA) = queue.offer(request("A", "a1"))
         assertTrue(startA)
         queue = afterA
-        val (afterB, startB) = queue.offer(state("B", "b1"))
+        val (afterB, startB) = queue.offer(request("B", "b1"))
         assertFalse("a second pending doc must not start another writer", startB)
         queue = afterB
-        val (afterA2, startA2) = queue.offer(state("A", "a2"))
+        val (afterA2, startA2) = queue.offer(request("A", "a2"))
         assertFalse(startA2)
         queue = afterA2
 
         assertEquals(2, queue.pending.size)
-        assertEquals("a2", queue.pending["A"]?.notes?.get(0))
-        assertEquals("b1", queue.pending["B"]?.notes?.get(0))
+        assertEquals("a2", queue.pending["A"]?.state?.notes?.get(0))
+        assertEquals("b1", queue.pending["B"]?.state?.notes?.get(0))
 
         val (afterFirst, first) = queue.take()
-        assertEquals("A", first?.docId)
-        assertEquals("a2", first?.notes?.get(0))
+        assertEquals("A", first?.state?.docId)
+        assertEquals("a2", first?.state?.notes?.get(0))
         queue = afterFirst
         val (afterSecond, second) = queue.take()
-        assertEquals("B", second?.docId)
-        assertEquals("b1", second?.notes?.get(0))
+        assertEquals("B", second?.state?.docId)
+        assertEquals("b1", second?.state?.notes?.get(0))
         queue = afterSecond
         val (idle, nothing) = queue.take()
         assertNull(nothing)
@@ -74,19 +81,19 @@ class DocumentSwitchE2ETest {
     @Test
     fun coalescingDropsIntermediateStatesButWritesTheLastOne() {
         var queue = DocSaveQueue()
-        val (afterA, startA) = queue.offer(state("A", "a1"))
+        val (afterA, startA) = queue.offer(request("A", "a1"))
         assertTrue(startA)
         queue = afterA
-        val (afterB, startB) = queue.offer(state("A", "a2"))
+        val (afterB, startB) = queue.offer(request("A", "a2"))
         assertFalse(startB)
         queue = afterB
-        val (afterC, startC) = queue.offer(state("A", "a3"))
+        val (afterC, startC) = queue.offer(request("A", "a3"))
         assertFalse(startC)
         queue = afterC
 
         assertEquals(1, queue.pending.size)
         val (drained, write) = queue.take()
-        assertEquals("a3", write?.notes?.get(0))
+        assertEquals("a3", write?.state?.notes?.get(0))
         val (idle, empty) = drained.take()
         assertNull(empty)
         assertFalse(idle.running)
