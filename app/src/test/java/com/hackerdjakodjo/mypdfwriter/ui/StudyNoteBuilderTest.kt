@@ -7,6 +7,8 @@ import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.data.PaperTint
+import com.hackerdjakodjo.mypdfwriter.data.StudySourceLink
+import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -17,13 +19,18 @@ class StudyNoteBuilderTest {
     @Test
     fun fromExcerptsCreatesOneTextPagePerExcerptWithSourceLink() {
         val excerpts = listOf(
-            Excerpt(pageIndex = 2, text = "첫 번째 발췌문입니다.", title = "개념"),
-            Excerpt(pageIndex = 7, text = "두 번째 발췌문입니다."),
+            Excerpt(id = "excerpt-1", pageIndex = 2, text = "첫 번째 발췌문입니다.", title = "개념"),
+            Excerpt(id = "excerpt-2", pageIndex = 7, text = "두 번째 발췌문입니다."),
         )
 
         val notebook = StudyNoteBuilder.fromExcerpts(
             title = "세포 생물학",
-            source = StudySource("biology.pdf", "content://docs/biology"),
+            source = StudySource(
+                docName = "biology.pdf",
+                docUri = "content://docs/biology",
+                docId = "doc-biology",
+                contentFingerprint = "fingerprint-biology",
+            ),
             excerpts = excerpts,
         )
 
@@ -44,6 +51,12 @@ class StudyNoteBuilderTest {
             assertEquals("원본 PDF p.${excerpt.pageIndex + 1}", page.memo)
             assertEquals(excerpt.pageIndex, page.sourcePageIndex)
             assertEquals(excerpt.pageIndex, StudyNoteBuilder.sourcePage(notebook, index))
+            val link = page.sourceLink!!
+            assertEquals("content://docs/biology", link.uri)
+            assertEquals("doc-biology", link.docId)
+            assertEquals(excerpt.pageIndex, link.sourcePage)
+            assertEquals("fingerprint-biology", link.fingerprint)
+            assertEquals(excerpt.id, link.excerptId)
             assertEquals(PageOrientation.PORTRAIT, page.orientation)
             assertEquals(PaperTint.WARM, page.tint)
             assertEquals(1, page.layers.size)
@@ -98,6 +111,19 @@ class StudyNoteBuilderTest {
         assertEquals(4, StudyNoteBuilder.sourcePage(notebook, 1))
         assertNull(StudyNoteBuilder.sourcePage(notebook, 2))
         assertNull(StudyNoteBuilder.sourcePage(notebook, -1))
+    }
+
+    @Test
+    fun excerptsWithoutAnySourceIdentityStillCreateNotePages() {
+        val notebook = StudyNoteBuilder.fromExcerpts(
+            title = "출처 없음",
+            source = StudySource(""),
+            excerpts = listOf(Excerpt(pageIndex = 1, text = "남겨둘 발췌")),
+        )
+
+        assertEquals(1, notebook.pageCount)
+        assertEquals(1, notebook.pages.single().sourcePageIndex)
+        assertNull(notebook.pages.single().sourceLink)
     }
 
     @Test
@@ -235,5 +261,214 @@ class StudyNoteBuilderTest {
         assertEquals(base, unchanged)
         assertEquals(base.coverColor, appended.coverColor)
         assertEquals(2, appended.pageCount)
+    }
+
+    @Test
+    fun captureBuildersRetainRectExcerptIdIdentityAndNormalizedRotation() {
+        val source = StudySource(
+            docName = "lecture.pdf",
+            docUri = "content://docs/lecture",
+            docId = "doc-lecture",
+            contentFingerprint = "fingerprint-lecture",
+        )
+        val rect = NormalizedRect(0.15f, 0.25f, 0.65f, 0.75f)
+        val capture = StudyCapture(
+            text = "선택한 발췌",
+            source = source,
+            sourcePageIndex = 3,
+            rect = rect,
+            excerptId = "excerpt-selected",
+            rotation = 450,
+        )
+
+        val notebook = StudyNoteBuilder.fromCapture(title = "강의 노트", capture = capture)
+        val link = notebook.pages.single().sourceLink!!
+
+        assertEquals(source.docUri, link.uri)
+        assertEquals(source.docId, link.docId)
+        assertEquals(source.contentFingerprint, link.fingerprint)
+        assertEquals(3, link.sourcePage)
+        assertEquals(rect, link.rect)
+        assertEquals("excerpt-selected", link.excerptId)
+        assertEquals(90, link.rotation)
+    }
+
+    @Test
+    fun captureBuilderDropsInvalidRectButKeepsTheDocumentLink() {
+        val notebook = StudyNoteBuilder.fromCapture(
+            title = "강의 노트",
+            capture = StudyCapture(
+                text = "발췌",
+                source = StudySource("lecture.pdf", "content://docs/lecture"),
+                sourcePageIndex = 1,
+                rect = NormalizedRect(0.9f, 0f, 0.1f, 1f),
+            ),
+        )
+
+        val link = notebook.pages.single().sourceLink!!
+        assertEquals(1, link.sourcePage)
+        assertNull(link.rect)
+    }
+
+    @Test
+    fun appendRejectsSameNameDifferentUriAndChangedFingerprint() {
+        val source = StudySource(
+            docName = "biology.pdf",
+            docUri = "content://docs/biology-a",
+            docId = "doc-a",
+            contentFingerprint = "fingerprint-a",
+        )
+        val base = StudyNoteBuilder.fromExcerpts(
+            title = "생물학",
+            source = source,
+            excerpts = listOf(Excerpt(id = "first", pageIndex = 0, text = "첫 발췌")),
+        ).copy(updatedAt = 1L)
+
+        val wrongUri = StudyNoteBuilder.appendExcerpt(
+            notebook = base,
+            source = source.copy(docUri = "content://docs/biology-b", docId = "doc-b"),
+            excerpt = Excerpt(pageIndex = 1, text = "다른 PDF"),
+        )
+        val changedSource = StudyNoteBuilder.appendExcerpt(
+            notebook = base,
+            source = source.copy(contentFingerprint = "fingerprint-replacement"),
+            excerpt = Excerpt(pageIndex = 1, text = "교체된 PDF"),
+        )
+
+        assertEquals(base, wrongUri)
+        assertEquals(base, changedSource)
+    }
+
+    @Test
+    fun appendRetainsExcerptIdAndAllowsExactUriWhenDisplayNameChanges() {
+        val source = StudySource("old-name.pdf", "content://docs/biology", docId = "doc-a")
+        val base = StudyNoteBuilder.fromExcerpts(
+            title = "생물학",
+            source = source,
+            excerpts = listOf(Excerpt(pageIndex = 0, text = "첫 발췌")),
+        )
+
+        val appended = StudyNoteBuilder.appendExcerpt(
+            notebook = base,
+            source = source.copy(docName = "renamed.pdf"),
+            excerpt = Excerpt(id = "excerpt-appended", pageIndex = 2, text = "둘째 발췌"),
+        )
+
+        assertEquals(2, appended.pageCount)
+        assertEquals("excerpt-appended", appended.pages[1].sourceLink?.excerptId)
+        assertEquals(source.docId, appended.pages[1].sourceLink?.docId)
+        assertEquals("old-name.pdf", appended.sourceDocumentName)
+    }
+
+    @Test
+    fun legacyNameFallbackIsBoundedByConflictingExplicitLinks() {
+        val source = StudySource("lecture.pdf", "content://docs/lecture")
+        val legacy = Notebook(
+            title = "lecture 스터디 노트",
+            sourceDocumentName = "lecture.pdf",
+            pages = listOf(NotePage(id = "legacy-page", memo = "옛 노트")),
+        )
+        val bound = StudyNoteBuilder.appendExcerpt(
+            notebook = legacy,
+            source = source,
+            excerpt = Excerpt(pageIndex = 1, text = "새 발췌"),
+        )
+        assertEquals("content://docs/lecture", bound.sourceDocumentUri)
+
+        val conflicting = legacy.copy(
+            pages = listOf(
+                NotePage(
+                    id = "explicit-page",
+                    sourceLink = StudySourceLink(
+                        uri = "content://docs/another-lecture",
+                        docId = "doc-other",
+                        sourcePage = 1,
+                    ),
+                ),
+            ),
+        )
+        assertEquals(
+            conflicting,
+            StudyNoteBuilder.appendExcerpt(
+                notebook = conflicting,
+                source = source,
+                excerpt = Excerpt(pageIndex = 2, text = "거부되어야 함"),
+            ),
+        )
+    }
+
+    @Test
+    fun sourcePagePrefersTheDurableLinkOverLegacyViewerData() {
+        val notebook = Notebook(
+            sourceDocumentUri = "content://docs/legacy",
+            pages = listOf(
+                NotePage(
+                    sourcePageIndex = 8,
+                    sourceLink = StudySourceLink(
+                        uri = "content://docs/current",
+                        sourcePage = 2,
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(2, StudyNoteBuilder.sourcePage(notebook, 0))
+    }
+
+    @Test
+    fun studyNoteLookupNeverBridgesDifferentNonblankUrisByName() {
+        val source = StudySource("lecture.pdf", "content://docs/lecture-a")
+        val wrongUri = Notebook(
+            id = "wrong",
+            title = "lecture 스터디 노트",
+            sourceDocumentName = "lecture.pdf",
+            sourceDocumentUri = "content://docs/lecture-b",
+        )
+        val exactUri = wrongUri.copy(id = "exact", sourceDocumentUri = source.docUri)
+
+        assertEquals(
+            "exact",
+            StudyNoteBuilder.findStudyNote(listOf(wrongUri, exactUri), source)?.id,
+        )
+        assertNull(StudyNoteBuilder.findStudyNote(listOf(wrongUri), source))
+    }
+
+    @Test
+    fun captureBuilderRejectsMixedDocumentIdentities() {
+        val source = StudySource(
+            docName = "lecture.pdf",
+            docUri = "content://docs/lecture",
+            docId = "doc-a",
+            contentFingerprint = "fingerprint-a",
+        )
+        val notebook = StudyNoteBuilder.fromCaptures(
+            title = "강의 노트",
+            source = source,
+            captures = listOf(
+                StudyCapture("맞는 발췌", source, sourcePageIndex = 1),
+                StudyCapture(
+                    "다른 문서",
+                    source.copy(docId = "doc-b"),
+                    sourcePageIndex = 2,
+                ),
+            ),
+        )
+
+        assertEquals(1, notebook.pageCount)
+        assertEquals("doc-a", notebook.pages.single().sourceLink?.docId)
+    }
+
+    @Test
+    fun emptyCaptureSelectionKeepsTheProvidedSourceMetadata() {
+        val source = StudySource("lecture.pdf", "content://docs/lecture")
+        val notebook = StudyNoteBuilder.fromCaptures(
+            title = "빈 노트",
+            source = source,
+            captures = emptyList(),
+        )
+
+        assertEquals("lecture.pdf", notebook.sourceDocumentName)
+        assertEquals("content://docs/lecture", notebook.sourceDocumentUri)
+        assertNull(notebook.pages.single().sourceLink)
     }
 }

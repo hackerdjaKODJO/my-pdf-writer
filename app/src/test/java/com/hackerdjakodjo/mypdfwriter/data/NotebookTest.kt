@@ -2,12 +2,14 @@ package com.hackerdjakodjo.mypdfwriter.data
 
 import com.hackerdjakodjo.mypdfwriter.ui.isLatestSaveGeneration
 import com.hackerdjakodjo.mypdfwriter.ui.nextSaveGeneration
+import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.math.BigDecimal
 
 class NotebookTest {
 
@@ -277,5 +279,153 @@ class NotebookTest {
             2,
             notebook.copy(lastPageIndex = 99).resumePageIndex(),
         )
+    }
+
+    @Test
+    fun `document bound source link round trips with every additive field`() {
+        val rect = NormalizedRect(0.1f, 0.2f, 0.7f, 0.8f)
+        val link = StudySourceLink(
+            uri = " content://docs/biology ",
+            docId = " doc-biology ",
+            sourcePage = 4,
+            fingerprint = " fingerprint-biology ",
+            rect = rect,
+            excerptId = " excerpt-1 ",
+            rotation = -90,
+        )
+        val notebook = Notebook(
+            id = "note-1",
+            sourceDocumentUri = "content://docs/legacy-root",
+            pages = listOf(
+                NotePage(
+                    id = "page-1",
+                    memo = "보존할 메모",
+                    sourcePageIndex = 9,
+                    sourceLink = link,
+                ),
+            ),
+        )
+
+        val pageJson = notebook.toJson().getJSONArray("pages").getJSONObject(0)
+        val linkJson = pageJson.getJSONObject("sourceLink")
+        assertEquals(
+            setOf("uri", "docId", "sourcePage", "fingerprint", "rect", "excerptId", "rotation"),
+            linkJson.keySet().toSet(),
+        )
+        assertEquals(270, linkJson.getInt("rotation"))
+
+        val restored = Notebook.fromJson(JSONObject(notebook.toJson().toString()))
+        val restoredLink = restored.pages.single().sourceLink!!
+        assertEquals("content://docs/biology", restoredLink.uri)
+        assertEquals("doc-biology", restoredLink.docId)
+        assertEquals(4, restoredLink.sourcePage)
+        assertEquals("fingerprint-biology", restoredLink.fingerprint)
+        assertEquals(rect, restoredLink.rect)
+        assertEquals("excerpt-1", restoredLink.excerptId)
+        assertEquals(270, restoredLink.rotation)
+        assertEquals(9, restored.pages.single().sourcePageIndex)
+        assertEquals("보존할 메모", restored.pages.single().memo)
+        assertEquals(restoredLink, restored.pages.single().effectiveStudyLink(restored))
+    }
+
+    @Test
+    fun `minimal source link serializes optional keys as null`() {
+        val json = StudySourceLink(uri = "content://docs/a", sourcePage = 0).toJson()
+
+        assertTrue(json.isNull("docId"))
+        assertTrue(json.isNull("fingerprint"))
+        assertTrue(json.isNull("rect"))
+        assertTrue(json.isNull("excerptId"))
+        assertEquals(0, json.getInt("rotation"))
+    }
+
+    @Test
+    fun `legacy pages keep their JSON shape and resolve through root URI fallback`() {
+        val notebook = Notebook.fromJson(
+            JSONObject(
+                """{
+                    "id":"legacy",
+                    "sourceDocumentName":"biology.pdf",
+                    "sourceDocumentUri":"content://docs/biology",
+                    "pages":[{"id":"p","memo":"옛 링크","sourcePage":2}]
+                }""",
+            ),
+        )
+        val page = notebook.pages.single()
+
+        assertNull(page.sourceLink)
+        assertFalse(page.toJson().has("sourceLink"))
+        assertEquals(
+            StudySourceLink(uri = "content://docs/biology", sourcePage = 2),
+            page.effectiveStudyLink(notebook),
+        )
+        assertNull(page.effectiveStudyLink(notebook.copy(sourceDocumentUri = "  ")))
+    }
+
+    @Test
+    fun `malformed optional source links preserve page content and legacy fallback`() {
+        val invalidRects = listOf(
+            JSONObject().put("left", -0.1).put("top", 0.1).put("right", 0.8).put("bottom", 0.9),
+            JSONObject().put("left", 0.8).put("top", 0.1).put("right", 0.2).put("bottom", 0.9),
+            JSONObject().put("left", BigDecimal("1e400")).put("top", 0.1)
+                .put("right", 0.8).put("bottom", 0.9),
+        )
+        val invalidLinks = listOf(
+            "not-an-object",
+            JSONObject(),
+            JSONObject().put("uri", "content://docs/a").put("sourcePage", -1),
+            JSONObject().put("uri", "   ").put("sourcePage", 0),
+            JSONObject().put("uri", "content://docs/a").put("sourcePage", "2"),
+            JSONObject().put("uri", "content://docs/a").put("sourcePage", 0)
+                .put("rotation", "sideways"),
+            JSONObject().put("uri", "content://docs/a").put("sourcePage", 0)
+                .put("docId", 42),
+        ) + invalidRects.map { rect ->
+            JSONObject().put("uri", "content://docs/a").put("sourcePage", 0).put("rect", rect)
+        }
+
+        invalidLinks.forEach { invalid ->
+            val pageJson = JSONObject()
+                .put("id", "p")
+                .put("memo", "버려지지 않는 메모")
+                .put("sourcePage", 3)
+                .put("sourceLink", invalid)
+            val notebook = Notebook.fromJson(
+                JSONObject()
+                    .put("sourceDocumentUri", "content://docs/legacy")
+                    .put("pages", org.json.JSONArray().put(pageJson)),
+            )
+            val page = notebook.pages.single()
+            assertNull(page.sourceLink)
+            assertEquals("버려지지 않는 메모", page.memo)
+            assertEquals(3, page.sourcePageIndex)
+            assertEquals(
+                StudySourceLink(uri = "content://docs/legacy", sourcePage = 3),
+                page.effectiveStudyLink(notebook),
+            )
+        }
+    }
+
+    @Test
+    fun `non finite or inverted rectangles invalidate a link rather than a page`() {
+        val invalid = listOf(
+            NormalizedRect(Float.NaN, 0f, 1f, 1f),
+            NormalizedRect(0f, Float.POSITIVE_INFINITY, 1f, 1f),
+            NormalizedRect(0.8f, 0f, 0.2f, 1f),
+        )
+        invalid.forEach { rect ->
+            val page = NotePage(
+                memo = "내용 유지",
+                sourcePageIndex = 1,
+                sourceLink = StudySourceLink(
+                    uri = "content://docs/a",
+                    sourcePage = 1,
+                    rect = rect,
+                ),
+            ).normalized()
+            assertNull(page.sourceLink)
+            assertEquals("내용 유지", page.memo)
+            assertEquals(1, page.sourcePageIndex)
+        }
     }
 }
