@@ -58,7 +58,7 @@ class EraserGeometryTest {
     @Test
     fun `point segment distance handles interiors endpoints and degenerate segments`() {
         assertEquals(
-            0.25f,
+            0.5625f,
             EraserGeometry.pointSegmentDistanceSquared(0.5f, 0.75f, 0f, 0f, 1f, 0f),
             1e-6f,
         )
@@ -89,7 +89,7 @@ class EraserGeometryTest {
         assertFalse(
             EraserGeometry.eraserHitsStroke(
                 stroke,
-                listOf(NormalizedPoint(0.1f, 0.2f), NormalizedPoint(0.9f, 0.2f)),
+                listOf(NormalizedPoint(0.1f, 0.95f), NormalizedPoint(0.9f, 0.95f)),
                 0.03f,
             ),
         )

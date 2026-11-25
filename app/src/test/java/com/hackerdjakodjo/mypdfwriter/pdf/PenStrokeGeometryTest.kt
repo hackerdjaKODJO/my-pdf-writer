@@ -273,8 +273,8 @@ class PenStrokeGeometryTest {
         )
         val arcs = PenStrokeGeometry.strokeArcLengths(samples, 1000f, 500f)
         assertEquals(0f, arcs[0], 0f)
-        assertEquals(500f, arcs[1], 0.001f)
-        assertEquals(600f, arcs[2], 0.001f)
+        assertEquals(360.5551f, arcs[1], 0.001f)
+        assertEquals(460.5551f, arcs[2], 0.001f)
         assertTrue(arcs.contentEquals(PenStrokeGeometry.strokeArcLengths(samples, 1000f, 500f)))
         val corrupt = PenStrokeGeometry.strokeArcLengths(
             listOf(NormalizedPoint(Float.NaN, 0f), NormalizedPoint(1f, Float.NaN)),

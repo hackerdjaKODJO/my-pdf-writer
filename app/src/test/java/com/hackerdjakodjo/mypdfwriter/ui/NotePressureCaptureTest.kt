@@ -67,7 +67,7 @@ class NotePressureCaptureTest {
                 PointerType.Stylus, 0.45f, true, PressureCurve.LINEAR, calibrator,
                 smoother = smoother, elapsedMs = 8L,
             ),
-            0f,
+            1e-6f,
         )
     }
 

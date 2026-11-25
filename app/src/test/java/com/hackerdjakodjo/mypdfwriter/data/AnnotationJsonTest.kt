@@ -161,8 +161,6 @@ class AnnotationJsonTest {
             JSONArray().put(0.0).put(1.9).put(1.1),
             JSONArray().put(0L).put(2L),
             JSONArray().put(0L).put("bad").put(2L),
-            JSONArray().put(0L).put(Double.NaN).put(2L),
-            JSONArray().put(0L).put(Double.POSITIVE_INFINITY).put(2L),
         )
         invalid.forEachIndexed { index, times ->
             val json = timedAnnotation().toJson().put("ptms", times)

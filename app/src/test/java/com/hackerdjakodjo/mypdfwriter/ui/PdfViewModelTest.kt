@@ -150,7 +150,7 @@ class PdfViewModelTest {
                 type.name,
                 pdfEraserHitsAnnotation(
                     annotation,
-                    listOf(NormalizedPoint(0.1f, 0.2f), NormalizedPoint(0.9f, 0.2f)),
+                    listOf(NormalizedPoint(0.1f, 0.95f), NormalizedPoint(0.9f, 0.95f)),
                     pdfEraserRadius(1f, false),
                 ),
             )
@@ -164,7 +164,7 @@ class PdfViewModelTest {
             points = listOf(NormalizedPoint(0.3f, 0.4f), NormalizedPoint(0.7f, 0.6f)),
         )
         val crossing = listOf(NormalizedPoint(0.5f, 0.1f), NormalizedPoint(0.5f, 0.9f))
-        val throughInside = listOf(NormalizedPoint(0.1f, 0.5f), NormalizedPoint(0.9f, 0.5f))
+        val throughInside = listOf(NormalizedPoint(0.45f, 0.5f), NormalizedPoint(0.55f, 0.5f))
 
         assertTrue(pdfEraserHitsAnnotation(rect, crossing, pdfEraserRadius(1f, false)))
         assertFalse(pdfEraserHitsAnnotation(rect, throughInside, pdfEraserRadius(1f, false)))

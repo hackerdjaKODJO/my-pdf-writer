@@ -102,16 +102,32 @@ object InkDynamics {
         val w = if (widthPx.isFinite() && widthPx > 0f) widthPx else 1f
         val h = if (heightPx.isFinite() && heightPx > 0f) heightPx else 1f
         val times = timesMs?.takeIf { hasValidPointTimes(points, it) }
-        return FloatArray(count) { index ->
-            val previous = (index - 1).coerceAtLeast(0)
-            val next = (index + 1).coerceAtMost(count - 1)
-            val dx = (points[next].x - points[previous].x) * w
-            val dy = (points[next].y - points[previous].y) * h
+        if (times == null) {
+            // Preserve the exact legacy central-difference series for old strokes.
+            return FloatArray(count) { index ->
+                val previous = (index - 1).coerceAtLeast(0)
+                val next = (index + 1).coerceAtMost(count - 1)
+                val dx = (points[next].x - points[previous].x) * w
+                val dy = (points[next].y - points[previous].y) * h
+                val span = hypot(dx, dy)
+                if (span.isFinite()) span * 0.5f else 0f
+            }
+        }
+        if (count == 1) return FloatArray(1)
+        val segmentSpeeds = FloatArray(count - 1) { index ->
+            val a = points[index]
+            val b = points[index + 1]
+            val dx = (b.x - a.x) * w
+            val dy = (b.y - a.y) * h
             val span = hypot(dx, dy)
+            if (span.isFinite()) physicalSpeed(span, times[index + 1], times[index]) else 0f
+        }
+        return FloatArray(count) { index ->
             when {
-                !span.isFinite() -> 0f
-                times == null -> span * 0.5f
-                else -> physicalSpeed(span, times[next], times[previous])
+                count == 2 -> segmentSpeeds[0]
+                index == 0 -> (segmentSpeeds[0] + segmentSpeeds[1]) * 0.5f
+                index == count - 1 -> (segmentSpeeds[count - 2] + segmentSpeeds[count - 3]) * 0.5f
+                else -> (segmentSpeeds[index - 1] + segmentSpeeds[index]) * 0.5f
             }
         }
     }

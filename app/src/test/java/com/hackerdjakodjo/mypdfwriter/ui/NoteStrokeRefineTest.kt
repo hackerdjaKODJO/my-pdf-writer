@@ -280,15 +280,15 @@ class NoteStrokeRefineTest {
         assertSame(singlePointStroke, noteRefineForCommit(singlePointStroke, true, true))
 
         assertEquals(
-            refineStroke(points, NOTE_LAZY_BRUSH_RADIUS, 0f, 1),
+            prepareNoteStroke(points, NoteStrokePreparation(stabilizeStrength = 0f, smoothHandwriting = true, simplifyPoints = false)),
             noteRefineForCommit(points, true, false),
         )
         assertEquals(
-            refineStroke(points, 0f, NOTE_SIMPLIFY_TOLERANCE, 0),
+            prepareNoteStroke(points, NoteStrokePreparation(stabilizeStrength = 0f, smoothHandwriting = false, simplifyPoints = true)),
             noteRefineForCommit(points, false, true),
         )
         assertEquals(
-            refineStroke(points),
+            prepareNoteStroke(points, NoteStrokePreparation(stabilizeStrength = 0f, smoothHandwriting = true, simplifyPoints = true)),
             noteRefineForCommit(points, true, true),
         )
     }

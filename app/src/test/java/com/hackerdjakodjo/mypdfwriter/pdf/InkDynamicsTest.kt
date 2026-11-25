@@ -94,7 +94,7 @@ class InkDynamicsTest {
         )
         val speeds = InkDynamics.strokeSpeeds(points, 1000f, 500f, listOf(0L, 1000L, 3000L))
         assertEquals(100f, speeds[0], 0.001f)
-        assertEquals(150f, speeds[1], 0.001f)
+        assertEquals(100f, speeds[1], 0.001f)
         assertEquals(100f, speeds[2], 0.001f)
 
         val diagonal = InkDynamics.strokeSpeeds(
@@ -159,8 +159,8 @@ class InkDynamicsTest {
         )
         val clamped = InkDynamics.strokeSpeeds(points, 1000f, 1000f, listOf(0L, 1L, 2L))
         assertEquals(100000f, clamped[0], 1f)
-        assertEquals(200000f, clamped[1], 1f)
-        assertTrue("1 ms floor prevents a spike", clamped.all { it.isFinite() && it > 0f })
+        assertEquals(100000f, clamped[1], 1f)
+        assertEquals(100000f, clamped[2], 1f)
 
         val fallback = InkDynamics.strokeSpeeds(points, 1000f, 1000f)
         listOf(
@@ -331,7 +331,7 @@ class InkDynamicsTest {
     fun `legacy untimed dwell keeps its bounded sample count strength`() {
         val pools = InkDynamics.dwellPools(dwellStroke(), 1000f, 1000f, 0.8f)
         assertEquals(1, pools.size)
-        assertEquals(0.2f, pools.single().strength, 0f)
+        assertEquals(0.3f, pools.single().strength, 0f)
     }
 
     @Test

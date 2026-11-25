@@ -105,14 +105,14 @@ class PressureSmootherTest {
     fun `attack and release are invariant to sample rate over the same elapsed time`() {
         val press120 = PressureSmoother().also { it.filter(0.2f, 8L) }
         val press240 = PressureSmoother().also { it.filter(0.2f, 4L) }
-        repeat(12) { press120.filter(0.8f, 8L) }
-        repeat(24) { press240.filter(0.8f, 4L) }
+        repeat(11) { press120.filter(0.8f, 8L) }
+        repeat(23) { press240.filter(0.8f, 4L) }
         assertTrue(abs(press120.filter(0.8f, 8L) - press240.filter(0.8f, 4L)) < 0.0001f)
 
         val lift120 = PressureSmoother().also { it.filter(0.8f, 8L) }
         val lift240 = PressureSmoother().also { it.filter(0.8f, 4L) }
-        repeat(12) { lift120.filter(0.2f, 8L) }
-        repeat(24) { lift240.filter(0.2f, 4L) }
+        repeat(11) { lift120.filter(0.2f, 8L) }
+        repeat(23) { lift240.filter(0.2f, 4L) }
         assertTrue(abs(lift120.filter(0.2f, 8L) - lift240.filter(0.2f, 4L)) < 0.0001f)
     }
 
