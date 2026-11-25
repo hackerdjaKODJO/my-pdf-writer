@@ -58,6 +58,7 @@ import com.hackerdjakodjo.mypdfwriter.pdf.isIdentityPageSpecs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -126,6 +127,8 @@ data class ViewerUiState(
     val pressureCurve: PressureCurve = PressureCurve.DEFAULT,
     /** Highlighter opacity is independent from pen opacity. */
     val highlightOpacity: Float = 1f,
+    /** Latest auto-save durability for this viewer session; enqueue alone is not success. */
+    val saveStatus: PdfSaveStatus = PdfSaveStatus.IDLE,
 )
 
 /** Pure memo-card list transitions; JVM-tested without an Android ViewModel. */
@@ -187,25 +190,50 @@ internal fun restoreSnapshotInto(
 }
 
 /**
+ * One captured state and the viewer session that queued it. The generation guards
+ * same-id reopen races; [reportStatus] is false for the initial sidecar write so
+ * a fresh document remains IDLE until its state actually changes.
+ */
+internal data class DocSaveRequest(
+    val state: DocState,
+    val viewerGeneration: Long,
+    val reportStatus: Boolean,
+    val sequence: Long = 0L,
+)
+
+/**
  * Pure state of the coalescing doc-state writer. [pending] holds the newest
  * captured state *per document*, keyed by docId; [running] is true while the
  * single IO drain loop owns the queue. Keying by document means switching docs
  * before a drain cannot drop the previous document's last state.
  */
 internal data class DocSaveQueue(
-    val pending: Map<String, DocState> = emptyMap(),
+    val pending: Map<String, DocSaveRequest> = emptyMap(),
     val running: Boolean = false,
+    val nextSequence: Long = 0L,
+    private val latestSequences: Map<String, Long> = emptyMap(),
 ) {
     /** Returns the updated queue and whether a writer job must be started. */
-    fun offer(state: DocState): Pair<DocSaveQueue, Boolean> =
-        copy(pending = pending + (state.docId to state), running = true) to !running
+    fun offer(request: DocSaveRequest): Pair<DocSaveQueue, Boolean> {
+        val sequence = nextSequence + 1L
+        val queued = request.copy(sequence = sequence)
+        return copy(
+            pending = pending + (queued.state.docId to queued),
+            running = true,
+            nextSequence = sequence,
+            latestSequences = latestSequences + (queued.state.docId to sequence),
+        ) to !running
+    }
 
     /** Returns the updated queue and one state to write, or null when drained. */
-    fun take(): Pair<DocSaveQueue, DocState?> {
+    fun take(): Pair<DocSaveQueue, DocSaveRequest?> {
         if (pending.isEmpty()) return copy(running = false) to null
         val entry = pending.entries.first()
         return copy(pending = pending - entry.key, running = true) to entry.value
     }
+
+    /** False once a newer request for this document has superseded [request]. */
+    fun isLatest(request: DocSaveRequest): Boolean = latestSequences[request.state.docId] == request.sequence
 }
 
 /** Cancellation is control flow, not a failure: never let it become a UI error. */
@@ -369,6 +397,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private val docSaveLock = Any()
     /** Serialises the two docstate writers (drain + pre-backup flush). */
     private val docWriteLock = Any()
+    /** Changes only when the active viewer session changes, not on a failed open. */
+    private var viewerSaveGeneration = 0L
+    /** Main-thread baseline used to distinguish real changes from no-op persistence. */
+    private var lastQueuedDocState: DocState? = null
 
     private val undoStack = ArrayDeque<DocSnapshot>()
     private val redoStack = ArrayDeque<DocSnapshot>()
@@ -447,7 +479,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 _pageBitmap.value = null
                 _pageLinks.value = emptyList()
                 val ink = inkStore.load()
-                _viewer.value = ViewerUiState(
+                val openedState = ViewerUiState(
                     docId = docId,
                     penStyle = ink.penStyle,
                     color = ink.color,
@@ -477,6 +509,11 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     cropOddEven = displayPrefs.cropOddEven,
                     zoom = DisplayPrefs.clampZoom(displayPrefs.zoom),
                 )
+                // A fresh viewer is IDLE. Its initial sidecar write is durability
+                // work, but not a user-visible change to an already-loaded document.
+                viewerSaveGeneration++
+                lastQueuedDocState = viewerDocState(openedState)
+                _viewer.value = openedState
                 persistNow()
                 if (addToRecents) {
                     _library.value = libraryStore.upsert(
@@ -501,6 +538,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
                 _viewer.value = null
+                lastQueuedDocState = null
                 _pageBitmap.value = null
                 _pageLinks.value = emptyList()
                 _excerpts.value = emptyList()
@@ -547,6 +585,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         if (closingState != null) {
             PdfFlowTrace.close(closingState.docId, closingState.annotations.size)
         }
+        viewerSaveGeneration++
+        lastQueuedDocState = null
         _viewer.value = null
         _pageBitmap.value = null
         _pageLinks.value = emptyList()
@@ -576,8 +616,12 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         renderJob?.cancel()
         searchJob?.cancel()
         linkLoadJob?.cancel()
+        viewerSaveGeneration++
+        lastQueuedDocState = null
         synchronized(docSaveLock) {
-            docSaveQueue = DocSaveQueue()
+            // Keep the sequence monotonic across discard so an old in-flight IO
+            // result can never collide with a reopened document's first request.
+            docSaveQueue = DocSaveQueue(nextSequence = docSaveQueue.nextSequence)
         }
         docSaveJob?.cancel()
         docSaveJob = null
@@ -1585,10 +1629,18 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         // Always assemble into a distinct working path: an identity open may have
         // pointed workingFile at the source, and assembling onto it would corrupt it.
         val working = File(workingDir, "${state.docId}.pdf")
+        val generation = viewerSaveGeneration
         viewModelScope.launch {
-            _viewer.update { it?.copy(busy = true, busyLabel = text(R.string.building_pages)) }
+            _viewer.update { current ->
+                if (current?.docId == state.docId && viewerSaveGeneration == generation) {
+                    current.copy(busy = true, busyLabel = text(R.string.building_pages))
+                } else {
+                    current
+                }
+            }
             runCatching { repo.assemble(source, state.pages, working) }
                 .onSuccess {
+                    if (_viewer.value?.docId != state.docId || viewerSaveGeneration != generation) return@onSuccess
                     workingFile = working
                     val pageCount = state.pages.size
                     val safeIndex = state.pageIndex.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
@@ -1600,6 +1652,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                         canUndo = undoStack.isNotEmpty(),
                         canRedo = redoStack.isNotEmpty(),
                         revision = state.revision + 1,
+                        // A save may have completed while assemble was off Main.
+                        saveStatus = _viewer.value?.saveStatus ?: state.saveStatus,
                     )
                     pageTexts = null
                     currentPageTextsKey = null
@@ -1610,6 +1664,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     renderPage(safeIndex)
                 }
                 .onFailure { error ->
+                    if (_viewer.value?.docId != state.docId || viewerSaveGeneration != generation) return@onFailure
                     _viewer.update {
                         it?.copy(
                             busy = false,
@@ -1629,7 +1684,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         val state = _viewer.value ?: return
         val notes = state.notes.toMutableMap()
         if (state.noteDraft.isBlank()) notes.remove(state.pageIndex) else notes[state.pageIndex] = state.noteDraft.trim()
-        _viewer.value = state.copy(notes = notes, message = text(R.string.saved))
+        _viewer.value = state.copy(notes = notes)
         persistNow()
     }
 
@@ -2197,61 +2252,148 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissError() {
+        viewerSaveGeneration++
+        lastQueuedDocState = null
         _viewer.value = null
     }
 
     // ---------------------------------------------------------------- helpers
 
-    private fun persistNow() {
+    private data class DocSaveWriteResult(
+        val succeeded: Boolean,
+        val failureReason: String? = null,
+    )
+
+    private fun persistNow(forceSaveStatus: Boolean = false) {
         val state = _viewer.value ?: return
         // Capture the whole DocState on the Main thread before handing it to the writer.
         val doc = viewerDocState(state)
+        val generation = viewerSaveGeneration
+        val publishSaving = forceSaveStatus || doc != lastQueuedDocState
+        val request = DocSaveRequest(
+            state = doc,
+            viewerGeneration = generation,
+            // Initial/no-op writes may still create or refresh the sidecar, but a
+            // fresh viewer stays IDLE and a no-op cannot clear a real failure.
+            reportStatus = publishSaving || state.saveStatus == PdfSaveStatus.SAVING,
+        )
         val startWriter: Boolean
         synchronized(docSaveLock) {
-            val (updated, shouldStart) = docSaveQueue.offer(doc)
+            val (updated, shouldStart) = docSaveQueue.offer(request)
             docSaveQueue = updated
             startWriter = shouldStart
+        }
+        lastQueuedDocState = doc
+        if (publishSaving && state.saveStatus != PdfSaveStatus.SAVING) {
+            PdfFlowTrace.saveStart()
+            _viewer.update { current ->
+                current?.takeIf { it.docId == doc.docId && viewerSaveGeneration == generation }
+                    ?.onPdfSaveQueued()
+            }
         }
         // One drain loop owns the tmp file; never cancel it mid-write. Close/error
         // paths keep calling persistNow(), so their final state is always written.
         if (startWriter) docSaveJob = viewModelScope.launch(Dispatchers.IO) { drainDocSaves() }
     }
 
+    /** Re-offers a failed document's current state; no viewer or no failure is a no-op. */
+    fun retrySave() {
+        val state = _viewer.value ?: return
+        if (state.saveStatus != PdfSaveStatus.FAILED) return
+        persistNow(forceSaveStatus = true)
+    }
+
     /**
-     * Synchronous barrier used before creating a backup. The normal writer is
-     * asynchronous, so a ZIP created immediately after a stroke could miss the
-     * newest annotation state. Draining the queue here makes the archive see it.
+     * [DocStateStore.save] intentionally contains IO failures so callers cannot
+     * crash. Read the sidecar back before claiming durability; a missing or
+     * mismatched result is a failed write, not success.
+     */
+    private fun writeDocState(request: DocSaveRequest): DocSaveWriteResult {
+        val reason = try {
+            docStore.save(request.state)
+            if (docStore.load(request.state.docId) == request.state) null else "io_unverified"
+        } catch (error: Throwable) {
+            rethrowIfCancelled(error)
+            PdfFlowTrace.saveFailureReason(error)
+        }
+        return DocSaveWriteResult(succeeded = reason == null, failureReason = reason)
+    }
+
+    /** Called on Main after IO, or by the Main-thread synchronous backup barrier. */
+    private fun publishDocSaveCompletion(request: DocSaveRequest, result: DocSaveWriteResult) {
+        val isLatest = synchronized(docSaveLock) { docSaveQueue.isLatest(request) }
+        val completion = PdfSaveCompletion(
+            docId = request.state.docId,
+            viewerGeneration = request.viewerGeneration,
+            state = request.state,
+            succeeded = result.succeeded,
+            isLatestQueued = isLatest,
+            reportStatus = request.reportStatus,
+        )
+        val current = _viewer.value
+        val canPublish = current != null &&
+            canPublishPdfSaveCompletion(current.docId, viewerSaveGeneration, completion)
+        // Defensive against a Main-thread state change that landed between capture
+        // and publication: queue that newest state instead of showing a stale result.
+        if (current != null && canPublish && isLatest && viewerDocState(current) != request.state) {
+            persistNow(forceSaveStatus = true)
+            return
+        }
+        if (isLatest && request.reportStatus) {
+            if (result.succeeded) {
+                PdfFlowTrace.saveDone(request.state.docId)
+            } else {
+                PdfFlowTrace.saveFailed(
+                    request.state.docId,
+                    result.failureReason ?: "io_unverified",
+                )
+            }
+        }
+        if (!canPublish || current == null) return
+        val updated = current.applyPdfSaveCompletion(viewerSaveGeneration, completion) ?: return
+        if (updated != current) _viewer.value = updated
+    }
+
+    /**
+     * Synchronous Main-thread barrier used before creating a backup. The normal
+     * writer is asynchronous, so a ZIP created immediately after a stroke could
+     * miss the newest annotation state. Draining the queue here makes the archive
+     * see it. Each write holds the same lock as the async writer, so a backup can
+     * never capture a half-written tmp.
      */
     fun flushPdfSavesNow() {
-        // Hold the same lock the drain uses while writing: this both waits for an
-        // in-flight save and prevents the drain from taking another entry until
-        // the queue is empty. Otherwise the ZIP could capture a half-written tmp.
         synchronized(docWriteLock) {
             while (true) {
-                val next: DocState?
+                val next: DocSaveRequest?
                 synchronized(docSaveLock) {
-                    val (updated, state) = docSaveQueue.take()
+                    val (updated, request) = docSaveQueue.take()
                     docSaveQueue = updated
-                    next = state
+                    next = request
                 }
                 if (next == null) return
-                docStore.save(next)
+                publishDocSaveCompletion(next, writeDocState(next))
             }
         }
     }
 
     /** Writes the newest pending state in a loop until nothing remains queued. */
-    private fun drainDocSaves() {
-        synchronized(docWriteLock) {
-            while (true) {
-                val next: DocState?
-                synchronized(docSaveLock) {
-                    val (updated, state) = docSaveQueue.take()
+    private suspend fun drainDocSaves() {
+        while (true) {
+            // Never wait for Main while holding the write lock: a Main-thread
+            // backup flush would otherwise deadlock against this publication.
+            val written = synchronized(docWriteLock) {
+                val request = synchronized(docSaveLock) {
+                    val (updated, next) = docSaveQueue.take()
                     docSaveQueue = updated
-                    next = state
+                    next
                 }
-                if (next == null) return
-                docStore.save(next)
+                request?.let { it to writeDocState(it) }
+            }
+            if (written == null) return
+            val (request, result) = written
+            if (!currentCoroutineContext().isActive) return
+            withContext(Dispatchers.Main) {
+                if (currentCoroutineContext().isActive) publishDocSaveCompletion(request, result)
             }
         }
     }

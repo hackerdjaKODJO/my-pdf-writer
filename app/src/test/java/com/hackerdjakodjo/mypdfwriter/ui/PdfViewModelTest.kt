@@ -46,6 +46,38 @@ class PdfViewModelTest {
         notes = mapOf(0 to name),
     )
 
+    private fun saveRequest(
+        name: String,
+        docId: String = "doc",
+        viewerGeneration: Long = 1L,
+        reportStatus: Boolean = true,
+    ) = DocSaveRequest(
+        state = doc(name, docId),
+        viewerGeneration = viewerGeneration,
+        reportStatus = reportStatus,
+    )
+
+    private fun completion(
+        request: DocSaveRequest,
+        succeeded: Boolean = true,
+        isLatestQueued: Boolean = true,
+    ) = PdfSaveCompletion(
+        docId = request.state.docId,
+        viewerGeneration = request.viewerGeneration,
+        state = request.state,
+        succeeded = succeeded,
+        isLatestQueued = isLatestQueued,
+        reportStatus = request.reportStatus,
+    )
+
+    private fun viewerFor(request: DocSaveRequest) = ViewerUiState(
+        docId = request.state.docId,
+        docName = request.state.displayName,
+        pageCount = request.state.pages.size,
+        pages = request.state.pages,
+        notes = request.state.notes,
+    )
+
     // ---------------------------------------------------------------- undo
 
     @Test
@@ -131,18 +163,19 @@ class PdfViewModelTest {
         assertFalse(queue.running)
         assertTrue(queue.pending.isEmpty())
 
-        val (afterA, startA) = queue.offer(doc("a"))
+        val (afterA, startA) = queue.offer(saveRequest("a"))
         assertTrue(startA)
         queue = afterA
-        val (afterB, startB) = queue.offer(doc("b"))
+        val (afterB, startB) = queue.offer(saveRequest("b"))
         assertFalse(startB)
         queue = afterB
-        val (afterC, startC) = queue.offer(doc("c"))
+        val (afterC, startC) = queue.offer(saveRequest("c"))
         assertFalse(startC)
         queue = afterC
 
         val (drained, firstWrite) = queue.take()
-        assertEquals("c", firstWrite?.notes?.get(0))
+        assertEquals("c", firstWrite?.state?.notes?.get(0))
+        assertTrue(drained.isLatest(firstWrite!!))
         queue = drained
         val (idle, secondWrite) = queue.take()
         assertNull(secondWrite)
@@ -150,43 +183,216 @@ class PdfViewModelTest {
         queue = idle
 
         // A later edit starts a fresh single writer after the previous drain.
-        val (again, restart) = queue.offer(doc("d"))
+        val (again, restart) = queue.offer(saveRequest("d"))
         assertTrue(restart)
         val (_, lastWrite) = again.take()
-        assertEquals("d", lastWrite?.notes?.get(0))
+        assertEquals("d", lastWrite?.state?.notes?.get(0))
     }
 
     @Test
     fun offerKeepsPendingStatesForDistinctDocIds() {
         var queue = DocSaveQueue()
-        val (afterA, startA) = queue.offer(doc("a", docId = "A"))
+        val (afterA, startA) = queue.offer(saveRequest("a", docId = "A"))
         assertTrue(startA)
         queue = afterA
-        val (afterB, startB) = queue.offer(doc("b", docId = "B"))
+        val (afterB, startB) = queue.offer(saveRequest("b", docId = "B"))
         assertFalse(startB)
         queue = afterB
         // A later edit to A overwrites only A's entry, never B's.
-        val (afterA2, startA2) = queue.offer(doc("a2", docId = "A"))
+        val (afterA2, startA2) = queue.offer(saveRequest("a2", docId = "A"))
         assertFalse(startA2)
         queue = afterA2
         assertEquals(2, queue.pending.size)
 
         // The drain loop takes exactly one document per iteration.
         val (afterFirst, first) = queue.take()
-        assertEquals("A", first?.docId)
-        assertEquals("a2", first?.notes?.get(0))
+        assertEquals("A", first?.state?.docId)
+        assertEquals("a2", first?.state?.notes?.get(0))
         assertEquals(1, afterFirst.pending.size)
+        assertTrue(afterFirst.isLatest(first!!))
         queue = afterFirst
 
         val (afterSecond, second) = queue.take()
-        assertEquals("B", second?.docId)
-        assertEquals("b", second?.notes?.get(0))
+        assertEquals("B", second?.state?.docId)
+        assertEquals("b", second?.state?.notes?.get(0))
         assertTrue(afterSecond.pending.isEmpty())
         queue = afterSecond
 
         val (idle, nothing) = queue.take()
         assertNull(nothing)
         assertFalse(idle.running)
+    }
+
+    @Test
+    fun clearingPendingKeepsSequenceMonotonicForInFlightResults() {
+        var queue = DocSaveQueue()
+        val (offered, _) = queue.offer(saveRequest("old"))
+        queue = offered
+        val (takenQueue, oldInFlight) = queue.take()
+        queue = takenQueue
+
+        val cleared = DocSaveQueue(nextSequence = queue.nextSequence)
+        val (reopened, _) = cleared.offer(saveRequest("fresh", viewerGeneration = 2L))
+        assertFalse(reopened.isLatest(oldInFlight!!))
+        assertEquals(queue.nextSequence + 1L, reopened.nextSequence)
+    }
+
+    // ---------------------------------------------------------------- save status
+
+    @Test
+    fun saveStatusEnumAndFreshViewerStartIdle() {
+        assertEquals(
+            listOf(PdfSaveStatus.IDLE, PdfSaveStatus.SAVING, PdfSaveStatus.SAVED, PdfSaveStatus.FAILED),
+            PdfSaveStatus.values().toList(),
+        )
+        assertEquals(PdfSaveStatus.IDLE, ViewerUiState(docId = "fresh").saveStatus)
+    }
+
+    @Test
+    fun changedStateShowsSavingAndOnlyVerifiedSuccessShowsSaved() {
+        var queue = DocSaveQueue()
+        val request = saveRequest("changed")
+        val (offered, _) = queue.offer(request)
+        queue = offered
+        var viewer = viewerFor(request).onPdfSaveQueued()
+
+        // Enqueueing and taking the request are not IO success.
+        assertEquals(PdfSaveStatus.SAVING, viewer.saveStatus)
+        val (takenQueue, taken) = queue.take()
+        queue = takenQueue
+        assertTrue(queue.isLatest(taken!!))
+        assertEquals(PdfSaveStatus.SAVING, viewer.saveStatus)
+
+        viewer = viewer.applyPdfSaveCompletion(1L, completion(taken))!!
+        assertEquals(PdfSaveStatus.SAVED, viewer.saveStatus)
+    }
+
+    @Test
+    fun coalescedWritesStaySavingUntilTheNewestStateIsDurable() {
+        var queue = DocSaveQueue()
+        val first = saveRequest("first")
+        val (afterFirstOffer, _) = queue.offer(first)
+        queue = afterFirstOffer
+        val (afterFirstTake, inFlight) = queue.take()
+        queue = afterFirstTake
+
+        val latest = saveRequest("latest")
+        val (afterLatestOffer, _) = queue.offer(latest)
+        queue = afterLatestOffer
+        var viewer = viewerFor(latest).onPdfSaveQueued()
+
+        // The first write really succeeded, but a newer state is already queued.
+        val firstWrite = inFlight!!
+        viewer = viewer.applyPdfSaveCompletion(
+            1L,
+            completion(firstWrite, isLatestQueued = queue.isLatest(firstWrite)),
+        )!!
+        assertEquals(PdfSaveStatus.SAVING, viewer.saveStatus)
+
+        val (afterLatestTake, latestWrite) = queue.take()
+        queue = afterLatestTake
+        val newestWrite = latestWrite!!
+        viewer = viewer.applyPdfSaveCompletion(
+            1L,
+            completion(newestWrite, isLatestQueued = queue.isLatest(newestWrite)),
+        )!!
+        assertEquals(PdfSaveStatus.SAVED, viewer.saveStatus)
+    }
+
+    @Test
+    fun failedCoalescedAttemptDoesNotOverrideTheNewestSave() {
+        var queue = DocSaveQueue()
+        val (afterFirstOffer, _) = queue.offer(saveRequest("first"))
+        queue = afterFirstOffer
+        val (afterFirstTake, inFlight) = queue.take()
+        queue = afterFirstTake
+        val latest = saveRequest("latest")
+        val (afterLatestOffer, _) = queue.offer(latest)
+        queue = afterLatestOffer
+        var viewer = viewerFor(latest).onPdfSaveQueued()
+
+        val firstWrite = inFlight!!
+        viewer = viewer.applyPdfSaveCompletion(
+            1L,
+            completion(firstWrite, succeeded = false, isLatestQueued = queue.isLatest(firstWrite)),
+        )!!
+        assertEquals(PdfSaveStatus.SAVING, viewer.saveStatus)
+
+        val (afterLatestTake, latestWrite) = queue.take()
+        queue = afterLatestTake
+        val newestWrite = latestWrite!!
+        viewer = viewer.applyPdfSaveCompletion(
+            1L,
+            completion(newestWrite, isLatestQueued = queue.isLatest(newestWrite)),
+        )!!
+        assertEquals(PdfSaveStatus.SAVED, viewer.saveStatus)
+    }
+
+    @Test
+    fun latestWriteFailureShowsFailedAndRetryReturnsToSavingThenSaved() {
+        val request = saveRequest("changed")
+        var viewer = viewerFor(request).onPdfSaveQueued()
+        viewer = viewer.applyPdfSaveCompletion(1L, completion(request, succeeded = false))!!
+        assertEquals(PdfSaveStatus.FAILED, viewer.saveStatus)
+
+        // retrySave() re-offers this same current state and forces a new visible cycle.
+        viewer = viewer.onPdfSaveQueued()
+        assertEquals(PdfSaveStatus.SAVING, viewer.saveStatus)
+        viewer = viewer.applyPdfSaveCompletion(1L, completion(request))!!
+        assertEquals(PdfSaveStatus.SAVED, viewer.saveStatus)
+    }
+
+    @Test
+    fun staleDocumentAndSameIdReopenCompletionsCannotRelabelTheViewer() {
+        val oldRequest = saveRequest("old", docId = "same", viewerGeneration = 1L)
+        val otherViewer = ViewerUiState(docId = "other", saveStatus = PdfSaveStatus.SAVING)
+        assertSame(
+            otherViewer,
+            otherViewer.applyPdfSaveCompletion(2L, completion(oldRequest)),
+        )
+
+        val reopenedViewer = ViewerUiState(docId = "same", saveStatus = PdfSaveStatus.IDLE)
+        assertSame(
+            reopenedViewer,
+            reopenedViewer.applyPdfSaveCompletion(2L, completion(oldRequest)),
+        )
+        val noViewer: ViewerUiState? = null
+        assertNull(noViewer.applyPdfSaveCompletion(2L, completion(oldRequest)))
+    }
+
+    @Test
+    fun freshOpenIgnoresInitialSidecarSuccessAndOldCompletion() {
+        val initial = saveRequest("loaded", reportStatus = false)
+        val fresh = viewerFor(initial)
+        assertSame(fresh, fresh.applyPdfSaveCompletion(1L, completion(initial)))
+
+        val stale = saveRequest("old edit", viewerGeneration = 1L)
+        assertSame(fresh, fresh.applyPdfSaveCompletion(2L, completion(stale)))
+        assertEquals(PdfSaveStatus.IDLE, fresh.saveStatus)
+    }
+
+    @Test
+    fun mismatchedCurrentStateNeverClaimsSaved() {
+        val request = saveRequest("captured")
+        val viewer = ViewerUiState(docId = "doc", notes = mapOf(0 to "newer")).onPdfSaveQueued()
+
+        val updated = viewer.applyPdfSaveCompletion(1L, completion(request))!!
+
+        assertEquals(PdfSaveStatus.SAVING, updated.saveStatus)
+    }
+
+    @Test
+    fun olderCompletionCannotDragAnAlreadySavedNewerStateBackToSaving() {
+        val viewer = ViewerUiState(docId = "doc", saveStatus = PdfSaveStatus.SAVED)
+        val stale = saveRequest("older")
+
+        val updated = viewer.applyPdfSaveCompletion(
+            1L,
+            completion(stale, isLatestQueued = false),
+        )
+
+        assertSame(viewer, updated)
+        assertEquals(PdfSaveStatus.SAVED, updated?.saveStatus)
     }
 
     // ---------------------------------------------------------------- open generation

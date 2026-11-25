@@ -48,6 +48,25 @@ object PdfFlowTrace {
         )
     }
 
+    /** A user-visible auto-save cycle started after a document state change. */
+    fun saveStart() {
+        DevLog.event(COMPONENT, "save_start")
+    }
+
+    /** The latest queued state for [docId] was verified durable. */
+    fun saveDone(docId: String) {
+        DevLog.event(COMPONENT, "save_done", "docId" to docId)
+    }
+
+    /** The latest write failed. [reason] must be a machine category, never a message. */
+    fun saveFailed(docId: String, reason: String) {
+        DevLog.event(COMPONENT, "save_fail", "docId" to docId, "reason" to reason)
+    }
+
+    /** Extracts a privacy-safe exception category; messages may contain user paths/text. */
+    internal fun saveFailureReason(error: Throwable): String =
+        error::class.java.simpleName.ifEmpty { "exception" }
+
     /** An annotation was committed. [type] is a kind; [annotationId] is opaque. */
     fun annotate(type: String, annotationId: String, page: Int, total: Int) {
         DevLog.event(
