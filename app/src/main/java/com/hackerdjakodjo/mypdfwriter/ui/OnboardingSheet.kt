@@ -39,6 +39,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.OnboardingTopicKey
@@ -50,6 +52,13 @@ internal object OnboardingLabels {
     const val PREVIOUS = "이전"
     const val SKIP = "건너뛰기"
     const val START = "시작"
+    const val IMPORT = "PDF 가져오기"
+}
+
+internal fun onboardingFinalActionLabel(isLast: Boolean, canImport: Boolean): String = when {
+    !isLast -> OnboardingLabels.NEXT
+    canImport -> OnboardingLabels.IMPORT
+    else -> OnboardingLabels.START
 }
 
 /** Framing shared with the help center's four-card quick start. */
@@ -93,7 +102,7 @@ private fun onboardingCardsByKey(): Map<OnboardingTopicKey, OnboardingCard> = ma
     OnboardingTopicKey.HOME_QUICK_ACTIONS to OnboardingCard(
         key = OnboardingTopicKey.HOME_QUICK_ACTIONS,
         title = "홈에서 바로 시작",
-        body = "홈의 PDF 가져오기와 새 노트 두 버튼으로 바로 시작하고, 백업은 설정에 있어요.",
+        body = "홈의 이어서 읽기(처음엔 PDF 가져오기)와 새 노트로 바로 시작하고, 백업은 홈 설정에 있어요.",
     ),
     OnboardingTopicKey.OPEN_READ_PDF to OnboardingCard(
         key = OnboardingTopicKey.OPEN_READ_PDF,
@@ -107,8 +116,9 @@ private fun onboardingCardsByKey(): Map<OnboardingTopicKey, OnboardingCard> = ma
     ),
     OnboardingTopicKey.NOTE_PANE to OnboardingCard(
         key = OnboardingTopicKey.NOTE_PANE,
-        title = "노트에 담기",
-        body = "하단 도구 독의 노트로 펼쳐 담은 내용을 원본 링크와 함께 저장하고, 도움말의 60초 빠른 시작으로 다시 볼 수 있어요.",
+        title = UiCopy.CAPTURE_TO_NOTE,
+        body = "하단 도구 독의 노트로 ${UiCopy.STUDY_NOTE}(${UiCopy.STUDY_NOTE_DESCRIPTION})를 " +
+            "열어 원본 링크와 함께 저장해요.",
     ),
     OnboardingTopicKey.HELP_BACKUP to OnboardingCard(
         key = OnboardingTopicKey.HELP_BACKUP,
@@ -120,12 +130,15 @@ private fun onboardingCardsByKey(): Map<OnboardingTopicKey, OnboardingCard> = ma
 /**
  * First-run walkthrough: a single Material 3 bottom sheet that swaps its one
  * visible card as the user taps 다음/이전. 건너뛰기 and 시작 close it; there is
- * no stack of dialogs and no navigation or network dependency.
+ * no stack of dialogs and no navigation or network dependency. When the host
+ * supplies [onStartImport], the final button becomes PDF 가져오기 and hands the
+ * import action back to the host instead of merely closing the sheet.
  */
 @Composable
 fun OnboardingSheet(
     onDismiss: () -> Unit,
     onComplete: () -> Unit,
+    onStartImport: (() -> Unit)? = null,
 ) {
     val cards = remember { onboardingCards() }
     var index by remember { mutableIntStateOf(0) }
@@ -204,7 +217,10 @@ fun OnboardingSheet(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onDismiss) { Text(OnboardingLabels.SKIP) }
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.semantics { contentDescription = OnboardingLabels.SKIP },
+                ) { Text(OnboardingLabels.SKIP) }
                 Spacer(Modifier.weight(1f))
                 if (index > 0) {
                     TextButton(onClick = { index -= 1 }) { Text(OnboardingLabels.PREVIOUS) }
@@ -212,13 +228,17 @@ fun OnboardingSheet(
                 Button(
                     onClick = {
                         if (isLast) {
-                            onComplete()
+                            if (onStartImport != null) {
+                                onStartImport()
+                            } else {
+                                onComplete()
+                            }
                         } else {
                             index += 1
                         }
                     },
                 ) {
-                    Text(if (isLast) OnboardingLabels.START else OnboardingLabels.NEXT)
+                    Text(onboardingFinalActionLabel(isLast, canImport = onStartImport != null))
                 }
             }
         }

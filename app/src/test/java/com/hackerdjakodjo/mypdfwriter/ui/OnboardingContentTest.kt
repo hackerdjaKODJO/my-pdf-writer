@@ -47,7 +47,7 @@ class OnboardingContentTest {
         val expectedKeywords = mapOf(
             OnboardingTopicKey.HOME_QUICK_ACTIONS to listOf("홈", "PDF 가져오기", "새 노트", "백업"),
             OnboardingTopicKey.SELECT_HIGHLIGHT to listOf("PDF", "형광펜", "한 번에"),
-            OnboardingTopicKey.NOTE_PANE to listOf("노트", "링크"),
+            OnboardingTopicKey.NOTE_PANE to listOf("노트", UiCopy.STUDY_NOTE, UiCopy.STUDY_NOTE_DESCRIPTION, "링크"),
         )
         onboardingCards().forEach { card ->
             val keywords = expectedKeywords.getValue(card.key)
@@ -66,16 +66,29 @@ class OnboardingContentTest {
         assertEquals("이전", OnboardingLabels.PREVIOUS)
         assertEquals("건너뛰기", OnboardingLabels.SKIP)
         assertEquals("시작", OnboardingLabels.START)
+        assertEquals("PDF 가져오기", OnboardingLabels.IMPORT)
         assertEquals("튜토리얼 다시 보기", REPLAY_TUTORIAL_LABEL)
+    }
+
+    @Test
+    fun finalActionUsesImportOnlyWhenTheHostSupportsIt() {
+        assertEquals(OnboardingLabels.NEXT, onboardingFinalActionLabel(isLast = false, canImport = true))
+        assertEquals(OnboardingLabels.START, onboardingFinalActionLabel(isLast = true, canImport = false))
+        assertEquals(OnboardingLabels.IMPORT, onboardingFinalActionLabel(isLast = true, canImport = true))
     }
 
     @Test
     fun quickStartFramingMatchesTheHelpCenter() {
         assertEquals("60초 빠른 시작", ONBOARDING_QUICK_START_LABEL)
-        assertTrue(
-            "the last card should point at the help center quick cards",
-            onboardingCards().any { it.body.contains("60초 빠른 시작") },
-        )
+        assertEquals("튜토리얼 다시 보기", REPLAY_TUTORIAL_LABEL)
+    }
+
+    @Test
+    fun captureCardUsesCanonicalLearningNoteVocabulary() {
+        val card = onboardingCards().first { it.key == OnboardingTopicKey.NOTE_PANE }
+        assertEquals(UiCopy.CAPTURE_TO_NOTE, card.title)
+        assertTrue(card.body.contains(UiCopy.STUDY_NOTE))
+        assertTrue(card.body.contains(UiCopy.STUDY_NOTE_DESCRIPTION))
     }
 
     @Test

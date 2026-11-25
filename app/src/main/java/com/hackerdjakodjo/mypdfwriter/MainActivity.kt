@@ -25,10 +25,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.OnboardingStore
+import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.ui.BackupSheet
 import com.hackerdjakodjo.mypdfwriter.ui.BackupViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.HelpCenterSheet
+import com.hackerdjakodjo.mypdfwriter.ui.HelpTopicKey
 import com.hackerdjakodjo.mypdfwriter.ui.ImportIntentSnapshot
 import com.hackerdjakodjo.mypdfwriter.ui.NoteEditorScreen
 import com.hackerdjakodjo.mypdfwriter.ui.toolHandoffFile
@@ -38,6 +40,7 @@ import com.hackerdjakodjo.mypdfwriter.ui.NotebookViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.OnboardingSheet
 import com.hackerdjakodjo.mypdfwriter.ui.PdfExportSnapshot
 import com.hackerdjakodjo.mypdfwriter.ui.PdfViewModel
+import com.hackerdjakodjo.mypdfwriter.ui.QuickDestination
 import com.hackerdjakodjo.mypdfwriter.ui.STUDY_PANE_DEFAULT_FRACTION
 import com.hackerdjakodjo.mypdfwriter.ui.StudyNoteBuilder
 import com.hackerdjakodjo.mypdfwriter.ui.StudyPaneSheet
@@ -49,8 +52,8 @@ import com.hackerdjakodjo.mypdfwriter.ui.clampStudyPaneFraction
 import com.hackerdjakodjo.mypdfwriter.ui.isMultiImport
 import com.hackerdjakodjo.mypdfwriter.ui.pdfImportActions
 import com.hackerdjakodjo.mypdfwriter.ui.resolveImportUri
+import com.hackerdjakodjo.mypdfwriter.ui.showHomeOnboardingPrompt
 import com.hackerdjakodjo.mypdfwriter.ui.theme.MyPdfWriterTheme
-import kotlinx.coroutines.delay
 
 /** Reopening the same study notebook keeps the page (e.g. a just-captured excerpt). */
 internal fun studyPanePageIndexAfterOpen(
@@ -129,7 +132,9 @@ class MainActivity : ComponentActivity() {
                 var showBackup by remember { mutableStateOf(false) }
                 var showTrace by remember { mutableStateOf(false) }
                 var showHelp by remember { mutableStateOf(false) }
+                var helpTopic by remember { mutableStateOf<HelpTopicKey?>(null) }
                 var showOnboarding by remember { mutableStateOf(false) }
+                var onboardingSeen by remember { mutableStateOf(onboardingStore.hasSeen()) }
                 val homeStateHolder = rememberSaveableStateHolder()
                 val viewer by viewModel.viewer.collectAsStateWithLifecycle()
                 val notebooks by notebookViewModel.notebooks.collectAsStateWithLifecycle()
@@ -161,15 +166,23 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                 }
-                // First launch only: show the walkthrough after the home screen
-                // settles, then persist the one-time flag. Replay is driven by
-                // the help center and does not depend on this flag.
-                LaunchedEffect(Unit) {
-                    if (!onboardingStore.hasSeen()) {
-                        delay(300L)
-                        showOnboarding = true
-                        onboardingStore.markSeen()
-                    }
+                val markOnboardingSeen: () -> Unit = {
+                    onboardingStore.markSeen()
+                    onboardingSeen = true
+                }
+                val openOnboarding: () -> Unit = {
+                    // Starting the tutorial is an explicit first-run action; merely
+                    // rendering Home or Help never consumes the optional prompt.
+                    markOnboardingSeen()
+                    showOnboarding = true
+                }
+                val closeOnboarding: () -> Unit = {
+                    markOnboardingSeen()
+                    showOnboarding = false
+                }
+                val startOnboardingImport: () -> Unit = {
+                    closeOnboarding()
+                    openPdf.launch(arrayOf("application/pdf"))
                 }
                 // A detached pane belongs to one open PDF. If the document closes or
                 // is replaced elsewhere, save the note and drop the stale pane.
@@ -201,6 +214,18 @@ class MainActivity : ComponentActivity() {
                     studyPanePageIndex = 0
                     studyPaneDocId = null
                 }
+                val openViewerStudyPane: () -> Unit = {
+                    val doc = viewer
+                    if (doc != null) {
+                        val source = StudySource(
+                            docName = doc.docName,
+                            docUri = viewModel.currentDocumentUri(),
+                        )
+                        val notebook = notebookViewModel.studyNoteFor(source)
+                            ?: notebookViewModel.createBlankStudyNote(source)
+                        openStudyPane(notebook)
+                    }
+                }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val note = currentNote
                     when {
@@ -226,7 +251,10 @@ class MainActivity : ComponentActivity() {
                                     viewModel.openDocumentAt(Uri.parse(uri), page)
                                 }
                             },
-                            onOpenHelp = { showHelp = true },
+                            onOpenHelp = {
+                                helpTopic = HelpTopicKey.WRITE_TOOLS
+                                showHelp = true
+                            },
                         )
                         showTools -> ToolsScreen(
                             onBack = { showTools = false },
@@ -261,7 +289,13 @@ class MainActivity : ComponentActivity() {
                                 onSetTags = { id, tags -> notebookViewModel.setTags(id, tags) },
                                 onOpenBackup = { showBackup = true },
                                 onOpenTrace = { showTrace = true },
-                                onOpenHelp = { showHelp = true },
+                                onOpenHelp = {
+                                    helpTopic = null
+                                    showHelp = true
+                                },
+                                showOnboardingPrompt = showHomeOnboardingPrompt(onboardingSeen),
+                                onOpenOnboarding = openOnboarding,
+                                onDismissOnboardingPrompt = markOnboardingSeen,
                                 onRemovePdfRecent = { uri ->
                                     viewModel.removeRecent(uri, deleteAnnotations = false)
                                 },
@@ -330,7 +364,14 @@ class MainActivity : ComponentActivity() {
                                         ?: notebookViewModel.createBlankStudyNote(source)
                                     openStudyPane(notebook)
                                 },
-                                onOpenHelp = { showHelp = true },
+                                onOpenHelp = {
+                                    helpTopic = null
+                                    showHelp = true
+                                },
+                                onOpenHelpTopic = { topic ->
+                                    helpTopic = topic
+                                    showHelp = true
+                                },
                                 studyPaneFraction = studyPaneFraction,
                                 onCloseStudyPane = closeStudyPane,
                                 onStudyPaneFractionChange = { fraction ->
@@ -392,7 +433,10 @@ class MainActivity : ComponentActivity() {
                                                 // stay available even while the page is locked.
                                                 viewModel.jumpToSourcePage(sourcePage)
                                             },
-                                            onOpenHelp = { showHelp = true },
+                                            onOpenHelp = {
+                                                helpTopic = HelpTopicKey.STUDY_NOTE
+                                                showHelp = true
+                                            },
                                         )
                                     }
                                 } else {
@@ -423,17 +467,58 @@ class MainActivity : ComponentActivity() {
                 }
                 if (showHelp) {
                     HelpCenterSheet(
-                        onDismiss = { showHelp = false },
+                        onDismiss = {
+                            showHelp = false
+                            helpTopic = null
+                        },
                         onReplayTutorial = {
                             showHelp = false
-                            showOnboarding = true
+                            openOnboarding()
                         },
+                        onQuickAction = { destination ->
+                            when (destination) {
+                                QuickDestination.OPEN_PDF -> {
+                                    if (currentNote == null) {
+                                        showHelp = false
+                                        helpTopic = null
+                                        openPdf.launch(arrayOf("application/pdf"))
+                                    } else {
+                                        // Leave the note editor intact if the student
+                                        // cancels the picker; explain the Home path instead.
+                                        helpTopic = HelpTopicKey.OPEN_PDF
+                                    }
+                                }
+                                QuickDestination.MARKUP_TOOLS -> {
+                                    if (viewer != null) {
+                                        showHelp = false
+                                        viewModel.setTool(Tool.HIGHLIGHT)
+                                    } else {
+                                        helpTopic = HelpTopicKey.TEXT_SELECTION
+                                    }
+                                }
+                                QuickDestination.NOTE_PANE -> {
+                                    if (viewer != null) {
+                                        showHelp = false
+                                        openViewerStudyPane()
+                                    } else {
+                                        helpTopic = HelpTopicKey.STUDY_NOTE
+                                    }
+                                }
+                                QuickDestination.REVIEW_CARDS -> {
+                                    // The note editor owns the card sheet; until it is
+                                    // open, keep Help focused on the exact path.
+                                    helpTopic = HelpTopicKey.WRITE_TOOLS
+                                }
+                            }
+                        },
+                        initialTopic = helpTopic,
                     )
                 }
                 if (showOnboarding) {
                     OnboardingSheet(
-                        onDismiss = { showOnboarding = false },
-                        onComplete = { showOnboarding = false },
+                        onDismiss = closeOnboarding,
+                        onComplete = closeOnboarding,
+                        onStartImport = startOnboardingImport,
                     )
                 }
             }

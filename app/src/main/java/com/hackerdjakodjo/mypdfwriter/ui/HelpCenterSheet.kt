@@ -21,8 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -51,7 +49,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
 /** Stable identity for a help topic; also used as the Compose lazy-list key. */
-internal enum class HelpTopicKey {
+enum class HelpTopicKey {
     QUICK_START,
     OPEN_PDF,
     TEXT_SELECTION,
@@ -100,9 +98,9 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
         subtitle = "처음 60초면 읽기·표시·노트·복습까지 한 번에",
         steps = listOf(
             "홈에서 PDF 가져오기 또는 이어서 읽기로 강의자료를 엽니다.",
-            "하단의 텍스트 선택을 누르고 중요한 문장을 드래그합니다.",
+            "하단 도구 독의 텍스트 선택을 누르고 중요한 문장을 드래그합니다.",
             "플로팅 바에서 형광펜을 눌러 표시를 PDF에 저장합니다.",
-            "하단 도구 독의 노트를 눌러 아래에 노트 패널을 엽니다.",
+            "하단 도구 독의 노트를 눌러 ${UiCopy.STUDY_NOTE}(${UiCopy.STUDY_NOTE_DESCRIPTION})를 엽니다.",
             "가운데 손잡이를 위로 올려 노트를 넓히고 펜으로 필기합니다.",
             "노트 헤더 링크로 원본 페이지를 오가고, 홈 설정의 백업/복원으로 작업을 보관합니다.",
         ),
@@ -117,14 +115,15 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
             "홈의 PDF 가져오기 또는 PDF 탭에서 파일 선택기로 PDF를 고릅니다.",
             "다른 앱에서 PDF를 공유하면 공유 시트에서 My PDF Writer를 선택해 바로 가져올 수 있습니다.",
             "홈의 정렬 버튼으로 이름·최근 열기·페이지 수순을 바꿀 수 있습니다.",
-            "두 손가락으로 벌려 확대하고, 페이지를 더블 탭하면 화면 맞춤과 200%가 전환됩니다. 화면에 맞추기에서는 좌우로 스와이프해 페이지를 넘기고, 확대 후에는 한 손가락으로 페이지를 이동합니다. 페이지 이동은 페이지 아래 하단 페이지 바에 있어 PDF를 가리지 않습니다.",
-            "상단 검색 아이콘은 PDF 검색을 바로 열고, PDF 메뉴는 보기·주석·노트·파일·설정 네 묶음으로 정리되어 있습니다.",
-            "PDF 내보내기는 첫 화면에 있고, 페이지 잠금·문서 정보·텍스트 복사는 추가 도구에 모여 있습니다.",
+            "${PDF_HINT_VIEW_ZOOM_TEXT}. 페이지를 더블 탭하면 화면 맞춤과 200%가 전환됩니다. 화면에 맞추기에서는 좌우로 스와이프해 페이지를 넘기고, 확대 후에는 한 손가락으로 페이지를 이동합니다. 페이지 이동은 ${PDF_HINT_PAGE_NAVIGATION_TEXT}(‹ 번호 ›)으로 하며 PDF를 가리지 않습니다.",
+            "상단 검색 아이콘은 PDF 검색을 바로 열고, PDF 메뉴는 학습 노트·페이지 메모·북마크·PDF 내보내기·공유·도움말 여섯 작업을 먼저 보여 줍니다.",
+            "전체 도구 보기 뒤 보기·주석·노트·파일·설정 묶음이 이어지고, 페이지 잠금·문서 정보·텍스트 복사는 추가 도구에 모여 있습니다.",
+            "${UiCopy.PAGE_MEMO}는 ${UiCopy.PAGE_MEMO_DESCRIPTION}이고, ${UiCopy.POST_IT}는 ${UiCopy.POST_IT_DESCRIPTION}입니다.",
             "화면 설정에서 야간 모드와 문서별 밝기를 조절할 수 있습니다.",
             "페이지 잠금을 켜면 실수로 페이지가 넘어가지 않습니다. 아래 잠금 배지의 해제로 풉니다.",
             "내부 링크가 있는 PDF는 보기 도구에서 링크를 탭하면 해당 페이지로 이동합니다.",
         ),
-        note = "PDF 메뉴 그룹: 보기 · 주석 · 노트 · 파일·설정, 자주 쓰지 않는 도구는 추가 도구에서 엽니다.",
+        note = "PDF 메뉴의 전체 도구 보기 뒤 그룹: 보기 · 주석 · 노트 · 파일·설정, 자주 쓰지 않는 도구는 추가 도구에서 엽니다.",
     ),
     HelpTopic(
         key = HelpTopicKey.TEXT_SELECTION,
@@ -135,25 +134,25 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
             "하단 도구의 텍스트 선택을 누르면 단어 박스가 표시됩니다.",
             "한 단어는 짧게 탭하고, 여러 단어는 첫 단어에서 끝 단어까지 드래그합니다.",
             "선택 바에서 형광펜·밑줄·취소선을 눌러 표시를 저장합니다.",
-            "같은 바의 복사·노트에 담기를 쓰거나 더보기에서 번역·사전·공유를 실행할 수 있습니다.",
+            "같은 바의 복사·${UiCopy.CAPTURE_TO_NOTE}를 쓰거나 더보기에서 번역·사전·공유를 실행할 수 있습니다. ${UiCopy.CAPTURE_TO_NOTE}는 ${UiCopy.CAPTURE_TO_NOTE_DESCRIPTION}.",
         ),
         note = "표시가 안 보이면 PDF 메뉴의 주석 숨기기가 켜져 있는지 확인하세요. 숨김은 화면에만 적용되고 주석은 유지됩니다.",
         caution = "이미지(스캔) PDF는 텍스트 레이어가 없어 선택할 수 없습니다. 홈 설정의 PDF 도구에서 OCR을 먼저 사용하세요.",
     ),
     HelpTopic(
         key = HelpTopicKey.STUDY_NOTE,
-        chip = "노트에 담기 + 높이",
-        title = "PDF 위 노트에 담기 + 높이 드래그",
-        subtitle = "PDF를 닫지 않고 노트를 펼치고 두 영역의 높이를 조절하기",
+        chip = "${UiCopy.STUDY_NOTE} + 높이",
+        title = "PDF 위 ${UiCopy.STUDY_NOTE} + 높이 드래그",
+        subtitle = "PDF와 연결된 학습 노트를 펼치고 두 영역의 높이를 조절하기",
         steps = listOf(
-            "하단 도구 독의 노트를 누르면 아래에 노트 패널이 열리고 위에는 PDF가 남습니다.",
-            "기본 높이는 85%입니다. 두 영역 사이의 가운데 손잡이를 위아래로 드래그하세요.",
+            "하단 도구 독의 노트를 누르면 아래에 ${UiCopy.STUDY_NOTE}(${UiCopy.STUDY_NOTE_DESCRIPTION})가 열리고 위에는 PDF가 남습니다.",
+            "기본 높이는 70%입니다. 두 영역 사이의 가운데 손잡이를 위아래로 드래그하세요.",
             "위로 드래그하면 노트가 커지고(최대 85%), 아래로 드래그하면 PDF가 커집니다(노트 최소 35%).",
             "노트 헤더의 크기 팝업에서 50/70/85%를 고를 수도 있습니다.",
-            "분할 보기에서 페이지 이동은 PDF 아래쪽 줄(‹ 번호 ›)에 있어 PDF를 가리지 않습니다.",
-            "PDF에서 선택한 발췌를 노트 헤더로 끌어다 놓고, 링크 아이콘으로 원본 PDF 페이지를 오갑니다.",
+            "분할 보기에서 페이지 이동은 ${PDF_HINT_PAGE_NAVIGATION_TEXT}(‹ 번호 ›)에 있어 PDF를 가리지 않습니다.",
+            "PDF에서 선택한 내용을 ${UiCopy.CAPTURE_TO_NOTE}로 ${UiCopy.STUDY_NOTE}에 저장하고, 링크 아이콘으로 원본 PDF 페이지를 오갑니다.",
         ),
-        note = "노트를 닫아도 자동 저장되고 PDF는 같은 페이지에 남습니다.",
+        note = "${UiCopy.STUDY_NOTE}: ${UiCopy.STUDY_NOTE_DESCRIPTION} · ${UiCopy.PAGE_MEMO}: ${UiCopy.PAGE_MEMO_DESCRIPTION} · ${UiCopy.POST_IT}: ${UiCopy.POST_IT_DESCRIPTION}. 노트를 닫아도 자동 저장되고 PDF는 같은 페이지에 남습니다.",
     ),
     HelpTopic(
         key = HelpTopicKey.WRITE_TOOLS,
@@ -164,9 +163,10 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
             "PDF 하단 독의 여섯 슬롯은 보기·형광펜·펜·지우개·텍스트 선택·노트입니다. 펜·형광펜을 길게 누르면 해당 도구의 스타일 설정이 바로 열립니다.",
             "PDF의 글상자·도형·밑줄·스탬프는 주석 도구 시트에서 고릅니다.",
             "노트 하단 독은 펜·형광펜·지우개·선택·글상자·도형입니다.",
+            "${PDF_HINT_STYLE_UNDO_TEXT} 있습니다. 펜·형광펜을 길게 눌러 스타일을 바로 열 수도 있습니다.",
             "스타일에서 색·굵기·펜 종류(볼펜/만년필/붓/연필)를 조절합니다. 필압 반응 곡선은 노트 메뉴 → 필기 설정에서 바꿀 수 있고, 펜을 누르면 필압 범위가 자동으로 보정됩니다. 필압은 굵기뿐 아니라 잉크 농도, 붓 번짐, 연필 진하기에도 반영됩니다. 빠른 획은 가늘고 옅게, 느린 획은 굵고 진하게 그려지고, 펜을 한곳에 멈추고 누르면 만년필·붓에 잉크가 고입니다. 필압 잡음은 자동으로 부드럽게 걸러집니다. 손가락·마우스는 압력 1로 저장되므로 곡선이 적용되지 않습니다.",
-            "두 손가락 탭은 실행 취소, 세 손가락 탭은 다시 실행입니다(필기 중에는 동작하지 않음).",
-            "노트 메뉴 → 복습 카드 → 가리기 카드에서 질문과 정답을 입력해 카드를 만듭니다.",
+            "노트 편집기에서만 두 손가락 탭은 실행 취소, 세 손가락 탭은 다시 실행입니다. 필기 중에는 동작하지 않으며, PDF에서는 실행 취소·다시 실행 버튼을 사용하세요.",
+            "노트 메뉴 → 카드 → 가리기 카드에서 질문과 정답을 입력해 카드를 만듭니다.",
             "페이지의 테이프를 탭해 정답을 확인하고 O / X로 정답 여부를 표시합니다.",
         ),
         note = "카드 목록에서 진행률과 정답률을 확인하고, 카드를 수정·삭제하거나 해당 페이지로 이동할 수 있습니다.",
@@ -193,7 +193,7 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
             "홈 설정의 백업/복원을 누르고 백업을 선택해 ZIP 저장 위치를 고릅니다.",
             "PDF 원본 포함 여부를 선택할 수 있고, 커스텀 템플릿도 백업에 포함됩니다.",
             "복원은 같은 화면에서 ZIP을 선택하면 기존 데이터가 안전하게 교체됩니다.",
-            "PDF 메뉴의 PDF 내보내기는 주석을 PDF에 포함해 저장합니다.",
+            "PDF 작업은 앱 안에 저장되고, PDF 메뉴의 PDF 내보내기는 주석을 포함한 새 PDF를 다른 위치에 저장합니다.",
             "노트의 PDF로 내보내기는 전체/현재/선택 페이지와 숨긴 레이어 포함 여부를 고를 수 있습니다.",
         ),
         caution = "백업 ZIP은 암호화되지 않습니다. 개인 정보가 들어 있을 수 있으니 신뢰하는 저장소에 보관하세요.",
@@ -268,7 +268,7 @@ internal fun quickCards(): List<QuickCard> = listOf(
     QuickCard(
         key = QuickCardKey.CAPTURE_TO_NOTE,
         label = "3 노트에 담기",
-        sentence = "하단 도구 독의 노트를 눌러 발췌와 필기를 함께 담습니다.",
+        sentence = "하단 도구 독의 노트로 ${UiCopy.STUDY_NOTE}(${UiCopy.STUDY_NOTE_DESCRIPTION})를 열어 담습니다.",
         destination = QuickDestination.NOTE_PANE,
         actionLabel = "자세히",
         topicKey = HelpTopicKey.STUDY_NOTE,
@@ -276,7 +276,7 @@ internal fun quickCards(): List<QuickCard> = listOf(
     QuickCard(
         key = QuickCardKey.REVIEW,
         label = "4 복습하기",
-        sentence = "노트 메뉴의 복습 카드에서 가리기 카드로 스스로 확인합니다.",
+        sentence = "노트 메뉴의 카드에서 가리기 카드로 스스로 확인합니다.",
         destination = QuickDestination.REVIEW_CARDS,
         actionLabel = "자세히",
         topicKey = HelpTopicKey.WRITE_TOOLS,
@@ -290,6 +290,35 @@ internal fun quickCards(): List<QuickCard> = listOf(
 internal fun visibleLegacyTopics(expanded: Boolean): List<HelpTopic> =
     if (expanded) helpTopics() else emptyList()
 
+/** Initial selection policy for a contextual help deep link. */
+internal data class HelpOpenSelection(
+    val selectedKey: HelpTopicKey,
+    val showMore: Boolean,
+    val scrollTopicKey: HelpTopicKey?,
+)
+
+internal fun initialHelpSelection(
+    topics: List<HelpTopic>,
+    initialTopic: HelpTopicKey?,
+): HelpOpenSelection {
+    val fallback = topics.firstOrNull()?.key ?: HelpTopicKey.QUICK_START
+    val matchedTopic = initialTopic?.let { candidate ->
+        topics.firstOrNull { it.key == candidate }
+    }
+    return HelpOpenSelection(
+        selectedKey = matchedTopic?.key ?: fallback,
+        showMore = matchedTopic != null,
+        scrollTopicKey = matchedTopic?.key,
+    )
+}
+
+/**
+ * Header, optional replay, quick cards, 더보기 and the chip row precede topic
+ * items. Keeping the index policy pure lets JVM tests pin contextual scrolling.
+ */
+internal fun helpTopicScrollIndex(hasReplay: Boolean, topicIndex: Int): Int =
+    topicIndex + if (hasReplay) 5 else 4
+
 /** Label for the optional replay entry in the help center. */
 internal const val REPLAY_TUTORIAL_LABEL = "튜토리얼 다시 보기"
 
@@ -301,141 +330,153 @@ internal const val REPLAY_TUTORIAL_LABEL = "튜토리얼 다시 보기"
  * links, assets, fonts, web views or analytics.
  *
  * [onReplayTutorial] is optional: when supplied, the sheet offers a replay of
- * the first-run tutorial. [onQuickAction] is optional: when supplied, tapping a
- * quick card hands its [QuickDestination] to the host for a deep link; without
- * it, the card expands 더보기 and scrolls to the matching legacy topic. The
- * caller owns closing this sheet and showing any follow-up screen.
+ * the first-run tutorial. [initialTopic] opens the full topic list with that
+ * topic selected and scrolled into view. [onQuickAction] is optional: when
+ * supplied, tapping a quick card hands its [QuickDestination] to the host for a
+ * deep link; without it, the card expands 더보기 and scrolls to the matching
+ * legacy topic. The caller owns closing this sheet and showing any follow-up
+ * screen.
  */
 @Composable
 fun HelpCenterSheet(
     onDismiss: () -> Unit,
     onReplayTutorial: (() -> Unit)? = null,
     onQuickAction: ((QuickDestination) -> Unit)? = null,
+    initialTopic: HelpTopicKey? = null,
 ) {
     val topics = remember { helpTopics() }
     val quickCards = remember { quickCards() }
-    var selectedKey by remember { mutableStateOf(topics.first().key) }
-    var showMore by remember { mutableStateOf(false) }
-    var pendingScrollKey by remember { mutableStateOf<HelpTopicKey?>(null) }
+    val initialSelection = remember(initialTopic) { initialHelpSelection(topics, initialTopic) }
+    var selectedKey by remember(initialTopic) { mutableStateOf(initialSelection.selectedKey) }
+    var showMore by remember(initialTopic) { mutableStateOf(initialSelection.showMore) }
+    var pendingScrollKey by remember(initialTopic) { mutableStateOf(initialSelection.scrollTopicKey) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Scroll only after the legacy list has been revealed by 더보기.
-    LaunchedEffect(showMore, pendingScrollKey) {
+    // Scroll only after the topic list has been revealed by 더보기 or a deep link.
+    LaunchedEffect(showMore, pendingScrollKey, onReplayTutorial != null) {
         val key = pendingScrollKey
         if (showMore && key != null) {
             val index = topics.indexOfFirst { it.key == key }
-            if (index >= 0) listState.animateScrollToItem(index)
+            if (index >= 0) {
+                listState.animateScrollToItem(helpTopicScrollIndex(onReplayTutorial != null, index))
+            }
             pendingScrollKey = null
         }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 20.dp, end = 12.dp, top = 2.dp, bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "도움말",
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.semantics { heading() },
-                    )
-                    Text(
-                        "60초 빠른 시작 · 기기 안에서만 동작합니다",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                ) { Text("닫기") }
-            }
-
-            if (onReplayTutorial != null) {
-                TextButton(
-                    onClick = { onReplayTutorial() },
-                    modifier = Modifier
-                        .heightIn(min = 48.dp)
-                        .padding(start = 14.dp, bottom = 6.dp),
-                ) {
-                    Text(REPLAY_TUTORIAL_LABEL)
-                }
-            }
-
-            // Four primary quick cards, each a 48dp+ target with a two-line label.
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                quickCards.forEach { card ->
-                    QuickCardRow(
-                        card = card,
-                        onClick = {
-                            selectedKey = card.topicKey
-                            if (onQuickAction != null) {
-                                onQuickAction(card.destination)
-                            } else {
-                                showMore = true
-                                pendingScrollKey = card.topicKey
-                            }
-                        },
-                    )
-                }
-            }
-
-            TextButton(
-                onClick = { showMore = !showMore },
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .padding(start = 12.dp),
-            ) {
-                Text(if (showMore) SHOW_LESS_LABEL else SHOW_MORE_LABEL)
-            }
-
-            val legacyTopics = visibleLegacyTopics(showMore)
-            if (legacyTopics.isNotEmpty()) {
-                FlowRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    legacyTopics.forEach { topic ->
-                        FilterChip(
-                            selected = selectedKey == topic.key,
-                            onClick = {
-                                selectedKey = topic.key
-                                val index = topics.indexOfFirst { it.key == topic.key }
-                                if (index >= 0) scope.launch { listState.animateScrollToItem(index) }
-                            },
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 20.dp, end = 12.dp, top = 2.dp, bottom = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "도움말",
+                                style = MaterialTheme.typography.headlineSmall,
+                                modifier = Modifier.semantics { heading() },
+                            )
+                            Text(
+                                "60초 빠른 시작 · 기기 안에서만 동작합니다",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(
+                            onClick = onDismiss,
                             modifier = Modifier.heightIn(min = 48.dp),
-                            label = { Text(topic.chip, maxLines = 2) },
-                        )
+                        ) { Text("닫기") }
+                    }
+
+                    if (onReplayTutorial != null) {
+                        TextButton(
+                            onClick = { onReplayTutorial() },
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .padding(start = 14.dp, bottom = 6.dp),
+                        ) {
+                            Text(REPLAY_TUTORIAL_LABEL)
+                        }
+                    }
+
+                    // Four primary quick cards, each a 48dp+ target with a two-line label.
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        quickCards.forEach { card ->
+                            QuickCardRow(
+                                card = card,
+                                onClick = {
+                                    selectedKey = card.topicKey
+                                    if (onQuickAction != null) {
+                                        onQuickAction(card.destination)
+                                    } else {
+                                        showMore = true
+                                        pendingScrollKey = card.topicKey
+                                    }
+                                },
+                            )
+                        }
+                    }
+
+                    TextButton(
+                        onClick = { showMore = !showMore },
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .padding(start = 12.dp),
+                    ) {
+                        Text(if (showMore) SHOW_LESS_LABEL else SHOW_MORE_LABEL)
                     }
                 }
-                Spacer(Modifier.height(10.dp))
+            }
 
-                LazyColumn(
-                    state = listState,
-                    // Bounded so the outer sheet can scroll as one surface on a
-                    // short phone; programmatic "더보기" jumps still work.
-                    userScrollEnabled = false,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(legacyTopics, key = { it.key.name }) { topic ->
-                        HelpTopicSection(topic)
+            if (showMore) {
+                item {
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        topics.forEach { topic ->
+                            FilterChip(
+                                selected = selectedKey == topic.key,
+                                onClick = {
+                                    selectedKey = topic.key
+                                    val index = topics.indexOfFirst { it.key == topic.key }
+                                    if (index >= 0) {
+                                        scope.launch {
+                                            listState.animateScrollToItem(
+                                                helpTopicScrollIndex(onReplayTutorial != null, index),
+                                            )
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.heightIn(min = 48.dp),
+                                label = { Text(topic.chip, maxLines = 2) },
+                            )
+                        }
                     }
+                    Spacer(Modifier.height(10.dp))
+                }
+
+                items(visibleLegacyTopics(true), key = { it.key.name }) { topic ->
+                    HelpTopicSection(topic, Modifier.padding(horizontal = 16.dp))
                 }
             }
         }
@@ -480,9 +521,9 @@ private fun QuickCardRow(card: QuickCard, onClick: () -> Unit) {
 }
 
 @Composable
-private fun HelpTopicSection(topic: HelpTopic) {
+private fun HelpTopicSection(topic: HelpTopic, modifier: Modifier = Modifier) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),

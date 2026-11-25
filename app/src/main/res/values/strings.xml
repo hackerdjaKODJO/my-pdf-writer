@@ -54,8 +54,8 @@
     <string name="zoom_in">확대</string>
     <string name="zoom_out">축소</string>
     <string name="fit_page">화면에 맞추기</string>
-    <string name="hint_view">두 손가락으로 확대·이동하세요</string>
-    <string name="hint_draw">한 손가락으로 그리세요 · 확대는 보기 도구에서</string>
+    <string name="hint_view">보기 도구 · 위쪽 페이지 이동 · 두 손가락·더블 탭 확대</string>
+    <string name="hint_draw">한 손가락으로 그리세요 · 스타일·실행 취소는 도구 독 위에</string>
     <string name="hint_text">텍스트를 놓을 위치를 탭하세요</string>
     <string name="hint_stamp">스탬프를 놓을 위치를 탭하세요</string>
     <string name="hint_signature">서명을 놓을 위치를 탭하세요</string>
@@ -70,6 +70,7 @@
     <string name="preparing_export">내보낼 PDF를 만드는 중…</string>
     <string name="export_pdf">PDF 내보내기</string>
     <string name="export_done">PDF를 내보냈습니다</string>
+    <string name="export_done_with_notes">주석을 포함한 새 PDF를 저장했습니다.</string>
     <string name="export_failed">내보내지 못했습니다: %1$s</string>
     <string name="unsupported_pdf">이 PDF를 열 수 없습니다.</string>
     <string name="blank_created">빈 PDF를 만들었습니다</string>
