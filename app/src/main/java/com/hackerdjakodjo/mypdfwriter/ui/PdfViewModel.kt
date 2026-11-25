@@ -2406,9 +2406,11 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Selection provenance without creating a persisted excerpt (used at drag start). */
-    fun studyCaptureForSelection(pageIndex: Int, text: String): PdfStudyCapture? =
-        buildPdfStudyCapture(_viewer.value ?: return null, pageIndex, text, _viewer.value?.selectedWords.orEmpty())
-            ?.copy(source = currentStudySource() ?: return null)
+    fun studyCaptureForSelection(pageIndex: Int, text: String): PdfStudyCapture? {
+        val state = _viewer.value ?: return null
+        val source = currentStudySource() ?: return null
+        return buildPdfStudyCapture(state, pageIndex, text, state.selectedWords)?.copy(source = source)
+    }
 
     /** Adds a selection capture and returns its persisted excerpt identity. */
     fun addExcerptFromSelection(pageIndex: Int, text: String): PdfStudyCapture? =

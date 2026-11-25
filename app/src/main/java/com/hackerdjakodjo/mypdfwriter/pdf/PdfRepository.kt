@@ -50,7 +50,7 @@ internal class SourceFingerprintCache(maxEntries: Int = 8) {
     private val entries = object :
         LinkedHashMap<SourceFileStamp, String>(maxEntries, 0.75f, true) {
         override fun removeEldestEntry(
-            eldest: Mutable.Map.MutableEntry<SourceFileStamp, String>?,
+            eldest: MutableMap.MutableEntry<SourceFileStamp, String>,
         ): Boolean = size > maxEntries
     }
 
