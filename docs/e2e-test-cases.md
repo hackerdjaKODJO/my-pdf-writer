@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.89
+# E2E test cases — My PDF Writer 0.8.90
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator. On the Windows PC the existing `myreader_pixel7` AVD
@@ -11,7 +11,7 @@ Instrumentation APKs can also be compiled without a device via
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 1111 | **Passing** — 0 failures, 0 errors, 0 skipped (0.8.89 run) |
+| JVM unit tests | 1170 | **Passing** — 0 failures, 0 errors, 0 skipped (0.8.90 run) |
 | Instrumentation/E2E (existing component + real-file + durable-log suites) | 28 classes, 143 cases | Previously compiled; prior device results retained where recorded |
 | Instrumentation/E2E (usability suites, 0.8.89) | 14 cases | **Compiled**; on-device run pending (no adb device on this host) |
 | **Total instrumentation** | **28 classes, 157 cases** | **Compiled; on-device run pending for new/changed cases** |
@@ -83,6 +83,17 @@ adb shell am instrument -w \
 The static behavioral references, artifact hashes and design rationale are in
 [`ux-simplification-0889.md`](ux-simplification-0889.md). No competitor code or
 assets were copied.
+
+### Ink-quality instrumentation coverage (0.8.90)
+
+The existing note/PDF input suites were updated for pressure-aware eraser
+callbacks and compile with the new timing model. JVM tests carry the detailed
+ink invariants: sample-rate invariance, timed dwell, scale invariance, pencil
+replay stability, note preview/commit parity, timestamp JSON compatibility and
+capsule eraser crossings. Real stylus feel, calibration range and latency still
+require a hardware run.
+
+Evidence and scope are in [`ink-quality-0890.md`](ink-quality-0890.md).
 
 ## E2E cases
 

@@ -143,5 +143,15 @@ not claimed as complete.
 ## Verification policy
 
 JVM tests cover timing, smoothing, dynamics, replay, preparation, eraser geometry
-and JSON compatibility. Instrumentation tests must compile. A real stylus device
-is still required to validate latency, calibration range and subjective feel.
+and JSON compatibility. Instrumentation tests compile. A real stylus device is
+still required to validate latency, calibration range and subjective feel.
+
+### 0.8.90 host verification
+
+- 1170 JVM tests pass with 0 failures/errors/skips.
+- 157 instrumentation cases across 28 classes compile.
+- Arm64 debug APK and R8 release APK build successfully.
+- Release manifest has no `INTERNET`; `RECORD_AUDIO` remains the only sensitive
+  app permission.
+- No adb device or pressure-sensitive stylus was available, so on-device feel,
+  latency and calibration were not measured.
