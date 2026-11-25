@@ -29,3 +29,16 @@ internal fun sidecarId(file: File): String? {
         else -> null
     }?.takeIf { it.isNotBlank() }
 }
+
+/**
+ * Permanent deletion must remove the recovery source first. Keeping a canonical
+ * file when the tmp cannot be removed is intentional: a later load can still
+ * recover the old sidecar, but a successful deletion can never be undone by a
+ * leftover `.tmp`.
+ */
+internal fun deleteSidecarWithTmp(target: File): Boolean {
+    val tmp = File(target.path + ".tmp")
+    if (tmp.exists() && (!tmp.delete() || tmp.exists())) return false
+    if (target.exists() && (!target.delete() || target.exists())) return false
+    return !tmp.exists() && !target.exists()
+}

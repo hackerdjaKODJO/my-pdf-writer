@@ -1,7 +1,9 @@
 package com.hackerdjakodjo.mypdfwriter.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
@@ -35,5 +37,23 @@ class TmpRecoveryTest {
         assertEquals("doc-a", sidecarId(File("/x/doc-a.json")))
         assertEquals("doc-a", sidecarId(File("/x/doc-a.json.tmp")))
         assertNull(sidecarId(File("/x/doc-a.bak")))
+    }
+
+    @Test
+    fun deleteRemovesTmpFirstAndKeepsCanonicalWhenTmpCannotBeRemoved() {
+        val target = File(dir(), "doc.json")
+        target.writeText("canonical")
+        val tmp = File(target.path + ".tmp").apply { mkdirs() }
+        File(tmp, "blocker").writeText("not empty")
+
+        assertFalse(deleteSidecarWithTmp(target))
+        assertEquals("canonical", target.readText())
+        assertTrue(tmp.isDirectory)
+
+        File(tmp, "blocker").delete()
+        assertTrue(deleteSidecarWithTmp(target))
+        assertFalse(target.exists())
+        assertFalse(tmp.exists())
+        assertNull(readWithTmpRecovery(target) { it })
     }
 }

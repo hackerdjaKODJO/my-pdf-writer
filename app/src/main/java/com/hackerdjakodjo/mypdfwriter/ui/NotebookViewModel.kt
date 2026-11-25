@@ -5,6 +5,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.hackerdjakodjo.mypdfwriter.data.AudioNoteStore
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.Checklists
 import com.hackerdjakodjo.mypdfwriter.data.CustomTemplateStore
@@ -21,6 +22,7 @@ import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExporter
 import com.hackerdjakodjo.mypdfwriter.pdf.noteExportFileName
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -29,6 +31,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+internal const val NOTE_SAVE_FAILURE = "노트를 저장하지 못했습니다. 다시 시도해 주세요."
+
+/** Typed failure used by the synchronous backup barrier. */
+class NotebookSaveException(
+    message: String = NOTE_SAVE_FAILURE,
+    cause: Throwable? = null,
+) : IOException(message, cause)
+
+/** Truthful outcome of one study capture, including the appended notebook page. */
+data class StudyAppendResult(
+    val notebookId: String,
+    val pageIndex: Int,
+    val saved: Boolean,
+    val notebook: Notebook,
+    val error: String? = null,
+)
 
 /**
  * Replaces (or inserts) one notebook in the loaded library and keeps the same
@@ -54,24 +73,61 @@ internal fun mergeResumePage(incoming: Notebook, previous: Notebook?): Notebook 
     return incoming.copy(lastPageIndex = previous.lastPageIndex)
 }
 
+/** URI/docId-aware lookup supplied by the link-model integration. */
+internal fun findStudyNotebook(notebooks: List<Notebook>, source: StudySource): Notebook? =
+    notebooks.firstOrNull { !it.trashed && studySourcesMatch(it, source) }
+
+/** Pure capture policy shared by the ViewModel and JVM result tests. */
+internal fun appendStudyExcerptResult(
+    source: StudySource,
+    text: String,
+    pageIndex: Int,
+    findExisting: () -> Notebook?,
+    save: (Notebook) -> Boolean,
+): StudyAppendResult {
+    val trimmed = text.trim()
+    val excerpt = Excerpt(pageIndex = pageIndex.coerceAtLeast(0), text = trimmed)
+    val existing = findExisting()
+    val updated = if (existing != null) {
+        StudyNoteBuilder.appendExcerpt(existing, source, excerpt)
+    } else {
+        StudyNoteBuilder.fromExcerpts(
+            title = StudyNoteBuilder.suggestedTitle(source),
+            source = source,
+            excerpts = listOf(excerpt),
+        )
+    }
+    if (trimmed.isBlank()) {
+        return StudyAppendResult(
+            notebookId = updated.id,
+            pageIndex = -1,
+            saved = false,
+            notebook = updated,
+        )
+    }
+    val saved = save(updated)
+    return StudyAppendResult(
+        notebookId = updated.id,
+        pageIndex = updated.pages.lastIndex,
+        saved = saved,
+        notebook = updated,
+        error = if (saved) null else NOTE_SAVE_FAILURE,
+    )
+}
+
 private const val PAGE_SAVE_DELAY_MS = 350L
 
-class NotebookViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val store = NotebookStore(application)
-    private val resolver = application.contentResolver
-    private val customTemplateStore = CustomTemplateStore(application)
-    // Parsing every notebook used to block the first frame. Publish an empty
-    // library immediately and load it off Main; open() already falls back to a
-    // single-file read when the list has not arrived yet.
+/**
+ * Android-free save state used by [NotebookViewModel]. Keeping the failure,
+ * retry and close policy here makes the lifecycle guarantees JVM-testable while
+ * the ViewModel remains responsible for coroutines, tracing and the write gate.
+ */
+internal class NotebookSaveSession(
+    private val write: (Notebook) -> Boolean,
+    private val nowMs: () -> Long = System::currentTimeMillis,
+) {
     private val _notebooks = MutableStateFlow(emptyList<Notebook>())
     val notebooks: StateFlow<List<Notebook>> = _notebooks.asStateFlow()
-
-    init {
-        viewModelScope.launch(Dispatchers.IO) {
-            _notebooks.value = store.loadAll()
-        }
-    }
 
     private val _current = MutableStateFlow<Notebook?>(null)
     val current: StateFlow<Notebook?> = _current.asStateFlow()
@@ -79,35 +135,199 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
     private val _pageIndex = MutableStateFlow(0)
     val pageIndex: StateFlow<Int> = _pageIndex.asStateFlow()
 
-    private var saveJob: Job? = null
+    private val _saveError = MutableStateFlow<String?>(null)
+    val saveError: StateFlow<String?> = _saveError.asStateFlow()
 
-    /**
-     * Guards every notebook JSON write. The debounced writer holds this on IO;
-     * [saveNow] takes it on the calling thread so a close/backup flush can never
-     * interleave with a cancelled in-flight write of the same file. All six direct
-     * write sites funnel through [saveLocked] too, so no write can bypass it.
-     */
-    private val saveLock = NotebookWriteGate(store::save)
+    private var pendingRetry: (() -> Boolean)? = null
 
-    private fun saveLocked(notebook: Notebook) = saveLock.writeLocked(notebook)
-
-    /** Monotonic id of the newest scheduled write; older jobs may not publish. */
-    private var saveGeneration = 0L
-
-    fun open(id: String) {
-        val notebook = store.load(id)
-            ?: _notebooks.value.firstOrNull { it.id == id }
-            ?: return
-        _current.value = notebook
-        // Match PDF resume: reopening a lecture notebook returns to the page the
-        // student was writing instead of silently resetting to page 1.
-        _pageIndex.value = notebook.resumePageIndex()
+    fun setLibrary(notebooks: List<Notebook>) {
+        _notebooks.value = notebooks
     }
 
-    fun close() {
-        saveNow()
+    fun open(notebook: Notebook) {
+        val normalized = notebook.normalized()
+        _current.value = normalized
+        _pageIndex.value = normalized.resumePageIndex()
+    }
+
+    fun updateCurrent(
+        notebook: Notebook,
+        touchTimestamp: Boolean = true,
+        preserveResumePage: Boolean = true,
+    ): Notebook {
+        val prepared = prepare(notebook, touchTimestamp)
+        val updated = if (preserveResumePage) mergeResumePage(prepared, _current.value) else prepared
+        _current.value = updated
+        _pageIndex.value = _pageIndex.value.coerceIn(0, (updated.pages.size - 1).coerceAtLeast(0))
+        return updated
+    }
+
+    fun setPageIndex(index: Int): Notebook? {
+        val current = _current.value ?: return null
+        val safe = index.coerceIn(0, (current.pages.size - 1).coerceAtLeast(0))
+        if (safe == current.lastPageIndex && _pageIndex.value == safe) return current
+        _pageIndex.value = safe
+        return updateCurrent(
+            current.copy(lastPageIndex = safe),
+            touchTimestamp = false,
+            preserveResumePage = false,
+        )
+    }
+
+    fun saveSnapshot(notebook: Notebook): Boolean =
+        writeSnapshot(notebook) { saveSnapshot(notebook) }
+
+    fun saveNow(): Boolean {
+        val notebook = _current.value ?: return true
+        return writeSnapshot(notebook) { saveNow() }
+    }
+
+    fun close(): Boolean {
+        if (!saveNow()) return false
+        clearCurrent()
+        return true
+    }
+
+    fun clearCurrent() {
         _current.value = null
         _pageIndex.value = 0
+    }
+
+    fun trySaveDetached(
+        notebook: Notebook,
+        preserveResumePage: Boolean = true,
+        touchTimestamp: Boolean = true,
+    ): Notebook? {
+        val prepared = prepare(notebook, touchTimestamp)
+        val updated = if (preserveResumePage) mergeResumePage(prepared, _current.value) else prepared
+        return if (writeSnapshot(updated) { saveSnapshot(updated) }) updated else null
+    }
+
+    fun setDetachedPageIndex(notebook: Notebook, index: Int): Notebook? {
+        val safe = index.coerceIn(0, (notebook.pages.size - 1).coerceAtLeast(0))
+        return trySaveDetached(
+            notebook.copy(lastPageIndex = safe),
+            preserveResumePage = false,
+            touchTimestamp = false,
+        )
+    }
+
+    /** Retries the newest failed snapshot, or flushes the live editor. */
+    fun retrySave(): Boolean {
+        val retry = pendingRetry
+        return if (retry != null) retry() else saveNow()
+    }
+
+    /** Backup must drain detached failures as well as the live editor. */
+    fun flushPendingSavesBeforeBackup(): Boolean {
+        val retry = pendingRetry
+        if (retry != null && !retry()) return false
+        return saveNow()
+    }
+
+    fun requireBackupFlush() {
+        if (!flushPendingSavesBeforeBackup()) {
+            throw NotebookSaveException(_saveError.value ?: NOTE_SAVE_FAILURE)
+        }
+    }
+
+    fun publishSaveSuccess(notebook: Notebook, library: List<Notebook>? = null) {
+        _notebooks.value = library ?: mergeNotebookIntoLibrary(_notebooks.value, notebook)
+        clearSaveError()
+    }
+
+    fun publishSaveFailure(notebook: Notebook) {
+        reportSaveFailure(NOTE_SAVE_FAILURE) { saveSnapshot(notebook) }
+    }
+
+    fun reportSaveFailure(message: String, retry: () -> Boolean) {
+        _saveError.value = message
+        pendingRetry = retry
+    }
+
+    fun clearSaveError() {
+        _saveError.value = null
+        pendingRetry = null
+    }
+
+    fun discardCurrent() {
+        _current.value = null
+        _pageIndex.value = 0
+        // A restore invalidates every pre-restore snapshot, including a detached
+        // pane failure that retrySave might otherwise write over restored data.
+        clearSaveError()
+    }
+
+    fun removeFromLibrary(id: String) {
+        _notebooks.value = _notebooks.value.filterNot { it.id == id }
+    }
+
+    private fun prepare(notebook: Notebook, touchTimestamp: Boolean): Notebook {
+        val normalized = notebook.normalized()
+        return if (touchTimestamp) normalized.copy(updatedAt = nowMs()) else normalized
+    }
+
+    private fun writeSnapshot(notebook: Notebook, retry: () -> Boolean): Boolean {
+        val snapshot = notebook.normalized()
+        val saved = runCatching { write(snapshot) }.getOrDefault(false)
+        if (!saved) {
+            reportSaveFailure(NOTE_SAVE_FAILURE, retry)
+            return false
+        }
+        publishSaveSuccess(snapshot)
+        return true
+    }
+}
+
+class NotebookViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val store = NotebookStore(application)
+    private val resolver = application.contentResolver
+    private val customTemplateStore = CustomTemplateStore(application)
+
+    /**
+     * Guards every notebook JSON write and every load-all scan. The debounced
+     * writer holds this on IO; [saveNow] takes it on the calling thread so a
+     * close/backup flush can never interleave with an in-flight write.
+     */
+    private val saveLock = NotebookWriteGate { store.save(it) }
+    private val saveSession = NotebookSaveSession(::saveLocked)
+
+    val notebooks: StateFlow<List<Notebook>> = saveSession.notebooks
+    val current: StateFlow<Notebook?> = saveSession.current
+    val pageIndex: StateFlow<Int> = saveSession.pageIndex
+    val saveError: StateFlow<String?> = saveSession.saveError
+
+    private var saveJob: Job? = null
+
+    /** Monotonic id of the newest scheduled write; older jobs may not publish. */
+    @Volatile
+    private var saveGeneration = 0L
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            val loaded = saveLock.locked { store.loadAll() }
+            saveSession.setLibrary(loaded)
+        }
+    }
+
+    private fun saveLocked(notebook: Notebook): Boolean = saveLock.locked { store.save(notebook) }
+
+    fun open(id: String) {
+        // Reopening the same document must observe its pending final write. A
+        // failed flush retains the live notebook instead of replacing it with
+        // stale disk data.
+        if (current.value != null && !saveNow()) return
+        val notebook = saveLock.locked {
+            store.load(id) ?: notebooks.value.firstOrNull { it.id == id }
+        } ?: return
+        saveSession.open(notebook)
+    }
+
+    fun close(): Boolean {
+        if (!saveNow()) return false
+        saveSession.clearCurrent()
+        return true
     }
 
     /**
@@ -122,8 +342,10 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         saveJob = null
         val discarded = discardNotebookState(saveGeneration)
         saveGeneration = discarded.saveGeneration
-        _current.value = discarded.current
-        _pageIndex.value = discarded.pageIndex
+        saveSession.discardCurrent()
+        // Wait for any writer that already passed its generation check. Restore
+        // callers may replace files as soon as this method returns.
+        saveLock.locked { }
         NoteTrace.event(
             "NOTE_VM",
             "discard_current",
@@ -131,7 +353,7 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
-    fun create(draft: NotebookDraft): Notebook {
+    fun create(draft: NotebookDraft): Notebook? {
         val notebook = Notebook(
             title = draft.title.ifBlank { "새 노트" },
             coverColor = draft.coverColor,
@@ -140,71 +362,60 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             tags = draft.tags,
             pages = listOf(NotePage(template = draft.template)),
         )
-        saveLocked(notebook)
-        refresh()
+        if (!saveSession.saveSnapshot(notebook)) return null
         open(notebook.id)
         return notebook
     }
 
-    /**
-     * Persists a notebook produced elsewhere (for example by [StudyNoteBuilder]),
-     * refreshes the library and opens it in the editor.
-     */
-    fun importNotebook(notebook: Notebook): Notebook {
-        saveNow()
+    /** Persists a notebook produced elsewhere and opens it only after verification. */
+    fun importNotebook(notebook: Notebook): Notebook? {
+        if (!saveNow()) return null
         val imported = notebook.normalized().copy(updatedAt = System.currentTimeMillis())
-        saveLocked(imported)
-        refresh()
+        if (!saveSession.saveSnapshot(imported)) return null
         open(imported.id)
         return imported
     }
 
     /**
-     * Captures one drag-and-drop selection into the study notebook linked to
-     * [source]. An existing notebook is matched by its source URI first and by its
-     * source document name or study-note title second. The notebook is saved and
-     * refreshed but deliberately not opened, so the PDF reader stays in place.
+     * Captures one selection into the URI/docId-matched study notebook. The
+     * canonical library is read under the write gate so a detached pane cannot
+     * append to a stale snapshot and overwrite restored data.
      */
-    fun appendStudyExcerpt(source: StudySource, text: String, pageIndex: Int): Notebook {
-        val trimmed = text.trim()
-        val excerpt = Excerpt(
-            pageIndex = pageIndex.coerceAtLeast(0),
-            text = trimmed,
-        )
-        val existing = findStudyNotebook(source)
-        val updated = if (existing != null) {
-            StudyNoteBuilder.appendExcerpt(existing, source, excerpt)
-        } else {
-            StudyNoteBuilder.fromExcerpts(
-                title = StudyNoteBuilder.suggestedTitle(source),
+    fun appendStudyExcerptResult(source: StudySource, text: String, pageIndex: Int): StudyAppendResult =
+        saveLock.locked {
+            val result = appendStudyExcerptResult(
                 source = source,
-                excerpts = listOf(excerpt),
+                text = text,
+                pageIndex = pageIndex,
+                findExisting = { findStudyNotebook(store.loadAll(), source) },
+                save = ::saveLocked,
             )
+            if (result.saved) {
+                if (current.value?.id == result.notebookId) {
+                    saveSession.updateCurrent(result.notebook, touchTimestamp = false)
+                }
+                saveSession.publishSaveSuccess(result.notebook)
+            } else if (result.error != null) {
+                saveSession.reportSaveFailure(result.error) {
+                    appendStudyExcerptResult(source, text, pageIndex).saved
+                }
+            }
+            result
         }
-        if (trimmed.isBlank()) return updated
-        saveLocked(updated)
-        if (_current.value?.id == updated.id) _current.value = updated
-        refresh()
-        return updated
+
+    /** Compatibility wrapper; callers that need truthfulness use the result API. */
+    fun appendStudyExcerpt(source: StudySource, text: String, pageIndex: Int): Notebook =
+        appendStudyExcerptResult(source, text, pageIndex).notebook
+
+    /** Resolves a canonical, URI/docId-matched study notebook without opening it. */
+    fun studyNoteFor(source: StudySource): Notebook? = saveLock.locked {
+        findStudyNotebook(store.loadAll(), source)
     }
 
-    /**
-     * Resolves the study notebook linked to [source] without opening it. The PDF
-     * study pane edits this notebook detached from the full-screen editor.
-     */
-    fun studyNoteFor(source: StudySource): Notebook? {
-        val match = StudyNoteBuilder.findStudyNote(_notebooks.value, source) ?: return null
-        return store.load(match.id) ?: match
-    }
-
-    /**
-     * Creates and saves a blank study notebook linked to [source] without making
-     * it current. Used by the PDF hub when the document has no study note yet.
-     */
-    fun createBlankStudyNote(source: StudySource): Notebook {
+    /** Creates and verifies a blank study notebook without making it current. */
+    fun createBlankStudyNote(source: StudySource): Notebook? {
         val notebook = StudyNoteBuilder.blankStudyNote(source)
-        saveLocked(notebook)
-        refresh()
+        if (!saveSession.saveSnapshot(notebook)) return null
         NoteTrace.event(
             "NOTE_VM",
             "create_detached",
@@ -216,34 +427,43 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * Saves a notebook edited in a detached surface (the PDF bottom pane).
-     * Unlike [updateCurrent] or [importNotebook] this never sets [_current] and
-     * never changes the full-screen editor's page. The save is immediate so a
-     * close, back press or drag-dismiss cannot lose the last stroke.
+     * Compatibility wrapper for detached saves. A failure is exposed through
+     * [saveError]; new callers should use [trySaveDetached] and get null.
      */
-    fun saveDetached(notebook: Notebook): Notebook {
-        val updated = mergeResumePage(
-            notebook.normalized().copy(updatedAt = System.currentTimeMillis()),
-            _current.value,
-        )
+    fun saveDetached(notebook: Notebook): Notebook =
+        trySaveDetached(notebook) ?: notebook
+
+    /** Returns null unless canonical readback verified the detached snapshot. */
+    fun trySaveDetached(notebook: Notebook): Notebook? {
         val startedAt = System.currentTimeMillis()
-        // Save and merge into the in-memory library. A full rescan here would
-        // re-parse every notebook on the main thread for every study-pane stroke.
-        _notebooks.value = persistSnapshot(updated)
+        val updated = saveSession.trySaveDetached(notebook)
         NoteTrace.event(
             "NOTE_VM",
-            "save_detached",
-            "id" to updated.id,
-            "pages" to updated.pages.size,
-            "total" to noteAnnotationTotal(updated),
-            "updatedAt" to updated.updatedAt,
+            if (updated == null) "save_detached_failed" else "save_detached",
+            "id" to notebook.id,
+            "pages" to notebook.pages.size,
+            "total" to noteAnnotationTotal(notebook),
+            "updatedAt" to updated?.updatedAt,
             "ms" to (System.currentTimeMillis() - startedAt),
         )
         return updated
     }
 
+    /** Persists detached-pane navigation without changing Home ordering. */
+    fun setDetachedPageIndex(notebook: Notebook, index: Int): Notebook? {
+        val updated = saveSession.setDetachedPageIndex(notebook, index)
+        NoteTrace.event(
+            "NOTE_VM",
+            if (updated == null) "save_detached_page_failed" else "save_detached_page",
+            "id" to notebook.id,
+            "page" to index,
+            "lastPageIndex" to updated?.lastPageIndex,
+        )
+        return updated
+    }
+
     fun updateCurrent(notebook: Notebook) {
-        val previous = _current.value
+        val previous = current.value
         NoteTrace.event(
             "NOTE_VM",
             "update_in",
@@ -254,27 +474,22 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             "updatedAt" to notebook.updatedAt,
         )
 
-        val updated = mergeResumePage(
-            notebook.normalized().copy(updatedAt = System.currentTimeMillis()),
-            _current.value,
-        )
+        val updated = saveSession.updateCurrent(notebook)
         if (previous != null && previous.id == updated.id) {
             logAnnotationDecreases(previous, updated)
         }
-        _current.value = updated
-        _pageIndex.value = _pageIndex.value.coerceIn(0, (updated.pages.size - 1).coerceAtLeast(0))
-        _current.value?.let { live ->
-            NoteTrace.event(
-                "NOTE_VM",
-                "update_live",
-                "id" to live.id,
-                "pages" to live.pages.size,
-                "ann" to noteAnnotationCounts(live),
-                "total" to noteAnnotationTotal(live),
-                "updatedAt" to live.updatedAt,
-            )
-        }
+        NoteTrace.event(
+            "NOTE_VM",
+            "update_live",
+            "id" to updated.id,
+            "pages" to updated.pages.size,
+            "ann" to noteAnnotationCounts(updated),
+            "total" to noteAnnotationTotal(updated),
+            "updatedAt" to updated.updatedAt,
+        )
 
+        // This newer snapshot supersedes any older failed retry.
+        saveSession.clearSaveError()
         saveJob?.cancel()
         val generation = nextSaveGeneration(saveGeneration)
         saveGeneration = generation
@@ -288,81 +503,90 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             "generation" to generation,
         )
         saveJob = viewModelScope.launch {
-            delay(350)
+            delay(PAGE_SAVE_DELAY_MS)
             if (!isLatestSaveGeneration(generation, saveGeneration)) return@launch
-            // Serialization + disk IO + library scan all leave Main. Only the
-            // StateFlow publish below runs on the Main dispatcher.
-            val loaded = withContext(Dispatchers.IO) {
-                persistSnapshot(updated)
+            val result = withContext(Dispatchers.IO) { persistSnapshot(updated, generation) }
+            publishSnapshotWrite(updated, result, generation)
+        }
+    }
+
+    /**
+     * Writes one snapshot under [saveLock]. The generation is checked only after
+     * acquiring the lock, closing the race where a cancelled job could otherwise
+     * wait behind deletion and then write its stale snapshot afterwards.
+     */
+    private fun persistSnapshot(
+        notebook: Notebook,
+        generation: Long? = null,
+    ): SnapshotWriteResult = saveLock.locked {
+        if (generation != null && !isLatestSaveGeneration(generation, saveGeneration)) {
+            return@locked SnapshotWriteResult(saved = false, superseded = true)
+        }
+        val saved = saveLocked(notebook)
+        if (!saved) return@locked SnapshotWriteResult(saved = false)
+        if (generation == null || isLatestSaveGeneration(generation, saveGeneration)) {
+            // Publish while still holding the write gate so a detached save
+            // cannot land between disk publication and the library update.
+            saveSession.publishSaveSuccess(notebook)
+        }
+        SnapshotWriteResult(saved = true)
+    }
+
+    private fun publishSnapshotWrite(
+        notebook: Notebook,
+        result: SnapshotWriteResult,
+        generation: Long,
+    ) {
+        when {
+            result.superseded -> NoteTrace.event(
+                "NOTE_VM",
+                "save_superseded",
+                "id" to notebook.id,
+                "generation" to generation,
+                "latest" to saveGeneration,
+            )
+            !result.saved -> {
+                if (isLatestSaveGeneration(generation, saveGeneration)) {
+                    saveSession.publishSaveFailure(notebook)
+                    NoteTrace.event("NOTE_VM", "save_failed", "id" to notebook.id)
+                }
             }
-            // A newer stroke (or saveNow) may have superseded this job while it
-            // was writing; its stale library must never hide that newer state.
-            if (isLatestSaveGeneration(generation, saveGeneration)) {
-                _notebooks.value = loaded
-            } else {
+            isLatestSaveGeneration(generation, saveGeneration) -> {
                 NoteTrace.event(
                     "NOTE_VM",
-                    "save_superseded",
-                    "id" to updated.id,
-                    "generation" to generation,
-                    "latest" to saveGeneration,
+                    "save_done",
+                    "id" to notebook.id,
+                    "pages" to notebook.pages.size,
+                    "total" to noteAnnotationTotal(notebook),
+                    "updatedAt" to notebook.updatedAt,
                 )
             }
         }
     }
 
-    /**
-     * Writes one snapshot and rescans the library under [saveLock]. Called on IO
-     * by the debounced writer and on the caller thread by [saveNow]; the lock
-     * keeps a cancelled older write from clobbering a newer one on disk.
-     */
-    private fun persistSnapshot(notebook: Notebook): List<Notebook> = saveLock.locked {
-        val startedAt = System.currentTimeMillis()
-        saveLocked(notebook)
-        // Only the edited notebook changed: merge it into the in-memory library
-        // instead of re-reading and re-parsing every notebook on every save.
-        val loaded = mergeNotebookIntoLibrary(_notebooks.value, notebook)
-        NoteTrace.event(
-            "NOTE_VM",
-            "save_done",
-            "id" to notebook.id,
-            "pages" to notebook.pages.size,
-            "total" to noteAnnotationTotal(notebook),
-            "updatedAt" to notebook.updatedAt,
-            "ms" to (System.currentTimeMillis() - startedAt),
-        )
-        loaded
-    }
-
     /** Persists a page-only change without touching updatedAt or Home ordering. */
     private fun schedulePageOnlySave(notebook: Notebook) {
+        saveSession.clearSaveError()
         saveJob?.cancel()
         val generation = nextSaveGeneration(saveGeneration)
         saveGeneration = generation
         saveJob = viewModelScope.launch {
             delay(PAGE_SAVE_DELAY_MS)
             if (!isLatestSaveGeneration(generation, saveGeneration)) return@launch
-            val loaded = withContext(Dispatchers.IO) { persistSnapshot(notebook) }
-            if (isLatestSaveGeneration(generation, saveGeneration)) {
-                _notebooks.value = loaded
-            }
+            val result = withContext(Dispatchers.IO) { persistSnapshot(notebook, generation) }
+            publishSnapshotWrite(notebook, result, generation)
         }
     }
 
     fun setPageIndex(index: Int) {
-        val current = _current.value ?: return
-        val safe = index.coerceIn(0, (current.pages.size - 1).coerceAtLeast(0))
-        if (safe == current.lastPageIndex && _pageIndex.value == safe) return
-        _pageIndex.value = safe
-        val updated = current.copy(lastPageIndex = safe)
-        _current.value = updated
+        val updated = saveSession.setPageIndex(index) ?: return
         // PDF resume is debounce-saved on page change; notebooks must behave the
         // same, otherwise process death loses the page a student was reading.
         schedulePageOnlySave(updated)
     }
 
     fun addPage(template: PaperTemplate? = null) {
-        val current = _current.value ?: return
+        val current = current.value ?: return
         val previous = current.pages.lastOrNull()
         val pageTemplate = template ?: previous?.template ?: PaperTemplate.LINED
         val pages = current.pages + NotePage(
@@ -371,28 +595,29 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             tint = previous?.tint ?: PaperTint.WARM,
         )
         updateCurrent(current.copy(pages = pages))
-        _pageIndex.value = pages.lastIndex
+        setPageIndex(pages.lastIndex)
     }
 
     fun duplicatePage(index: Int) {
-        val current = _current.value ?: return
+        val current = current.value ?: return
         val updated = duplicatePageInNotebook(current, index) ?: return
         updateCurrent(updated)
-        _pageIndex.value = index + 1
+        setPageIndex(index + 1)
     }
 
     fun deletePage(index: Int) {
-        val current = _current.value ?: return
+        val current = current.value ?: return
         if (current.pages.size <= 1 || index !in current.pages.indices) return
         val pages = current.pages.toMutableList().also { it.removeAt(index) }
         updateCurrent(current.copy(pages = pages))
-        _pageIndex.value = _pageIndex.value.coerceIn(0, pages.lastIndex)
+        setPageIndex(pageIndex.value.coerceIn(0, pages.lastIndex))
     }
 
     fun setFavorite(id: String, favorite: Boolean) = mutate(id) { it.copy(favorite = favorite) }
 
     fun toggleFavorite(id: String) {
-        val notebook = store.load(id) ?: _notebooks.value.firstOrNull { it.id == id } ?: return
+        val notebook = saveLock.locked { store.load(id) }
+            ?: notebooks.value.firstOrNull { it.id == id } ?: return
         setFavorite(id, !notebook.favorite)
     }
 
@@ -400,13 +625,27 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
 
     fun restore(id: String) = mutate(id) { it.copy(trashed = false) }
 
-    fun deleteForever(id: String) {
-        store.delete(id)
-        if (_current.value?.id == id) {
-            _current.value = null
-            _pageIndex.value = 0
+    /**
+     * Permanent deletion is serialized with writes. Owner audio is removed only
+     * after both canonical and tmp notebook sidecars are verified absent.
+     */
+    fun deleteForever(id: String): Boolean {
+        saveJob?.cancel()
+        saveJob = null
+        saveGeneration = nextSaveGeneration(saveGeneration)
+        return saveLock.locked {
+            if (!store.delete(id)) return@locked false
+            if (current.value?.id == id) saveSession.discardCurrent()
+            saveSession.removeFromLibrary(id)
+            val audioDir = AudioNoteStore(getApplication()).audioDirectory(id)
+            val removed = audioDir.deleteRecursively() && !audioDir.exists()
+            NoteTrace.event(
+                "NOTE_VM",
+                if (removed) "delete_done" else "delete_audio_failed",
+                "id" to id,
+            )
+            removed
         }
-        refresh()
     }
 
     fun rename(id: String, title: String) = mutate(id) {
@@ -421,12 +660,12 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
         it.copy(tags = tags.map(String::trim).filter(String::isNotBlank).distinct())
     }
 
-    fun exportSuggestedName(): String = suggestedExportName(_current.value?.title)
+    fun exportSuggestedName(): String = suggestedExportName(current.value?.title)
 
     fun exportSuggestedName(notebook: Notebook): String = suggestedExportName(notebook.title)
 
     fun exportCurrent(uri: Uri, options: NoteExportOptions = NoteExportOptions()) {
-        _current.value?.let { exportNotebook(it, uri, options) }
+        current.value?.let { exportNotebook(it, uri, options) }
     }
 
     /** Exports a detached pane notebook through the same launcher as the editor. */
@@ -456,18 +695,20 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun refresh() {
-        _notebooks.value = store.loadAll()
+        saveSession.setLibrary(saveLock.locked { store.loadAll() })
     }
 
-    fun saveNow() {
+    /** Synchronous verified flush used by close, Back and backup barriers. */
+    fun saveNow(): Boolean {
         saveJob?.cancel()
+        saveJob = null
         // Invalidate any debounced job that already finished its IO and is about
         // to publish, so its older library cannot overwrite this flush.
         saveGeneration = nextSaveGeneration(saveGeneration)
-        val notebook = _current.value
+        val notebook = current.value
         if (notebook == null) {
             NoteTrace.event("NOTE_VM", "save_now_skip", "reason" to "no_current")
-            return
+            return true
         }
         NoteTrace.event(
             "NOTE_VM",
@@ -478,40 +719,48 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             "updatedAt" to notebook.updatedAt,
         )
         val startedAt = System.currentTimeMillis()
-        // Close/back/backup callers are synchronous and cannot await a job, so the
-        // flush completes on the caller thread under the same lock the IO writer
-        // uses. This is runBlocking-free and still guarantees the bytes are on
-        // disk before the screen closes.
-        val loaded = saveLock.locked {
-            saveLocked(notebook)
-            mergeNotebookIntoLibrary(_notebooks.value, notebook)
-        }
+        val saved = saveSession.saveNow()
         NoteTrace.event(
             "NOTE_VM",
-            "save_now_done",
+            if (saved) "save_now_done" else "save_now_failed",
             "id" to notebook.id,
             "pages" to notebook.pages.size,
             "total" to noteAnnotationTotal(notebook),
             "updatedAt" to notebook.updatedAt,
             "ms" to (System.currentTimeMillis() - startedAt),
         )
-        _notebooks.value = loaded
+        return saved
     }
 
-    private fun findStudyNotebook(source: StudySource): Notebook? =
-        StudyNoteBuilder.findStudyNote(_notebooks.value, source)
+    fun retrySave(): Boolean {
+        val saved = saveSession.retrySave()
+        NoteTrace.event("NOTE_VM", if (saved) "retry_save_done" else "retry_save_failed")
+        return saved
+    }
+
+    /** Boolean API for hosts that want to render their own backup failure. */
+    fun flushPendingSavesBeforeBackup(): Boolean = saveSession.flushPendingSavesBeforeBackup()
+
+    /** Unit-returning barrier that propagates a typed failure to BackupViewModel. */
+    fun requireBackupFlush() = saveSession.requireBackupFlush()
 
     private fun mutate(id: String, block: (Notebook) -> Notebook) {
-        val original = _current.value?.takeIf { it.id == id }
-            ?: store.load(id)
-            ?: _notebooks.value.firstOrNull { it.id == id }
+        val original = current.value?.takeIf { it.id == id }
+            ?: saveLock.locked { store.load(id) }
+            ?: notebooks.value.firstOrNull { it.id == id }
             ?: return
         val updated = block(original).normalized().copy(updatedAt = System.currentTimeMillis())
-        saveLocked(updated)
-        if (_current.value?.id == id) _current.value = updated
-        refresh()
+        if (current.value?.id == id) {
+            saveSession.updateCurrent(updated, touchTimestamp = false)
+        }
+        saveSession.saveSnapshot(updated)
     }
 }
+
+private data class SnapshotWriteResult(
+    val saved: Boolean,
+    val superseded: Boolean = false,
+)
 
 private fun suggestedExportName(title: String?): String = noteExportFileName(title)
 
@@ -534,11 +783,10 @@ internal fun isLatestSaveGeneration(candidate: Long, latest: Long): Boolean = ca
 
 /**
  * The single re-entrant lock behind every notebook JSON write. [NotebookStore]
- * writes each notebook through a fixed `<id>.json.tmp` file and renames it into
- * place, so two overlapping saves of the same id would truncate each other's tmp
- * file and could leave a torn snapshot on disk. [writeLocked] is the one funnel
- * all VM write sites use; [locked] also covers the load-all scan that publishes
- * the library, so a flush cannot observe a half-finished write.
+ * writes each notebook through a fixed `<id>.json.tmp` file, so two overlapping
+ * saves of the same id would truncate each other's tmp file. [locked] is the one
+ * funnel all VM write/load sites use; [writeLocked] remains as a compatibility
+ * helper for serialization tests and adapters.
  */
 internal class NotebookWriteGate(private val write: (Notebook) -> Unit) {
     private val lock = Any()
@@ -610,7 +858,7 @@ internal fun duplicatePageInNotebook(notebook: Notebook, index: Int): Notebook? 
 private fun logAnnotationDecreases(previous: Notebook, target: Notebook) {
     val previousCounts = previous.pages.associate { it.id to it.annotations.size }
     target.pages.forEachIndexed { index, page ->
-        val before = previousCounts[page.id] ?: return@forEachIndexed
+        val before = previousCounts[page.id] ?: return@forEachIndex
         val after = page.annotations.size
         if (after < before) {
             NoteTrace.event(

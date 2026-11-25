@@ -5,9 +5,9 @@ import org.json.JSONArray
 import java.io.File
 
 /** One small JSON sidecar of excerpts per PDF document, kept entirely on device. */
-class ExcerptStore(context: Context) {
+class ExcerptStore internal constructor(private val dir: File) {
 
-    private val dir = File(context.filesDir, "excerpts").apply { mkdirs() }
+    constructor(context: Context) : this(File(context.filesDir, "excerpts").apply { mkdirs() })
 
     fun load(docId: String): List<Excerpt> =
         readWithTmpRecovery(File(dir, "$docId.json")) {
@@ -29,7 +29,6 @@ class ExcerptStore(context: Context) {
         }
     }
 
-    fun delete(docId: String) {
-        File(dir, "$docId.json").delete()
-    }
+    fun delete(docId: String): Boolean =
+        deleteSidecarWithTmp(File(dir, "$docId.json"))
 }
