@@ -275,6 +275,28 @@ Behavioral reference evidence and limitations are in
 `docs/ux-simplification-0889.md`. Static reverse engineering is for behavior
 only: never copy competitor code, assets, fonts, templates or branding.
 
+## Ink quality contract (0.8.90+)
+
+- Preserve exact neutral/legacy rendering and JSON compatibility. New timing is
+  optional (`NormalizedPoint.timeMs`, `Annotation.timesMs` / JSON `ptms`); absent
+  timing keeps the uniform `durationMs` fallback.
+- Pressure processing must reject NaN/Infinity before calibration or smoothing.
+  Time-aware smoothing must remain stable across event rates and retain the
+  existing sample-based API for compatibility.
+- Speed, dwell and replay use timestamped physical distance/time when available.
+  Dwell/texture decisions must be render-scale invariant.
+- Replay derives the full-stroke plan before revealing a prefix. Pencil width,
+  taper and deposit must not be recomputed from prefix-local statistics.
+- Note preview and commit share one preparation pipeline. Refinement preserves
+  endpoints, pressure extrema and timestamps.
+- PDF and note erasers share normalized radius, capsule hit geometry and trail
+  densification. Stylus pressure may scale radius within bounds; finger input
+  stays fixed. PDF stylus erasers route to the eraser tool.
+- Subjective feel, latency, calibration range and tilt still require a real
+  pressure-sensitive device. Do not claim hardware validation from JVM tests.
+
+Evidence and scope are recorded in `docs/ink-quality-0890.md`.
+
 ## Release checklist
 
 1. Bump PATCH version and versionCode per policy.
