@@ -222,7 +222,7 @@ class MainActivity : ComponentActivity() {
                             docUri = viewModel.currentDocumentUri(),
                         )
                         (notebookViewModel.studyNoteFor(source)
-                            ?: notebookViewModel.createBlankStudyNote(source))?.let(::openStudyPane)
+                            ?: notebookViewModel.createBlankStudyNote(source))?.let { openStudyPane(it) }
                     }
                 }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -360,7 +360,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onOpenStudyNote = { source ->
                                     (notebookViewModel.studyNoteFor(source)
-                                        ?: notebookViewModel.createBlankStudyNote(source))?.let(::openStudyPane)
+                                        ?: notebookViewModel.createBlankStudyNote(source))?.let { openStudyPane(it) }
                                 },
                                 onOpenHelp = {
                                     helpTopic = null
