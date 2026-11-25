@@ -5,9 +5,9 @@ import org.json.JSONObject
 import java.io.File
 
 /** Small per-document sidecar for watermark/page-number settings. */
-class DocumentStyleStore(context: Context) {
+class DocumentStyleStore internal constructor(private val dir: File) {
 
-    private val dir = File(context.filesDir, "docstyles").apply { mkdirs() }
+    constructor(context: Context) : this(File(context.filesDir, "docstyles").apply { mkdirs() })
 
     fun load(docId: String): DocumentStyle =
         readWithTmpRecovery(File(dir, "$docId.json")) {
@@ -26,7 +26,6 @@ class DocumentStyleStore(context: Context) {
         }
     }
 
-    fun delete(docId: String) {
-        File(dir, "$docId.json").delete()
-    }
+    fun delete(docId: String): Boolean =
+        deleteSidecarWithTmp(File(dir, "$docId.json"))
 }

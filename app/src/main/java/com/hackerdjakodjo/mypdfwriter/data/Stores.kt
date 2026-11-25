@@ -6,9 +6,9 @@ import org.json.JSONObject
 import java.io.File
 
 /** Persists the per-document working state (page layout, annotations, notes) as small JSON files. */
-class DocStateStore(context: Context) {
+class DocStateStore internal constructor(private val dir: File) {
 
-    private val dir = File(context.filesDir, "docstates").apply { mkdirs() }
+    constructor(context: Context) : this(File(context.filesDir, "docstates").apply { mkdirs() })
 
     fun load(docId: String): DocState? = readWithTmpRecovery(File(dir, "$docId.json")) {
         DocState.fromJson(docId, JSONObject(it))
@@ -26,9 +26,8 @@ class DocStateStore(context: Context) {
         }
     }
 
-    fun delete(docId: String) {
-        File(dir, "$docId.json").delete()
-    }
+    fun delete(docId: String): Boolean =
+        deleteSidecarWithTmp(File(dir, "$docId.json"))
 }
 
 /** Recent-document list, kept in SharedPreferences as a compact JSON array. */
