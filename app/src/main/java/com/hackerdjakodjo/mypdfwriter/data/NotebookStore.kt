@@ -7,7 +7,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 
 /** One small JSON file per notebook; writes are verified before reporting success. */
-class NotebookStore private constructor(
+class NotebookStore internal constructor(
     private val dir: File,
     private val io: NotebookStoreIo,
 ) {
@@ -17,10 +17,8 @@ class NotebookStore private constructor(
         FileNotebookStoreIo,
     )
 
+    /** JVM-testable file-backed constructor. */
     internal constructor(dir: File) : this(dir, FileNotebookStoreIo)
-
-    /** JVM-testable file-backed constructor with IO fault injection. */
-    internal constructor(dir: File, io: NotebookStoreIo) : this(dir, io)
 
     fun loadAll(): List<Notebook> {
         val ids = dir.listFiles { file -> file.isFile && sidecarId(file) != null }
