@@ -1,7 +1,5 @@
 package com.hackerdjakodjo.mypdfwriter.pdf
 
-import kotlin.math.abs
-
 /**
  * Pure helpers for the remaining "pen on real paper" fidelity details.
  *
@@ -19,6 +17,9 @@ object InkQuality {
     /** A long dwell must not grow the stroke without bound. */
     const val MAX_STATIONARY_SAMPLES = 24
 
+    /** Sub-pixel digitizer movement is treated as a stationary nib, not ink. */
+    const val POSITION_JITTER_EPSILON_PX = 0.1f
+
     const val DEPOSIT_INFLUENCE = 0.22f
     const val DEPOSIT_GAIN_MIN = 0.85f
     const val DEPOSIT_GAIN_MAX = 1.25f
@@ -28,10 +29,12 @@ object InkQuality {
     const val NIB_TAPER_MIN = 0.08f
 
     /**
-     * A pressurised nib that dwells in place must still lay down ink: a fountain
-     * or brush grows darker/wider when the student leans on it. Position changes
-     * are handled by the normal capture path, so this decides only the stationary
-     * case. Jitter below [eps] is ignored to avoid flooding the stroke.
+     * A pressed nib that dwells in place must still lay down ink, even when its
+     * pressure is constant: fountain/brush ink pools over time. Position changes
+     * are handled by the normal capture path. Jitter below
+     * [POSITION_JITTER_EPSILON_PX] is ignored by the caller; [eps] remains part
+     * of the API to reject invalid noise thresholds, but pressure changes are no
+     * longer required for a timed dwell sample.
      */
     fun shouldEmitPressureSample(
         previousPressure: Float,
@@ -44,9 +47,20 @@ object InkQuality {
         if (positionChanged) return false
         if (emitted >= MAX_STATIONARY_SAMPLES) return false
         if (elapsedMs < MIN_STATIONARY_SAMPLE_MS) return false
-        val previous = clampPressure(previousPressure)
-        val next = clampPressure(nextPressure)
-        return abs(next - previous) >= eps
+        if (!eps.isFinite() || eps <= 0f) return false
+        if (!previousPressure.isFinite() || !nextPressure.isFinite()) return false
+        return true
+    }
+
+    /** True only for movement large enough to be intentional pen travel. */
+    fun hasMeaningfulPositionChange(
+        dx: Float,
+        dy: Float,
+        epsPx: Float = POSITION_JITTER_EPSILON_PX,
+    ): Boolean {
+        if (!dx.isFinite() || !dy.isFinite()) return false
+        val safeEps = if (epsPx.isFinite() && epsPx > 0f) epsPx else POSITION_JITTER_EPSILON_PX
+        return dx * dx + dy * dy >= safeEps * safeEps
     }
 
     /**

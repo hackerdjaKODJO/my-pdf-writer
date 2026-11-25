@@ -4,6 +4,9 @@ import androidx.compose.ui.input.pointer.PointerType
 import com.hackerdjakodjo.mypdfwriter.data.DEFAULT_INK_PRESSURE
 import com.hackerdjakodjo.mypdfwriter.data.PressureCalibrator
 import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
+import com.hackerdjakodjo.mypdfwriter.data.PressureSmoother
+import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.pdf.EraserGeometry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,7 +29,7 @@ class NotePressureCaptureTest {
     }
 
     @Test
-    fun `out of range and non finite stylus pressure is clamped before the curve`() {
+    fun `out of range stylus pressure is clamped and non finite stays neutral`() {
         assertEquals(0f, effectiveInkPressure(PointerType.Stylus, -3f, true, PressureCurve.SOFT), 0f)
         assertEquals(1f, effectiveInkPressure(PointerType.Stylus, 7f, true, PressureCurve.SOFT), 0f)
         assertEquals(
@@ -34,6 +37,86 @@ class NotePressureCaptureTest {
             effectiveInkPressure(PointerType.Stylus, Float.NaN, true, PressureCurve.SOFT),
             0f,
         )
+    }
+
+    @Test
+    fun `non finite raw pressure bypasses calibration curve and smoother state`() {
+        val calibrator = PressureCalibrator(alpha = 1f, deadZone = 0f)
+        calibrator.map(0.2f)
+        calibrator.map(0.7f)
+        val smoother = PressureSmoother()
+        assertEquals(0.5f, effectiveInkPressure(
+            PointerType.Stylus, 0.45f, true, PressureCurve.LINEAR, calibrator,
+            smoother = smoother, elapsedMs = 8L,
+        ), 1e-6f)
+
+        listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY).forEach { raw ->
+            assertEquals(1f, effectiveInkPressure(
+                PointerType.Stylus, raw, true, PressureCurve.SOFT, calibrator,
+                smoother = smoother, elapsedMs = 8L,
+            ), 0f)
+        }
+        assertEquals(0.2f, calibrator.observedMin, 0f)
+        assertEquals(0.7f, calibrator.observedMax, 0f)
+
+        val uninterrupted = PressureSmoother().also { it.filter(0.5f, 8L) }
+        assertEquals(
+            uninterrupted.filter(0.5f, 8L),
+            effectiveInkPressure(
+                PointerType.Stylus, 0.45f, true, PressureCurve.LINEAR, calibrator,
+                smoother = smoother, elapsedMs = 8L,
+            ),
+            0f,
+        )
+    }
+
+    @Test
+    fun `timed samples preserve relative uptime and duration follows the last point`() {
+        val down = NormalizedPoint(0.1f, 0.2f, timeMs = relativePointTimeMs(1_000L, 1_000L))
+        val dwell = down.copy(timeMs = relativePointTimeMs(1_132L, 1_000L))
+        val move = down.copy(x = 0.3f, timeMs = relativePointTimeMs(1_180L, 1_000L))
+
+        assertEquals(0L, down.timeMs)
+        assertEquals(132L, dwell.timeMs)
+        assertEquals(180L, move.timeMs)
+        assertEquals(180L, inkStrokeDurationMs(listOf(down, dwell, move)))
+        assertEquals(0L, inkStrokeDurationMs(listOf(down.copy(timeMs = null))))
+        assertEquals(0L, inkStrokeDurationMs(emptyList()))
+        assertEquals(0L, relativePointTimeMs(900L, 1_000L))
+        assertEquals(132L, relativePointTimeMs(1_120L, 1_000L, minimumTimeMs = 132L))
+    }
+
+    @Test
+    fun `stylus eraser overrides pen and pressure policy includes the eraser tip`() {
+        assertEquals(Tool.ERASER, gestureToolForPointer(Tool.PEN, PointerType.Eraser))
+        assertEquals(Tool.ERASER, gestureToolForPointer(Tool.HIGHLIGHT, PointerType.Eraser))
+        assertEquals(Tool.PEN, gestureToolForPointer(Tool.PEN, PointerType.Stylus))
+        assertEquals(Tool.ERASER, gestureToolForPointer(Tool.ERASER, PointerType.Touch))
+        assertTrue(eraserUsesPressure(PointerType.Stylus, true))
+        assertTrue(eraserUsesPressure(PointerType.Eraser, true))
+        assertFalse(eraserUsesPressure(PointerType.Touch, true))
+        assertFalse(eraserUsesPressure(PointerType.Eraser, false))
+        assertEquals(0.25f, eraserInputPressure(PointerType.Eraser, 0.25f, true), 0f)
+        assertEquals(1f, eraserInputPressure(PointerType.Eraser, Float.NaN, true), 0f)
+        assertEquals(1f, eraserInputPressure(PointerType.Touch, 0.25f, true), 0f)
+    }
+
+    @Test
+    fun `pressure eraser preview uses the shared kernel on both page axes`() {
+        val center = NormalizedPoint(0.5f, 0.5f, pressure = 0.25f)
+        val radius = EraserGeometry.radiusForPressure(
+            EraserGeometry.NORMALIZED_RADIUS,
+            center.pressure,
+            pressureSensitive = true,
+        )
+        val portrait = noteEraserPreviewOval(center, 595f, 842f, radius)
+        val landscape = noteEraserPreviewOval(center, 842f, 595f, radius)
+
+        assertEquals(radius * 595f * 2f, portrait.right - portrait.left, 1e-3f)
+        assertEquals(radius * 842f * 2f, portrait.bottom - portrait.top, 1e-3f)
+        assertEquals(radius * 842f * 2f, landscape.right - landscape.left, 1e-3f)
+        assertEquals(radius * 595f * 2f, landscape.bottom - landscape.top, 1e-3f)
+        assertTrue(radius.isFinite() && radius > 0f)
     }
 
     @Test

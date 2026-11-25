@@ -2,6 +2,7 @@ package com.hackerdjakodjo.mypdfwriter.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -22,6 +23,18 @@ class InkPressureTest {
         assertEquals(0.4f, point.copy(x = 0.5f).pressure, 0f)
         assertEquals(1f, point.copy(pressure = 9f).pressure, 0f)
         assertEquals(listOf(0.1f, 0.2f, 0.4f), listOf(point.x, point.y, point.pressure))
+    }
+
+    @Test
+    fun `point timing defaults to null and copy preserves or replaces it`() {
+        val legacy = NormalizedPoint(0.1f, 0.2f)
+        assertEquals(null, legacy.timeMs)
+        val timed = legacy.copy(timeMs = 42L)
+        assertEquals(42L, timed.timeMs)
+        assertEquals(42L, timed.copy(x = 0.3f).timeMs)
+        assertNull(timed.copy(timeMs = null).timeMs)
+        assertFalse(timed == legacy)
+        assertEquals(42L, timed.component4())
     }
 
     @Test

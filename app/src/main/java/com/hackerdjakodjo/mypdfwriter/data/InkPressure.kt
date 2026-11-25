@@ -256,7 +256,8 @@ class PressureCalibrator(
  *  - the first sample of a stroke passes through exactly (no startup ramp);
  *  - a full-press sample (>= 1f) snaps to exactly 1f, so neutral/finger/legacy
  *    identity is preserved end to end;
- *  - non-finite input returns the neutral pressure and never teaches the filter;
+ *  - non-finite input returns the neutral pressure without changing the current
+ *    level, so a bad sensor frame can never teach or reset the filter;
  *  - [reset] starts a fresh stroke. The instance is session-scoped like
  *    [PressureCalibrator] and is never persisted.
  *
@@ -272,8 +273,16 @@ class PressureSmoother(
     private val safeAttack = if (attack.isFinite()) attack.coerceIn(0.05f, 1f) else DEFAULT_ATTACK
     private val safeRelease = if (release.isFinite()) release.coerceIn(0.05f, 1f) else DEFAULT_RELEASE
 
-    /** Filters one effective stylus sample of the current stroke. */
-    fun filter(rawPressure: Float): Float {
+    /** Filters one effective stylus sample using the historical 8 ms frame. */
+    fun filter(rawPressure: Float): Float = filter(rawPressure, NOMINAL_FRAME_MS)
+
+    /**
+     * Filters one sample using the actual elapsed time since the previous
+     * sample. Coefficients are normalized to an 8 ms frame and dt is bounded so
+     * a suspended app cannot snap pressure to a stale target on its first frame
+     * back. Non-finite input is a state-preserving no-op.
+     */
+    fun filter(rawPressure: Float, elapsedMs: Long): Float {
         if (!rawPressure.isFinite()) return DEFAULT_INK_PRESSURE
         val safe = clampInkPressure(rawPressure)
         if (safe >= MAX_INK_PRESSURE) {
@@ -285,7 +294,14 @@ class PressureSmoother(
             level = safe
             return safe
         }
-        val alpha = if (safe > level) safeAttack else safeRelease
+        val dt = elapsedMs.coerceIn(0L, MAX_FRAME_MS).toFloat()
+        val frames = dt / NOMINAL_FRAME_MS
+        val baseAlpha = if (safe > level) safeAttack else safeRelease
+        val alpha = when {
+            frames <= 0f -> 0f
+            frames == 1f -> baseAlpha
+            else -> 1f - (1f - baseAlpha).pow(frames)
+        }
         level = clampInkPressure(level + alpha * (safe - level))
         return level
     }
@@ -296,6 +312,12 @@ class PressureSmoother(
     }
 
     companion object {
+        /** Historical frame used by the compatibility overload. */
+        const val NOMINAL_FRAME_MS = 8L
+
+        /** Long pauses are clamped to this frame before resuming a stroke. */
+        const val MAX_FRAME_MS = 64L
+
         /** Press response: ~2-3 samples to converge at 120 Hz. */
         const val DEFAULT_ATTACK = 0.55f
 

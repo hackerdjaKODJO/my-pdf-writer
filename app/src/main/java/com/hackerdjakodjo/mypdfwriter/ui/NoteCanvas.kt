@@ -30,7 +30,6 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -53,7 +52,9 @@ import com.hackerdjakodjo.mypdfwriter.data.clampInkPressure
 import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
 import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
+import com.hackerdjakodjo.mypdfwriter.pdf.EraserGeometry
 import com.hackerdjakodjo.mypdfwriter.pdf.InkQuality
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -262,7 +263,11 @@ fun NoteCanvas(
             // stroke's first sample is exact. Session-scoped, never persisted.
             val pressureSmoother = PressureSmoother()
 
-            fun normalize(position: Offset, pressure: Float = 1f): NormalizedPoint {
+            fun normalize(
+                position: Offset,
+                pressure: Float = 1f,
+                timeMs: Long? = null,
+            ): NormalizedPoint {
                 val scale = (fit * zoom).coerceAtLeast(0.0001f)
                 val x = (position.x - widthPx / 2f - pan.x) / scale + pageWidth / 2f
                 val y = (position.y - heightPx / 2f - pan.y) / scale + pageHeight / 2f
@@ -270,6 +275,7 @@ fun NoteCanvas(
                     (x / pageWidth).coerceIn(0f, 1f),
                     (y / pageHeight).coerceIn(0f, 1f),
                     pressure,
+                    timeMs,
                 )
             }
 
@@ -298,7 +304,7 @@ fun NoteCanvas(
                 val down = awaitFirstDown(requireUnconsumed = false)
                 val stylusDown = down.type == PointerType.Stylus
                 val eraserStylus = down.type == PointerType.Eraser
-                val gestureTool = if (eraserStylus) Tool.ERASER else tool
+                val gestureTool = gestureToolForPointer(tool, down.type)
                 val memoIntercepted = currentMemoHitTest(down.position)
                 val canDraw = !memoIntercepted && gestureTool != Tool.VIEW &&
                     (!penOnly || stylusDown || eraserStylus)
@@ -311,8 +317,8 @@ fun NoteCanvas(
                 var navigationMovement = 0f
                 var viewChanged = false
                 var lastPosition = down.position
-                val gestureStart = SystemClock.uptimeMillis()
-                val strokeStartMs = SystemClock.elapsedRealtime()
+                val gestureStart = down.uptimeMillis
+                val strokeStartUptimeMs = down.uptimeMillis
                 val gestureStartPan = pan
                 val gestureStartZoom = zoom
 
@@ -323,7 +329,13 @@ fun NoteCanvas(
                 // part-way through a finger stroke is sampled too.
                 var rawPressureMin = Float.POSITIVE_INFINITY
                 var rawPressureMax = Float.NEGATIVE_INFINITY
-                fun capturePressure(change: PointerInputChange): Float {
+                var lastPressureUptimeMs = strokeStartUptimeMs
+                fun capturePressure(
+                    change: PointerInputChange,
+                    eventUptimeMs: Long = change.uptimeMillis,
+                ): Float {
+                    val elapsedMs = (eventUptimeMs - lastPressureUptimeMs).coerceAtLeast(0L)
+                    lastPressureUptimeMs = maxOf(lastPressureUptimeMs, eventUptimeMs)
                     val effective = effectiveInkPressure(
                         pointerType = change.type,
                         rawPressure = change.pressure,
@@ -332,8 +344,11 @@ fun NoteCanvas(
                         calibrator = pressureCalibrator,
                         pressed = change.pressed,
                         smoother = pressureSmoother,
+                        elapsedMs = elapsedMs,
                     )
-                    if (pressureEnabled && change.type == PointerType.Stylus && change.pressed) {
+                    if (pressureEnabled && change.type == PointerType.Stylus &&
+                        change.pressed && change.pressure.isFinite()
+                    ) {
                         val raw = clampInkPressure(change.pressure)
                         rawPressureMin = minOf(rawPressureMin, raw)
                         rawPressureMax = maxOf(rawPressureMax, raw)
@@ -352,15 +367,57 @@ fun NoteCanvas(
                 if (canDraw) pressureSmoother.reset()
                 val downPressure = if (canDraw) capturePressure(down) else DEFAULT_INK_PRESSURE
                 var lastPressure = downPressure
-                var lastPressureAtMs = SystemClock.elapsedRealtime()
+                var lastEmittedAtUptimeMs = strokeStartUptimeMs
                 var stationaryEmitted = 0
+                var lastPrimaryChange: PointerInputChange? = null
+
+                fun emitStationarySample(
+                    change: PointerInputChange,
+                    pressure: Float,
+                    nowUptimeMs: Long,
+                ) {
+                    if (!pressureEnabled || change.type != PointerType.Stylus ||
+                        !change.pressed || !change.pressure.isFinite() ||
+                        (gestureTool != Tool.PEN && gestureTool != Tool.HIGHLIGHT)
+                    ) {
+                        return
+                    }
+                    if (!InkQuality.shouldEmitPressureSample(
+                            previousPressure = lastPressure,
+                            nextPressure = pressure,
+                            positionChanged = false,
+                            elapsedMs = (nowUptimeMs - lastEmittedAtUptimeMs).coerceAtLeast(0L),
+                            emitted = stationaryEmitted,
+                        )
+                    ) {
+                        return
+                    }
+                    stationaryEmitted++
+                    livePoints.add(
+                        normalize(
+                            lastPosition,
+                            pressure,
+                            relativePointTimeMs(
+                                nowUptimeMs,
+                                strokeStartUptimeMs,
+                                lastEmittedAtUptimeMs - strokeStartUptimeMs,
+                            ),
+                        ),
+                    )
+                    lastPressure = pressure
+                    lastEmittedAtUptimeMs = nowUptimeMs
+                }
 
                 if (canDraw) {
                     down.consume()
                     when (gestureTool) {
                         Tool.TEXT -> Unit
                         Tool.ERASER -> {
-                            val point = normalize(down.position, downPressure)
+                            val point = normalize(
+                                down.position,
+                                downPressure,
+                                relativePointTimeMs(down.uptimeMillis, strokeStartUptimeMs),
+                            )
                             eraserTrail.clear()
                             eraserTrail.add(point)
                             eraserPoint = point
@@ -374,25 +431,58 @@ fun NoteCanvas(
                         Tool.STRIKEOUT,
                         Tool.REDACT,
                         Tool.LASSO_RECT -> {
-                            val point = normalize(down.position, downPressure)
+                            val point = normalize(
+                                down.position,
+                                downPressure,
+                                relativePointTimeMs(down.uptimeMillis, strokeStartUptimeMs),
+                            )
                             shapeStart = point
                             shapeEnd = point
                         }
 
                         Tool.LASSO -> {
                             lassoPoints.clear()
-                            lassoPoints.add(normalize(down.position, downPressure))
+                            lassoPoints.add(
+                                normalize(
+                                    down.position,
+                                    downPressure,
+                                    relativePointTimeMs(down.uptimeMillis, strokeStartUptimeMs),
+                                ),
+                            )
                         }
 
                         else -> {
                             livePoints.clear()
-                            livePoints.add(normalize(down.position, downPressure))
+                            livePoints.add(
+                                normalize(
+                                    down.position,
+                                    downPressure,
+                                    relativePointTimeMs(down.uptimeMillis, strokeStartUptimeMs),
+                                ),
+                            )
                         }
                     }
                 }
 
                 while (true) {
-                    val event = awaitPointerEvent()
+                    val event = withTimeoutOrNull(InkQuality.MIN_STATIONARY_SAMPLE_MS) {
+                        awaitPointerEvent()
+                    }
+                    if (event == null) {
+                        // A perfectly stationary stylus may produce no MotionEvent
+                        // at all. Wake on the dwell cadence and lay down bounded
+                        // samples from the last real pointer state.
+                        val dwell = lastPrimaryChange
+                        if (drawing && dwell != null && dwell.pressed && pressureEnabled &&
+                            dwell.type == PointerType.Stylus &&
+                            (gestureTool == Tool.PEN || gestureTool == Tool.HIGHLIGHT)
+                        ) {
+                            val now = SystemClock.uptimeMillis()
+                            val pressure = capturePressure(dwell, now)
+                            emitStationarySample(dwell, pressure, now)
+                        }
+                        continue
+                    }
                     if (memoIntercepted) {
                         // The card overlay owns this gesture (tap, move, resize or
                         // menu). Swallow the rest of it so no pan/zoom leaks out.
@@ -409,6 +499,7 @@ fun NoteCanvas(
                         stylusSeen = true
                     }
                     val primary = event.changes.firstOrNull { it.id == down.id }
+                    if (primary != null) lastPrimaryChange = primary
 
                     if (drawing) {
                         if (primary == null) {
@@ -430,13 +521,19 @@ fun NoteCanvas(
                         }
 
                         if (primary.pressed) {
-                            if (primary.positionChanged()) {
-                                traveled += (primary.position - lastPosition).getDistance()
+                            val movement = primary.position - lastPosition
+                            if (InkQuality.hasMeaningfulPositionChange(movement.x, movement.y)) {
+                                traveled += movement.getDistance()
                                 lastPosition = primary.position
+                                val pointTimeMs = relativePointTimeMs(
+                                    primary.uptimeMillis,
+                                    strokeStartUptimeMs,
+                                    lastEmittedAtUptimeMs - strokeStartUptimeMs,
+                                )
                                 when (gestureTool) {
                                     Tool.TEXT -> Unit
                                     Tool.ERASER -> {
-                                        val point = normalize(primary.position, primaryPressure)
+                                        val point = normalize(primary.position, primaryPressure, pointTimeMs)
                                         eraserTrail.add(point)
                                         eraserPoint = point
                                     }
@@ -448,31 +545,31 @@ fun NoteCanvas(
                                     Tool.UNDERLINE,
                                     Tool.STRIKEOUT,
                                     Tool.REDACT,
-                                    Tool.LASSO_RECT -> shapeEnd = normalize(primary.position, primaryPressure)
+                                    Tool.LASSO_RECT -> shapeEnd = normalize(
+                                        primary.position,
+                                        primaryPressure,
+                                        pointTimeMs,
+                                    )
 
-                                    Tool.LASSO -> lassoPoints.add(normalize(primary.position, primaryPressure))
+                                    Tool.LASSO -> lassoPoints.add(
+                                        normalize(primary.position, primaryPressure, pointTimeMs),
+                                    )
 
-                                    else -> livePoints.add(normalize(primary.position, primaryPressure))
+                                    else -> {
+                                        livePoints.add(
+                                            normalize(primary.position, primaryPressure, pointTimeMs),
+                                        )
+                                        lastEmittedAtUptimeMs = maxOf(
+                                            lastEmittedAtUptimeMs,
+                                            primary.uptimeMillis,
+                                        )
+                                    }
                                 }
                                 lastPressure = primaryPressure
-                                lastPressureAtMs = SystemClock.elapsedRealtime()
                                 primary.consume()
-                            } else if (
-                                (gestureTool == Tool.PEN || gestureTool == Tool.HIGHLIGHT) &&
-                                InkQuality.shouldEmitPressureSample(
-                                    previousPressure = lastPressure,
-                                    nextPressure = primaryPressure,
-                                    positionChanged = false,
-                                    elapsedMs = SystemClock.elapsedRealtime() - lastPressureAtMs,
-                                    emitted = stationaryEmitted,
-                                )
-                            ) {
-                                stationaryEmitted++
-                                // Leaning on a stationary nib must still darken/widen
-                                // the ink instead of being discarded as "no movement".
-                                livePoints.add(normalize(lastPosition, primaryPressure))
-                                lastPressure = primaryPressure
-                                lastPressureAtMs = SystemClock.elapsedRealtime()
+                            } else {
+                                // Sub-pixel jitter is dwell, not extra geometry.
+                                emitStationarySample(primary, primaryPressure, primary.uptimeMillis)
                                 primary.consume()
                             }
                         } else {
@@ -486,7 +583,9 @@ fun NoteCanvas(
                                 }
 
                                 Tool.ERASER -> {
-                                    if (eraserTrail.isNotEmpty()) currentErase(eraserTrail.toList())
+                                    if (eraserTrail.isNotEmpty()) {
+                                        currentErase(EraserGeometry.densifyTrail(eraserTrail.toList()))
+                                    }
                                 }
 
                                 Tool.RECT,
@@ -527,8 +626,7 @@ fun NoteCanvas(
 
                                 else -> {
                                     if (livePoints.isNotEmpty()) {
-                                        val durationMs = (SystemClock.elapsedRealtime() - strokeStartMs)
-                                            .coerceAtLeast(0L)
+                                        val durationMs = inkStrokeDurationMs(livePoints)
                                         currentAddStroke(livePoints.toList(), durationMs)
                                     }
                                 }
@@ -778,21 +876,16 @@ fun NoteCanvas(
 
                 val eraser = eraserPoint
                 if (eraser != null) {
-                    // Draw the preview as the same normalized W x H ellipse the eraser
-                    // actually cuts (NOTE_ERASE_RADIUS), not a W-based circle. This page-
-                    // space oval also inherits the pan/zoom transform above.
-                    val oval = noteEraserPreviewOval(eraser, pageWidth, pageHeight)
-                    val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        style = Paint.Style.STROKE
-                        this.strokeWidth = 2f
-                        this.color = android.graphics.Color.argb(190, 70, 70, 70)
-                    }
-                    native.drawOval(oval.left, oval.top, oval.right, oval.bottom, outline)
-                    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        style = Paint.Style.FILL
-                        this.color = android.graphics.Color.argb(40, 70, 70, 70)
-                    }
-                    native.drawOval(oval.left, oval.top, oval.right, oval.bottom, fillPaint)
+                    // Notes erase with a fixed normalized kernel. The shared
+                    // preview helper also gives PDF pressure erasers the same
+                    // aspect-correct page-space ellipse.
+                    drawSharedEraserPreview(
+                        native,
+                        eraser,
+                        pageWidth,
+                        pageHeight,
+                        pressureSensitive = false,
+                    )
                 }
 
                 native.restore()
@@ -927,9 +1020,9 @@ private fun drawLassoPreview(
 }
 
 /**
- * Page-space bounds of the eraser preview. The radius comes from the single
- * [NOTE_ERASE_RADIUS] constant the committed eraser uses, applied to each axis,
- * so a preview can never disagree with the strokes it is about to remove.
+ * Page-space bounds of an eraser preview. The radius comes from the shared
+ * [EraserGeometry] kernel, applied to each axis, so a preview can never disagree
+ * with the strokes it is about to remove on portrait or landscape pages.
  */
 internal data class NoteEraserPreviewOval(
     val left: Float,
@@ -942,11 +1035,16 @@ internal fun noteEraserPreviewOval(
     center: NormalizedPoint,
     pageWidth: Float,
     pageHeight: Float,
+    radius: Float = EraserGeometry.radiusForPressure(
+        EraserGeometry.NORMALIZED_RADIUS,
+        center.pressure,
+        pressureSensitive = false,
+    ),
 ): NoteEraserPreviewOval {
     val centerX = center.x * pageWidth
     val centerY = center.y * pageHeight
-    val radiusX = NOTE_ERASE_RADIUS * pageWidth
-    val radiusY = NOTE_ERASE_RADIUS * pageHeight
+    val radiusX = radius * pageWidth
+    val radiusY = radius * pageHeight
     return NoteEraserPreviewOval(
         left = centerX - radiusX,
         top = centerY - radiusY,
@@ -954,6 +1052,67 @@ internal fun noteEraserPreviewOval(
         bottom = centerY + radiusY,
     )
 }
+
+/** One visual kernel for note and PDF eraser previews. */
+internal fun drawSharedEraserPreview(
+    canvas: android.graphics.Canvas,
+    center: NormalizedPoint,
+    pageWidth: Float,
+    pageHeight: Float,
+    pressureSensitive: Boolean,
+) {
+    val radius = EraserGeometry.radiusForPressure(
+        EraserGeometry.NORMALIZED_RADIUS,
+        center.pressure,
+        pressureSensitive,
+    )
+    val oval = noteEraserPreviewOval(center, pageWidth, pageHeight, radius)
+    val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        this.strokeWidth = 2f
+        this.color = android.graphics.Color.argb(190, 70, 70, 70)
+    }
+    canvas.drawOval(oval.left, oval.top, oval.right, oval.bottom, outline)
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        this.color = android.graphics.Color.argb(40, 70, 70, 70)
+    }
+    canvas.drawOval(oval.left, oval.top, oval.right, oval.bottom, fillPaint)
+}
+
+/** Stylus eraser contact overrides the selected drawing tool on both canvases. */
+internal fun gestureToolForPointer(selectedTool: Tool, pointerType: PointerType): Tool =
+    if (pointerType == PointerType.Eraser) Tool.ERASER else selectedTool
+
+/** Compose reports the stylus back end as ERASER rather than STYLUS. */
+internal fun isStylusPointer(pointerType: PointerType): Boolean =
+    pointerType == PointerType.Stylus || pointerType == PointerType.Eraser
+
+internal fun eraserUsesPressure(pointerType: PointerType, pressureEnabled: Boolean): Boolean =
+    pressureEnabled && isStylusPointer(pointerType)
+
+/** Raw eraser pressure is independent of the pen curve and calibration. */
+internal fun eraserInputPressure(
+    pointerType: PointerType,
+    rawPressure: Float,
+    pressureEnabled: Boolean,
+): Float = if (eraserUsesPressure(pointerType, pressureEnabled)) {
+    clampInkPressure(rawPressure)
+} else {
+    DEFAULT_INK_PRESSURE
+}
+
+/** Pointer uptime relative to down, safe for persistence and replay. */
+internal fun relativePointTimeMs(
+    eventUptimeMs: Long,
+    strokeStartUptimeMs: Long,
+    minimumTimeMs: Long = 0L,
+): Long = (eventUptimeMs - strokeStartUptimeMs)
+    .coerceAtLeast(minimumTimeMs.coerceAtLeast(0L))
+
+/** Duration follows the last emitted sample rather than a later idle up frame. */
+internal fun inkStrokeDurationMs(points: List<NormalizedPoint>): Long =
+    points.lastOrNull()?.timeMs?.coerceAtLeast(0L) ?: 0L
 
 /**
  * Effective ink pressure for one captured pointer sample.
@@ -976,11 +1135,13 @@ internal fun noteEraserPreviewOval(
  * sample the raw value is still curved (TEXT taps use it) but the calibrator is
  * left untouched.
  *
- * An optional [smoother] low-pass filters the final effective value over time
- * (digitizer noise cannot shimmer the ink). It runs AFTER calibration and the
- * curve so the learned raw range is never distorted, only sees pressed stylus
- * samples, and must be reset by the caller at each stroke start. A null
- * smoother keeps the original behaviour byte-for-byte.
+ * An optional [smoother] low-pass filters the final effective value using
+ * [elapsedMs] since the previous sample (digitizer noise cannot shimmer the
+ * ink). It runs AFTER calibration and the curve so the learned raw range is
+ * never distorted, only sees pressed stylus samples, and must be reset by the
+ * caller at each stroke start. A null smoother keeps the original behaviour.
+ * Non-finite raw pressure returns neutral without reaching the calibrator,
+ * curve or smoother, so one bad sensor frame cannot reset learned state.
  */
 internal fun effectiveInkPressure(
     pointerType: PointerType,
@@ -990,8 +1151,10 @@ internal fun effectiveInkPressure(
     calibrator: PressureCalibrator? = null,
     pressed: Boolean = true,
     smoother: PressureSmoother? = null,
+    elapsedMs: Long = PressureSmoother.NOMINAL_FRAME_MS,
 ): Float {
     if (!pressureEnabled || pointerType != PointerType.Stylus) return DEFAULT_INK_PRESSURE
+    if (!rawPressure.isFinite()) return DEFAULT_INK_PRESSURE
     val calibrated = if (calibrator != null && pressed) {
         if (rawPressure.isFinite() && rawPressure >= MAX_INK_PRESSURE) {
             // A true full-press sample still stores neutral 1f, but it teaches
@@ -1005,7 +1168,7 @@ internal fun effectiveInkPressure(
         clampInkPressure(rawPressure)
     }
     val curved = pressureCurve.applyTo(calibrated)
-    return if (smoother != null && pressed) smoother.filter(curved) else curved
+    return if (smoother != null && pressed) smoother.filter(curved, elapsedMs) else curved
 }
 
 internal fun noteStrokeWidth(type: AnnotationType, strokeWidth: Float): Float =

@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
+import kotlin.math.pow
 
 /**
  * Temporal pressure low-pass: digitizer noise must not shimmer the ink, and
@@ -88,6 +89,77 @@ class PressureSmootherTest {
         assertEquals(0f, smoother.filter(-2f), 0f)
         smoother.reset()
         assertEquals(1f, smoother.filter(9f), 0f)
+    }
+
+    @Test
+    fun `compatibility overload uses the nominal eight millisecond frame`() {
+        val raw = listOf(0.2f, 0.5f, 0.4f, 0.9f, 0.3f, 1f, 0.6f)
+        val legacy = PressureSmoother()
+        val timed = PressureSmoother()
+        raw.forEach { value ->
+            assertEquals(legacy.filter(value), timed.filter(value, 8L), 0f)
+        }
+    }
+
+    @Test
+    fun `attack and release are invariant to sample rate over the same elapsed time`() {
+        val press120 = PressureSmoother().also { it.filter(0.2f, 8L) }
+        val press240 = PressureSmoother().also { it.filter(0.2f, 4L) }
+        repeat(12) { press120.filter(0.8f, 8L) }
+        repeat(24) { press240.filter(0.8f, 4L) }
+        assertTrue(abs(press120.filter(0.8f, 8L) - press240.filter(0.8f, 4L)) < 0.0001f)
+
+        val lift120 = PressureSmoother().also { it.filter(0.8f, 8L) }
+        val lift240 = PressureSmoother().also { it.filter(0.8f, 4L) }
+        repeat(12) { lift120.filter(0.2f, 8L) }
+        repeat(24) { lift240.filter(0.2f, 4L) }
+        assertTrue(abs(lift120.filter(0.2f, 8L) - lift240.filter(0.2f, 4L)) < 0.0001f)
+    }
+
+    @Test
+    fun `elapsed time normalizes coefficients and clamps long or zero frames`() {
+        val smoother = PressureSmoother()
+        assertEquals(0.2f, smoother.filter(0.2f, 8L), 0f)
+        val alpha = 1f - (1f - PressureSmoother.DEFAULT_ATTACK).pow(2f)
+        assertEquals(0.2f + alpha * 0.6f, smoother.filter(0.8f, 16L), 1e-6f)
+
+        val zeroDt = PressureSmoother()
+        zeroDt.filter(0.2f, 8L)
+        assertEquals(0.2f, zeroDt.filter(0.8f, 0L), 0f)
+        assertEquals(0.2f, zeroDt.filter(0.8f, -10L), 0f)
+
+        val longGap = PressureSmoother()
+        val clampedGap = PressureSmoother()
+        longGap.filter(0.2f, 8L)
+        clampedGap.filter(0.2f, 8L)
+        assertEquals(
+            clampedGap.filter(0.8f, PressureSmoother.MAX_FRAME_MS),
+            longGap.filter(0.8f, Long.MAX_VALUE),
+            0f,
+        )
+    }
+
+    @Test
+    fun `first timed sample is exact and full pressure snaps even at zero dt`() {
+        val smoother = PressureSmoother()
+        assertEquals(0.37f, smoother.filter(0.37f, Long.MAX_VALUE), 0f)
+        assertEquals(1f, smoother.filter(1f, 0L), 0f)
+    }
+
+    @Test
+    fun `non finite timed input preserves the existing filter level`() {
+        val baseline = PressureSmoother()
+        val interrupted = PressureSmoother()
+        baseline.filter(0.2f, 8L)
+        interrupted.filter(0.2f, 8L)
+        assertEquals(1f, interrupted.filter(Float.NaN, 8L), 0f)
+        assertEquals(1f, interrupted.filter(Float.POSITIVE_INFINITY, 32L), 0f)
+        assertEquals(1f, interrupted.filter(Float.NEGATIVE_INFINITY, 32L), 0f)
+        assertEquals(
+            baseline.filter(0.8f, 16L),
+            interrupted.filter(0.8f, 16L),
+            0f,
+        )
     }
 
     @Test

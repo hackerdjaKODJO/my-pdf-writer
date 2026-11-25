@@ -1,5 +1,6 @@
 package com.hackerdjakodjo.mypdfwriter.data
 
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -29,7 +30,8 @@ class AnnotationJsonTest {
         assertEquals(270, annotation.textRotation)
         assertEquals(0L, annotation.createdAt)
         assertEquals(0L, annotation.durationMs)
-        assertTrue(annotation.points.all { it.pressure == 1f })
+        assertNull(annotation.timesMs)
+        assertTrue(annotation.points.all { it.pressure == 1f && it.timeMs == null })
     }
 
     @Test
@@ -116,6 +118,121 @@ class AnnotationJsonTest {
         assertEquals(1_250L, restored!!.durationMs)
         assertEquals(original, restored)
     }
+
+    @Test
+    fun pointTimes_roundTripThroughOptionalPtmsArray() {
+        val original = Annotation(
+            type = AnnotationType.PEN,
+            page = 1,
+            color = 0xFF000000.toInt(),
+            width = 0.004f,
+            points = listOf(
+                NormalizedPoint(0.1f, 0.2f, 0.35f, 0L),
+                NormalizedPoint(0.2f, 0.3f, 1f, 40L),
+                NormalizedPoint(0.3f, 0.4f, 0.72f, 400L),
+            ),
+            durationMs = 450L,
+            timesMs = listOf(0L, 40L, 400L),
+        )
+
+        val json = original.toJson()
+        val restored = Annotation.fromJson(json)
+
+        assertEquals(3, json.getJSONArray("ptms").length())
+        assertEquals(0L, json.getJSONArray("ptms").getLong(0))
+        assertEquals(40L, json.getJSONArray("ptms").getLong(1))
+        assertEquals(400L, json.getJSONArray("ptms").getLong(2))
+        assertEquals(original, restored)
+    }
+
+    @Test
+    fun pointTimes_areOmittedWhenNull() {
+        val annotation = timedAnnotation(timesMs = null)
+
+        assertFalse(annotation.toJson().has("ptms"))
+        assertNull(Annotation.fromJson(annotation.toJson())!!.timesMs)
+    }
+
+    @Test
+    fun invalidPointTimes_fallBackToNullWithoutLosingLegacyPoints() {
+        val invalid = listOf(
+            JSONArray().put(0L).put(-1L).put(2L),
+            JSONArray().put(0L).put(2L).put(1L),
+            JSONArray().put(0.0).put(1.9).put(1.1),
+            JSONArray().put(0L).put(2L),
+            JSONArray().put(0L).put("bad").put(2L),
+            JSONArray().put(0L).put(Double.NaN).put(2L),
+            JSONArray().put(0L).put(Double.POSITIVE_INFINITY).put(2L),
+        )
+        invalid.forEachIndexed { index, times ->
+            val json = timedAnnotation().toJson().put("ptms", times)
+            val restored = Annotation.fromJson(json)!!
+            assertNull("invalid timing case $index must be ignored", restored.timesMs)
+            assertEquals(3, restored.points.size)
+            assertEquals(listOf(0.35f, 1f, 0.72f), restored.points.map { it.pressure })
+        }
+    }
+
+    @Test
+    fun pointTimes_ignoreUnknownJsonFields() {
+        val json = timedAnnotation().toJson()
+            .put("future-pressure-field", JSONObject().put("enabled", true))
+
+        assertEquals(listOf(0L, 10L, 900L), Annotation.fromJson(json)!!.timesMs)
+    }
+
+    @Test
+    fun revealPointCount_usesNonUniformTimingAndDwellGaps() {
+        val annotation = timedAnnotation()
+
+        assertEquals(1, annotation.revealPointCount(0f))
+        assertEquals(1, annotation.revealPointCount(0.005f))
+        assertEquals(2, annotation.revealPointCount(0.01f))
+        assertEquals(2, annotation.revealPointCount(0.5f))
+        assertEquals(2, annotation.revealPointCount(0.899f))
+        assertEquals(3, annotation.revealPointCount(0.9f))
+        assertEquals(3, annotation.revealPointCount(1f))
+
+        val dwell = annotation.copy(
+            points = annotation.points + NormalizedPoint(0.4f, 0.5f, 1f, 10L),
+            timesMs = listOf(0L, 10L, 10L, 900L),
+        )
+        // Every sample at the same dwell boundary becomes visible together.
+        assertEquals(3, dwell.revealPointCount(0.01f))
+        assertEquals(3, dwell.revealPointCount(0.5f))
+    }
+
+    @Test
+    fun revealPointCount_legacyFallbackAndClamping() {
+        val legacy = timedAnnotation(timesMs = null)
+        assertEquals(1, legacy.revealPointCount(Float.NEGATIVE_INFINITY))
+        assertEquals(1, legacy.revealPointCount(0f))
+        assertEquals(1, legacy.revealPointCount(0.0001f))
+        assertEquals(2, legacy.revealPointCount(0.5f))
+        assertEquals(3, legacy.revealPointCount(Float.POSITIVE_INFINITY))
+        assertEquals(1, legacy.revealPointCount(Float.NaN))
+
+        val invalid = legacy.copy(timesMs = listOf(0L, 500L, 100L))
+        assertEquals(2, invalid.revealPointCount(0.5f))
+        assertEquals(3, legacy.copy(timesMs = listOf(0L, 900L)).revealPointCount(0.95f))
+        assertEquals(3, legacy.copy(timesMs = listOf(0L, -1L, 900L)).revealPointCount(0.95f))
+        val empty = legacy.copy(points = emptyList(), timesMs = emptyList())
+        assertEquals(0, empty.revealPointCount(1f))
+    }
+
+    private fun timedAnnotation(timesMs: List<Long>? = listOf(0L, 10L, 900L)) = Annotation(
+        type = AnnotationType.PEN,
+        page = 0,
+        color = 0,
+        width = 0.004f,
+        points = listOf(
+            NormalizedPoint(0.1f, 0.2f, 0.35f, 0L),
+            NormalizedPoint(0.2f, 0.3f, 1f, 10L),
+            NormalizedPoint(0.3f, 0.4f, 0.72f, 900L),
+        ),
+        durationMs = 1_000L,
+        timesMs = timesMs,
+    )
 
     @Test
     fun createdAt_roundTripsAsCt() {
