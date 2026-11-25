@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -141,7 +142,7 @@ fun NoteCanvas(
     onDeleteMemoCard: (String) -> Unit = {},
     backgroundBitmap: Bitmap? = null,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
-    onErase: (List<NormalizedPoint>) -> Unit,
+    onErase: (List<NormalizedPoint>, Float, Boolean) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
     onLassoSelect: (polygon: List<NormalizedPoint>, rectangular: Boolean) -> Unit = { _, _ -> },
     onGestureUndo: (() -> Unit)? = null,
@@ -175,6 +176,8 @@ fun NoteCanvas(
     var shapeStart by remember { mutableStateOf<NormalizedPoint?>(null) }
     var shapeEnd by remember { mutableStateOf<NormalizedPoint?>(null) }
     var eraserPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
+    var eraserPressure by remember { mutableFloatStateOf(1f) }
+    var eraserPressureSensitive by remember { mutableStateOf(false) }
     val eraserTrail = remember { mutableStateListOf<NormalizedPoint>() }
     val lassoPoints = remember { mutableStateListOf<NormalizedPoint>() }
 
@@ -295,6 +298,8 @@ fun NoteCanvas(
                 shapeStart = null
                 shapeEnd = null
                 eraserPoint = null
+                eraserPressure = 1f
+                eraserPressureSensitive = false
             }
 
             var lastTapAt = 0L
@@ -413,9 +418,11 @@ fun NoteCanvas(
                     when (gestureTool) {
                         Tool.TEXT -> Unit
                         Tool.ERASER -> {
+                            eraserPressure = eraserInputPressure(down.type, down.pressure, pressureEnabled)
+                            eraserPressureSensitive = eraserUsesPressure(down.type, pressureEnabled)
                             val point = normalize(
                                 down.position,
-                                downPressure,
+                                eraserPressure,
                                 relativePointTimeMs(down.uptimeMillis, strokeStartUptimeMs),
                             )
                             eraserTrail.clear()
@@ -533,7 +540,9 @@ fun NoteCanvas(
                                 when (gestureTool) {
                                     Tool.TEXT -> Unit
                                     Tool.ERASER -> {
-                                        val point = normalize(primary.position, primaryPressure, pointTimeMs)
+                                        eraserPressure = eraserInputPressure(primary.type, primary.pressure, pressureEnabled)
+                                        eraserPressureSensitive = eraserUsesPressure(primary.type, pressureEnabled)
+                                        val point = normalize(primary.position, eraserPressure, pointTimeMs)
                                         eraserTrail.add(point)
                                         eraserPoint = point
                                     }
@@ -584,7 +593,11 @@ fun NoteCanvas(
 
                                 Tool.ERASER -> {
                                     if (eraserTrail.isNotEmpty()) {
-                                        currentErase(EraserGeometry.densifyTrail(eraserTrail.toList()))
+                                        currentErase(
+                                            EraserGeometry.densifyTrail(eraserTrail.toList()),
+                                            eraserPressure,
+                                            eraserPressureSensitive,
+                                        )
                                     }
                                 }
 
@@ -885,7 +898,7 @@ fun NoteCanvas(
                         eraser,
                         pageWidth,
                         pageHeight,
-                        pressureSensitive = false,
+                        pressureSensitive = eraserPressureSensitive,
                     )
                 }
 

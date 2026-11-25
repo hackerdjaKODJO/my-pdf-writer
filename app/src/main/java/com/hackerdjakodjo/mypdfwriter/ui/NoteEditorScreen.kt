@@ -1500,7 +1500,9 @@ fun NoteEditorScreen(
                         compact = compact,
                         compactTopInsetDp = compactTopInsetDp,
                         onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
-                        onErase = { erase(it) },
+                        onErase = { trail, pressure, pressureSensitive ->
+                            erase(trail, pressure, pressureSensitive)
+                        },
                         onRequestText = { textPoint = it },
                         onLassoSelect = { polygon, rectangular -> selectWithLasso(polygon, rectangular) },
                         onGestureUndo = { undo() },
@@ -1575,7 +1577,9 @@ fun NoteEditorScreen(
                     compact = compact,
                     compactTopInsetDp = compactTopInsetDp,
                     onAddStroke = { points, durationMs -> addStroke(points, durationMs) },
-                    onErase = { erase(it) },
+                    onErase = { trail, pressure, pressureSensitive ->
+                        erase(trail, pressure, pressureSensitive)
+                    },
                     onRequestText = { textPoint = it },
                     onLassoSelect = { polygon, rectangular -> selectWithLasso(polygon, rectangular) },
                     onGestureUndo = { undo() },
@@ -2366,7 +2370,7 @@ private fun NoteCanvasPane(
     compact: Boolean = false,
     compactTopInsetDp: Int = 0,
     onAddStroke: (List<NormalizedPoint>, Long) -> Unit,
-    onErase: (List<NormalizedPoint>) -> Unit,
+    onErase: (List<NormalizedPoint>, Float, Boolean) -> Unit,
     onRequestText: (NormalizedPoint) -> Unit,
     onLassoSelect: (List<NormalizedPoint>, Boolean) -> Unit,
     onGestureUndo: () -> Unit,
