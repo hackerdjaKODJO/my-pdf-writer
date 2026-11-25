@@ -5,7 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.onBackupRestored
 import com.hackerdjakodjo.mypdfwriter.shouldCloseAfterRestore
@@ -37,18 +40,25 @@ class BackupRestoreE2ETest {
         busy: Boolean,
         progress: Int = 0,
         message: String? = null,
+        error: String? = null,
+        canRetry: Boolean = false,
+        onDismiss: () -> Unit = {},
+        onRetry: () -> Unit = {},
         onBackup: (Boolean) -> Unit = {},
         onRestore: () -> Unit = {},
     ) {
         composeRule.setContent {
             MyPdfWriterTheme {
                 BackupSheet(
-                    onDismiss = {},
+                    onDismiss = onDismiss,
                     onBackup = onBackup,
                     onRestore = onRestore,
                     busy = busy,
                     progress = progress,
                     message = message,
+                    error = error,
+                    canRetry = canRetry,
+                    onRetry = onRetry,
                 )
             }
         }
@@ -110,34 +120,58 @@ class BackupRestoreE2ETest {
     // ---------------------------------------------------------- flush before ZIP
 
     @Test
-    fun throwingFlushReleasesTheBackupGate() {
-        // The flush runs synchronously before `viewModelScope.launch` installs its
-        // finally { gate.finish() }. A throwing flush must not leave the gate held,
-        // otherwise every later backup/restore silently no-ops.
+    fun throwingFlushAbortsBackupAndReportsRetry() {
+        // The flush runs synchronously before `viewModelScope.launch`. It must
+        // become retryable error state, not escape or strand the manager gate.
         val vm = BackupViewModel(composeRule.activity.application)
         var flushCalls = 0
         vm.flushPendingSavesBeforeBackup = {
             flushCalls++
-            if (flushCalls == 1) throw IllegalStateException("simulated flush failure")
+            throw IllegalStateException("simulated flush failure")
         }
         val uri = Uri.parse("content://e2e.dummy/backup.zip")
 
-        val thrown = runCatching { vm.backup(uri, includeSources = false) }.exceptionOrNull()
-        assertTrue("a throwing flush must still surface to the caller", thrown is IllegalStateException)
-        assertEquals(1, flushCalls)
-
-        // A second call with a benign flush proves the gate was released: if it were
-        // still held, tryStart() would fail and the flush callback would never run.
         vm.backup(uri, includeSources = false)
-        assertEquals(2, flushCalls)
+
+        val failed = vm.state.value
+        assertEquals(1, flushCalls)
+        assertFalse(failed.busy)
+        assertNull(failed.lastBackupInfo)
+        assertTrue(failed.error?.contains("simulated flush failure") == true)
+        assertTrue(failed.canRetry)
+
+        // A second call with a benign flush proves the gate was released.
+        vm.flushPendingSavesBeforeBackup = {}
+        vm.backup(uri, includeSources = false)
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun falseFlushAbortsBackupBeforeOpeningOutputAndShowsRetry() {
+        val vm = BackupViewModel(composeRule.activity.application)
+        var flushCalls = 0
+        vm.flushPendingSavesBeforeBackupResult = {
+            flushCalls++
+            false
+        }
+        val uri = Uri.parse("content://e2e.dummy/backup.zip")
+
+        vm.backup(uri, includeSources = true)
+
+        val failed = vm.state.value
+        assertEquals(1, flushCalls)
+        assertFalse(failed.busy)
+        assertNull(failed.lastBackupInfo)
+        assertNull(failed.restoredAt)
+        assertTrue(failed.error?.contains("저장") == true)
+        assertTrue(failed.canRetry)
     }
 
     @Test
     fun backupFlushesPendingNotebookSavesBeforeArchiving() {
         val order = mutableListOf<String>()
         val summary = withFlushedSaves(
-            { order += "flush" },
+            { order += "flush"; true },
             {
                 order += "archive"
                 "zip-summary"
@@ -156,7 +190,7 @@ class BackupRestoreE2ETest {
         // MainActivity wires flushPendingSavesBeforeBackup = { saveNow() }, which
         // funnels through this same lock so the ZIP never sees a torn .tmp file.
         withFlushedSaves(
-            { writeGate.locked { writeGate.writeLocked(Notebook(id = "pending")) } },
+            { writeGate.locked { writeGate.writeLocked(Notebook(id = "pending")) }; true },
             { order += "archive" },
         )
         assertEquals(listOf("write:pending", "archive"), order)
@@ -169,13 +203,17 @@ class BackupRestoreE2ETest {
         val calls = mutableListOf<String>()
         onBackupRestored(
             restoredAt = 1_700_000_000_000L,
+            discardStudyPane = { calls += "discard-pane" },
             discardNotebook = { calls += "discard" },
             refreshNotebook = { calls += "refresh" },
             reloadLibrary = { calls += "library" },
             closeDocument = { calls += "close" },
             consumeRestored = { calls += "consume" },
         )
-        assertEquals(listOf("discard", "refresh", "library", "close", "consume"), calls)
+        assertEquals(
+            listOf("discard-pane", "discard", "refresh", "library", "close", "consume"),
+            calls,
+        )
 
         val discarded = discardNotebookState(7L)
         assertNull(discarded.current)
@@ -244,6 +282,51 @@ class BackupRestoreE2ETest {
         composeRule.onNodeWithText("백업을 만들고 있습니다.").assertExists()
         composeRule.onNodeWithText("백업 파일 만들기").assertIsNotEnabled()
         composeRule.onNodeWithText("백업 파일에서 복원").assertIsNotEnabled()
+    }
+
+    @Test
+    fun busySheetBackDoesNotDismiss() {
+        var dismisses = 0
+        renderSheet(busy = true, progress = 40, onDismiss = { dismisses++ })
+
+        composeRule.runOnUiThread {
+            composeRule.activity.onBackPressedDispatcher.onBackPressed()
+        }
+        composeRule.waitForIdle()
+
+        assertEquals(0, dismisses)
+        composeRule.onNodeWithText("백업/복원").assertExists()
+        composeRule.onNodeWithText("백업 파일 만들기").assertIsNotEnabled()
+        composeRule.onNodeWithText("백업 파일에서 복원").assertIsNotEnabled()
+    }
+
+    @Test
+    fun busySheetSwipeDoesNotDismiss() {
+        var dismisses = 0
+        renderSheet(busy = true, progress = 60, onDismiss = { dismisses++ })
+
+        composeRule.onRoot().performTouchInput {
+            swipeDown(startY = 120f, endY = 1_400f, durationMillis = 500)
+        }
+        composeRule.waitForIdle()
+
+        assertEquals(0, dismisses)
+        composeRule.onNodeWithText("작업 중… 60%").assertExists()
+    }
+
+    @Test
+    fun backupSheetShowsRetryForFlushFailure() {
+        var retries = 0
+        renderSheet(
+            busy = false,
+            error = "백업하지 못했습니다: 저장을 완료하지 못했습니다.",
+            canRetry = true,
+            onRetry = { retries++ },
+        )
+
+        composeRule.onNodeWithText("다시 시도").performClick()
+        composeRule.waitForIdle()
+        assertEquals(1, retries)
     }
 
     @Test

@@ -25,9 +25,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.OnboardingStore
+import com.hackerdjakodjo.mypdfwriter.data.StudyLinkResolution
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.data.effectiveStudyLink
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.ui.BackupSheet
+import com.hackerdjakodjo.mypdfwriter.ui.BackupMutationLease
+import com.hackerdjakodjo.mypdfwriter.ui.BackupOperationKind
 import com.hackerdjakodjo.mypdfwriter.ui.BackupViewModel
 import com.hackerdjakodjo.mypdfwriter.ui.HelpCenterSheet
 import com.hackerdjakodjo.mypdfwriter.ui.HelpTopicKey
@@ -77,6 +81,10 @@ class MainActivity : ComponentActivity() {
     private var pendingPdfExport: PdfExportSnapshot? = null
     /** Document showing when restore began; only that doc may be discarded on completion. */
     private var restoreStartDocId: String? = null
+    /** Acquired before the pre-flush and held until restore host state is refreshed. */
+    private val mutationLease = BackupMutationLease()
+    private var pendingHostRestore = false
+    private val queuedViewIntents = ArrayDeque<PendingViewIntent>()
 
     private val openPdf = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.openDocument(it) }
@@ -97,31 +105,48 @@ class MainActivity : ComponentActivity() {
         val options = pendingNoteExportOptions
         pendingNoteExport = null
         pendingNoteExportOptions = NoteExportOptions()
-        uri?.let {
-            if (detached != null) {
-                notebookViewModel.exportDetached(detached, it, options)
-            } else {
-                notebookViewModel.exportCurrent(it, options)
-            }
+        // The launch snapshot is authoritative. If process recreation lost it,
+        // fail closed instead of exporting a different mutable current notebook.
+        if (uri != null && detached != null) {
+            notebookViewModel.exportDetached(detached, uri, options)
         }
     }
 
     private val saveBackup = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-        uri?.let { backupViewModel.backup(it, backupIncludeSources) }
+        pendingHostRestore = false
+        if (uri != null) {
+            runCatching { backupViewModel.backup(uri, backupIncludeSources) }.onFailure { error ->
+                backupViewModel.reportBackupFailure(uri, backupIncludeSources, error)
+                finishHostOperation()
+            }
+        }
     }
 
     private val openBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { backupViewModel.restore(it) }
+        if (uri == null) {
+            restoreStartDocId = null
+            pendingHostRestore = false
+        } else {
+            pendingHostRestore = true
+            runCatching { backupViewModel.restore(uri) }.onFailure { error ->
+                backupViewModel.reportRestoreFailure(uri, error)
+                finishHostOperation()
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        backupViewModel.flushPendingSavesBeforeBackup = {
-            notebookViewModel.saveNow()
-            // PDF doc-state writes are normally debounced on IO; drain them now
-            // so the backup ZIP cannot miss the newest annotation/page state.
-            viewModel.flushPdfSavesNow()
+        backupViewModel.flushPendingSavesBeforeBackupResult = {
+            mutationLease.begin { flushHostState() }
+        }
+        backupViewModel.onOperationFinished = { succeeded ->
+            if (pendingHostRestore && succeeded) {
+                // consumeRestored releases after pane/viewer/notebook refresh.
+            } else {
+                finishHostOperation()
+            }
         }
         handleViewIntent(intent)
 
@@ -153,6 +178,12 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(backupState.restoredAt) {
                     onBackupRestored(
                         restoredAt = backupState.restoredAt,
+                        // Never save a pre-restore detached pane over restored JSON.
+                        discardStudyPane = {
+                            studyPaneNotebook = null
+                            studyPanePageIndex = 0
+                            studyPaneDocId = null
+                        },
                         discardNotebook = { notebookViewModel.discardCurrent() },
                         refreshNotebook = { notebookViewModel.refresh() },
                         reloadLibrary = { viewModel.reloadLibrary() },
@@ -163,6 +194,7 @@ class MainActivity : ComponentActivity() {
                         consumeRestored = {
                             backupViewModel.consumeRestored()
                             restoreStartDocId = null
+                            finishHostOperation()
                         },
                     )
                 }
@@ -185,18 +217,23 @@ class MainActivity : ComponentActivity() {
                     openPdf.launch(arrayOf("application/pdf"))
                 }
                 // A detached pane belongs to one open PDF. If the document closes or
-                // is replaced elsewhere, save the note and drop the stale pane.
+                // is replaced elsewhere, save the note and drop the stale pane. A
+                // failed verified save is surfaced and the stale pane is still dropped
+                // so it can never accept another document's capture.
                 LaunchedEffect(viewer?.docId) {
                     val pane = studyPaneNotebook ?: return@LaunchedEffect
                     val docId = viewer?.docId
                     if (docId == null || studyPaneDocId != docId) {
-                        notebookViewModel.saveDetached(pane)
+                        if (notebookViewModel.trySaveDetached(pane) == null) {
+                            viewModel.postLibraryMessage(NOTE_SAVE_FAILURE_MESSAGE)
+                        }
                         studyPaneNotebook = null
                         studyPanePageIndex = 0
                         studyPaneDocId = null
                     }
                 }
                 val openStudyPane: (Notebook) -> Unit = { notebook ->
+                    if (mutationLease.isActive) return@lambda
                     // Capturing to an already-open pane appends a page and moves
                     // the pane there. Reopening the same notebook must not snap
                     // back to page 1 and hide the excerpt the user just added.
@@ -208,22 +245,82 @@ class MainActivity : ComponentActivity() {
                     studyPaneNotebook = notebook
                     studyPaneDocId = viewer?.docId
                 }
-                val closeStudyPane: () -> Unit = {
-                    studyPaneNotebook?.let { notebookViewModel.saveDetached(it) }
-                    studyPaneNotebook = null
-                    studyPanePageIndex = 0
-                    studyPaneDocId = null
+                val closeStudyPane: () -> Boolean = {
+                    val pane = studyPaneNotebook
+                    if (pane == null) {
+                        true
+                    } else if (mutationLease.isActive) {
+                        false
+                    } else if (notebookViewModel.trySaveDetached(pane) == null) {
+                        viewModel.postLibraryMessage(NOTE_SAVE_FAILURE_MESSAGE)
+                        false
+                    } else {
+                        studyPaneNotebook = null
+                        studyPanePageIndex = 0
+                        studyPaneDocId = null
+                        true
+                    }
                 }
                 val openViewerStudyPane: () -> Unit = {
-                    val doc = viewer
-                    if (doc != null) {
-                        val source = StudySource(
-                            docName = doc.docName,
-                            docUri = viewModel.currentDocumentUri(),
-                        )
-                        val notebook = notebookViewModel.studyNoteFor(source)
-                            ?: notebookViewModel.createBlankStudyNote(source)
-                        openStudyPane(notebook)
+                    if (!mutationLease.isActive) {
+                        val doc = viewer
+                        if (doc != null) {
+                            val source = StudySource(
+                                docName = doc.docName,
+                                docUri = viewModel.currentDocumentUri(),
+                                docId = doc.docId,
+                                contentFingerprint = doc.contentFingerprint,
+                            )
+                            val notebook = notebookViewModel.studyNoteFor(source)
+                                ?: notebookViewModel.createBlankStudyNote(source)
+                            if (notebook != null) {
+                                openStudyPane(notebook)
+                            } else {
+                                viewModel.postLibraryMessage(NOTE_SAVE_FAILURE_MESSAGE)
+                            }
+                        }
+                    }
+                }
+                val runMutation: (() -> Unit) -> Unit = { action ->
+                    if (!mutationLease.isActive) action()
+                }
+                val jumpToNoteSource: (Notebook, Int) -> Boolean = { notebook, page ->
+                    if (mutationLease.isActive) {
+                        false
+                    } else {
+                        val link = notebook.pages.getOrNull(page)?.effectiveStudyLink(notebook)
+                        if (link != null) {
+                            when (val resolution = viewModel.jumpToStudyLink(link)) {
+                                is StudyLinkResolution.Found -> true
+                                StudyLinkResolution.WrongDocument -> {
+                                    viewModel.postLibraryMessage("현재 PDF와 다른 문서의 링크입니다. 노트는 열어 둡니다.")
+                                    false
+                                }
+                                StudyLinkResolution.SourceChanged -> {
+                                    viewModel.postLibraryMessage("원본 PDF가 바뀌었습니다. 노트는 열어 둡니다.")
+                                    false
+                                }
+                                StudyLinkResolution.PageMissing -> {
+                                    viewModel.postLibraryMessage("원본 페이지를 찾을 수 없습니다. 노트는 열어 둡니다.")
+                                    false
+                                }
+                                StudyLinkResolution.SourceUnavailable -> {
+                                    viewModel.postLibraryMessage("원본 PDF를 사용할 수 없습니다. 노트는 열어 둡니다.")
+                                    false
+                                }
+                            }
+                        } else {
+                            val uri = notebook.sourceDocumentUri
+                            if (uri.isBlank()) {
+                                viewModel.postLibraryMessage("원본 PDF를 사용할 수 없습니다. 노트는 열어 둡니다.")
+                                false
+                            } else {
+                                // Legacy notes have no durable locator; preserve their
+                                // root URI/page fallback without claiming a verified link.
+                                viewModel.openDocumentAt(Uri.parse(uri), page)
+                                true
+                            }
+                        }
                     }
                 }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -232,23 +329,33 @@ class MainActivity : ComponentActivity() {
                         note != null -> NoteEditorScreen(
                             notebook = note,
                             pageIndex = notePage,
-                            onBack = { notebookViewModel.close() },
-                            onChange = { notebookViewModel.updateCurrent(it) },
-                            onPageIndexChange = { notebookViewModel.setPageIndex(it) },
+                            onBack = {
+                                runMutation {
+                                    if (!notebookViewModel.close()) {
+                                        viewModel.postLibraryMessage(NOTE_SAVE_FAILURE_MESSAGE)
+                                    }
+                                }
+                            },
+                            onChange = { updated -> runMutation { notebookViewModel.updateCurrent(updated) } },
+                            onPageIndexChange = { index ->
+                                runMutation { notebookViewModel.setPageIndex(index) }
+                            },
                             onExportPdf = { options ->
-                                pendingNoteExport = null
-                                pendingNoteExportOptions = options
-                                exportNote.launch(
-                                    options.suggestedFileName.ifBlank {
-                                        notebookViewModel.exportSuggestedName()
-                                    },
-                                )
+                                runMutation {
+                                    pendingNoteExport = note
+                                    pendingNoteExportOptions = options
+                                    exportNote.launch(
+                                        options.suggestedFileName.ifBlank {
+                                            notebookViewModel.exportSuggestedName()
+                                        },
+                                    )
+                                }
                             },
                             onOpenSourcePdf = { page ->
-                                val uri = note.sourceDocumentUri
-                                if (uri.isNotBlank()) {
-                                    notebookViewModel.close()
-                                    viewModel.openDocumentAt(Uri.parse(uri), page)
+                                runMutation {
+                                    if (jumpToNoteSource(note, page) && notebookViewModel.close()) {
+                                        showTools = false
+                                    }
                                 }
                             },
                             onOpenHelp = {
@@ -259,8 +366,10 @@ class MainActivity : ComponentActivity() {
                         showTools -> ToolsScreen(
                             onBack = { showTools = false },
                             onOpen = { uri ->
-                                showTools = false
-                                viewModel.openDocument(uri)
+                                runMutation {
+                                    showTools = false
+                                    viewModel.openDocument(uri)
+                                }
                             },
                             // Prefer the assembled working file: after page edits the
                             // pristine source would silently discard them in tools.
@@ -274,20 +383,34 @@ class MainActivity : ComponentActivity() {
                             NotebookHomeScreen(
                                 notebooks = notebooks,
                                 pdfs = pdfs,
-                                onOpenNotebook = { notebookViewModel.open(it) },
-                                onCreateNotebook = { draft -> notebookViewModel.create(draft) },
-                                onOpenPdf = { doc -> viewModel.openDocument(Uri.parse(doc.uri)) },
-                                onImportPdf = { openPdf.launch(arrayOf("application/pdf")) },
-                                onCreatePdf = { createPdf.launch("새 문서.pdf") },
-                                onOpenTools = { showTools = true },
-                                onToggleFavorite = { notebookViewModel.toggleFavorite(it) },
-                                onTrash = { notebookViewModel.trash(it) },
-                                onRestore = { notebookViewModel.restore(it) },
-                                onDeleteForever = { notebookViewModel.deleteForever(it) },
-                                onRename = { id, title -> notebookViewModel.rename(id, title) },
-                                onMoveFolder = { id, folder -> notebookViewModel.moveFolder(id, folder) },
-                                onSetTags = { id, tags -> notebookViewModel.setTags(id, tags) },
-                                onOpenBackup = { showBackup = true },
+                                onOpenNotebook = { runMutation { notebookViewModel.open(it) } },
+                                onCreateNotebook = { draft ->
+                                    runMutation { notebookViewModel.create(draft) }
+                                },
+                                onOpenPdf = { doc ->
+                                    runMutation { viewModel.openDocument(Uri.parse(doc.uri)) }
+                                },
+                                onImportPdf = {
+                                    runMutation { openPdf.launch(arrayOf("application/pdf")) }
+                                },
+                                onCreatePdf = {
+                                    runMutation { createPdf.launch("새 문서.pdf") }
+                                },
+                                onOpenTools = { runMutation { showTools = true } },
+                                onToggleFavorite = { runMutation { notebookViewModel.toggleFavorite(it) } },
+                                onTrash = { runMutation { notebookViewModel.trash(it) } },
+                                onRestore = { runMutation { notebookViewModel.restore(it) } },
+                                onDeleteForever = { runMutation { notebookViewModel.deleteForever(it) } },
+                                onRename = { id, title ->
+                                    runMutation { notebookViewModel.rename(id, title) }
+                                },
+                                onMoveFolder = { id, folder ->
+                                    runMutation { notebookViewModel.moveFolder(id, folder) }
+                                },
+                                onSetTags = { id, tags ->
+                                    runMutation { notebookViewModel.setTags(id, tags) }
+                                },
+                                onOpenBackup = { runMutation { showBackup = true } },
                                 onOpenTrace = { showTrace = true },
                                 onOpenHelp = {
                                     helpTopic = null
@@ -307,30 +430,25 @@ class MainActivity : ComponentActivity() {
                             val studySource = StudySource(
                                 docName = viewer?.docName.orEmpty(),
                                 docUri = viewModel.currentDocumentUri(),
+                                docId = viewer?.docId,
+                                contentFingerprint = viewer?.contentFingerprint,
                             )
-                            // With the pane open, captures go straight to the pane
-                            // notebook instead of re-resolving a library match.
-                            val appendToOpenPane: (String, Int) -> Boolean = { text, page ->
-                                val pane = studyPaneNotebook
-                                if (pane == null) {
+                            val appendStudyExcerpt: (String, Int) -> Boolean = { text, page ->
+                                if (mutationLease.isActive || viewer == null) {
                                     false
                                 } else {
-                                    val updated = StudyNoteBuilder.appendExcerpt(
-                                        notebook = pane,
-                                        source = studySource,
-                                        excerpt = Excerpt(
-                                            pageIndex = page.coerceAtLeast(0),
-                                            text = text.trim(),
-                                        ),
+                                    val result = notebookViewModel.appendStudyExcerptResult(
+                                        studySource,
+                                        text,
+                                        page,
                                     )
-                                    if (updated == pane) {
-                                        false
-                                    } else {
-                                        val saved = notebookViewModel.saveDetached(updated)
-                                        studyPaneNotebook = saved
-                                        studyPanePageIndex =
-                                            (saved.pages.size - 1).coerceAtLeast(0)
+                                    if (result.saved) {
+                                        openStudyPane(result.notebook)
+                                        studyPanePageIndex = result.pageIndex.coerceAtLeast(0)
                                         true
+                                    } else {
+                                        result.error?.let(viewModel::postLibraryMessage)
+                                        false
                                     }
                                 }
                             }
@@ -338,31 +456,35 @@ class MainActivity : ComponentActivity() {
                             ViewerScreen(
                                 vm = viewModel,
                                 onExportRequest = { suggestedName ->
-                                    pendingPdfExport = viewModel.captureExportSnapshot()
-                                    exportPdf.launch(suggestedName)
-                                },
-                                onOpenTools = { showTools = true },
-                                onCreateStudyNote = { notebook ->
-                                    // Keep the PDF open: the captured note opens in
-                                    // the detached pane over this page.
-                                    openStudyPane(notebookViewModel.saveDetached(notebook))
-                                },
-                                onAppendStudyExcerpt = { text, page ->
-                                    if (studyPaneNotebook == null) {
-                                        notebookViewModel.appendStudyExcerpt(
-                                            studySource,
-                                            text,
-                                            page,
-                                        )
-                                        true
-                                    } else {
-                                        appendToOpenPane(text, page)
+                                    runMutation {
+                                        pendingPdfExport = viewModel.captureExportSnapshot()
+                                        if (pendingPdfExport != null) exportPdf.launch(suggestedName)
                                     }
                                 },
+                                onOpenTools = { runMutation { showTools = true } },
+                                onCreateStudyNote = { notebook ->
+                                    runMutation {
+                                        // Keep the PDF open: the captured note opens in
+                                        // the detached pane only after verified persistence.
+                                        val saved = notebookViewModel.trySaveDetached(notebook)
+                                        if (saved != null) {
+                                            openStudyPane(saved)
+                                        } else {
+                                            viewModel.postLibraryMessage(NOTE_SAVE_FAILURE_MESSAGE)
+                                        }
+                                    }
+                                },
+                                onAppendStudyExcerpt = appendStudyExcerpt,
                                 onOpenStudyNote = { source ->
-                                    val notebook = notebookViewModel.studyNoteFor(source)
-                                        ?: notebookViewModel.createBlankStudyNote(source)
-                                    openStudyPane(notebook)
+                                    runMutation {
+                                        val notebook = notebookViewModel.studyNoteFor(source)
+                                            ?: notebookViewModel.createBlankStudyNote(source)
+                                        if (notebook != null) {
+                                            openStudyPane(notebook)
+                                        } else {
+                                            viewModel.postLibraryMessage(NOTE_SAVE_FAILURE_MESSAGE)
+                                        }
+                                    }
                                 },
                                 onOpenHelp = {
                                     helpTopic = null
@@ -373,7 +495,7 @@ class MainActivity : ComponentActivity() {
                                     showHelp = true
                                 },
                                 studyPaneFraction = studyPaneFraction,
-                                onCloseStudyPane = closeStudyPane,
+                                onCloseStudyPane = { closeStudyPane() },
                                 onStudyPaneFractionChange = { fraction ->
                                     studyPaneFraction = clampStudyPaneFraction(fraction)
                                 },
@@ -387,51 +509,71 @@ class MainActivity : ComponentActivity() {
                                                 studyPaneFraction =
                                                     clampStudyPaneFraction(fraction)
                                             },
-                                            onDismiss = closeStudyPane,
+                                            onDismiss = { closeStudyPane() },
                                             onChange = { updated ->
-                                                studyPaneNotebook =
-                                                    notebookViewModel.saveDetached(updated)
+                                                if (!mutationLease.isActive) {
+                                                    val saved = notebookViewModel.trySaveDetached(updated)
+                                                    if (saved != null) {
+                                                        studyPaneNotebook = saved
+                                                    } else {
+                                                        viewModel.postLibraryMessage(NOTE_SAVE_FAILURE_MESSAGE)
+                                                    }
+                                                }
                                             },
                                             onPageIndexChange = { index ->
-                                                val latest = studyPaneNotebook
-                                                studyPanePageIndex = index.coerceIn(
-                                                    0,
-                                                    ((latest?.pages?.size ?: 1) - 1)
-                                                        .coerceAtLeast(0),
-                                                )
+                                                if (!mutationLease.isActive) {
+                                                    val latest = studyPaneNotebook
+                                                    if (latest != null) {
+                                                        val saved = notebookViewModel.setDetachedPageIndex(
+                                                            latest,
+                                                            index,
+                                                        )
+                                                        if (saved != null) {
+                                                            studyPaneNotebook = saved
+                                                            studyPanePageIndex = saved.lastPageIndex
+                                                        } else {
+                                                            viewModel.postLibraryMessage(NOTE_SAVE_FAILURE_MESSAGE)
+                                                        }
+                                                    }
+                                                }
                                             },
                                             onExportPdf = { options ->
-                                                val exportNotebook = studyPaneNotebook
-                                                if (exportNotebook != null) {
-                                                    pendingNoteExport = exportNotebook
-                                                    pendingNoteExportOptions = options
-                                                    exportNote.launch(
-                                                        options.suggestedFileName.ifBlank {
-                                                            notebookViewModel.exportSuggestedName(
-                                                                exportNotebook,
-                                                            )
-                                                        },
-                                                    )
+                                                if (!mutationLease.isActive) {
+                                                    val exportNotebook = studyPaneNotebook
+                                                    if (exportNotebook != null) {
+                                                        pendingNoteExport = exportNotebook
+                                                        pendingNoteExportOptions = options
+                                                        exportNote.launch(
+                                                            options.suggestedFileName.ifBlank {
+                                                                notebookViewModel.exportSuggestedName(
+                                                                    exportNotebook,
+                                                                )
+                                                            },
+                                                        )
+                                                    }
                                                 }
                                             },
                                             onOpenSourcePdf = { page ->
-                                                closeStudyPane()
-                                                viewModel.jumpToSourcePage(page)
-                                            },
-                                            onCaptureExcerpt = appendToOpenPane,
-                                            onJumpToSourcePage = { sourcePage, notePage ->
-                                                studyPaneNotebook?.let {
-                                                    notebookViewModel.saveDetached(it)
+                                                val pane = studyPaneNotebook
+                                                if (pane != null && jumpToNoteSource(pane, page)) {
+                                                    closeStudyPane()
                                                 }
-                                                studyPanePageIndex = notePage.coerceIn(
-                                                    0,
-                                                    ((studyPaneNotebook?.pages?.size ?: 1) - 1)
-                                                        .coerceAtLeast(0),
-                                                )
-                                                // Keep the pane open so the note and the
-                                                // PDF page move together. Source-link jumps
-                                                // stay available even while the page is locked.
-                                                viewModel.jumpToSourcePage(sourcePage)
+                                            },
+                                            onCaptureExcerpt = appendStudyExcerpt,
+                                            onJumpToSourcePage = { _, notePage ->
+                                                val pane = studyPaneNotebook
+                                                if (pane != null && jumpToNoteSource(pane, notePage)) {
+                                                    val saved = notebookViewModel.setDetachedPageIndex(
+                                                        pane,
+                                                        notePage,
+                                                    )
+                                                    if (saved != null) {
+                                                        studyPaneNotebook = saved
+                                                        studyPanePageIndex = saved.lastPageIndex
+                                                    } else {
+                                                        viewModel.postLibraryMessage(NOTE_SAVE_FAILURE_MESSAGE)
+                                                    }
+                                                }
                                             },
                                             onOpenHelp = {
                                                 helpTopic = HelpTopicKey.STUDY_NOTE
@@ -448,18 +590,33 @@ class MainActivity : ComponentActivity() {
                 }
                 if (showBackup) {
                     BackupSheet(
-                        onDismiss = { showBackup = false },
+                        onDismiss = {
+                            if (!backupState.busy && !mutationLease.isActive) showBackup = false
+                        },
                         onBackup = { includeSources ->
-                            backupIncludeSources = includeSources
-                            saveBackup.launch(backupViewModel.suggestedBackupName())
+                            if (!backupState.busy && !mutationLease.isActive) {
+                                backupIncludeSources = includeSources
+                                saveBackup.launch(backupViewModel.suggestedBackupName())
+                            }
                         },
                         onRestore = {
-                            restoreStartDocId = viewer?.docId
-                            openBackup.launch(arrayOf("application/zip", "application/octet-stream"))
+                            if (!backupState.busy && !mutationLease.isActive) {
+                                restoreStartDocId = viewer?.docId
+                                openBackup.launch(arrayOf("application/zip", "application/octet-stream"))
+                            }
                         },
                         busy = backupState.busy,
                         progress = backupState.progress,
                         message = backupState.message,
+                        error = backupState.error,
+                        canRetry = backupState.canRetry,
+                        onRetry = {
+                            if (!backupState.busy && !mutationLease.isActive) {
+                                pendingHostRestore = backupState.retryKind == BackupOperationKind.RESTORE
+                                if (pendingHostRestore) restoreStartDocId = viewer?.docId
+                                backupViewModel.retry()
+                            }
+                        },
                     )
                 }
                 if (BuildConfig.DEBUG && showTrace) {
