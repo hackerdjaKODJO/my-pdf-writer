@@ -83,7 +83,7 @@ internal object FileNotebookStoreIo : NotebookStoreIo {
      */
     override fun publish(tmp: File, target: File) {
         tmp.copyTo(target, overwrite = true)
-        FileOutputStream(target).use { output -> output.fd.sync() }
+        FileOutputStream(target, true).use { output -> output.fd.sync() }
     }
 
     override fun readCanonical(target: File): String {
