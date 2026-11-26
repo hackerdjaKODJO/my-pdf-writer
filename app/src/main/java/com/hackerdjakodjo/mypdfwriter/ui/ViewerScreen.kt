@@ -388,7 +388,6 @@ fun ViewerScreen(
     var hintDismissed by remember { mutableStateOf(false) }
     // Divider chip: the floating PDF tool strip starts visible and can be hidden
     // without affecting the selection bar or any document callback.
-    var pdfToolsVisible by remember { mutableStateOf(true) }
 
     // GoodReader-style session chrome: file tabs, the recents switcher and the
     // auto-hide menu mode. None of this is persisted; a new visit starts fresh.
@@ -1068,7 +1067,7 @@ fun ViewerScreen(
     } else {
         SplitPdfChromeDensity.FULL
     }
-    val splitToolbarVisible = splitMode && chromePolicy.showSplitToolbar && pdfToolsVisible
+    val splitToolbarVisible = splitMode && chromePolicy.showSplitToolbar
     // Hint and search chips share the top edge with the toolbar, so they sit in
     // the next row whenever the strip is drawn.
     val splitTopOverlayOffsetDp = if (splitToolbarVisible) {
@@ -1553,24 +1552,16 @@ fun ViewerScreen(
                 }
 
                 if (studyPane != null) {
-                    // The divider is the primary resize affordance: a 48dp row
-                    // with page navigation below the PDF, a centered grip/
-                    // percentage pill and a PDF-tool chip. The floating pane
-                    // header keeps its own drag handle and dismiss overshoot.
+                    // Only the slim resize grip lives between PDF and note. Page
+                    // navigation and PDF controls stay in their own PDF chrome;
+                    // neither reserves vertical space here.
                     SplitDivider(
                         paneFraction = paneFraction,
                         totalHeightPx = splitAreaHeightPx,
-                        pdfToolsVisible = pdfToolsVisible,
                         onFractionChange = onStudyPaneFractionChange,
                         onPresetSelected = { fraction ->
                             onStudyPaneFractionChange(clampStudyPaneFraction(fraction))
                         },
-                        onTogglePdfTools = { pdfToolsVisible = !pdfToolsVisible },
-                        pageIndex = state.pageIndex,
-                        pageCount = state.pageCount,
-                        onPreviousPage = vm::previousPage,
-                        onNextPage = vm::nextPage,
-                        onOpenPages = { showPages = true },
                     )
                     Box(
                         Modifier

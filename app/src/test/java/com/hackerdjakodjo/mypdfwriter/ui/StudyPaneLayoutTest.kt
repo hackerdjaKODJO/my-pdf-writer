@@ -131,12 +131,11 @@ class StudyPaneLayoutTest {
     }
 
     @Test
-    fun dividerRowAndPresetTargetsUseTheDocumentedSizes() {
-        assertEquals(MIN_TARGET_DP, STUDY_PANE_DIVIDER_ROW_HEIGHT_DP)
-        // Page navigation, resize grip and tool chip share this row below the
-        // PDF; every target meets the 48 dp minimum.
+    fun dividerRowIsSlimWhilePresetTargetsStayAccessible() {
+        assertEquals(24, STUDY_PANE_DIVIDER_ROW_HEIGHT_DP)
         assertEquals(MIN_TARGET_DP, STUDY_PANE_PRESET_ROW_HEIGHT_DP)
-        assertTrue(isAccessibleTarget(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP))
+        assertTrue(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP < MIN_TARGET_DP)
+        assertTrue(isAccessibleTarget(STUDY_PANE_PRESET_ROW_HEIGHT_DP))
     }
 
     @Test
@@ -151,18 +150,12 @@ class StudyPaneLayoutTest {
     @Test
     fun dividerAndPresetRowsHaveTalkBackDescriptions() {
         assertEquals(
-            "노트 크기 조절 핸들, 현재 70%, 탭하면 크기 선택",
+            "노트 높이 조절, 현재 70%, 드래그하거나 두 번 탭하여 크기 변경",
             studyPaneDividerDescription(0.70f),
         )
         assertEquals("노트 크기 50%", studyPanePresetDescription(0.50f))
         assertEquals("노트 크기 70%", studyPanePresetDescription(0.70f))
         assertEquals("노트 크기 85%", studyPanePresetDescription(0.85f))
-    }
-
-    @Test
-    fun pdfToolsChipDescriptionTracksVisibility() {
-        assertEquals("PDF 도구 숨기기", splitPdfToolsChipDescription(true))
-        assertEquals("PDF 도구 표시", splitPdfToolsChipDescription(false))
     }
 
     @Test

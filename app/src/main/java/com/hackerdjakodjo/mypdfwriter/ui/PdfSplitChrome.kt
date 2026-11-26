@@ -504,20 +504,12 @@ private fun SplitPagePill(
 internal fun SplitDivider(
     paneFraction: Float,
     totalHeightPx: Float,
-    pdfToolsVisible: Boolean,
     onFractionChange: (Float) -> Unit,
     onPresetSelected: (Float) -> Unit,
-    onTogglePdfTools: () -> Unit,
     modifier: Modifier = Modifier,
-    pageIndex: Int = 0,
-    pageCount: Int = 0,
-    onPreviousPage: () -> Unit = {},
-    onNextPage: () -> Unit = {},
-    onOpenPages: () -> Unit = {},
 ) {
     var dragStartFraction by remember { mutableFloatStateOf(paneFraction) }
     var dragY by remember { mutableFloatStateOf(0f) }
-    var showSizePopup by remember { mutableStateOf(false) }
     val latestFraction = rememberUpdatedState(paneFraction)
     val latestHeight = rememberUpdatedState(totalHeightPx)
     val latestOnFraction = rememberUpdatedState(onFractionChange)
@@ -526,12 +518,18 @@ internal fun SplitDivider(
         modifier = modifier
             .fillMaxWidth()
             .height(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP.dp)
+            .semantics {
+                contentDescription = studyPaneDividerDescription(paneFraction)
+                onClick(label = "기본 노트 높이로") {
+                    onPresetSelected(0.70f)
+                    true
+                }
+            }
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragStart = {
                         dragStartFraction = latestFraction.value
                         dragY = 0f
-                        showSizePopup = false
                     },
                     onVerticalDrag = { change, dragAmount ->
                         change.consume()
@@ -545,155 +543,24 @@ internal fun SplitDivider(
                         )
                     },
                 )
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        onPresetSelected(studyPanePresetAfterDoubleTap(paneFraction))
+                    },
+                )
             },
         contentAlignment = Alignment.Center,
     ) {
-        // Single full-width row: page navigation, resize grip and tool chip.
-        // SpaceBetween keeps them apart; the grip's text shrinks on narrow phones.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-        // Page navigation now lives BELOW the PDF strip in this 48dp control row,
-        // never floating over the page.
-        if (pageCount > 0) {
-            Box(Modifier.padding(start = 4.dp)) {
-                SplitPagePill(
-                    pageIndex = pageIndex,
-                    pageCount = pageCount,
-                    onPrevious = onPreviousPage,
-                    onNext = onNextPage,
-                    onOpenPages = onOpenPages,
-                )
-            }
-        }
-
-        // The visible pill stays inside the control row, but TalkBack sees
-        // a full 48 dp clickable node with an explicit "노트 크기 선택" action.
-        // Tap opens the presets and double-tap still jumps to an endpoint.
+        // The whole row remains a vertical drag target; only the slim grip is drawn.
         Box(
-            modifier = Modifier
-                .weight(1f, fill = false)
-                .sizeIn(
-                    minWidth = SPLIT_CHROME_TARGET_DP.dp,
-                    minHeight = SPLIT_CHROME_TARGET_DP.dp,
-                )
-                .semantics(mergeDescendants = true) {
-                    contentDescription = studyPaneDividerDescription(paneFraction)
-                    onClick(label = "노트 크기 선택") { showSizePopup = true; true }
-                }
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { showSizePopup = true },
-                        onDoubleTap = {
-                            showSizePopup = false
-                            onPresetSelected(studyPanePresetAfterDoubleTap(paneFraction))
-                        },
-                    )
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                tonalElevation = 2.dp,
-                shadowElevation = 3.dp,
-            ) {
-                Row(
-                    modifier = Modifier
-                        .height(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP.dp)
-                        .clip(RoundedCornerShape(50)),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Spacer(Modifier.width(8.dp))
-                    Icon(
-                        Icons.Outlined.DragIndicator,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        studyPaneDividerLabel(paneFraction),
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                }
-            }
-        }
-
-        // Same pattern for the tool chip: the drawn chip stays small while the
-        // clickable node carries the state-aware label and a 48 dp target.
-        Box(
-            modifier = Modifier
-                .padding(end = 4.dp)
-                .sizeIn(
-                    minWidth = SPLIT_CHROME_TARGET_DP.dp,
-                    minHeight = SPLIT_CHROME_TARGET_DP.dp,
-                )
-                .clickable(onClick = onTogglePdfTools)
-                .semantics { contentDescription = splitPdfToolsChipDescription(pdfToolsVisible) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
-                contentColor = if (pdfToolsVisible) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            ) {
-                Row(
-                    modifier = Modifier
-                        .height(STUDY_PANE_DIVIDER_ROW_HEIGHT_DP.dp)
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Outlined.Handyman,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text("PDF 도구", style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                }
-            }
-        }
-        } // end full-width control row
-
-        if (showSizePopup) {
-            val density = LocalDensity.current
-            Popup(
-                alignment = Alignment.TopCenter,
-                offset = IntOffset(
-                    0,
-                    with(density) { STUDY_PANE_DIVIDER_ROW_HEIGHT_DP.dp.toPx().roundToInt() },
-                ),
-                onDismissRequest = { showSizePopup = false },
-                properties = PopupProperties(focusable = true),
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 3.dp,
-                    shadowElevation = 8.dp,
-                ) {
-                    StudyPaneSizePresets(
-                        currentFraction = paneFraction,
-                        onPresetSelected = { fraction ->
-                            showSizePopup = false
-                            onPresetSelected(fraction)
-                        },
-                    )
-                }
-            }
-        }
+            Modifier
+                .width(56.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)),
+        )
     }
 }
 

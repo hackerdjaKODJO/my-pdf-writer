@@ -131,114 +131,41 @@ class PdfSplitChromeE2ETest {
     }
 
     @Test
-    fun dividerDocksPageNavigationBelowThePdf() {
-        var previous = 0
-        var next = 0
-        var pages = 0
-
+    fun dividerIsOnlyASlimResizeGrip() {
         composeRule.setContent {
             MaterialTheme {
                 SplitDivider(
                     paneFraction = 0.70f,
                     totalHeightPx = 1000f,
-                    pdfToolsVisible = true,
                     onFractionChange = {},
                     onPresetSelected = {},
-                    onTogglePdfTools = {},
-                    pageIndex = 2,
-                    pageCount = 12,
-                    onPreviousPage = { previous += 1 },
-                    onNextPage = { next += 1 },
-                    onOpenPages = { pages += 1 },
                 )
             }
         }
 
-        composeRule.onNodeWithText("3 / 12").assertExists()
-        composeRule.onNodeWithContentDescription("이전 페이지").performClick()
-        composeRule.onNodeWithContentDescription("다음 페이지").performClick()
-        composeRule.onNodeWithContentDescription("페이지 선택").performClick()
-
-        assertEquals(1, previous)
-        assertEquals(1, next)
-        assertEquals(1, pages)
+        composeRule.onNodeWithContentDescription(studyPaneDividerDescription(0.70f)).assertExists()
+        composeRule.onNodeWithText("3 / 12").assertDoesNotExist()
+        composeRule.onNodeWithText("PDF 도구").assertDoesNotExist()
+        composeRule.onNodeWithText("노트 70%").assertDoesNotExist()
     }
 
     @Test
-    fun dividerShowsPercentAndRoutesThePdfToolsChip() {
-        var toggled = 0
-        composeRule.setContent {
-            MaterialTheme {
-                SplitDivider(
-                    paneFraction = 0.70f,
-                    totalHeightPx = 1000f,
-                    pdfToolsVisible = true,
-                    onFractionChange = {},
-                    onPresetSelected = {},
-                    onTogglePdfTools = { toggled += 1 },
-                )
-            }
-        }
-
-        composeRule.onNodeWithText("노트 70%").assertExists()
-        composeRule
-            .onNodeWithContentDescription("노트 크기 조절 핸들, 현재 70%, 탭하면 크기 선택")
-            .assertExists()
-        composeRule.onNodeWithContentDescription("PDF 도구 숨기기").performClick()
-        assertEquals(1, toggled)
-    }
-
-    @Test
-    fun hiddenPdfToolsChipAnnouncesItsRestoreAction() {
-        var toggled = 0
-        composeRule.setContent {
-            MaterialTheme {
-                SplitDivider(
-                    paneFraction = 0.70f,
-                    totalHeightPx = 1000f,
-                    pdfToolsVisible = false,
-                    onFractionChange = {},
-                    onPresetSelected = {},
-                    onTogglePdfTools = { toggled += 1 },
-                )
-            }
-        }
-
-        composeRule.onNodeWithContentDescription("PDF 도구 표시").performClick()
-        assertEquals(1, toggled)
-    }
-
-    @Test
-    fun dividerTapOpensThePresetPopupAndAppliesAChoice() {
+    fun dividerClickRestoresTheDefaultHeight() {
         var selected = -1f
         composeRule.setContent {
             MaterialTheme {
                 SplitDivider(
-                    paneFraction = 0.70f,
+                    paneFraction = 0.50f,
                     totalHeightPx = 1000f,
-                    pdfToolsVisible = false,
                     onFractionChange = {},
                     onPresetSelected = { selected = it },
-                    onTogglePdfTools = {},
                 )
             }
         }
 
-        composeRule
-            .onNodeWithContentDescription(studyPaneDividerDescription(0.70f))
-            .performClick()
-        // The pill uses detectTapGestures with both onTap and onDoubleTap, so the
-        // single-tap action is only committed after the double-tap timeout. The
-        // Popup then lives in its own window; poll until its preset row is in the
-        // semantics tree instead of querying immediately after touch injection.
-        val preset50 = studyPanePresetDescription(STUDY_PANE_PRESETS.first())
-        composeRule.waitUntil("preset popup", 2_000L) {
-            composeRule.onAllNodesWithContentDescription(preset50)
-                .fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.onNodeWithContentDescription(preset50).performClick()
+        composeRule.onNodeWithContentDescription(studyPaneDividerDescription(0.50f)).performClick()
         composeRule.waitForIdle()
-        assertEquals(0.50f, selected, 0.0001f)
+        assertEquals(0.70f, selected, 0.0001f)
     }
 
     @Test

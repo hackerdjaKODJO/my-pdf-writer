@@ -149,7 +149,7 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
             "기본 높이는 70%입니다. 두 영역 사이의 가운데 손잡이를 위아래로 드래그하세요.",
             "위로 드래그하면 노트가 커지고(최대 85%), 아래로 드래그하면 PDF가 커집니다(노트 최소 35%).",
             "노트 헤더의 크기 팝업에서 50/70/85%를 고를 수도 있습니다.",
-            "분할 보기에서 페이지 이동은 ${PDF_HINT_PAGE_NAVIGATION_TEXT}(‹ 번호 ›)에 있어 PDF를 가리지 않습니다.",
+            "분할 보기의 페이지 이동은 PDF 메뉴의 페이지 목록에서 할 수 있습니다.",
             "PDF에서 선택한 내용을 ${UiCopy.CAPTURE_TO_NOTE}로 ${UiCopy.STUDY_NOTE}에 저장하고, 링크 아이콘으로 원본 PDF 페이지를 오갑니다.",
         ),
         note = "${UiCopy.STUDY_NOTE}: ${UiCopy.STUDY_NOTE_DESCRIPTION} · ${UiCopy.PAGE_MEMO}: ${UiCopy.PAGE_MEMO_DESCRIPTION} · ${UiCopy.POST_IT}: ${UiCopy.POST_IT_DESCRIPTION}. 노트를 닫아도 자동 저장되고 PDF는 같은 페이지에 남습니다.",

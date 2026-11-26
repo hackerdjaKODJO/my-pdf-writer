@@ -1,4 +1,4 @@
-# E2E test cases — My PDF Writer 0.8.95
+# E2E test cases — My PDF Writer 0.8.96
 
 The app is intentionally offline. These tests run on a connected Android device
 or emulator. On the Windows PC the existing `myreader_pixel7` AVD
@@ -11,11 +11,11 @@ Instrumentation APKs can also be compiled without a device via
 
 | Suite | Count | Status |
 | --- | --- | --- |
-| JVM unit tests | 1319 | **Passing** — 0 failures, 0 errors, 0 skipped (0.8.95 run) |
+| JVM unit tests | 1318 | **Passing** — 0 failures, 0 errors, 0 skipped (0.8.96 run) |
 | Instrumentation/E2E (existing component + real-file + durable-log + usability suites) | 28 classes, 158 cases | Previously compiled; prior device results retained where recorded |
 | Instrumentation/E2E (stability/link suites, 0.8.91) | 4 cases | **Compiled**; on-device/process-death run pending |
 | Instrumentation/E2E (checklist raster export, 0.8.92) | 1 class, 2 cases | **Compiled**; on-device run pending |
-| **Total instrumentation** | **29 classes, 166 cases** | **Compiled; on-device run pending for new/changed cases** |
+| **Total instrumentation** | **29 classes, 164 cases** | **Compiled; on-device run pending for new/changed cases** |
 | Debug build (arm64-only) | 1 | Passing |
 | Instrumentation APK compilation | 1 | Passing |
 | R8 release build | 1 | Passing (unsigned locally; sign with the upload key on PC/CI) |

@@ -26,8 +26,8 @@ Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
 - Current delivered version: **`0.8.95`** — `versionCode = 104`.
-- Current worktree release: **`0.8.95`** — `versionCode = 104`.
-- **Next version after this delivery is `0.8.96` — `versionCode = 105`.**
+- Current worktree release: **`0.8.96`** — `versionCode = 105`.
+- **Next version after this delivery is `0.8.97` — `versionCode = 106`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -55,6 +55,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.96` | 105 | 2026-11-26 | — | Split-view space reclamation: the PDF/note boundary is now a 24dp slim drag handle only. Removed page navigation, percentage pill, size popup trigger and PDF-tools toggle from the middle row; PDF tools stay in the floating PDF chrome and page access remains in the PDF menu. Divider tests/help updated. 1,318 JVM tests pass; 164 instrumentation cases compile; arm64 debug and R8 release builds pass; real-device split-height validation pending |
 | `0.8.95` | 104 | 2026-11-26 | — | Removed the favorite-pens strip from the PDF annotation-tools area and PDF/note style sheets. Saved pen presets and legacy favorites data remain backward-compatible but are no longer exposed as a favorite strip; UI tests updated. 1,319 JVM tests pass; 166 instrumentation cases compile; arm64 debug and R8 release builds pass; real-device UI validation pending |
 | `0.8.94` | 103 | 2026-11-26 | — | Unified live PDF/note pen settings and style-aware pen artwork. Shared atomic ink/preset state, synchronized pressure/highlighter/favorites, selected instrument portrait and dynamic PDF/note dock artwork. 1,320 JVM tests pass; 166 instrumentation cases across 29 classes compile; arm64 debug and R8 release builds pass; APK permissions/ABI/signing verified; real-device pen-sync/artwork validation pending |
 | `0.8.93` | 102 | 2026-11-26 | — | Natural handwriting centerline pass based on deeper EasyNotes static analysis: density-aware 1 dp jitter gate for current and coalesced samples, prediction excluded from the note centerline, optional stabilization/Chaikin defaults off, continuous midpoint-quadratic ballpoint for neutral and pressure-varied ink, smoothed pressure-varied fountain/brush ribbon tracks, arc-length end envelopes for varied ink, exact pressure endpoints, cold-calibration noise floor and previous-pressure fallback. Existing JSON/legacy paths preserved; no new permissions or competitor assets. 1,309 JVM tests pass; 164 instrumentation cases across 29 classes compile; arm64 debug and R8 release builds pass; APK permissions/ABI/signing verified; real-device handwriting/stylus validation pending |

@@ -110,7 +110,7 @@ internal fun isStudyPanePresetSelected(currentFraction: Float, presetFraction: F
  * page navigation (below the PDF, never over it), the resize grip and the
  * PDF-tool chip, so every target meets the 48 dp minimum.
  */
-internal const val STUDY_PANE_DIVIDER_ROW_HEIGHT_DP = MIN_TARGET_DP
+internal const val STUDY_PANE_DIVIDER_ROW_HEIGHT_DP = 24
 
 /** Full 48dp TalkBack target for the size-popup rows, matching the divider row. */
 internal const val STUDY_PANE_PRESET_ROW_HEIGHT_DP = MIN_TARGET_DP
@@ -122,9 +122,9 @@ private const val STUDY_PANE_DOUBLE_TAP_MIDPOINT_FRACTION = 0.675f
 internal fun studyPaneDividerLabel(fraction: Float): String =
     "노트 ${studyPanePresetLabel(fraction)}"
 
-/** TalkBack description for the draggable/tappable divider pill. */
+/** TalkBack description for the slim draggable divider. */
 internal fun studyPaneDividerDescription(fraction: Float): String =
-    "노트 크기 조절 핸들, 현재 ${studyPanePresetLabel(fraction)}, 탭하면 크기 선택"
+    "노트 높이 조절, 현재 ${studyPanePresetLabel(fraction)}, 드래그하거나 두 번 탭하여 크기 변경"
 
 /** TalkBack description for one preset row of the compact size popup. */
 internal fun studyPanePresetDescription(fraction: Float): String =

@@ -48,6 +48,7 @@
 - [Natural handwriting centerline pass — 0.8.93](natural-ink-0893.md)
 - [Unified PDF/note pen settings and artwork — 0.8.94](pen-unification-0894.md)
 - [Favorite-pen strip removal — 0.8.95](favorites-removal-0895.md)
+- [Slim PDF/note split divider — 0.8.96](slim-split-divider-0896.md)
 
 ## 문의
 
