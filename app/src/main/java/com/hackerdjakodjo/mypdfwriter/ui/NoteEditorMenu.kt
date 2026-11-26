@@ -16,8 +16,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Redo
-import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.AutoFixNormal
 import androidx.compose.material.icons.filled.Tune
@@ -95,22 +93,6 @@ internal const val NOTE_SMOOTH_HANDWRITING_LABEL = "부드러운 필기"
 internal const val NOTE_SIMPLIFY_POINTS_LABEL = "점 간소화"
 internal const val NOTE_SMOOTH_HANDWRITING_DEFAULT = false
 internal const val NOTE_SIMPLIFY_POINTS_DEFAULT = false
-
-/** Quick actions pinned above the eleven indexed rows of 노트 메뉴. */
-internal enum class NoteMenuQuickAction {
-    UNDO,
-    REDO,
-}
-
-internal val NOTE_MENU_QUICK_ACTIONS = listOf(
-    NoteMenuQuickAction.UNDO,
-    NoteMenuQuickAction.REDO,
-)
-
-internal fun noteMenuQuickActionLabel(action: NoteMenuQuickAction): String = when (action) {
-    NoteMenuQuickAction.UNDO -> "실행 취소"
-    NoteMenuQuickAction.REDO -> "다시 실행"
-}
 
 /** Every menu row is tall enough for TalkBack and large fonts. */
 internal const val NOTE_MENU_ROW_MIN_HEIGHT_DP = 56
@@ -221,10 +203,6 @@ internal fun NoteMenuSheet(
     layerCount: Int,
     favorite: Boolean,
     onToggleFavorite: () -> Unit,
-    canUndo: Boolean,
-    canRedo: Boolean,
-    onUndo: () -> Unit,
-    onRedo: () -> Unit,
     onRename: (() -> Unit)?,
     onPages: () -> Unit,
     onTemplates: () -> Unit,
@@ -279,17 +257,6 @@ internal fun NoteMenuSheet(
                     }
                     TextButton(onClick = onDismiss) { Text("닫기") }
                 }
-            }
-
-            // Student quick actions sit above the indexed rows. Undo/redo are the
-            // only path back to history in the compact pane, which has no app bar.
-            item {
-                NoteMenuQuickActions(
-                    canUndo = canUndo,
-                    canRedo = canRedo,
-                    onUndo = onUndo,
-                    onRedo = onRedo,
-                )
             }
 
             var previousSection: NoteMenuSection? = null
@@ -384,66 +351,7 @@ internal fun NoteMenuSheet(
     }
 }
 
-/** Three one-tap actions pinned to the top of the note menu. */
-@Composable
-private fun NoteMenuQuickActions(
-    canUndo: Boolean,
-    canRedo: Boolean,
-    onUndo: () -> Unit,
-    onRedo: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = MIN_TARGET_DP.dp)
-            .padding(bottom = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        NOTE_MENU_QUICK_ACTIONS.forEach { action ->
-            val label = noteMenuQuickActionLabel(action)
-            val enabled = when (action) {
-                NoteMenuQuickAction.UNDO -> canUndo
-                NoteMenuQuickAction.REDO -> canRedo
-            }
-            val icon = when (action) {
-                NoteMenuQuickAction.UNDO -> Icons.AutoMirrored.Filled.Undo
-                NoteMenuQuickAction.REDO -> Icons.AutoMirrored.Filled.Redo
-            }
-            val description = when (action) {
-                NoteMenuQuickAction.UNDO ->
-                    if (canUndo) label else disabledReasonLabel(label, "취소할 내용 없음")
-                NoteMenuQuickAction.REDO ->
-                    if (canRedo) label else disabledReasonLabel(label, "다시 실행할 내용 없음")
-            }
-            val onClick = when (action) {
-                NoteMenuQuickAction.UNDO -> onUndo
-                NoteMenuQuickAction.REDO -> onRedo
-            }
-            Surface(
-                onClick = onClick,
-                enabled = enabled,
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = MIN_TARGET_DP.dp)
-                    .semantics { contentDescription = description },
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
-                }
-            }
-        }
-    }
-}
-
+/** Shared sub-sheet shell for note settings and card managers. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NoteMenuSubSheet(

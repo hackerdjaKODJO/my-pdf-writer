@@ -1752,7 +1752,6 @@ fun ViewerScreen(
                 showHub = true
             },
             onDismiss = { showEasyMenu = false },
-            onOpenHelpTopic = if (onOpenHelp != null || onOpenHelpTopic != null) openPdfHelp else null,
         )
     }
     if (showHub) {
@@ -2024,6 +2023,16 @@ internal fun PdfSaveStatusRow(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var savedAgeMs by remember(status) { mutableStateOf(0L) }
+    LaunchedEffect(status) {
+        if (status == PdfSaveStatus.SAVED) {
+            while (savedAgeMs < PDF_SAVED_STATUS_VISIBLE_MS) {
+                delay(100L)
+                savedAgeMs += 100L
+            }
+        }
+    }
+    if (!pdfSaveStatusVisible(status, savedAgeMs)) return
     val label = pdfSaveStatusLabel(status) ?: return
     val failed = pdfSaveRetryVisible(status)
     Surface(

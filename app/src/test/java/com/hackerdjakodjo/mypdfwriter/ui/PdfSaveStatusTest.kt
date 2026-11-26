@@ -133,4 +133,13 @@ class PdfSaveStatusTest {
         assertSame(viewer, viewer.applyPdfSaveCompletion(2L, completion(viewerGeneration = 1L)))
         assertEquals(PdfSaveStatus.IDLE, viewer.saveStatus)
     }
+
+    @Test
+    fun savedConfirmationIsTransientButSavingAndFailurePersist() {
+        assertTrue(pdfSaveStatusVisible(PdfSaveStatus.SAVING, Long.MAX_VALUE))
+        assertTrue(pdfSaveStatusVisible(PdfSaveStatus.FAILED, Long.MAX_VALUE))
+        assertTrue(pdfSaveStatusVisible(PdfSaveStatus.SAVED, 0L))
+        assertTrue(pdfSaveStatusVisible(PdfSaveStatus.SAVED, PDF_SAVED_STATUS_VISIBLE_MS - 1))
+        assertFalse(pdfSaveStatusVisible(PdfSaveStatus.SAVED, PDF_SAVED_STATUS_VISIBLE_MS))
+    }
 }

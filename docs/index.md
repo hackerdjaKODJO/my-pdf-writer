@@ -49,6 +49,7 @@
 - [Unified PDF/note pen settings and artwork — 0.8.94](pen-unification-0894.md)
 - [Favorite-pen strip removal — 0.8.95](favorites-removal-0895.md)
 - [Slim PDF/note split divider — 0.8.96](slim-split-divider-0896.md)
+- [Multi-agent UI simplification — 0.8.97](ui-simplification-0897.md)
 
 ## 문의
 

@@ -100,6 +100,22 @@ class HomeStartE2ETest {
     }
 
     @Test
+    fun homeCombinesSortAndLayoutIntoOneViewMenu() {
+        composeRule.setContent {
+            MyPdfWriterTheme {
+                home(notebooks = listOf(Notebook(id = "n1", title = "시험 노트")))
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("보기").performClick()
+        composeRule.waitForIdle()
+        listOf("보기 방식", "그리드", "목록", "정렬", "최근 수정순").forEach { label ->
+            composeRule.onNodeWithText(label).assertExists()
+        }
+    }
+
+    @Test
     fun homeShowsQuickActionsAndNotesSection() {
         composeRule.setContent {
             MyPdfWriterTheme { home() }

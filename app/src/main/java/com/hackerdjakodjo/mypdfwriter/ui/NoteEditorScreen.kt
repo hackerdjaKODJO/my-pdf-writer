@@ -55,7 +55,6 @@ import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
@@ -1334,14 +1333,6 @@ fun NoteEditorScreen(
                                 NoteTopBarAction.FAVORITE, NoteTopBarAction.EXPORT -> Unit
                             }
                         }
-                        // One-tap help: the note menu's HELP row stays for the
-                        // existing E2E selectors, but is last of eleven rows.
-                        IconButton(onClick = onOpenHelp) {
-                            Icon(
-                                Icons.Outlined.HelpOutline,
-                                contentDescription = "도움말",
-                            )
-                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface,
@@ -2124,16 +2115,6 @@ fun NoteEditorScreen(
             layerCount = page.layers.size,
             favorite = workingNotebook.favorite,
             onToggleFavorite = { toggleFavorite() },
-            canUndo = canUndo,
-            canRedo = canRedo,
-            onUndo = {
-                showMenu = false
-                undo()
-            },
-            onRedo = {
-                showMenu = false
-                redo()
-            },
             onRename = {
                 showMenu = false
                 showRename = true

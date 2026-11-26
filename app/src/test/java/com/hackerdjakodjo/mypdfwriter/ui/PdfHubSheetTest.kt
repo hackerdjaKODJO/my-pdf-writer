@@ -11,6 +11,20 @@ import org.junit.Test
 class PdfHubSheetTest {
 
     @Test
+    fun easyBookmarkRowIsStateAwareAndOnlyHelpRowKeepsHelp() {
+        assertEquals(
+            "현재 페이지 북마크",
+            pdfEasyTaskLabel(PdfEasyTask.BOOKMARK, bookmarked = false),
+        )
+        assertEquals(
+            "현재 페이지 북마크 해제",
+            pdfEasyTaskLabel(PdfEasyTask.BOOKMARK, bookmarked = true),
+        )
+        assertEquals("공유", pdfEasyTaskLabel(PdfEasyTask.SHARE, bookmarked = true))
+        assertEquals(1, pdfEasyMenuTasks.count { it == PdfEasyTask.HELP })
+    }
+
+    @Test
     fun easyMenuHasExactlySixUniqueOrderedTasks() {
         assertEquals(6, PdfEasyTask.entries.size)
         assertEquals(

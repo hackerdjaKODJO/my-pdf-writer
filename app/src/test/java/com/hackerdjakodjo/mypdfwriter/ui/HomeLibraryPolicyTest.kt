@@ -286,4 +286,12 @@ class HomeLibraryPolicyTest {
         assertTrue(homeShowsLibraryControls(1, false))
         assertTrue(homeShowsLibraryControls(3, true))
     }
+
+    @Test
+    fun `welcome start block only appears before there is anything to resume`() {
+        assertTrue(homeShowsWelcomeStart(notesSection = true, filtersAllowStart = true, hasContent = false))
+        assertFalse(homeShowsWelcomeStart(notesSection = true, filtersAllowStart = true, hasContent = true))
+        assertFalse(homeShowsWelcomeStart(notesSection = false, filtersAllowStart = true, hasContent = false))
+        assertFalse(homeShowsWelcomeStart(notesSection = true, filtersAllowStart = false, hasContent = false))
+    }
 }

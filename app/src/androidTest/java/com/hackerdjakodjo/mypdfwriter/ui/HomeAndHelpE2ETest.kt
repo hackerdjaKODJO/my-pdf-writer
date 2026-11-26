@@ -105,24 +105,19 @@ class HomeAndHelpE2ETest {
         var opened: RecentDoc? = null
         renderHome(pdfs = listOf(doc), onOpenPdf = { opened = it })
 
-        assertEquals(listOf("이어서 읽기", "새 노트"), homeQuickActionLabels(hasContent = true))
         assertEquals(HomePrimaryAction.CONTINUE, homePrimaryAction(true))
         composeRule.onNodeWithText("이어서 읽기: lecture.pdf").assertExists()
-        composeRule.onNodeWithContentDescription("빠른 학습").assertExists()
+        composeRule.onNodeWithContentDescription("빠른 학습").assertDoesNotExist()
 
-        // The quick row is exactly two buttons: resume/create. Import, tools and
-        // backup stay out of this row and live in the FAB/설정 instead.
+        // A returning student sees one resume surface (the continuation card)
+        // instead of a duplicate start block above it.
         assertEquals(
             1,
-            composeRule.onAllNodesWithContentDescription("이어서 읽기").fetchSemanticsNodes().size,
-        )
-        assertEquals(
-            1,
-            composeRule.onAllNodesWithContentDescription("새 노트").fetchSemanticsNodes().size,
+            composeRule.onAllNodesWithText("이어서 읽기: lecture.pdf").fetchSemanticsNodes().size,
         )
         composeRule.onNodeWithContentDescription("PDF 가져오기").assertDoesNotExist()
 
-        composeRule.onNodeWithContentDescription("이어서 읽기").performClick()
+        composeRule.onNodeWithText("이어서 읽기: lecture.pdf").performClick()
         composeRule.waitForIdle()
         assertEquals(doc.uri, opened?.uri)
     }

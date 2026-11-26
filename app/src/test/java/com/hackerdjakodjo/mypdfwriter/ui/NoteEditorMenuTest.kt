@@ -47,21 +47,7 @@ class NoteEditorMenuTest {
     }
 
     @Test
-    fun `quick actions are two slots above the indexed rows`() {
-        assertEquals(
-            listOf(
-                NoteMenuQuickAction.UNDO,
-                NoteMenuQuickAction.REDO,
-            ),
-            NOTE_MENU_QUICK_ACTIONS,
-        )
-        assertEquals(2, NOTE_MENU_QUICK_ACTIONS.toSet().size)
-        assertEquals(
-            listOf("실행 취소", "다시 실행"),
-            NOTE_MENU_QUICK_ACTIONS.map(::noteMenuQuickActionLabel),
-        )
-        // Quick actions are pinned outside the sectioned index: they must not
-        // inflate the eleven-row / four-section contract.
+    fun `menu contains only the sectioned index without duplicate undo redo`() {
         assertEquals(11, noteMenuEntries(hasRename = true, hasSourcePdf = true).size)
         assertEquals(4, NoteMenuSection.entries.size)
     }

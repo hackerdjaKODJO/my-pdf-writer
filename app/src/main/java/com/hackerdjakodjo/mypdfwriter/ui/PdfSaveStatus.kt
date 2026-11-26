@@ -59,6 +59,14 @@ internal fun pdfSaveStatusAfterCompletion(
 internal fun ViewerUiState.onPdfSaveQueued(): ViewerUiState =
     if (saveStatus == PdfSaveStatus.SAVING) this else copy(saveStatus = PdfSaveStatus.SAVING)
 
+/** A successful auto-save is a transient confirmation, not permanent chrome. */
+internal const val PDF_SAVED_STATUS_VISIBLE_MS = 2_500L
+
+internal fun pdfSaveStatusVisible(status: PdfSaveStatus, savedAgeMs: Long): Boolean = when (status) {
+    PdfSaveStatus.SAVED -> savedAgeMs in 0 until PDF_SAVED_STATUS_VISIBLE_MS
+    else -> true
+}
+
 /** Applies an IO result without letting a stale document relabel the active viewer. */
 internal fun ViewerUiState?.applyPdfSaveCompletion(
     currentViewerGeneration: Long,

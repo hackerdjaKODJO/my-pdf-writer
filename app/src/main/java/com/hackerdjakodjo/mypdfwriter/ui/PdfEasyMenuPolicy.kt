@@ -18,6 +18,14 @@ internal enum class PdfEasyTask(
     HELP("도움말", PdfMenuAction.HELP, HelpTopicKey.QUICK_START),
 }
 
+/** State-aware row label; bookmark toggling is not one-way. */
+internal fun pdfEasyTaskLabel(task: PdfEasyTask, bookmarked: Boolean): String =
+    if (task == PdfEasyTask.BOOKMARK && bookmarked) {
+        "현재 페이지 북마크 해제"
+    } else {
+        task.label
+    }
+
 /** The one ordered source of truth for the six easy-menu rows. */
 internal val pdfEasyMenuTasks: List<PdfEasyTask> = PdfEasyTask.entries.toList()
 

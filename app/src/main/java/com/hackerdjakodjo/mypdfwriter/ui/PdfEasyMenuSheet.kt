@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,7 +24,6 @@ import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -62,7 +60,6 @@ internal fun PdfEasyMenuSheet(
     onDismiss: () -> Unit,
     bookmarked: Boolean = false,
     taskEnabled: (PdfEasyTask) -> Boolean = { true },
-    onOpenHelpTopic: ((HelpTopicKey) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val configuration = LocalConfiguration.current
@@ -101,24 +98,14 @@ internal fun PdfEasyMenuSheet(
             }
 
             pdfEasyMenuTasks.forEach { task ->
-                val helpTopic = task.helpTopic.takeUnless { task == PdfEasyTask.HELP }
                 EasyTaskRow(
                     task = task,
                     bookmarked = bookmarked && task == PdfEasyTask.BOOKMARK,
                     enabled = taskEnabled(task),
                     minHeightDp = rowLayout.minHeightDp,
-                    showHelp = helpTopic != null && onOpenHelpTopic != null,
                     onClick = {
                         onDismiss()
                         onTask(task)
-                    },
-                    onHelp = if (helpTopic != null && onOpenHelpTopic != null) {
-                        {
-                            onDismiss()
-                            onOpenHelpTopic(helpTopic)
-                        }
-                    } else {
-                        null
                     },
                 )
             }
@@ -147,9 +134,7 @@ private fun EasyTaskRow(
     bookmarked: Boolean,
     enabled: Boolean,
     minHeightDp: Int,
-    showHelp: Boolean,
     onClick: () -> Unit,
-    onHelp: (() -> Unit)?,
 ) {
     Surface(
         onClick = onClick,
@@ -192,7 +177,7 @@ private fun EasyTaskRow(
                 }
             }
             Text(
-                task.label,
+                pdfEasyTaskLabel(task, bookmarked),
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f),
             )
@@ -203,23 +188,7 @@ private fun EasyTaskRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (showHelp && onHelp != null) {
-                IconButton(
-                    onClick = onHelp,
-                    enabled = enabled,
-                    modifier = Modifier
-                        .sizeIn(minWidth = MIN_TARGET_DP.dp, minHeight = MIN_TARGET_DP.dp)
-                        .testTag("pdf_easy_help_${task.name.lowercase()}"),
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Outlined.HelpOutline,
-                        contentDescription = "${task.label} 도움말",
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            } else {
-                Spacer(Modifier.width(4.dp))
-            }
+            Spacer(Modifier.width(4.dp))
         }
     }
 }

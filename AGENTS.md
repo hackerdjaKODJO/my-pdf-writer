@@ -26,8 +26,8 @@ Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
 - Current delivered version: **`0.8.96`** — `versionCode = 105`.
-- Current worktree release: **`0.8.96`** — `versionCode = 105`.
-- **Next version after this delivery is `0.8.97` — `versionCode = 106`.**
+- Current worktree release: **`0.8.97`** — `versionCode = 106`.
+- **Next version after this delivery is `0.8.98` — `versionCode = 107`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -55,6 +55,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.97` | 106 | 2026-11-26 | — | Multi-agent UI simplification informed by static Flexcil/StarNote/EasyNotes/Samsung/PDF Reader/MyReader comparison: one Home view-and-sort menu replaces two buttons, duplicate Home/Note Help icons removed, returning Home shows one resume surface instead of two, PDF easy-menu per-row help icons removed with state-aware bookmark label, note-menu duplicate undo/redo removed, and successful PDF auto-save confirmation auto-hides. 1,321 JVM tests pass; 165 instrumentation cases compile; arm64 debug and R8 release builds pass; real-device UI validation pending |
 | `0.8.96` | 105 | 2026-11-26 | — | Split-view space reclamation: the PDF/note boundary is now a 24dp slim drag handle only. Removed page navigation, percentage pill, size popup trigger and PDF-tools toggle from the middle row; PDF tools stay in the floating PDF chrome and page access remains in the PDF menu. Divider tests/help updated. 1,318 JVM tests pass; 164 instrumentation cases compile; arm64 debug and R8 release builds pass; real-device split-height validation pending |
 | `0.8.95` | 104 | 2026-11-26 | — | Removed the favorite-pens strip from the PDF annotation-tools area and PDF/note style sheets. Saved pen presets and legacy favorites data remain backward-compatible but are no longer exposed as a favorite strip; UI tests updated. 1,319 JVM tests pass; 166 instrumentation cases compile; arm64 debug and R8 release builds pass; real-device UI validation pending |
 | `0.8.94` | 103 | 2026-11-26 | — | Unified live PDF/note pen settings and style-aware pen artwork. Shared atomic ink/preset state, synchronized pressure/highlighter/favorites, selected instrument portrait and dynamic PDF/note dock artwork. 1,320 JVM tests pass; 166 instrumentation cases across 29 classes compile; arm64 debug and R8 release builds pass; APK permissions/ABI/signing verified; real-device pen-sync/artwork validation pending |
@@ -319,6 +320,21 @@ Evidence and scope are recorded in `docs/ink-quality-0890.md`.
   PDF/note dock slots. Highlighter controls must not show a stale pen artwork.
 
 Evidence and verification are recorded in `docs/pen-unification-0894.md`.
+
+## UI simplification contract (0.8.97+)
+
+- Home top level keeps Search and Home settings; Help lives inside Home settings.
+  Do not add a second permanent Help action.
+- Home layout and ordering share one `보기` menu. Do not split them back into
+  separate sort and grid/list buttons.
+- A returning Home shows the continuation card only; the welcome/start block is
+  for an empty library.
+- PDF 메뉴 has one Help task row, not per-row help icons. Bookmark labels must
+  describe the current toggle action.
+- Note Undo/Redo stay in the editor chrome/compact dock, not duplicated in the
+  menu. Note Help stays in the Note menu, not in the top bar.
+- `자동 저장됨` is a transient confirmation. SAVING and FAILED remain persistent;
+  FAILED must keep its retry action.
 
 ## Stability and PDF↔note link contract (0.8.91+)
 

@@ -31,6 +31,12 @@ internal fun pdfEmptyStateIsFiltered(hasAnyPdf: Boolean, query: String): Boolean
     hasAnyPdf && query.isNotBlank()
 
 /** Filters/sort/view controls add no value to a student with no notes yet. */
+internal fun homeShowsWelcomeStart(
+    notesSection: Boolean,
+    filtersAllowStart: Boolean,
+    hasContent: Boolean,
+): Boolean = notesSection && filtersAllowStart && !hasContent
+
 internal fun homeShowsLibraryControls(
     visibleCount: Int,
     hasActiveFilters: Boolean,

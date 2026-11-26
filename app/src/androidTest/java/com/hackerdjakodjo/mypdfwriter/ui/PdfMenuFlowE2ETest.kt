@@ -166,25 +166,32 @@ class PdfMenuFlowE2ETest {
     }
 
     @Test
-    fun easyTaskHelpAffordanceOpensTheMatchingTopic() {
-        var openedTopic: HelpTopicKey? = null
+    fun easyMenuHasOneHelpRowAndStatefulBookmarkLabel() {
+        var clicked: PdfEasyTask? = null
         composeRule.setContent {
             MaterialTheme {
                 PdfEasyMenuSheet(
                     docName = "lecture.pdf",
                     pageIndex = 0,
                     pageCount = 10,
-                    onTask = {},
+                    bookmarked = true,
+                    onTask = { clicked = it },
                     onOpenExpert = {},
                     onDismiss = {},
-                    onOpenHelpTopic = { openedTopic = it },
                 )
             }
         }
 
-        composeRule.onNodeWithContentDescription("학습 노트 도움말").performClick()
+        composeRule.onNodeWithText("현재 페이지 북마크 해제").assertExists()
+        composeRule.onNodeWithText("현재 페이지 북마크").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("학습 노트 도움말").assertDoesNotExist()
+        assertEquals(
+            1,
+            composeRule.onAllNodesWithText("도움말").fetchSemanticsNodes().size,
+        )
+        composeRule.onNodeWithText("현재 페이지 북마크 해제").performClick()
         composeRule.waitForIdle()
-        assertEquals(HelpTopicKey.STUDY_NOTE, openedTopic)
+        assertEquals(PdfEasyTask.BOOKMARK, clicked)
     }
 
     @Test

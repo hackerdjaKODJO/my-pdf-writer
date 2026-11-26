@@ -421,12 +421,6 @@ fun NotebookHomeScreen(
                                         contentDescription = if (searchOpen) "검색 닫기" else "검색",
                                     )
                                 }
-                                IconButton(onClick = onOpenHelp) {
-                                    Icon(
-                                        Icons.Outlined.HelpOutline,
-                                        contentDescription = "도움말",
-                                    )
-                                }
                                 IconButton(onClick = { showSettings = true }) {
                                     Icon(
                                         Icons.Outlined.Settings,
@@ -504,6 +498,11 @@ fun NotebookHomeScreen(
                                 query = updated.query
                             },
                             showStart = showStart,
+                            showWelcome = homeShowsWelcomeStart(
+                                notesSection = section == LibrarySection.NOTES,
+                                filtersAllowStart = filterState.showsHomeStart(),
+                                hasContent = continuation.hasContent,
+                            ),
                             hasContent = continuation.hasContent,
                             onImportPdf = onImportPdf,
                             onContinue = onContinue,
@@ -1014,6 +1013,7 @@ private fun NotesSection(
     onRemoveFilter: (HomeFilterKind) -> Unit,
     onClearAllFilters: () -> Unit,
     showStart: Boolean,
+    showWelcome: Boolean,
     hasContent: Boolean,
     onImportPdf: () -> Unit,
     onContinue: () -> Unit,
@@ -1050,7 +1050,7 @@ private fun NotesSection(
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (showStart) {
+                if (showWelcome) {
                     item {
                         StudentHomeStart(
                             primary = homePrimaryAction(hasContent),
@@ -1065,7 +1065,7 @@ private fun NotesSection(
                     EmptyNotesState(
                         notebooks = notebooks,
                         filterState = filterState,
-                        showCreateAction = !showStart,
+                        showCreateAction = !showWelcome,
                         onClearFilters = onClearFilters,
                         onCreate = onCreate,
                     )
@@ -1085,7 +1085,7 @@ private fun NotesSection(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (showStart) {
+                if (showWelcome) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         StudentHomeStart(
                             primary = homePrimaryAction(hasContent),
@@ -1112,7 +1112,7 @@ private fun NotesSection(
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (showStart) {
+                if (showWelcome) {
                     item {
                         StudentHomeStart(
                             primary = homePrimaryAction(hasContent),
@@ -1153,8 +1153,12 @@ private fun NotesFilters(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             FilterButton(activeCount = filterState.activeCount, onClick = onOpenFilters)
-            SortMenuButton(sort = sort, onSortChange = onSortChange)
-            ViewModeButton(gridMode = gridMode, onToggleGrid = onToggleGrid)
+            LibraryViewMenuButton(
+                sort = sort,
+                onSortChange = onSortChange,
+                gridMode = gridMode,
+                onToggleGrid = onToggleGrid,
+            )
         }
         if (filterState.hasActiveFilters) {
             ActiveFilterRow(
@@ -1189,11 +1193,16 @@ private fun FilterButton(activeCount: Int, onClick: () -> Unit) {
     }
 }
 
-/** Compact sort control shared by the Notes and PDF sections. */
+/**
+ * One library-view menu replaces two permanent sort/list buttons. The first
+ * section changes how items look; the second changes their order.
+ */
 @Composable
-private fun SortMenuButton(
+private fun LibraryViewMenuButton(
     sort: LibrarySort,
     onSortChange: (LibrarySort) -> Unit,
+    gridMode: Boolean,
+    onToggleGrid: () -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
@@ -1203,21 +1212,56 @@ private fun SortMenuButton(
             modifier = Modifier.heightIn(min = 48.dp),
         ) {
             Icon(
-                Icons.AutoMirrored.Outlined.Sort,
-                contentDescription = "정렬: ${sort.label}",
+                if (gridMode) Icons.Outlined.GridView else Icons.AutoMirrored.Outlined.ViewList,
+                contentDescription = null,
                 modifier = Modifier.size(17.dp),
             )
             Spacer(Modifier.width(4.dp))
-            Text("정렬", maxLines = 1)
+            Text("보기", maxLines = 1)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text(
+                "보기 방식",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            )
+            DropdownMenuItem(
+                text = { Text("그리드") },
+                leadingIcon = { Icon(Icons.Outlined.GridView, contentDescription = null) },
+                trailingIcon = {
+                    if (gridMode) Icon(Icons.Outlined.Check, contentDescription = null)
+                },
+                onClick = {
+                    open = false
+                    if (!gridMode) onToggleGrid()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("목록") },
+                leadingIcon = {
+                    Icon(Icons.AutoMirrored.Outlined.ViewList, contentDescription = null)
+                },
+                trailingIcon = {
+                    if (!gridMode) Icon(Icons.Outlined.Check, contentDescription = null)
+                },
+                onClick = {
+                    open = false
+                    if (gridMode) onToggleGrid()
+                },
+            )
+            HorizontalDivider()
+            Text(
+                "정렬",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            )
             LibrarySort.entries.forEach { option ->
                 DropdownMenuItem(
                     text = { Text(option.label) },
                     trailingIcon = {
-                        if (option == sort) {
-                            Icon(Icons.Outlined.Check, contentDescription = null)
-                        }
+                        if (option == sort) Icon(Icons.Outlined.Check, contentDescription = null)
                     },
                     onClick = {
                         open = false
@@ -1226,23 +1270,6 @@ private fun SortMenuButton(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun ViewModeButton(gridMode: Boolean, onToggleGrid: () -> Unit) {
-    OutlinedButton(
-        onClick = onToggleGrid,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-        modifier = Modifier.heightIn(min = 48.dp),
-    ) {
-        Icon(
-            if (gridMode) Icons.AutoMirrored.Outlined.ViewList else Icons.Outlined.GridView,
-            contentDescription = if (gridMode) "목록으로 보기" else "그리드로 보기",
-            modifier = Modifier.size(17.dp),
-        )
-        Spacer(Modifier.width(4.dp))
-        Text("보기", maxLines = 1)
     }
 }
 
@@ -1896,8 +1923,12 @@ private fun PdfHeader(
             )
         }
         // PDF 도구 lives in 홈 설정; the PDF header keeps only view controls.
-        SortMenuButton(sort = sort, onSortChange = onSortChange)
-        ViewModeButton(gridMode = gridMode, onToggleGrid = onToggleGrid)
+        LibraryViewMenuButton(
+            sort = sort,
+            onSortChange = onSortChange,
+            gridMode = gridMode,
+            onToggleGrid = onToggleGrid,
+        )
     }
 }
 
