@@ -25,7 +25,7 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.93`** — `versionCode = 102`.
+- Current delivered version: **`0.8.94`** — `versionCode = 103`.
 - Current worktree release: **`0.8.94`** — `versionCode = 103`.
 - **Next version after this delivery is `0.8.95` — `versionCode = 104`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
