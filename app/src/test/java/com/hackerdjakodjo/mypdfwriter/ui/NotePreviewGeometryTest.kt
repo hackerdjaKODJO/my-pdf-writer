@@ -198,7 +198,7 @@ class NotePreviewGeometryTest {
         )
         val shape = NoteInk.recognizeShape(raw)!!
         assertSame(shape.points, noteRefineForCommit(shape.points, true, true, skipRefinement = true))
-        assertNotEquals(raw, notePreviewPoints(raw))
+        assertSame(raw, notePreviewPoints(raw))
     }
 
     @Test

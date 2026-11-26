@@ -202,6 +202,51 @@ class NotePressureCaptureTest {
     }
 
     @Test
+    fun `note capture reuses previous effective pressure for invalid samples`() {
+        val calibrator = PressureCalibrator(alpha = 1f, deadZone = 0f)
+        calibrator.map(0.2f)
+        calibrator.map(0.7f)
+        listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY).forEach { raw ->
+            assertEquals(
+                0.42f,
+                safeEffectiveInkPressure(
+                    PointerType.Stylus,
+                    raw,
+                    pressureEnabled = true,
+                    pressureCurve = PressureCurve.LINEAR,
+                    calibrator = calibrator,
+                    previousEffectivePressure = 0.42f,
+                ),
+                0f,
+            )
+        }
+        assertEquals(
+            DEFAULT_INK_PRESSURE,
+            safeEffectiveInkPressure(
+                PointerType.Touch,
+                Float.NaN,
+                pressureEnabled = true,
+                pressureCurve = PressureCurve.LINEAR,
+                previousEffectivePressure = 0.42f,
+            ),
+            0f,
+        )
+    }
+
+    @Test
+    fun `cold start noise does not map a tiny range to full pressure`() {
+        val calibrator = PressureCalibrator(alpha = 1f, deadZone = 0f, bootstrapSamples = 3)
+        val first = effectiveInkPressure(
+            PointerType.Stylus, 0.50f, true, PressureCurve.LINEAR, calibrator,
+        )
+        val second = effectiveInkPressure(
+            PointerType.Stylus, 0.60f, true, PressureCurve.LINEAR, calibrator,
+        )
+        assertEquals(0.50f, first, 1e-6f)
+        assertEquals(0.60f, second, 1e-6f)
+    }
+
+    @Test
     fun `calibrators never make neutral pointers or disabled pressure non neutral`() {
         val calibrator = PressureCalibrator(alpha = 1f, deadZone = 0f)
         calibrator.map(0.2f)

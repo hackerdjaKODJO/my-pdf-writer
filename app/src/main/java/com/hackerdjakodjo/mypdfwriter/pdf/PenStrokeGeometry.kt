@@ -7,7 +7,6 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.PI
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -38,9 +37,6 @@ object PenStrokeGeometry {
     const val PENCIL_SIDE_ALPHA = 0.34f
     const val PENCIL_CENTER_GRAIN = 0.0004f
     const val PENCIL_SIDE_GRAIN = 0.0011f
-
-    /** Below this local flow a ballpoint is considered to lack contact. */
-    const val BALLPOINT_LIGHT_FLOW = 0.55f
 
     /** Pressure ranges at or below this are treated as uniform (no nib taper). */
     const val PRESSURE_VARIATION_EPSILON = 0.01f
@@ -86,33 +82,6 @@ object PenStrokeGeometry {
         }
         val range = high - low
         return if (range <= PRESSURE_VARIATION_EPSILON) 0f else range.coerceIn(0f, 1f)
-    }
-
-    /**
-     * Deterministic "missing contact" decision for one ballpoint segment. Never
-     * fires for neutral or moderate flow; as flow drops toward zero, gaps become
-     * progressively more frequent. The integer hash keeps replay frames and PDF
-     * export in lockstep without storing any per-stroke random state.
-     */
-    fun ballpointSkip(index: Int, flow: Float): Boolean {
-        if (index <= 0) return false
-        val safe = safeFactor(flow)
-        if (safe >= BALLPOINT_LIGHT_FLOW) return false
-        val hash = (index.toLong() * 2654435761L) and 0xFFFFFFFFL
-        val phase = hash.toFloat() / 4294967295f
-        val missing = 1f - safe / BALLPOINT_LIGHT_FLOW
-        return phase < 0.08f + 0.55f * missing
-    }
-
-    /**
-     * Alpha factor (1..255) for the tiny contact dot left at the start of a
-     * skipped ballpoint segment. Exactly 255 at neutral flow so the helper can
-     * never darken or lighten a uniform stroke; faint traces otherwise.
-     */
-    fun ballpointDotAlpha(flow: Float): Int {
-        val safe = safeFactor(flow)
-        if (safe >= 1f) return 255
-        return (255f * (0.06f + 0.08f * safe)).roundToInt().coerceIn(1, 254)
     }
 
     /**
@@ -170,30 +139,23 @@ object PenStrokeGeometry {
     enum class PenRenderer { PRESSURE_OUTLINE, BALLPOINT, FOUNTAIN, BRUSH, PENCIL }
 
     /**
-     * Picks the pen renderer from the style and the FULL stroke's pressure flag.
+     * Picks the pen renderer from the style. Ballpoint intentionally stays on one
+     * continuous midpoint-quadratic path even when pressure varies: its physical
+     * ball has a fixed width, and pressure controls overall ink flow. A per-sample
+     * outline or alpha segment makes fast handwriting look crooked.
      *
-     * The generic filled outline used to swallow every pressure-varied stroke,
-     * which meant fountain/brush/pencil dynamics were unreachable for stylus
-     * input — exactly the input they were designed for. Only the default
-     * ballpoint keeps the outline; every other style renders with its own nib.
-     *
-     * [fullStrokeVariableOutline] must come from the complete annotation (never
-     * a replay prefix) so an audio reveal cannot change the renderer mid-stroke.
-     * Neutral/legacy strokes are unaffected: their outline flag is false.
+     * [fullStrokeVariableOutline] is retained for API compatibility and replay
+     * policy tests, but no longer changes the ballpoint centerline renderer.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun selectPenRenderer(
         penStyle: PenStyle,
         fullStrokeVariableOutline: Boolean,
-    ): PenRenderer {
-        if (penStyle == PenStyle.BALLPOINT && fullStrokeVariableOutline) {
-            return PenRenderer.PRESSURE_OUTLINE
-        }
-        return when (penStyle) {
-            PenStyle.BALLPOINT -> PenRenderer.BALLPOINT
-            PenStyle.FOUNTAIN -> PenRenderer.FOUNTAIN
-            PenStyle.BRUSH -> PenRenderer.BRUSH
-            PenStyle.PENCIL -> PenRenderer.PENCIL
-        }
+    ): PenRenderer = when (penStyle) {
+        PenStyle.BALLPOINT -> PenRenderer.BALLPOINT
+        PenStyle.FOUNTAIN -> PenRenderer.FOUNTAIN
+        PenStyle.BRUSH -> PenRenderer.BRUSH
+        PenStyle.PENCIL -> PenRenderer.PENCIL
     }
 
     /**

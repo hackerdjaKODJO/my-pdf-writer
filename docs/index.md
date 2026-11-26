@@ -45,6 +45,7 @@
 - [Ink quality contract — 0.8.90](ink-quality-0890.md)
 - [Stability and PDF↔note links — 0.8.91](stability-links-0891.md)
 - [EasyNotes-inspired fast ink and capture — 0.8.92](easynote-handwriting-0892.md)
+- [Natural handwriting centerline pass — 0.8.93](natural-ink-0893.md)
 
 ## 문의
 

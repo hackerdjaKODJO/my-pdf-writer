@@ -24,7 +24,7 @@ const val NOTE_ERASE_RADIUS = EraserGeometry.NORMALIZED_RADIUS
 /** Minimum visible width for two-point note shapes, shared by preview and commit. */
 const val NOTE_SHAPE_MIN_WIDTH = 0.0025f
 
-/** Gentle default stabilization strength used by "필기 보정". */
+/** Optional stabilization strength used when the user enables "필기 보정". */
 const val NOTE_STABILIZE_STRENGTH = 0.25f
 
 /** Trailing radius (normalized page units) used by "부드러운 필기". */
@@ -66,7 +66,7 @@ data class NoteEraseResult(
 
 /** Session-only geometry policy shared by the live note preview and commit. */
 data class NoteStrokePreparation(
-    val stabilizeStrength: Float = NOTE_STABILIZE_STRENGTH,
+    val stabilizeStrength: Float = 0f,
     val smoothHandwriting: Boolean = NOTE_SMOOTH_HANDWRITING_DEFAULT,
     val simplifyPoints: Boolean = NOTE_SIMPLIFY_POINTS_DEFAULT,
 )

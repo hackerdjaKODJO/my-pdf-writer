@@ -13,9 +13,9 @@ class PenRendererSelectionTest {
     private val styles = PenStyle.entries
 
     @Test
-    fun `only varied ballpoint uses the generic pressure outline`() {
+    fun `ballpoint always keeps its continuous natural centerline`() {
         assertEquals(
-            PenStrokeGeometry.PenRenderer.PRESSURE_OUTLINE,
+            PenStrokeGeometry.PenRenderer.BALLPOINT,
             PenStrokeGeometry.selectPenRenderer(PenStyle.BALLPOINT, true),
         )
         assertEquals(

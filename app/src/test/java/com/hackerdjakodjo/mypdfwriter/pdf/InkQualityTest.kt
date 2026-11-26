@@ -26,9 +26,10 @@ class InkQualityTest {
     @Test
     fun subPixelJitterIsDwellButIntentionalTravelIsNot() {
         assertFalse(InkQuality.hasMeaningfulPositionChange(0.05f, -0.05f))
+        assertFalse(InkQuality.hasMeaningfulPositionChange(0.99f, 0f))
         assertFalse(InkQuality.hasMeaningfulPositionChange(Float.NaN, 0f))
-        assertTrue(InkQuality.hasMeaningfulPositionChange(0.1f, 0f))
-        assertTrue(InkQuality.hasMeaningfulPositionChange(0f, -0.2f))
+        assertTrue(InkQuality.hasMeaningfulPositionChange(1f, 0f))
+        assertTrue(InkQuality.hasMeaningfulPositionChange(0f, -1.2f))
     }
 
     @Test

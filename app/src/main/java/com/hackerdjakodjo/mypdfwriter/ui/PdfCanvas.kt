@@ -845,7 +845,7 @@ fun PdfCanvas(
                                         lastEmittedAtUptimeMs,
                                         change.uptimeMillis,
                                     )
-                                } else {
+                                } else if (movement.getDistance() < 0.1f) {
                                     emitStationarySample(change, pressure, change.uptimeMillis)
                                 }
                                 change.consume()

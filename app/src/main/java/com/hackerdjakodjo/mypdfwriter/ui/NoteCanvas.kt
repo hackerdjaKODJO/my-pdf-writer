@@ -60,6 +60,7 @@ import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.EraserGeometry
 import com.hackerdjakodjo.mypdfwriter.pdf.InkQuality
+import com.hackerdjakodjo.mypdfwriter.pdf.StrokeMotionGate
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.min
@@ -119,8 +120,8 @@ fun NoteCanvas(
     pressureEnabled: Boolean = true,
     pressureCurve: PressureCurve = PressureCurve.DEFAULT,
     highlightOpacity: Float = 1f,
-    /** Preview stabilization strength; zero keeps raw geometry verbatim. */
-    stabilizeStrength: Float = NOTE_STABILIZE_STRENGTH,
+    /** Preview stabilization strength; zero is the natural default. */
+    stabilizeStrength: Float = 0f,
     gestureUndoEnabled: Boolean = NOTE_GESTURE_UNDO_DEFAULT,
     /** Preview-only refinement settings; commit keeps the editor's own policy. */
     smoothHandwriting: Boolean = NOTE_SMOOTH_HANDWRITING_DEFAULT,
@@ -168,6 +169,9 @@ fun NoteCanvas(
     val memoDensity = LocalDensity.current
     val minMemoWidthPx = with(memoDensity) { 92.dp.toPx() }
     val minMemoHeightPx = with(memoDensity) { 56.dp.toPx() }
+    // EasyNotes accepts a new centerline point only after roughly 1 dp of travel.
+    // Using density-aware pixels keeps the feel consistent across phone screens.
+    val inkJitterPx = with(memoDensity) { 1.dp.toPx() }
 
     // The pointerInput coroutine below lives across strokes and does not restart when
     // the parent recomposes. Always read the newest callbacks so a stroke commits onto
@@ -187,7 +191,6 @@ fun NoteCanvas(
     var eraserPressureSensitive by remember { mutableStateOf(false) }
     val eraserTrail = remember { mutableStateListOf<NormalizedPoint>() }
     val lassoPoints = remember { mutableStateListOf<NormalizedPoint>() }
-    var predictedPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
     var motionCancelled by remember { mutableStateOf(false) }
     val motionHistory = remember { InkMotionHistoryBuffer() }
 
@@ -198,7 +201,6 @@ fun NoteCanvas(
         shapeStart = null
         shapeEnd = null
         eraserPoint = null
-        predictedPoint = null
         motionCancelled = false
         motionHistory.clear()
         pan = Offset.Zero
@@ -243,8 +245,7 @@ fun NoteCanvas(
                 shapeStart = null
                 shapeEnd = null
                 eraserPoint = null
-                predictedPoint = null
-                motionCancelled = false
+                        motionCancelled = false
                 motionHistory.clear()
             }
         }
@@ -344,8 +345,7 @@ fun NoteCanvas(
 
             fun clearPreview() {
                 motionHistory.clear()
-                predictedPoint = null
-                livePoints.clear()
+                        livePoints.clear()
                 eraserTrail.clear()
                 lassoPoints.clear()
                 shapeStart = null
@@ -377,6 +377,9 @@ fun NoteCanvas(
                 var navigationMovement = 0f
                 var viewChanged = false
                 var lastPosition = down.position
+                val motionGate = StrokeMotionGate(inkJitterPx).apply {
+                    reset(down.position.x, down.position.y)
+                }
                 val gestureStart = down.uptimeMillis
                 val strokeStartUptimeMs = down.uptimeMillis
                 val gestureStartPan = pan
@@ -390,6 +393,7 @@ fun NoteCanvas(
                 var rawPressureMin = Float.POSITIVE_INFINITY
                 var rawPressureMax = Float.NEGATIVE_INFINITY
                 var lastPressureUptimeMs = strokeStartUptimeMs
+                var previousEffectivePressure = DEFAULT_INK_PRESSURE
                 fun capturePressureValue(
                     pointerType: PointerType,
                     rawPressure: Float,
@@ -398,7 +402,7 @@ fun NoteCanvas(
                 ): Float {
                     val elapsedMs = (eventUptimeMs - lastPressureUptimeMs).coerceAtLeast(0L)
                     lastPressureUptimeMs = maxOf(lastPressureUptimeMs, eventUptimeMs)
-                    val effective = effectiveInkPressure(
+                    val effective = safeEffectiveInkPressure(
                         pointerType = pointerType,
                         rawPressure = rawPressure,
                         pressureEnabled = pressureEnabled,
@@ -407,7 +411,9 @@ fun NoteCanvas(
                         pressed = pressed,
                         smoother = pressureSmoother,
                         elapsedMs = elapsedMs,
+                        previousEffectivePressure = previousEffectivePressure,
                     )
+                    previousEffectivePressure = effective
                     if (pressureEnabled && pointerType == PointerType.Stylus &&
                         pressed && rawPressure.isFinite()
                     ) {
@@ -490,7 +496,9 @@ fun NoteCanvas(
                         return
                     }
                     val position = Offset(sample.x, sample.y)
-                    traveled += (position - lastPosition).getDistance()
+                    if (!motionGate.accept(sample.x, sample.y)) return
+                    val movement = position - lastPosition
+                    traveled += movement.getDistance()
                     lastPosition = position
                     val pointTimeMs = relativePointTimeMs(
                         sample.uptimeMs,
@@ -593,7 +601,6 @@ fun NoteCanvas(
                         awaitPointerEvent()
                     }
                     if (event == null) {
-                        predictedPoint = null
                         // A perfectly stationary stylus may produce no MotionEvent
                         // at all. Wake on the dwell cadence and lay down bounded
                         // samples from the last real pointer state.
@@ -632,27 +639,12 @@ fun NoteCanvas(
                         if (!motionCancelled) {
                             val historical = motionHistory.samplesBefore(primary.uptimeMillis)
                             historical.forEach { emitMotionSample(it, primary.type) }
-                            predictedPoint = if (
-                                gestureTool == Tool.PEN || gestureTool == Tool.HIGHLIGHT
-                            ) {
-                                motionHistory.predict()?.let { predicted ->
-                                    normalize(
-                                        Offset(predicted.x, predicted.y),
-                                        lastPressure,
-                                        relativePointTimeMs(
-                                            predicted.uptimeMs,
-                                            strokeStartUptimeMs,
-                                            lastEmittedAtUptimeMs - strokeStartUptimeMs,
-                                        ),
-                                    )
-                                }
-                            } else {
-                                null
-                            }
+                            // EasyNotes-style natural ink uses only observed samples.
+                            // The buffer's prediction API remains available, but the
+                            // note canvas never feeds predicted points into geometry.
                             // Compose's current sample represents the same physical
                             // frame as MotionEvent's current sample. Drop the raw
-                            // current sample after prediction so clock skew cannot
-                            // replay it on the following frame.
+                            // current sample so clock skew cannot replay it later.
                             motionHistory.clear()
                         }
                     }
@@ -690,7 +682,7 @@ fun NoteCanvas(
                                 continue
                             }
                             val movement = primary.position - lastPosition
-                            if (InkQuality.hasMeaningfulPositionChange(movement.x, movement.y)) {
+                            if (motionGate.accept(primary.position.x, primary.position.y)) {
                                 traveled += movement.getDistance()
                                 lastPosition = primary.position
                                 val pointTimeMs = relativePointTimeMs(
@@ -738,8 +730,12 @@ fun NoteCanvas(
                                 lastPressure = primaryPressure
                                 primary.consume()
                             } else {
-                                // Sub-pixel jitter is dwell, not extra geometry.
-                                emitStationarySample(primary, primaryPressure, primary.uptimeMillis)
+                                // Slow intentional movement below the 1px gate is
+                                // accumulated against the last accepted point. Only a
+                                // truly stationary nib (<0.1px) emits dwell ink.
+                                if (movement.getDistance() < 0.1f) {
+                                    emitStationarySample(primary, primaryPressure, primary.uptimeMillis)
+                                }
                                 primary.consume()
                             }
                         } else {
@@ -998,10 +994,7 @@ fun NoteCanvas(
                 native.clipRect(0f, 0f, pageWidth, pageHeight)
 
                 val previewPoints = notePreviewPoints(
-                    buildList {
-                        addAll(livePoints)
-                        predictedPoint?.let(::add)
-                    },
+                    livePoints.toList(),
                     stabilizeStrength = stabilizeStrength,
                     smoothHandwriting = smoothHandwriting,
                     simplifyPoints = simplifyPoints,
@@ -1474,6 +1467,31 @@ internal fun notePreviewAnnotation(
     penStyle = penStyle,
     timesMs = pointTimesMs(points),
 )
+
+internal fun safeEffectiveInkPressure(
+    pointerType: PointerType,
+    rawPressure: Float,
+    pressureEnabled: Boolean,
+    pressureCurve: PressureCurve,
+    calibrator: PressureCalibrator? = null,
+    pressed: Boolean = true,
+    smoother: PressureSmoother? = null,
+    elapsedMs: Long = PressureSmoother.NOMINAL_FRAME_MS,
+    previousEffectivePressure: Float = DEFAULT_INK_PRESSURE,
+): Float {
+    if (!pressureEnabled || pointerType != PointerType.Stylus) return DEFAULT_INK_PRESSURE
+    if (!rawPressure.isFinite()) return clampInkPressure(previousEffectivePressure)
+    return effectiveInkPressure(
+        pointerType = pointerType,
+        rawPressure = rawPressure,
+        pressureEnabled = pressureEnabled,
+        pressureCurve = pressureCurve,
+        calibrator = calibrator,
+        pressed = pressed,
+        smoother = smoother,
+        elapsedMs = elapsedMs,
+    )
+}
 
 internal fun noteStrokeWidth(type: AnnotationType, strokeWidth: Float): Float =
     if (type == AnnotationType.HIGHLIGHT) maxOf(strokeWidth, 0.018f) else strokeWidth

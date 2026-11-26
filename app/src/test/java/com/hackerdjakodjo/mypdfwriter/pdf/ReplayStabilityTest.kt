@@ -125,7 +125,7 @@ class ReplayStabilityTest {
         )
         val local = full.series[index]
         val oldTip = InkQuality.nibEndProfile(
-            index.toFloat() / (points.size - 1).toFloat(),
+            AnnotationPainter.inkEndPosition(full, index, points.size),
             full.variation,
         )
         val oldSpeed = InkDynamics.velocityWidthFactor(

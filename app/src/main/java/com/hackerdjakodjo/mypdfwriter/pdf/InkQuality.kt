@@ -17,8 +17,8 @@ object InkQuality {
     /** A long dwell must not grow the stroke without bound. */
     const val MAX_STATIONARY_SAMPLES = 24
 
-    /** Sub-pixel digitizer movement is treated as a stationary nib, not ink. */
-    const val POSITION_JITTER_EPSILON_PX = 0.1f
+    /** Movement below one physical pixel is digitizer jitter, not handwriting. */
+    const val POSITION_JITTER_EPSILON_PX = 1.0f
 
     const val DEPOSIT_INFLUENCE = 0.22f
     const val DEPOSIT_GAIN_MIN = 0.85f

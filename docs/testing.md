@@ -164,11 +164,11 @@ adb shell am instrument -w \
   com.hackerdjakodjo.mypdfwriter.debug.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-## E2E matrix (0.8.92)
+## E2E matrix (0.8.93)
 
-Current JVM suite: 1297 tests, 0 failures/errors/skips. Instrumentation suite:
-164 cases across 29 classes; changed link/backup/checklist-render cases compile but still need a
-device/process-death run. The full case matrix, per-suite status and on-device
+Current JVM suite: 1309 tests, 0 failures/errors/skips. Instrumentation suite:
+164 cases across 29 classes; changed ink logic is covered by JVM regressions and
+the full instrumentation suite still needs a device/stylus run. The full case matrix, per-suite status and on-device
 manual checklist are in [`e2e-test-cases.md`](e2e-test-cases.md). Current
 instrumented classes include:
 

@@ -53,48 +53,6 @@ class PenStrokeGeometryTest {
     }
 
     @Test
-    fun `ballpoint skipping only fires for light flow and is deterministic`() {
-        (1..64).forEach { index ->
-            listOf(1f, 0.8f, PenStrokeGeometry.BALLPOINT_LIGHT_FLOW).forEach { flow ->
-                assertFalse("no skip at flow $flow index $index", PenStrokeGeometry.ballpointSkip(index, flow))
-            }
-        }
-        assertFalse(PenStrokeGeometry.ballpointSkip(0, 0f))
-        assertFalse(PenStrokeGeometry.ballpointSkip(-3, 0f))
-
-        listOf(0f, 0.2f, 0.5f).forEach { flow ->
-            val skipped = (1..64).filter { PenStrokeGeometry.ballpointSkip(it, flow) }
-            assertTrue("some gaps at flow $flow", skipped.isNotEmpty())
-            assertTrue("some contact at flow $flow", skipped.size < 64)
-            skipped.forEach { index ->
-                assertEquals(
-                    "deterministic gap at $index/$flow",
-                    PenStrokeGeometry.ballpointSkip(index, flow),
-                    PenStrokeGeometry.ballpointSkip(index, flow),
-                )
-            }
-        }
-        val faint = (1..64).count { PenStrokeGeometry.ballpointSkip(it, 0.2f) }
-        val moderate = (1..64).count { PenStrokeGeometry.ballpointSkip(it, 0.5f) }
-        assertTrue("lighter contact skips at least as often", faint >= moderate)
-    }
-
-    @Test
-    fun `ballpoint contact dots stay faint and are neutral at full flow`() {
-        assertEquals(255, PenStrokeGeometry.ballpointDotAlpha(1f))
-        assertTrue(PenStrokeGeometry.ballpointDotAlpha(0f) in 1..254)
-        assertTrue(
-            PenStrokeGeometry.ballpointDotAlpha(0.2f) <
-                PenStrokeGeometry.ballpointDotAlpha(0.5f),
-        )
-        assertTrue(
-            PenStrokeGeometry.ballpointDotAlpha(0.5f) <
-                PenStrokeGeometry.ballpointDotAlpha(PenStrokeGeometry.BALLPOINT_LIGHT_FLOW),
-        )
-        assertEquals(255, PenStrokeGeometry.ballpointDotAlpha(Float.NaN))
-    }
-
-    @Test
     fun `fountain taper is neutral at zero variation and subtly rounds varied tips`() {
         listOf(-1f, 0f, 0.25f, 0.5f, 1f, 2f, Float.NaN).forEach { t ->
             assertEquals(1f, PenStrokeGeometry.fountainTaper(t, 0f), 0f)

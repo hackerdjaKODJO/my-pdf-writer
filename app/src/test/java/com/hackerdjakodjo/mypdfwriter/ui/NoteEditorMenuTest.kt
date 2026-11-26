@@ -117,13 +117,14 @@ class NoteEditorMenuTest {
     fun `refinement toggles are labelled in Korean with session defaults`() {
         assertEquals("부드러운 필기", NOTE_SMOOTH_HANDWRITING_LABEL)
         assertEquals("점 간소화", NOTE_SIMPLIFY_POINTS_LABEL)
-        // Smooth handwriting is on by default; RDP simplification stays opt-in.
-        assertTrue(NOTE_SMOOTH_HANDWRITING_DEFAULT)
+        // The renderer already applies midpoint curves; extra Chaikin/lazy-brush
+        // refinement is opt-in so the default centerline stays direct and low-latency.
+        assertFalse(NOTE_SMOOTH_HANDWRITING_DEFAULT)
         assertFalse(NOTE_SIMPLIFY_POINTS_DEFAULT)
         assertTrue(NoteInkSetting.SMOOTH_HANDWRITING in NOTE_INK_SETTINGS)
         assertTrue(NoteInkSetting.SIMPLIFY_POINTS in NOTE_INK_SETTINGS)
         assertEquals(
-            noteStateAwareLabel(NOTE_SMOOTH_HANDWRITING_LABEL, true),
+            noteStateAwareLabel(NOTE_SMOOTH_HANDWRITING_LABEL, NOTE_SMOOTH_HANDWRITING_DEFAULT),
             noteStateAwareLabel("부드러운 필기", NOTE_SMOOTH_HANDWRITING_DEFAULT),
         )
     }

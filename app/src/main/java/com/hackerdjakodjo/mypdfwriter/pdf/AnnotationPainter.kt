@@ -408,7 +408,13 @@ object AnnotationPainter {
             ),
             variableOutline = PenStrokeGeometry.useVariableWidthOutline(points),
             fountainSmoothed = fountainSmoothedFactors(points, width, height),
-            brushEnvelope = brushEnvelope(points, livePreview),
+            brushEnvelope = brushEnvelope(
+                points,
+                livePreview,
+                arcLengths,
+                arcLengths.lastOrNull() ?: 0f,
+                useArcLength = variation > PenStrokeGeometry.PRESSURE_VARIATION_EPSILON,
+            ),
             speeds = speeds,
             speedReference = speedReference,
             arcLengths = arcLengths,
@@ -560,11 +566,20 @@ object AnnotationPainter {
     internal fun brushEnvelope(
         points: List<NormalizedPoint>,
         livePreview: Boolean = false,
+        arcLengths: FloatArray? = null,
+        totalArcLength: Float? = null,
+        useArcLength: Boolean = arcLengths != null,
     ): FloatArray {
         if (livePreview) return FloatArray(points.size) { 1f }
         val lastIndex = points.lastIndex
+        val physicalArc = useArcLength && arcLengths != null && arcLengths.size == points.size &&
+            (totalArcLength ?: 0f).isFinite() && (totalArcLength ?: 0f) > 0f
         return FloatArray(points.size) { index ->
-            val t = if (lastIndex == 0) 0.5f else index.toFloat() / lastIndex
+            val t = if (physicalArc) {
+                (arcLengths!![index] / totalArcLength!!).coerceIn(0f, 1f)
+            } else {
+                if (lastIndex == 0) 0.5f else index.toFloat() / lastIndex
+            }
             0.38f + 0.72f * sin(PI * t).pow(0.6).toFloat()
         }
     }
@@ -579,8 +594,8 @@ object AnnotationPainter {
 
     /**
      * Dispatches a PEN stroke. Uniform-pressure ink keeps the exact legacy path,
-     * alpha and constants; only strokes with genuine stylus variation take the
-     * new per-segment dynamics.
+     * alpha and constants. Pressure-varied ballpoint keeps the same midpoint
+     * centerline with local flow; fountain/brush/pencil keep their nib dynamics.
      */
     private fun drawPen(
         canvas: Canvas,
@@ -589,10 +604,8 @@ object AnnotationPainter {
         height: Float,
         ink: InkContext,
     ) {
-        // The decision uses the FULL stroke's flag carried by InkContext, never
-        // a replay prefix, and only the default ballpoint uses the generic
-        // outline. Fountain/brush/pencil keep their own nib dynamics even when
-        // the stylus varied pressure — that is exactly their purpose.
+        // Renderer choice is style-only. The full-stroke flag remains in the API
+        // for compatibility, but ballpoint no longer switches to an outline.
         when (
             PenStrokeGeometry.selectPenRenderer(
                 annotation.penStyle,
@@ -885,10 +898,10 @@ object AnnotationPainter {
     }
 
     /**
-     * Ballpoint with genuine pressure variation: the nib stays a fixed width, but
-     * every short smooth segment uses the local flow instead of the stroke-wide
-     * mean. At very light contact some segments give up entirely, leaving only a
-     * tiny faint dot where the nib briefly touched the paper.
+     * Ballpoint with genuine pressure variation: the nib stays a fixed width and
+     * each midpoint segment uses local flow. Interior caps are butt-shaped so the
+     * centerline stays continuous without per-sample blobs; only the two stroke
+     * terminals receive round caps.
      */
     private fun drawBallpoint(
         canvas: Canvas,
@@ -898,34 +911,35 @@ object AnnotationPainter {
         series: List<InkResponse>,
     ) {
         val points = annotation.points
-        val paint = basePaint(annotation, width, baseAlpha = 255)
+        val paint = basePaint(annotation, width, baseAlpha = 255).apply {
+            // Interior pieces meet exactly at midpoint boundaries. Round caps are
+            // reserved for the two stroke terminals, avoiding a blob per sample.
+            strokeCap = Paint.Cap.BUTT
+        }
         val baseAlpha = opacityAlpha(annotation, 255)
         if (points.size == 1) {
             val first = points.first()
-            paint.alpha = scaledInkAlpha(baseAlpha, series.first().flow)
+            paint.alpha = scaledInkAlpha(baseAlpha, series.first().flow, min = 1)
             val dot = Paint(paint).apply { style = Paint.Style.FILL }
             canvas.drawCircle(first.x * width, first.y * height, paint.strokeWidth / 2f, dot)
             return
         }
         for (index in 1 until points.size) {
-            // The segment straddles two samples; averaging their full-stroke flows
-            // keeps the fade continuous and replay-stable at the reveal boundary.
             val flow = (series[index - 1].flow + series[index].flow) * 0.5f
-            if (PenStrokeGeometry.ballpointSkip(index, flow)) {
-                val (startX, startY) = segmentStart(points, index, width, height)
-                val trace = Paint(paint).apply {
-                    style = Paint.Style.FILL
-                    alpha = scaledInkAlpha(
-                        baseAlpha,
-                        PenStrokeGeometry.ballpointDotAlpha(flow) / 255f,
-                        min = 1,
-                    )
-                }
-                canvas.drawCircle(startX, startY, paint.strokeWidth * 0.35f, trace)
-                continue
-            }
             paint.alpha = scaledInkAlpha(baseAlpha, flow, min = 1)
             canvas.drawPath(segmentPath(points, index, width, height), paint)
+        }
+        val startFlow = series.first().flow
+        val endFlow = series.last().flow
+        listOf(
+            points.first() to startFlow,
+            points.last() to endFlow,
+        ).forEach { (point, flow) ->
+            val cap = Paint(paint).apply {
+                style = Paint.Style.FILL
+                alpha = scaledInkAlpha(baseAlpha, flow, min = 1)
+            }
+            canvas.drawCircle(point.x * width, point.y * height, paint.strokeWidth / 2f, cap)
         }
     }
 
@@ -969,9 +983,8 @@ object AnnotationPainter {
         // ink, so legacy strokes keep the original ribbon and round end caps.
         // Normalize by the full stroke length so revealing a prefix cannot retaper
         // ink that was already visible.
-        val tSpan = (totalSamples - 1).coerceAtLeast(1).toFloat()
         fun halfWidth(index: Int): Float {
-            val t = index.toFloat() / tSpan
+            val t = inkEndPosition(ink, index, totalSamples)
             // A fountain nib starves on a fast pull and wets up on a slow one;
             // the factor is exactly 1f for neutral ink and at the mean pace.
             val speed = InkDynamics.velocityWidthFactor(
@@ -987,7 +1000,12 @@ object AnnotationPainter {
             val tip = if (ink.livePreview) 1f else InkQuality.nibEndProfile(t, variation)
             return base * smoothed[index] * pressure[index] * 0.5f * taper * tip * speed
         }
-        val path = ribbonPath(points, width, height) { index -> halfWidth(index) }
+        val path = ribbonPath(
+            points,
+            width,
+            height,
+            smooth = variation > PenStrokeGeometry.PRESSURE_VARIATION_EPSILON,
+        ) { index -> halfWidth(index) }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = annotation.color
             alpha = scaledInkAlpha(opacityAlpha(annotation), response.flow)
@@ -1046,7 +1064,12 @@ object AnnotationPainter {
             alpha = brushHaloAlpha(opacityAlpha(annotation), response.flow, response.grain)
             style = Paint.Style.FILL
         }
-        val halo = ribbonPath(points, width, height) { index ->
+        val halo = ribbonPath(
+            points,
+            width,
+            height,
+            smooth = ink.variation > PenStrokeGeometry.PRESSURE_VARIATION_EPSILON,
+        ) { index ->
             base * envelope[index] * pressure[index] * 0.80f * response.grain
         }
         canvas.drawPath(halo, haloPaint)
@@ -1067,7 +1090,12 @@ object AnnotationPainter {
             )
             return base * envelope[index] * pressure[index] * 0.5f * speed
         }
-        val core = ribbonPath(points, width, height) { index -> coreHalfWidth(index) }
+        val core = ribbonPath(
+            points,
+            width,
+            height,
+            smooth = ink.variation > PenStrokeGeometry.PRESSURE_VARIATION_EPSILON,
+        ) { index -> coreHalfWidth(index) }
         canvas.drawPath(core, corePaint)
         canvas.drawCircle(
             points.first().x * width,
@@ -1133,6 +1161,13 @@ object AnnotationPainter {
         val speedFactor: Float,
     )
 
+    internal fun inkEndPosition(ink: InkContext, index: Int, totalSamples: Int): Float =
+        if (ink.totalArcLength > 0f) {
+            ((ink.arcLengths.getOrNull(index) ?: 0f) / ink.totalArcLength).coerceIn(0f, 1f)
+        } else {
+            index.toFloat() / (totalSamples - 1).coerceAtLeast(1).toFloat()
+        }
+
     internal fun pencilSegmentPlan(
         ink: InkContext,
         index: Int,
@@ -1144,7 +1179,7 @@ object AnnotationPainter {
         val totalSamples = ink.totalSamples.coerceAtLeast(2)
         val safeIndex = index.coerceIn(1, totalSamples - 1)
         val local = ink.series.getOrNull(safeIndex) ?: ink.mean
-        val t = safeIndex.toFloat() / (totalSamples - 1).toFloat()
+        val t = inkEndPosition(ink, safeIndex, totalSamples)
         val tip = if (ink.livePreview) 1f else InkQuality.nibEndProfile(t, ink.variation)
         val speedFactor = InkDynamics.velocityWidthFactor(
             speed = ink.speeds.getOrElse(safeIndex) { 0f },
@@ -1301,6 +1336,7 @@ object AnnotationPainter {
         points: List<NormalizedPoint>,
         width: Float,
         height: Float,
+        smooth: Boolean,
         halfWidthAt: (Int) -> Float,
     ): Path {
         val count = points.size
@@ -1331,8 +1367,24 @@ object AnnotationPainter {
         }
         return Path().apply {
             moveTo(leftX[0], leftY[0])
-            for (i in 1 until count) lineTo(leftX[i], leftY[i])
-            for (i in count - 1 downTo 0) lineTo(rightX[i], rightY[i])
+            if (smooth) {
+                for (i in 1 until count) {
+                    val midX = (leftX[i - 1] + leftX[i]) * 0.5f
+                    val midY = (leftY[i - 1] + leftY[i]) * 0.5f
+                    quadTo(leftX[i - 1], leftY[i - 1], midX, midY)
+                }
+                lineTo(leftX[count - 1], leftY[count - 1])
+                lineTo(rightX[count - 1], rightY[count - 1])
+                for (i in count - 2 downTo 0) {
+                    val midX = (rightX[i + 1] + rightX[i]) * 0.5f
+                    val midY = (rightY[i + 1] + rightY[i]) * 0.5f
+                    quadTo(rightX[i + 1], rightY[i + 1], midX, midY)
+                }
+                lineTo(rightX[0], rightY[0])
+            } else {
+                for (i in 1 until count) lineTo(leftX[i], leftY[i])
+                for (i in count - 1 downTo 0) lineTo(rightX[i], rightY[i])
+            }
             close()
         }
     }

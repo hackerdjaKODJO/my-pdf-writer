@@ -219,8 +219,6 @@ class AnnotationPainterPolicyTest {
             assertEquals("$style neutral mean", InkResponse(1f, 1f, 1f), AnnotationPainter.annotationInkResponse(annotation))
             AnnotationPainter.annotationInkSeries(annotation).forEach { response ->
                 assertEquals("$style neutral sample", InkResponse(1f, 1f, 1f), response)
-                assertFalse("$style neutral ballpoint skip", PenStrokeGeometry.ballpointSkip(4, response.flow))
-                assertEquals("$style neutral dot alpha", 255, PenStrokeGeometry.ballpointDotAlpha(response.flow))
                 assertEquals("$style neutral taper", 1f, PenStrokeGeometry.fountainTaper(0f, variation), 0f)
             }
             assertEquals(
@@ -323,10 +321,11 @@ class AnnotationPainterPolicyTest {
 
         val ballpoint = stroke(PenStyle.BALLPOINT, listOf(1f, 0.9f, 0.3f, 0f, 0.2f, 1f))
         val lightFlow = AnnotationPainter.annotationInkSeries(ballpoint).minOf { it.flow }
-        assertTrue("light ballpoint flow is genuinely light", lightFlow < PenStrokeGeometry.BALLPOINT_LIGHT_FLOW)
-        assertTrue(
-            "light ballpoint can skip contact",
-            (1..32).any { PenStrokeGeometry.ballpointSkip(it, lightFlow) },
+        assertTrue("light ballpoint flow is genuinely light", lightFlow < 0.55f)
+        assertEquals(
+            "ballpoint keeps the continuous renderer even under light contact",
+            PenStrokeGeometry.PenRenderer.BALLPOINT,
+            PenStrokeGeometry.selectPenRenderer(PenStyle.BALLPOINT, true),
         )
     }
 
@@ -351,6 +350,62 @@ class AnnotationPainterPolicyTest {
         val neutral = AnnotationPainter.inkContext(List(5) { NormalizedPoint(0.1f * it, 0.2f, 1f) }, PenStyle.PENCIL)
         assertFalse("neutral stroke keeps its per-style path", neutral.variableOutline)
         neutral.outlineWidths.forEach { assertEquals("neutral half width", 0.5f, it, 0f) }
+    }
+
+    @Test
+    fun `neutral brush keeps the legacy sample index envelope`() {
+        val points = listOf(
+            NormalizedPoint(0.0f, 0.5f, 1f),
+            NormalizedPoint(0.1f, 0.5f, 1f),
+            NormalizedPoint(0.5f, 0.5f, 1f),
+            NormalizedPoint(1.0f, 0.5f, 1f),
+        )
+        val context = AnnotationPainter.inkContext(points, PenStyle.BRUSH, width = 1000f, height = 1000f)
+        assertEquals(
+            AnnotationPainter.brushEnvelope(points).toList(),
+            context.brushEnvelope.toList(),
+        )
+    }
+
+    @Test
+    fun `end profile position follows uneven physical arc lengths`() {
+        val points = listOf(
+            NormalizedPoint(0.0f, 0.5f, 1f),
+            NormalizedPoint(0.1f, 0.5f, 1f),
+            NormalizedPoint(0.2f, 0.5f, 1f),
+            NormalizedPoint(1.0f, 0.5f, 1f),
+        )
+        val context = AnnotationPainter.inkContext(points, PenStyle.PENCIL, width = 1000f, height = 1000f)
+        assertEquals(0.2f, AnnotationPainter.inkEndPosition(context, 2, points.size), 1e-6f)
+        assertEquals(1f, AnnotationPainter.inkEndPosition(context, 3, points.size), 1e-6f)
+    }
+
+    @Test
+    fun `brush envelope follows physical arc length instead of sample index`() {
+        val uneven = listOf(
+            NormalizedPoint(0.0f, 0.5f, 1f),
+            NormalizedPoint(0.1f, 0.5f, 1f),
+            NormalizedPoint(0.5f, 0.5f, 1f),
+            NormalizedPoint(1.0f, 0.5f, 1f),
+        )
+        val even = listOf(
+            NormalizedPoint(0.0f, 0.5f, 1f),
+            NormalizedPoint(0.5f, 0.5f, 1f),
+            NormalizedPoint(1.0f, 0.5f, 1f),
+        )
+        val unevenArcs = PenStrokeGeometry.strokeArcLengths(uneven, 1000f, 1000f)
+        val evenArcs = PenStrokeGeometry.strokeArcLengths(even, 1000f, 1000f)
+        val unevenMid = AnnotationPainter.brushEnvelope(
+            uneven,
+            arcLengths = unevenArcs,
+            totalArcLength = unevenArcs.last(),
+        )[2]
+        val evenMid = AnnotationPainter.brushEnvelope(
+            even,
+            arcLengths = evenArcs,
+            totalArcLength = evenArcs.last(),
+        )[1]
+        assertEquals(evenMid, unevenMid, 1e-6f)
     }
 
     @Test
@@ -384,7 +439,11 @@ class AnnotationPainterPolicyTest {
             context.fountainSmoothed.toList(),
         )
         assertEquals(
-            AnnotationPainter.brushEnvelope(points).toList(),
+            AnnotationPainter.brushEnvelope(
+                points,
+                arcLengths = PenStrokeGeometry.strokeArcLengths(points, width, height),
+                totalArcLength = PenStrokeGeometry.strokeArcLengths(points, width, height).last(),
+            ).toList(),
             context.brushEnvelope.toList(),
         )
 

@@ -93,7 +93,7 @@ internal const val NOTE_INK_SETTINGS_LABEL = "필기 설정"
 /** Session-only refinement labels and defaults (never written to a notebook). */
 internal const val NOTE_SMOOTH_HANDWRITING_LABEL = "부드러운 필기"
 internal const val NOTE_SIMPLIFY_POINTS_LABEL = "점 간소화"
-internal const val NOTE_SMOOTH_HANDWRITING_DEFAULT = true
+internal const val NOTE_SMOOTH_HANDWRITING_DEFAULT = false
 internal const val NOTE_SIMPLIFY_POINTS_DEFAULT = false
 
 /** Quick actions pinned above the eleven indexed rows of 노트 메뉴. */
@@ -644,9 +644,9 @@ internal fun NoteInkSettingsSheet(
                     icon = Icons.Filled.Gesture,
                     title = NOTE_SMOOTH_HANDWRITING_LABEL,
                     supporting = if (smoothHandwriting) {
-                        "레이지 브러시와 차이킨 보정으로 획을 매끄럽게 저장"
+                        "레이지 브러시와 차이킨 보정으로 획을 추가로 매끄럽게 저장"
                     } else {
-                        "획을 추가로 매끄럽게 하지 않고 그대로 저장"
+                        "기본 midpoint 곡선만 사용해 끝이 튀지 않는 자연스러운 필기"
                     },
                     checked = smoothHandwriting,
                     onCheckedChange = onSmoothHandwriting,

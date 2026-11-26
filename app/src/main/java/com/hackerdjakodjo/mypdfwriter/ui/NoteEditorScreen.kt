@@ -252,7 +252,7 @@ fun NoteEditorScreen(
     var highlightOpacity by remember { mutableStateOf(initialInk.highlightOpacity) }
     var fingerWriting by remember { mutableStateOf(false) }
     var zoomLock by remember { mutableStateOf(false) }
-    var strokeStabilization by remember { mutableStateOf(true) }
+    var strokeStabilization by remember { mutableStateOf(false) }
     // Session-only refinement toggles: never persisted into the notebook or JSON.
     var smoothHandwriting by remember { mutableStateOf(NOTE_SMOOTH_HANDWRITING_DEFAULT) }
     var simplifyPoints by remember { mutableStateOf(NOTE_SIMPLIFY_POINTS_DEFAULT) }
@@ -4317,7 +4317,7 @@ internal fun noteRefineForCommit(
  */
 internal fun notePreviewPoints(
     raw: List<NormalizedPoint>,
-    stabilizeStrength: Float = NOTE_STABILIZE_STRENGTH,
+    stabilizeStrength: Float = 0f,
     smoothHandwriting: Boolean = NOTE_SMOOTH_HANDWRITING_DEFAULT,
     simplifyPoints: Boolean = NOTE_SIMPLIFY_POINTS_DEFAULT,
 ): List<NormalizedPoint> = prepareNoteStroke(

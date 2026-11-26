@@ -234,8 +234,8 @@ class PressureCalibrator(
     }
 
     private companion object {
-        /** Ranges this narrow are indistinguishable from a noisy sensor. */
-        const val MIN_CALIBRATION_SPAN = 0.05f
+        /** Ranges this narrow are indistinguishable from a noisy sensor or cold start. */
+        const val MIN_CALIBRATION_SPAN = 0.12f
     }
 }
 
@@ -436,9 +436,10 @@ private fun smoothResponseComponent(values: FloatArray): FloatArray {
     val count = values.size
     if (count < 3) return values
     return FloatArray(count) { index ->
-        val previous = values[(index - 1).coerceAtLeast(0)]
+        if (index == 0 || index == count - 1) return@FloatArray values[index]
+        val previous = values[index - 1]
         val current = values[index]
-        val next = values[(index + 1).coerceAtMost(count - 1)]
+        val next = values[index + 1]
         (previous + current * 2f + next) * 0.25f
     }
 }

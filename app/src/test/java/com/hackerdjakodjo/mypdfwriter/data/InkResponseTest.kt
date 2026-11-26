@@ -15,9 +15,10 @@ class InkResponseTest {
     private fun smooth(values: List<Float>): List<Float> {
         if (values.size < 3) return values
         return values.indices.map { index ->
-            val previous = values[(index - 1).coerceAtLeast(0)]
+            if (index == 0 || index == values.lastIndex) return@map values[index]
+            val previous = values[index - 1]
             val current = values[index]
-            val next = values[(index + 1).coerceAtMost(values.lastIndex)]
+            val next = values[index + 1]
             (previous + current * 2f + next) * 0.25f
         }
     }

@@ -25,8 +25,9 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.92`** — `versionCode = 101`.
-- **Next version is `0.8.93` — `versionCode = 102`.**
+- Current delivered version: **`0.8.93`** — `versionCode = 102`.
+- Current worktree release: **`0.8.93`** — `versionCode = 102`.
+- **Next version after this delivery is `0.8.94` — `versionCode = 103`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -54,6 +55,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.93` | 102 | 2026-11-26 | — | Natural handwriting centerline pass based on deeper EasyNotes static analysis: density-aware 1 dp jitter gate for current and coalesced samples, prediction excluded from the note centerline, optional stabilization/Chaikin defaults off, continuous midpoint-quadratic ballpoint for neutral and pressure-varied ink, smoothed pressure-varied fountain/brush ribbon tracks, arc-length end envelopes for varied ink, exact pressure endpoints, cold-calibration noise floor and previous-pressure fallback. Existing JSON/legacy paths preserved; no new permissions or competitor assets. 1,309 JVM tests pass; 164 instrumentation cases across 29 classes compile; arm64 debug and R8 release builds pass; APK permissions/ABI/signing verified; real-device handwriting/stylus validation pending |
 | `0.8.92` | 101 | 2026-11-26 | — | EasyNotes-inspired multi-agent handwriting and fast-capture pass: static AAPT/dexdump analysis (REA JADX unsupported on Android/arm64) informed separate dry/wet note layers, bounded coalesced MotionEvent history and transient prediction; added real ON_STOP flushing, document-bound drag payloads, timed page transforms, unified layer paint order/opacity, one-tap 빠른 메모/체크리스트, checklist-aware PDF export, WYSIWYG thumbnails, verified reading/excerpt retries, source-fingerprint backups and fail-closed replacement isolation. No competitor code/assets copied; no new permissions or INTERNET. 1,302 JVM tests pass; 164 instrumentation cases across 29 classes compile; arm64 debug and R8 release builds pass; real-device process-death/stylus validation pending |
 | `0.8.91` | 100 | 2026-11-25 | — | Multi-agent stability and PDF↔note linking pass informed by static comparison with Samsung Notes, Flexcil, StarNote, MyReader, Ridi and Maru: additive document-bound `sourceLink` with URI/docId/fingerprint/source-page/rect/excerptId, strict no-name-merge identity, source-page resolution after page edits, explicit failure states, document-bound pane/drag/capture, verified notebook writes and failure propagation, complete `.tmp` deletion, same-document reopen flush, restore-safe pane discard, mutation-gated backup/restore, and lifecycle flush. Legacy JSON and neutral behavior preserved. 1217 JVM tests pass; 161 E2E cases compile; debug/instrumentation/release builds pass. Real device process-death/restore and stylus validation remain pending |
 | `0.8.90` | 99 | 2026-11-25 | — | Multi-agent commercial ink-quality pass informed by static reverse engineering of Samsung Notes, StarNote and Flexcil: added backward-compatible per-point timing (`ptms`), time-aware pressure smoothing and physical speed, true timed dwell pooling, scale-invariant ink effects, stable pencil replay, shared note preview/commit preparation, and one pressure-aware capsule eraser for PDF/notes with PDF stylus-eraser routing. Fixed non-finite pressure handling. No third-party code/assets copied. 1170 JVM tests pass; 157 E2E cases compile; debug/instrumentation/release builds pass. Real stylus feel/latency validation remains pending |
