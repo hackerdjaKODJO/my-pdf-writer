@@ -164,17 +164,6 @@ class ViewerToolDockTest {
     }
 
     @Test
-    fun favoritePensArePresentInBothWritingStyleSheetsWhenWired() {
-        assertTrue(viewerStyleShowsFavoritePens(Tool.PEN, true, true, true))
-        assertTrue(viewerStyleShowsFavoritePens(Tool.HIGHLIGHT, true, true, true))
-        assertFalse(viewerStyleShowsFavoritePens(Tool.TEXT, true, true, true))
-        assertFalse(viewerStyleShowsFavoritePens(Tool.VIEW, true, true, true))
-        assertFalse(viewerStyleShowsFavoritePens(Tool.PEN, false, true, true))
-        assertFalse(viewerStyleShowsFavoritePens(Tool.PEN, true, false, true))
-        assertFalse(viewerStyleShowsFavoritePens(Tool.PEN, true, true, false))
-    }
-
-    @Test
     fun pagePillAnnouncesPositionAndAction() {
         assertEquals("페이지 3 / 12, 목록 열기", viewerPagePillDescription(2, 12))
         assertEquals("페이지 1 / 1, 목록 열기", viewerPagePillDescription(0, 1))

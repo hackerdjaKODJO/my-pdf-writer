@@ -743,20 +743,6 @@ fun ViewerToolMoreSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (currentPen != null && onApplyFavorite != null) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "즐겨찾는 펜",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                FavoritePenStrip(
-                    favorites = favorites,
-                    current = currentPen,
-                    onApply = onApplyFavorite,
-                    onOpenRegistry = { onOpenPenRegistry?.invoke() },
-                )
-            }
             if (onUndo != null || onRedo != null || (onStyle != null && styleEnabled)) {
                 Spacer(Modifier.height(12.dp))
                 Text(
@@ -939,16 +925,7 @@ private fun ToolOptionTile(
     }
 }
 
-/** Favorite pens belong beside the active pen controls, not behind another menu. */
-internal fun viewerStyleShowsFavoritePens(
-    tool: Tool,
-    hasCurrentPen: Boolean,
-    canApplyFavorite: Boolean,
-    canOpenRegistry: Boolean,
-): Boolean = (tool == Tool.PEN || tool == Tool.HIGHLIGHT) &&
-    hasCurrentPen && canApplyFavorite && canOpenRegistry
-
-/** Contextual style sheet: palette, size, opacity, favorite pens and related tools. */
+/** Contextual style sheet: palette, size, opacity and related tools. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViewerStyleSheet(
@@ -994,27 +971,6 @@ fun ViewerStyleSheet(
                 TextButton(onClick = onDismiss) { Text("완료") }
             }
             Spacer(Modifier.height(10.dp))
-
-            if (viewerStyleShowsFavoritePens(
-                    tool = state.tool,
-                    hasCurrentPen = currentPen != null,
-                    canApplyFavorite = onApplyFavorite != null,
-                    canOpenRegistry = onOpenPenRegistry != null,
-                )
-            ) {
-                Text(
-                    "즐겨찾는 펜",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                FavoritePenStrip(
-                    favorites = favorites,
-                    current = requireNotNull(currentPen),
-                    onApply = requireNotNull(onApplyFavorite),
-                    onOpenRegistry = requireNotNull(onOpenPenRegistry),
-                )
-                Spacer(Modifier.height(10.dp))
-            }
 
             if (state.tool == Tool.PEN || state.tool == Tool.HIGHLIGHT) {
                 PenStudioControls(

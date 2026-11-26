@@ -125,23 +125,21 @@ class ViewerDockLongPressE2ETest {
         composeRule.waitUntil("style sheet", 4_000L) {
             composeRule.onAllNodesWithText("펜 종류").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("즐겨찾는 펜").assertExists()
-        composeRule.onNodeWithContentDescription("즐겨찾는 펜 시험 펜, 볼펜, 선택됨").assertExists()
+        composeRule.onNodeWithText("즐겨찾는 펜").assertDoesNotExist()
         assertEquals(listOf(Tool.PEN), longPressed)
         assertTrue("long press must not also select the tool: $selected", selected.isEmpty())
     }
 
     @Test
-    fun favoriteLongPressStillOpensThePenRegistryFromTheStyleSheet() {
+    fun favoritePensBelowAnnotationToolsAreGone() {
         render(Tool.PEN)
         composeRule.onNodeWithTag(PDF_STYLE_ACTION_TAG).performClick()
-        composeRule.waitUntil("favorite strip", 4_000L) {
-            composeRule.onAllNodesWithText("즐겨찾는 펜").fetchSemanticsNodes().isNotEmpty()
+        composeRule.waitUntil("style sheet", 4_000L) {
+            composeRule.onAllNodesWithText("펜 종류").fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.onNodeWithText("즐겨찾는 펜").assertDoesNotExist()
         composeRule.onNodeWithContentDescription("즐겨찾는 펜 시험 펜, 볼펜, 선택됨")
-            .performTouchInput { longClick(center) }
-        composeRule.waitForIdle()
-        assertEquals(1, registryOpened)
+            .assertDoesNotExist()
     }
 
     @Test
@@ -166,7 +164,7 @@ class ViewerDockLongPressE2ETest {
         }
         composeRule.onNodeWithText("굵기").assertExists()
         composeRule.onNodeWithText("펜 종류").assertDoesNotExist()
-        composeRule.onNodeWithText("즐겨찾는 펜").assertExists()
+        composeRule.onNodeWithText("즐겨찾는 펜").assertDoesNotExist()
         assertEquals(listOf(Tool.HIGHLIGHT), longPressed)
     }
 }

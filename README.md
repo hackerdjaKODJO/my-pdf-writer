@@ -6,7 +6,7 @@
 광고·계정·인터넷 권한 없이 **기기 안에서만** 동작합니다.
 
 - **패키지**: `com.hackerdjakodjo.mypdfwriter`
-- **버전**: `0.8.94` (개발 빌드)
+- **버전**: `0.8.95` (개발 빌드)
 - **지원 OS**: Android 8.0 (API 26) 이상
 - **타깃 SDK**: 36 (Android 16)
 - **PC 인계 문서**: [`HANDOFF.md`](HANDOFF.md)
@@ -250,7 +250,7 @@ Android 16(Pixel 7 AVD)에서 다음 흐름을 직접 확인했습니다.
   - 내보낸 PDF를 앱에서 다시 열어 편집 가능한 주석이 없음을 확인
 - **R8 릴리스 APK**에서 PDF 열기, 펜, 검색(2건), 페이지 회전, 내보내기 재검증
   - `release-r8-test.pdf` (14,545 bytes), `pdfinfo`: 3 pages, A4, Page rot 90
-- **단위 테스트 1320개 통과 · E2E 166개 케이스 컴파일** (페이지 회전/정규화, 주석 JSON, 노트북/레이어/북마크, 펜박스/선택,
+- **단위 테스트 1319개 통과 · E2E 166개 케이스 컴파일** (페이지 회전/정규화, 주석 JSON, 노트북/레이어/북마크, 펜박스/선택,
   발췌 JSON, OCR 범위, 페이지 정리, coalesced motion history, 체크리스트 내보내기 등) · 문서 바인딩 링크·저장 검증·복원 안전성 회귀 추가
 - 릴리스 APK 권한 확인: `INTERNET`/저장소/카메라/알림/광고 ID 없음
 - 네이티브 라이브러리 16 KB 페이지 정렬 확인 (`zipalign -c -P 16`)
@@ -440,6 +440,7 @@ app/src/test/java/com/hackerdjakodjo/mypdfwriter/data/
 - **v0.8.90**: 멀티 에이전트 필압·필기감 개선 — 삼성 노트·StarNote·Flexcil 정적 분석을 참고해 점별 타임스탬프 기반 압력·속도·dwell·재생 처리, 비정상 압력값 안전화, 렌더 스케일 독립 잉크 효과, 연필 재생 안정화, 노트 미리보기/최종 확정 일치, PDF·노트 공통 압력 반경 지우개와 PDF 스타일러스 지우개 지원 (versionCode 99)
 - **v0.8.91**: 멀티 에이전트 안정성·PDF↔노트 링크 강화 — URI/docId/콘텐츠 지문 기반 문서 식별, 원본 페이지 단위 링크와 페이지 편집 후 재해석, 손실/변경/잘못된 문서 명시적 처리, pane·드래그 문서 바인딩, 복원 시 pane 폐기, 노트 저장 검증·실패 전파, canonical/.tmp 함께 삭제, 같은 문서 재열기 flush, 백업/복원 중 변경 차단 및 lifecycle flush (versionCode 100)
 - **v0.8.92**: EasyNotes 정적 분석 기반 빠른 필기·캡처 — dry/wet 캔버스 분리, coalesced MotionEvent history와 제한적 예측, ON_STOP의 노트/PDF/읽기/발췌 통합 flush, docId+지문+원본 페이지 재검증 드래그, 페이지 회전 타이밍 보존, 레이어 순서·투명도 통일, 원터치 빠른 메모/체크리스트와 체크리스트 PDF 내보내기 (versionCode 101)
+- **v0.8.95**: PDF 주석 도구와 스타일 설정에서 즐겨찾는 펜 스트립 제거 — 저장 펜 프리셋은 유지하고 기존 즐겨찾기 데이터는 호환용으로만 보존 (versionCode 104)
 - **v0.8.94**: PDF·노트 펜 설정 실시간 통합 — 공통 `PenSettingsRepository`로 색·굵기·필압·형광펜·프리셋·즐겨찾기를 한 상태로 동기화하고, 선택한 볼펜/만년필/붓/연필 그림을 펜 설정창과 PDF·노트 도크에 표시; 노트 형광펜 미리보기/저장 두께와 즐겨찾기 필압 복원 불일치 수정 (versionCode 103)
 - **v0.8.93**: 자연스러운 필기 중심선 개선 — EasyNotes의 1dp 터치 허용·midpoint 곡선을 참고해 현재/coalesced 샘플의 지터 필터, 예측 중심선 제외, 안정화·Chaikin 기본 OFF, 압력 변화와 무관한 연속 볼펜 중심선, 압력 변화 시 만년필/붓 리본 곡선화, 물리 arc 길이 기반 끝 envelope, 압력 끝점 보존·콜드 스타트 노이즈 억제 적용 (versionCode 102)
 - **v0.8.71+**: 실기기 필압 캘리브레이션, 직접 캔버스 드래그, 접근성, 백업 암호화, EPUB/Word/PPT는 MyReader와 역할이 겹쳐 보류

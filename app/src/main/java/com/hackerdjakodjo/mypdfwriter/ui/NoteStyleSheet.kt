@@ -207,17 +207,6 @@ internal fun NoteStyleSheet(
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
-            if (favorites.isNotEmpty() && currentPen != null && onApplyFavorite != null) {
-                StyleSectionLabel("즐겨찾는 펜")
-                FavoritePenStrip(
-                    favorites = favorites,
-                    current = currentPen,
-                    onApply = onApplyFavorite,
-                    onOpenRegistry = { onOpenPenRegistry?.invoke() ?: onOpenPenBox() },
-                )
-                Spacer(Modifier.height(10.dp))
-            }
-
             if (tool == Tool.PEN || tool == Tool.HIGHLIGHT) {
                 PenStudioControls(
                     tool = tool,
