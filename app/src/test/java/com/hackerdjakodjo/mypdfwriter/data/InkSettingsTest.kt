@@ -1,6 +1,7 @@
 package com.hackerdjakodjo.mypdfwriter.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -39,6 +40,32 @@ class InkSettingsTest {
     }
 
     @Test
+    fun resolveKeepsPenAndHighlighterMaterialsIndependent() {
+        val settings = InkSettings(
+            penStyle = PenStyle.PENCIL,
+            color = 0xFF123456.toInt(),
+            width = 0.004f,
+            opacity = 0.6f,
+            highlightWidth = 0.026f,
+            highlightOpacity = 0.35f,
+            pressureInk = false,
+            pressureCurve = PressureCurve.SOFT,
+        )
+        val pen = settings.resolve(Tool.PEN)
+        assertEquals(PenStyle.PENCIL, pen.penStyle)
+        assertEquals(0.004f, pen.width, 0f)
+        assertEquals(0.6f, pen.opacity, 0f)
+
+        val highlighter = settings.resolve(Tool.HIGHLIGHT)
+        assertEquals(PenStyle.BALLPOINT, highlighter.penStyle)
+        assertEquals(0.026f, highlighter.width, 0f)
+        assertEquals(0.35f, highlighter.opacity, 0f)
+        assertEquals(settings.color, highlighter.color)
+        assertFalse(highlighter.pressureInk)
+        assertEquals(PressureCurve.SOFT, highlighter.pressureCurve)
+    }
+
+    @Test
     fun jsonRoundTripKeepsInkAndHighlighterFields() {
         val settings = InkSettings(
             PenStyle.FOUNTAIN,
@@ -59,6 +86,7 @@ class InkSettingsTest {
     @Test
     fun presetPressureResponseAndHighlighterOpacityRestoreWithoutOverwritingPen() {
         val current = InkSettings(
+            penStyle = PenStyle.FOUNTAIN,
             width = 0.007f,
             opacity = 0.8f,
             pressureCurve = PressureCurve.LINEAR,
@@ -75,6 +103,7 @@ class InkSettingsTest {
         val applied = InkPolicy.fromPreset(preset, current)
         assertEquals(current.width, applied.width, 0f)
         assertEquals(current.opacity, applied.opacity, 0f)
+        assertEquals(PenStyle.FOUNTAIN, applied.penStyle)
         assertEquals(0.027f, applied.highlightWidth, 0f)
         assertEquals(0.45f, applied.highlightOpacity, 0f)
         assertEquals(PressureCurve.SOFT, applied.pressureCurve)

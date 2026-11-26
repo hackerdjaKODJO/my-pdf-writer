@@ -289,6 +289,8 @@ private data class DockEntry(
     val selected: Boolean,
     val onClick: () -> Unit,
     val onLongClick: (() -> Unit)? = null,
+    val penStyle: PenStyle? = null,
+    val penColor: Int? = null,
 )
 
 /**
@@ -329,6 +331,8 @@ fun ViewerToolDock(
                 state.tool == Tool.PEN,
                 onClick = { onSelectTool(Tool.PEN) },
                 onLongClick = { onLongPressTool?.invoke(Tool.PEN) },
+                penStyle = state.penStyle,
+                penColor = state.color,
             )
 
             ViewerDockSlot.ERASER -> DockEntry(
@@ -392,6 +396,7 @@ private fun DockItem(
             .semantics {
                 contentDescription = entry.label
                 selected = entry.selected
+                entry.penStyle?.let { style -> stateDescription = penStyleLabel(style) }
                 // Long-press opens the pen/highlight style sheet for sighted
                 // users; expose the same path as an explicit TalkBack action.
                 val longClick = entry.onLongClick
@@ -421,12 +426,27 @@ private fun DockItem(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                entry.icon,
-                contentDescription = null,
-                modifier = Modifier.size(if (compact) 18.dp else 20.dp),
-                tint = contentColor,
-            )
+            if (entry.penStyle != null && entry.penColor != null) {
+                PenInstrumentArtwork(
+                    style = entry.penStyle,
+                    color = entry.penColor,
+                    modifier = Modifier.size(if (compact) 22.dp else 24.dp),
+                    bodyColor = contentColor,
+                    cutoutColor = if (entry.selected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        Color.Transparent
+                    },
+                    showSampleStroke = false,
+                )
+            } else {
+                Icon(
+                    entry.icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(if (compact) 18.dp else 20.dp),
+                    tint = contentColor,
+                )
+            }
         }
         Spacer(Modifier.height(2.dp))
         Text(

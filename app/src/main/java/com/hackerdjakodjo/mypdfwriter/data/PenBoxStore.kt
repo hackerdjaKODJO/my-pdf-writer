@@ -8,25 +8,11 @@ class PenBoxStore(context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun load(): List<PenPreset> {
-        val raw = prefs.getString(KEY, null)
-        if (raw.isNullOrBlank()) return defaultPenPresets()
-        val parsed = runCatching {
-            val array = JSONArray(raw)
-            val result = ArrayList<PenPreset>(array.length())
-            for (i in 0 until array.length()) {
-                array.optJSONObject(i)?.let { result.add(PenPreset.fromJson(it)) }
-            }
-            result
-        }.getOrDefault(emptyList())
-        return ensureRequiredPresets(parsed.ifEmpty { defaultPenPresets() })
-    }
+    fun load(): List<PenPreset> = decodePenPresets(prefs.getString(KEY, null))
 
     fun save(presets: List<PenPreset>) {
         val safe = ensureRequiredPresets(presets.ifEmpty { defaultPenPresets() })
-        val array = JSONArray()
-        safe.forEach { array.put(it.toJson()) }
-        prefs.edit().putString(KEY, array.toString()).commit()
+        prefs.edit().putString(KEY, encodePenPresets(safe)).commit()
         // A deleted preset must not leave a dangling favorite id behind. When the
         // key is absent we deliberately do not create it: first-run defaults apply.
         pruneFavoritesIfPresent(safe)
@@ -84,6 +70,25 @@ val REQUIRED_PRESET_IDS = listOf(
 )
 
 fun isRequiredPreset(id: String): Boolean = id in REQUIRED_PRESET_IDS
+
+internal fun decodePenPresets(raw: String?): List<PenPreset> {
+    if (raw.isNullOrBlank()) return defaultPenPresets()
+    val parsed = runCatching {
+        val array = JSONArray(raw)
+        val result = ArrayList<PenPreset>(array.length())
+        for (i in 0 until array.length()) {
+            array.optJSONObject(i)?.let { result.add(PenPreset.fromJson(it)) }
+        }
+        result
+    }.getOrDefault(emptyList())
+    return ensureRequiredPresets(parsed.ifEmpty { defaultPenPresets() })
+}
+
+internal fun encodePenPresets(presets: List<PenPreset>): String {
+    val array = JSONArray()
+    presets.forEach { array.put(it.toJson()) }
+    return array.toString()
+}
 
 /** Re-adds missing required pen styles without changing the order of existing presets. */
 fun ensureRequiredPresets(

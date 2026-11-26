@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hackerdjakodjo.mypdfwriter.data.BackupManager
 import com.hackerdjakodjo.mypdfwriter.data.BackupSummary
+import com.hackerdjakodjo.mypdfwriter.data.PenSettingsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -90,6 +91,7 @@ private data class BackupRetryRequest(
 class BackupViewModel(application: Application) : AndroidViewModel(application) {
 
     private val resolver = application.contentResolver
+    private val penSettingsRepository = PenSettingsRepository.get(application)
     private val operationGate = BackupOperationGate()
     private var retryRequest: BackupRetryRequest? = null
     private var awaitingRestoreConsumption = false
@@ -238,12 +240,14 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 val summary = withContext(Dispatchers.IO) {
                     val stream = resolver.openInputStream(uri)
                         ?: throw IOException("백업 파일을 열 수 없습니다.")
-                    stream.use { input ->
-                        BackupManager.restore(
-                            context = getApplication(),
-                            input = input,
-                            onProgress = reporter,
-                        )
+                    penSettingsRepository.withRestoreBarrierSuspend {
+                        stream.use { input ->
+                            BackupManager.restore(
+                                context = getApplication(),
+                                input = input,
+                                onProgress = reporter,
+                            )
+                        }
                     }
                 }
                 retryRequest = null

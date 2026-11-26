@@ -154,7 +154,7 @@ fun PdfCanvas(
     /** Nib style for new pen annotations and the live preview. */
     penStyle: PenStyle = PenStyle.BALLPOINT,
     /** Stylus pressure capture; false keeps finger/mouse ink neutral. */
-    pressureEnabled: Boolean = false,
+    pressureEnabled: Boolean = true,
     pressureCurve: PressureCurve = PressureCurve.DEFAULT,
     /** Independent highlighter width used by preview and commit. */
     highlightWidth: Float = HighlightInk.DEFAULT_WIDTH,

@@ -109,9 +109,9 @@ fun PenBoxSheet(
     var saveDialog by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<PenPreset?>(null) }
 
-    // Optimistic local copy gives instant feedback even before the store recomposes.
-    val favoriteIds = favorites.map { it.id }.joinToString(",")
-    var localFavorites by remember(favoriteIds) {
+    // Key on the full immutable list so same-id renames and reordered presets
+    // cannot leave an old optimistic copy on screen.
+    var localFavorites by remember(favorites) {
         mutableStateOf(favorites.take(FavoritePens.MAX_SLOTS))
     }
 
@@ -453,7 +453,7 @@ private fun PenBoxRow(
 @Composable
 internal fun PenBoxPreview(preset: PenPreset, modifier: Modifier = Modifier) {
     val type = if (preset.tool == Tool.HIGHLIGHT) AnnotationType.HIGHLIGHT else AnnotationType.PEN
-    val points = remember {
+    val points = remember(preset.pressureInk, preset.pressureCurve) {
         (0..14).map { index ->
             val t = index / 14f
             // A light→firm→light ramp makes the swatch show the nib's real

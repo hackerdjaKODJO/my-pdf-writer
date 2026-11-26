@@ -113,8 +113,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.R
-import com.hackerdjakodjo.mypdfwriter.data.PenBoxStore
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
+import com.hackerdjakodjo.mypdfwriter.data.PenSettingsRepository
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.audio.annotationRevealFraction
@@ -317,51 +317,19 @@ fun ViewerScreen(
     val pageLinks by vm.pageLinks.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val accessibilityScale = chromeScale(widthDp = 360, fontScale = LocalConfiguration.current.fontScale)
-    val penBoxStore = remember(context) { PenBoxStore(context) }
-    var viewerFavorites by remember(penBoxStore) { mutableStateOf(penBoxStore.loadFavorites()) }
+    val penRepository = remember(context) { PenSettingsRepository.get(context) }
+    val penSnapshot by penRepository.state.collectAsStateWithLifecycle()
+    val viewerFavorites = penSnapshot.favorites
     var showViewerPenBox by remember { mutableStateOf(false) }
 
-    fun refreshViewerFavorites() {
-        viewerFavorites = penBoxStore.loadFavorites()
-    }
-
     fun applyViewerFavorite(preset: PenPreset) {
-        val currentState = stateFlow.value ?: return
-        val current = com.hackerdjakodjo.mypdfwriter.data.InkSettings(
-            penStyle = currentState.penStyle,
-            color = currentState.color,
-            width = currentState.strokeWidth,
-            opacity = currentState.opacity,
-            pressureCurve = currentState.pressureCurve,
-            highlightWidth = currentState.highlightWidth,
-            pressureInk = currentState.pressureInk,
-            highlightOpacity = currentState.highlightOpacity,
-        )
-        val applied = com.hackerdjakodjo.mypdfwriter.data.InkPolicy.fromPreset(preset, current)
-        vm.setTool(preset.tool)
-        vm.setColor(applied.color)
-        vm.setStrokeWidth(applied.width)
-        vm.setOpacity(applied.opacity)
-        vm.setPenStyle(applied.penStyle)
-        vm.setHighlightWidth(applied.highlightWidth)
-        vm.setHighlightOpacity(applied.highlightOpacity)
-        vm.setPressureCurve(applied.pressureCurve)
-        vm.setPressureInk(applied.pressureInk)
+        vm.applyInkPreset(preset)
     }
 
     val state = stateFlow.value ?: return
 
     fun currentViewerPen(): PenPreset = com.hackerdjakodjo.mypdfwriter.data.InkPolicy.currentPen(
-        com.hackerdjakodjo.mypdfwriter.data.InkSettings(
-            penStyle = state.penStyle,
-            color = state.color,
-            width = state.strokeWidth,
-            opacity = state.opacity,
-            pressureCurve = state.pressureCurve,
-            highlightWidth = state.highlightWidth,
-            pressureInk = state.pressureInk,
-            highlightOpacity = state.highlightOpacity,
-        ),
+        penSnapshot.ink,
         if (state.tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN,
     )
 
@@ -1927,7 +1895,7 @@ fun ViewerScreen(
     }
     if (showViewerPenBox) {
         PenBoxSheet(
-            presets = penBoxStore.load(),
+            presets = penSnapshot.presets,
             current = currentViewerPen(),
             onDismiss = { showViewerPenBox = false },
             onApply = { applyViewerFavorite(it) },
@@ -1936,32 +1904,22 @@ fun ViewerScreen(
                     id = UUID.randomUUID().toString(),
                     name = name.trim().ifBlank { "새 펜" },
                 )
-                penBoxStore.save(penBoxStore.load() + saved)
-                refreshViewerFavorites()
+                penRepository.updatePresets { it + saved }
             },
             onDelete = { preset ->
-                val presets = penBoxStore.load()
-                if (presets.size > 1) {
-                    penBoxStore.save(presets.filterNot { it.id == preset.id })
-                    refreshViewerFavorites()
+                penRepository.updatePresets { presets ->
+                    if (presets.size > 1) presets.filterNot { it.id == preset.id } else presets
                 }
             },
             onRename = { preset, name ->
                 val clean = name.trim().ifBlank { preset.name }
-                penBoxStore.save(
-                    penBoxStore.load().map { if (it.id == preset.id) it.copy(name = clean) else it },
-                )
-                refreshViewerFavorites()
+                penRepository.updatePresets { presets ->
+                    presets.map { if (it.id == preset.id) it.copy(name = clean) else it }
+                }
             },
             favorites = viewerFavorites,
-            onToggleFavorite = { preset ->
-                penBoxStore.toggleFavorite(preset.id)
-                refreshViewerFavorites()
-            },
-            onMoveFavorite = { from, to ->
-                penBoxStore.moveFavorite(from, to)
-                refreshViewerFavorites()
-            },
+            onToggleFavorite = { preset -> penRepository.toggleFavorite(preset.id) },
+            onMoveFavorite = { from, to -> penRepository.moveFavorite(from, to) },
         )
     }
 

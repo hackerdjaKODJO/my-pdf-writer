@@ -1,6 +1,9 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -56,6 +59,42 @@ class PenStudioE2ETest {
     }
 
     @Test
+    fun selectedPenArtworkTracksPenStyleChanges() {
+        var penStyle by mutableStateOf(PenStyle.BALLPOINT)
+        composeRule.setContent {
+            NoteStyleSheet(
+                tool = Tool.PEN,
+                color = 0xFF1B1C19.toInt(),
+                onColor = {},
+                strokeWidth = 0.006f,
+                onStrokeWidth = {},
+                fontSize = 0.028f,
+                onFontSize = {},
+                opacity = 0.9f,
+                onOpacity = {},
+                penStyle = penStyle,
+                onPenStyle = { penStyle = it },
+                pressureInk = true,
+                onPressureInk = {},
+                pressureCurve = PressureCurve.LINEAR,
+                onPressureCurve = {},
+                highlightWidth = 0.02f,
+                onHighlightWidth = {},
+                highlightOpacity = 0.75f,
+                onHighlightOpacity = {},
+                onOpenPenBox = {},
+                onDismiss = {},
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("선택한 펜 볼펜").assertExists()
+        composeRule.onNodeWithContentDescription("연필").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("선택한 펜 연필").assertExists()
+        composeRule.onNodeWithContentDescription("연필, 선택됨").assertExists()
+    }
+
+    @Test
     fun highlighterStudioExposesIndependentOpacityAndNoPenType() {
         composeRule.setContent {
             NoteStyleSheet(
@@ -87,5 +126,6 @@ class PenStudioE2ETest {
         composeRule.onNodeWithText("불투명도").assertExists()
         composeRule.onNodeWithText("55%").assertExists()
         composeRule.onNodeWithText("펜 종류").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("선택한 펜 볼펜").assertDoesNotExist()
     }
 }

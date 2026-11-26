@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
@@ -57,6 +58,8 @@ import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
+
+internal const val PEN_STUDIO_SELECTED_ART_TAG = "pen_studio_selected_art"
 
 internal val PEN_STUDIO_PALETTE = listOf(
     0xFF1B1C19.toInt(),
@@ -125,6 +128,39 @@ internal fun PenStudioControls(
         HighlightInk.clampOpacity(highlightOpacity)
     } else {
         opacity
+    }
+
+    if (!isHighlight) {
+        val styleLabel = penStyleLabel(penStyle)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(PEN_STUDIO_SELECTED_ART_TAG)
+                .semantics { contentDescription = "선택한 펜 $styleLabel" },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PenInstrumentArtwork(
+                style = penStyle,
+                color = color,
+                modifier = Modifier.size(72.dp),
+                bodyColor = MaterialTheme.colorScheme.onSurface,
+                cutoutColor = MaterialTheme.colorScheme.surface,
+                showSampleStroke = false,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(
+                    "선택한 펜 $styleLabel",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    penStyleGlyphSpec(penStyle).hint,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
     }
 
     PenStudioPreview(

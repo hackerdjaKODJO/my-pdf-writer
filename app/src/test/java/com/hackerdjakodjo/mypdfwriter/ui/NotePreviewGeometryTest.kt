@@ -1,8 +1,10 @@
 package com.hackerdjakodjo.mypdfwriter.ui
 
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
+import com.hackerdjakodjo.mypdfwriter.data.InkSettings
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import com.hackerdjakodjo.mypdfwriter.data.Tool
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -139,6 +141,26 @@ class NotePreviewGeometryTest {
             noteCommittedStrokeWidth(AnnotationType.HIGHLIGHT, 0.001f),
             0f,
         )
+    }
+
+    @Test
+    fun `selected highlighter width survives preview to commit`() {
+        listOf(0.026f to 0.004f, 0.020f to 0.030f).forEach { (highlight, pen) ->
+            val settings = InkSettings(width = pen, highlightWidth = highlight)
+            val resolved = settings.resolve(Tool.HIGHLIGHT)
+            val annotation = noteStrokeAnnotation(
+                type = AnnotationType.HIGHLIGHT,
+                color = resolved.color,
+                strokeWidth = resolved.width,
+                points = stroke(3),
+                opacity = resolved.opacity,
+                penStyle = resolved.penStyle,
+                layerId = "layer",
+                durationMs = 0L,
+                highlightOpacity = resolved.opacity,
+            )
+            assertEquals(highlight, annotation.width, 0f)
+        }
     }
 
     @Test

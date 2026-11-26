@@ -23,7 +23,9 @@ import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.ExcerptStore
 import com.hackerdjakodjo.mypdfwriter.data.HighlightInk
 import com.hackerdjakodjo.mypdfwriter.data.InkSettings
-import com.hackerdjakodjo.mypdfwriter.data.InkSettingsStore
+import com.hackerdjakodjo.mypdfwriter.data.PenPreset
+import com.hackerdjakodjo.mypdfwriter.data.PenSettingsRepository
+import com.hackerdjakodjo.mypdfwriter.data.PenSettingsWriteResult
 import com.hackerdjakodjo.mypdfwriter.data.LibraryStore
 import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
@@ -69,6 +71,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -100,9 +103,9 @@ data class ViewerUiState(
     /** Post-it cards pinned to pages; [MemoCard.page] is the zero-based page index. */
     val memoCards: List<MemoCard> = emptyList(),
     val tool: Tool = Tool.VIEW,
-    val penStyle: PenStyle = PenStyle.BALLPOINT,
-    val color: Int = 0xFF1F4E79.toInt(),
-    val strokeWidth: Float = 0.0035f,
+    val penStyle: PenStyle = InkSettings.DEFAULT.penStyle,
+    val color: Int = InkSettings.DEFAULT.color,
+    val strokeWidth: Float = InkSettings.DEFAULT.width,
     val highlightWidth: Float = HighlightInk.DEFAULT_WIDTH,
     val fontSize: Float = 0.024f,
     val opacity: Float = 1f,
@@ -137,13 +140,25 @@ data class ViewerUiState(
      */
     val selectedWords: List<PdfTextWord> = emptyList(),
     /** Shared with the note editor: stylus pressure capture can be turned off. */
-    val pressureInk: Boolean = true,
+    val pressureInk: Boolean = InkSettings.DEFAULT.pressureInk,
     /** Shared pressure response used by new PDF strokes and Pen Studio preview. */
-    val pressureCurve: PressureCurve = PressureCurve.DEFAULT,
+    val pressureCurve: PressureCurve = InkSettings.DEFAULT.pressureCurve,
     /** Highlighter opacity is independent from pen opacity. */
-    val highlightOpacity: Float = 1f,
+    val highlightOpacity: Float = InkSettings.DEFAULT.highlightOpacity,
     /** Latest auto-save durability for this viewer session; enqueue alone is not success. */
     val saveStatus: PdfSaveStatus = PdfSaveStatus.IDLE,
+)
+
+/** PDF-only projection of the process-wide shared ink state. */
+internal fun ViewerUiState.withInkSettings(ink: InkSettings): ViewerUiState = copy(
+    penStyle = ink.penStyle,
+    color = ink.color,
+    strokeWidth = ink.width,
+    opacity = ink.opacity,
+    pressureCurve = ink.pressureCurve,
+    highlightWidth = ink.highlightWidth,
+    pressureInk = ink.pressureInk,
+    highlightOpacity = ink.highlightOpacity,
 )
 
 /**
@@ -723,7 +738,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
     private val excerptStore = ExcerptStore(application)
     private val readingStore = PdfReadingStore(application)
     private val sourceIdentityStore = SourceIdentityStore(application)
-    private val inkStore = InkSettingsStore(application)
+    private val inkRepository = PenSettingsRepository.get(application)
     private val resolver = application.contentResolver
 
     private val sourceDir = File(application.filesDir, "sources").apply { mkdirs() }
@@ -731,6 +746,14 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _viewer = MutableStateFlow<ViewerUiState?>(null)
     val viewer: StateFlow<ViewerUiState?> = _viewer.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            inkRepository.state.collect { snapshot ->
+                _viewer.update { it?.withInkSettings(snapshot.ink) }
+            }
+        }
+    }
 
     private val _library = MutableStateFlow(libraryStore.load())
     val library: StateFlow<List<RecentDoc>> = _library.asStateFlow()
@@ -938,7 +961,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     .coerceIn(0, (pages.size - 1).coerceAtLeast(0))
                 _pageBitmap.value = null
                 _pageLinks.value = emptyList()
-                val ink = inkStore.load()
+                val ink = inkRepository.snapshot.ink
                 val openedState = ViewerUiState(
                     docId = docId,
                     penStyle = ink.penStyle,
@@ -1460,81 +1483,56 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------------------------------------------------------------- tools
 
-    /** Persists the active ink so the note editor keeps the same pen. */
-    private fun persistInk() {
-        val state = _viewer.value ?: return
-        inkStore.save(
-            com.hackerdjakodjo.mypdfwriter.data.InkSettings(
-                penStyle = state.penStyle,
-                color = state.color,
-                width = state.strokeWidth,
-                opacity = state.opacity,
-                pressureCurve = state.pressureCurve,
-                highlightWidth = state.highlightWidth,
-                pressureInk = state.pressureInk,
-                highlightOpacity = state.highlightOpacity,
-            ),
-        )
-    }
-
-    /** Nib style for new PDF pen annotations. */
-    fun setPenStyle(style: PenStyle) {
-        _viewer.update { it?.copy(penStyle = style) }
-        persistInk()
-    }
-
-    fun setTool(tool: Tool) {
-        _viewer.update {
-            it?.copy(
-                tool = tool,
-                strokeWidth = when (tool) {
-                    // Never overwrite the shared PEN width with a highlighter value.
-                    Tool.HIGHLIGHT -> it.strokeWidth
-                    Tool.PEN -> inkStore.load().width
-                    else -> it.strokeWidth
-                },
-            )
+    /** One atomic shared-ink update; PDF state is only a projection of the repository. */
+    private fun updateInk(transform: (InkSettings) -> InkSettings) {
+        val result = inkRepository.updateInk(transform)
+        if (result is PenSettingsWriteResult.Applied) {
+            // Keep immediate setter→annotation callers synchronous even before the
+            // StateFlow collector runs on the next Main-loop turn.
+            _viewer.update { it?.withInkSettings(result.snapshot.ink) }
         }
     }
 
-    fun setColor(color: Int) {
-        _viewer.update { it?.copy(color = color) }
-        persistInk()
+    /** Nib style for new PDF pen annotations. */
+    fun setPenStyle(style: PenStyle) = updateInk { it.copy(penStyle = style) }
+
+    fun applyInkPreset(preset: PenPreset) {
+        val result = inkRepository.applyPreset(preset)
+        if (result is PenSettingsWriteResult.Applied) {
+            _viewer.update { it?.withInkSettings(result.snapshot.ink) }
+            setTool(preset.tool)
+        }
     }
 
-    fun setStrokeWidth(width: Float) {
-        _viewer.update { it?.copy(strokeWidth = width.coerceIn(0.001f, 0.03f)) }
-        persistInk()
+    fun setTool(tool: Tool) {
+        _viewer.update { it?.copy(tool = tool) }
+    }
+
+    fun setColor(color: Int) = updateInk { it.copy(color = color) }
+
+    fun setStrokeWidth(width: Float) = updateInk {
+        it.copy(width = InkSettings.clampWidth(width))
     }
 
     /** Width used by the highlighter, stored separately from the pen width. */
-    fun setHighlightWidth(width: Float) {
-        _viewer.update { it?.copy(highlightWidth = HighlightInk.clamp(width)) }
-        persistInk()
+    fun setHighlightWidth(width: Float) = updateInk {
+        it.copy(highlightWidth = HighlightInk.clamp(width))
     }
 
     fun setFontSize(size: Float) = _viewer.update {
         it?.copy(fontSize = size.coerceIn(0.012f, 0.06f))
     }
 
-    fun setOpacity(opacity: Float) {
-        _viewer.update { it?.copy(opacity = opacity.coerceIn(0.1f, 1f)) }
-        persistInk()
+    fun setOpacity(opacity: Float) = updateInk {
+        it.copy(opacity = InkSettings.clampOpacity(opacity))
     }
 
-    fun setPressureInk(enabled: Boolean) {
-        _viewer.update { it?.copy(pressureInk = enabled) }
-        persistInk()
-    }
+    fun setPressureInk(enabled: Boolean) = updateInk { it.copy(pressureInk = enabled) }
 
-    fun setPressureCurve(curve: PressureCurve) {
-        _viewer.update { it?.copy(pressureCurve = curve) }
-        persistInk()
-    }
+    fun setPressureCurve(curve: PressureCurve) = updateInk { it.copy(pressureCurve = curve) }
 
-    fun setHighlightOpacity(opacity: Float) {
-        _viewer.update { it?.copy(highlightOpacity = HighlightInk.clampOpacity(opacity)) }
-        persistInk()
+    fun setHighlightOpacity(opacity: Float) = updateInk {
+        it.copy(highlightOpacity = HighlightInk.clampOpacity(opacity))
     }
 
     fun setZoom(zoom: Float) {

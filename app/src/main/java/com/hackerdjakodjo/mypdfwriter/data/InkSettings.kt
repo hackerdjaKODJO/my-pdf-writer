@@ -22,6 +22,37 @@ data class InkSettings(
     /** Highlighter opacity is independent from pen opacity. */
     val highlightOpacity: Float = DEFAULT_OPACITY,
 ) {
+    fun normalized(): InkSettings = copy(
+        penStyle = penStyle,
+        color = color,
+        width = clampWidth(width),
+        opacity = clampOpacity(opacity),
+        pressureCurve = pressureCurve,
+        highlightWidth = HighlightInk.clamp(highlightWidth),
+        pressureInk = pressureInk,
+        highlightOpacity = HighlightInk.clampOpacity(highlightOpacity),
+    )
+
+    /** The exact material used by both PDF and note capture/render paths. */
+    fun resolve(tool: Tool): ResolvedInk = when (tool) {
+        Tool.HIGHLIGHT -> ResolvedInk(
+            color = color,
+            width = HighlightInk.clamp(highlightWidth),
+            opacity = HighlightInk.clampOpacity(highlightOpacity),
+            penStyle = PenStyle.BALLPOINT,
+            pressureCurve = pressureCurve,
+            pressureInk = pressureInk,
+        )
+        else -> ResolvedInk(
+            color = color,
+            width = clampWidth(width),
+            opacity = clampOpacity(opacity),
+            penStyle = penStyle,
+            pressureCurve = pressureCurve,
+            pressureInk = pressureInk,
+        )
+    }
+
     fun toJson(): JSONObject = JSONObject().apply {
         put("style", penStyle.name)
         put("color", color)
@@ -83,6 +114,16 @@ data class InkSettings(
     }
 }
 
+/** Effective ink for one tool. Highlighter values never leak into pen width/opacity. */
+data class ResolvedInk(
+    val color: Int,
+    val width: Float,
+    val opacity: Float,
+    val penStyle: PenStyle,
+    val pressureCurve: PressureCurve,
+    val pressureInk: Boolean,
+)
+
 /**
  * Highlighter width is deliberately separate from pen width: both surfaces used
  * to force 0.02f at capture while sharing the pen width state, so changing one
@@ -115,7 +156,7 @@ object InkPolicy {
      */
     fun fromPreset(preset: PenPreset, current: InkSettings = InkSettings.DEFAULT): InkSettings =
         InkSettings(
-            penStyle = preset.penStyle,
+            penStyle = if (preset.tool == Tool.HIGHLIGHT) current.penStyle else preset.penStyle,
             color = preset.color,
             width = if (preset.tool == Tool.HIGHLIGHT) {
                 current.width
@@ -176,7 +217,7 @@ class InkSettingsStore(context: Context) {
 
     fun save(settings: InkSettings) {
         prefs.edit()
-            .putString(InkSettings.KEY, settings.toJson().toString())
+            .putString(InkSettings.KEY, settings.normalized().toJson().toString())
             .commit()
     }
 }

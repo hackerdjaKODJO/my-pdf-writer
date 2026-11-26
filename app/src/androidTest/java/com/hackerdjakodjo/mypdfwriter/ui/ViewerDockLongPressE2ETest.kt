@@ -7,6 +7,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
@@ -16,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
+import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -40,6 +44,7 @@ class ViewerDockLongPressE2ETest {
         registryOpened = 0
         composeRule.setContent {
             var active by remember { mutableStateOf(initial) }
+            var penStyle by remember { mutableStateOf(PenStyle.BALLPOINT) }
             var sheet by remember { mutableStateOf(false) }
             val favorite = remember { PenPreset(id = "e2e-favorite", name = "시험 펜") }
             MaterialTheme {
@@ -51,7 +56,7 @@ class ViewerDockLongPressE2ETest {
                         onRedo = {},
                     )
                     ViewerToolDock(
-                        state = ViewerUiState(tool = active),
+                        state = ViewerUiState(tool = active, penStyle = penStyle),
                         onSelectTool = {
                             selected.add(it)
                             active = it
@@ -67,12 +72,12 @@ class ViewerDockLongPressE2ETest {
                 }
                 if (sheet) {
                     ViewerStyleSheet(
-                        state = ViewerUiState(tool = active),
+                        state = ViewerUiState(tool = active, penStyle = penStyle),
                         onColor = {},
                         onStrokeWidth = {},
                         onFontSize = {},
                         onOpacity = {},
-                        onPenStyle = {},
+                        onPenStyle = { penStyle = it },
                         onHighlightWidth = {},
                         onDismiss = { sheet = false },
                         favorites = listOf(favorite),
@@ -84,6 +89,19 @@ class ViewerDockLongPressE2ETest {
             }
         }
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun penDockArtworkAndPortraitTrackSelectedStyle() {
+        render(Tool.PEN)
+        composeRule.onNodeWithContentDescription("펜")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "볼펜"))
+        composeRule.onNodeWithTag(PDF_STYLE_ACTION_TAG).performClick()
+        composeRule.onNodeWithContentDescription("연필").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("펜")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "연필"))
+        composeRule.onNodeWithContentDescription("선택한 펜 연필").assertExists()
     }
 
     @Test

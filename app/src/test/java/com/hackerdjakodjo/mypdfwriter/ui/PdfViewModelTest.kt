@@ -3,10 +3,14 @@ package com.hackerdjakodjo.mypdfwriter.ui
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.DocState
+import com.hackerdjakodjo.mypdfwriter.data.InkSettings
 import com.hackerdjakodjo.mypdfwriter.data.MemoCard
 import com.hackerdjakodjo.mypdfwriter.data.MemoTint
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.PageSpec
+import com.hackerdjakodjo.mypdfwriter.data.PenStyle
+import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
+import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.EraserGeometry
 import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
@@ -22,6 +26,50 @@ import org.junit.Test
  * cancellation fixes. No Android ViewModel instance is needed.
  */
 class PdfViewModelTest {
+
+    @Test
+    fun `viewer ink projection changes only shared pen fields`() {
+        val annotations = listOf(annotation("a", 0))
+        val original = ViewerUiState(
+            docId = "doc",
+            docName = "source.pdf",
+            pageIndex = 2,
+            tool = Tool.VIEW,
+            fontSize = 0.04f,
+            zoom = 1.7f,
+            annotations = annotations,
+            saveStatus = PdfSaveStatus.SAVED,
+        )
+        val projected = original.withInkSettings(
+            InkSettings(
+                penStyle = PenStyle.BRUSH,
+                color = 0xFF654321.toInt(),
+                width = 0.012f,
+                opacity = 0.7f,
+                pressureCurve = PressureCurve.SOFT,
+                highlightWidth = 0.025f,
+                pressureInk = false,
+                highlightOpacity = 0.4f,
+            ),
+        )
+
+        assertEquals(PenStyle.BRUSH, projected.penStyle)
+        assertEquals(0xFF654321.toInt(), projected.color)
+        assertEquals(0.012f, projected.strokeWidth, 0f)
+        assertEquals(0.7f, projected.opacity, 0f)
+        assertEquals(PressureCurve.SOFT, projected.pressureCurve)
+        assertEquals(0.025f, projected.highlightWidth, 0f)
+        assertFalse(projected.pressureInk)
+        assertEquals(0.4f, projected.highlightOpacity, 0f)
+        assertEquals(original.docId, projected.docId)
+        assertEquals(original.docName, projected.docName)
+        assertEquals(original.pageIndex, projected.pageIndex)
+        assertEquals(original.tool, projected.tool)
+        assertEquals(original.fontSize, projected.fontSize, 0f)
+        assertEquals(original.zoom, projected.zoom, 0f)
+        assertSame(annotations, projected.annotations)
+        assertEquals(original.saveStatus, projected.saveStatus)
+    }
 
     private fun annotation(id: String, page: Int) = Annotation(
         id = id,

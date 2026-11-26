@@ -65,6 +65,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -108,8 +109,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.BuildConfig
 import com.hackerdjakodjo.mypdfwriter.audio.annotationRevealFraction
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
@@ -132,12 +135,11 @@ import com.hackerdjakodjo.mypdfwriter.data.NotebookStore
 import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.data.PaperTint
-import com.hackerdjakodjo.mypdfwriter.data.PenBoxStore
 import com.hackerdjakodjo.mypdfwriter.data.PenPreset
 import com.hackerdjakodjo.mypdfwriter.data.HighlightInk
 import com.hackerdjakodjo.mypdfwriter.data.InkSettings
 import com.hackerdjakodjo.mypdfwriter.data.InkPolicy
-import com.hackerdjakodjo.mypdfwriter.data.InkSettingsStore
+import com.hackerdjakodjo.mypdfwriter.data.PenSettingsRepository
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import com.hackerdjakodjo.mypdfwriter.data.Tool
@@ -240,16 +242,17 @@ fun NoteEditorScreen(
     }
 
     val context = LocalContext.current
-    val inkStore = remember(context) { InkSettingsStore(context) }
-    val initialInk = remember { inkStore.load() }
+    val penRepository = remember(context) { PenSettingsRepository.get(context) }
+    val penSnapshot by penRepository.state.collectAsStateWithLifecycle()
+    val inkSettings = penSnapshot.ink
     var tool by remember { mutableStateOf(Tool.PEN) }
-    var color by remember { mutableStateOf(initialInk.color) }
-    var strokeWidth by remember { mutableStateOf(initialInk.width) }
+    val color = inkSettings.color
+    val strokeWidth = inkSettings.width
     var fontSize by remember { mutableStateOf(0.028f) }
-    var opacity by remember { mutableStateOf(initialInk.opacity) }
-    var penStyle by remember { mutableStateOf(initialInk.penStyle) }
-    var highlightWidth by remember { mutableStateOf(initialInk.highlightWidth) }
-    var highlightOpacity by remember { mutableStateOf(initialInk.highlightOpacity) }
+    val opacity = inkSettings.opacity
+    val penStyle = inkSettings.penStyle
+    val highlightWidth = inkSettings.highlightWidth
+    val highlightOpacity = inkSettings.highlightOpacity
     var fingerWriting by remember { mutableStateOf(false) }
     var zoomLock by remember { mutableStateOf(false) }
     var strokeStabilization by remember { mutableStateOf(false) }
@@ -258,36 +261,17 @@ fun NoteEditorScreen(
     var simplifyPoints by remember { mutableStateOf(NOTE_SIMPLIFY_POINTS_DEFAULT) }
     var shapeRecognition by remember { mutableStateOf(false) }
     var partialEraser by remember { mutableStateOf(true) }
-    var pressureInk by remember { mutableStateOf(initialInk.pressureInk) }
-    var pressureCurve by remember { mutableStateOf(initialInk.pressureCurve) }
+    val pressureInk = inkSettings.pressureInk
+    val pressureCurve = inkSettings.pressureCurve
     var gestureUndo by remember { mutableStateOf(NOTE_GESTURE_UNDO_DEFAULT) }
 
     val accessibilityScale = chromeScale(widthDp = 360, fontScale = LocalConfiguration.current.fontScale)
     val configuration = LocalConfiguration.current
     // Large fonts hide the secondary dock labels, but never shrink the slots.
     val showDockLabels = noteDockShowLabels(configuration.screenWidthDp, configuration.fontScale)
-    LaunchedEffect(color, strokeWidth, opacity, penStyle, pressureCurve, highlightWidth, highlightOpacity, pressureInk) {
-        inkStore.save(
-            com.hackerdjakodjo.mypdfwriter.data.InkSettings(
-                penStyle = penStyle,
-                color = color,
-                width = strokeWidth,
-                opacity = opacity,
-                pressureCurve = pressureCurve,
-                highlightWidth = highlightWidth,
-                pressureInk = pressureInk,
-                highlightOpacity = highlightOpacity,
-            ),
-        )
-    }
-    val penBoxStore = remember(context) { PenBoxStore(context) }
     val customTemplateStore = remember(context) { CustomTemplateStore(context) }
-    var penPresets by remember(penBoxStore) { mutableStateOf(penBoxStore.load()) }
-    var favoritePens by remember(penBoxStore) { mutableStateOf(penBoxStore.loadFavorites()) }
-
-    fun refreshFavoritePens() {
-        favoritePens = penBoxStore.loadFavorites()
-    }
+    val penPresets = penSnapshot.presets
+    val favoritePens = penSnapshot.favorites
     // Decoding a full-size custom background is disk + BitmapFactory work. Do it
     // off Main so switching to a page with a photo background cannot jank the UI;
     // the canvas simply paints no background until the decode publishes a bitmap.
@@ -943,16 +927,17 @@ fun NoteEditorScreen(
             "applied" to (committedPoints !== beforePreparation),
         )
 
+        val resolvedInk = inkSettings.resolve(tool)
         val annotation = noteStrokeAnnotation(
             type = type,
-            color = color,
-            strokeWidth = strokeWidth,
+            color = resolvedInk.color,
+            strokeWidth = resolvedInk.width,
             points = committedPoints,
-            opacity = opacity,
-            penStyle = penStyle,
+            opacity = resolvedInk.opacity,
+            penStyle = resolvedInk.penStyle,
             layerId = layer.id,
             durationMs = safeDuration,
-            highlightOpacity = highlightOpacity,
+            highlightOpacity = resolvedInk.opacity,
         )
         val before = workingNotebook
         val next = noteAppendAnnotation(before, safeIndex, annotation)
@@ -981,7 +966,7 @@ fun NoteEditorScreen(
 
     fun recolorSelection(newColor: Int) {
         if (selectedIds.isEmpty()) return
-        color = newColor
+        penRepository.updateInk { it.copy(color = newColor) }
         updateCurrentPage { pageToEdit ->
             pageToEdit.copy(
                 annotations = pageToEdit.annotations.map {
@@ -1110,25 +1095,8 @@ fun NoteEditorScreen(
     }
 
     fun applyPenPreset(preset: PenPreset) {
-        val current = InkSettings(
-            penStyle = penStyle,
-            color = color,
-            width = strokeWidth,
-            opacity = opacity,
-            pressureCurve = pressureCurve,
-            highlightWidth = highlightWidth,
-            pressureInk = pressureInk,
-            highlightOpacity = highlightOpacity,
-        )
-        val applied = InkPolicy.fromPreset(preset, current)
+        penRepository.applyPreset(preset)
         tool = preset.tool
-        color = applied.color
-        strokeWidth = applied.width
-        opacity = applied.opacity
-        penStyle = applied.penStyle
-        pressureCurve = applied.pressureCurve
-        highlightWidth = applied.highlightWidth
-        highlightOpacity = applied.highlightOpacity
         showPenBox = false
     }
 
@@ -1152,27 +1120,20 @@ fun NoteEditorScreen(
             pressureCurve = pressureCurve,
             pressureInk = pressureInk,
         )
-        val updated = penPresets + saved
-        penPresets = updated
-        penBoxStore.save(updated)
-        refreshFavoritePens()
+        penRepository.updatePresets { it + saved }
     }
 
     fun deletePenPreset(preset: PenPreset) {
         if (penPresets.size <= 1) return
-        val updated = penPresets.filterNot { it.id == preset.id }
-        penPresets = updated
-        penBoxStore.save(updated)
-        refreshFavoritePens()
+        penRepository.updatePresets { presets -> presets.filterNot { it.id == preset.id } }
     }
 
     fun renamePenPreset(preset: PenPreset, name: String) {
         val clean = name.trim().ifBlank { preset.name }
         if (clean == preset.name) return
-        val updated = penPresets.map { if (it.id == preset.id) it.copy(name = clean) else it }
-        penPresets = updated
-        penBoxStore.save(updated)
-        refreshFavoritePens()
+        penRepository.updatePresets { presets ->
+            presets.map { if (it.id == preset.id) it.copy(name = clean) else it }
+        }
     }
 
     fun erase(
@@ -1415,6 +1376,7 @@ fun NoteEditorScreen(
                         tool = tool,
                         onTool = { tool = it },
                         color = color,
+                        penStyle = penStyle,
                         showLabels = showDockLabels,
                         onOpenStyle = { showStyle = true },
                         onLongPressTool = { t -> tool = t; showStyle = true },
@@ -1655,6 +1617,7 @@ fun NoteEditorScreen(
                             tool = tool,
                             onTool = { tool = it },
                             color = color,
+                            penStyle = penStyle,
                             showLabels = showDockLabels,
                             onOpenStyle = { showStyle = true },
                             onLongPressTool = { t -> tool = t; showStyle = true },
@@ -1850,14 +1813,8 @@ fun NoteEditorScreen(
             onDelete = { deletePenPreset(it) },
             onRename = { preset, name -> renamePenPreset(preset, name) },
             favorites = favoritePens,
-            onToggleFavorite = { preset ->
-                penBoxStore.toggleFavorite(preset.id)
-                refreshFavoritePens()
-            },
-            onMoveFavorite = { from, to ->
-                penBoxStore.moveFavorite(from, to)
-                refreshFavoritePens()
-            },
+            onToggleFavorite = { preset -> penRepository.toggleFavorite(preset.id) },
+            onMoveFavorite = { from, to -> penRepository.moveFavorite(from, to) },
         )
     }
 
@@ -2017,25 +1974,33 @@ fun NoteEditorScreen(
         NoteStyleSheet(
             tool = tool,
             color = color,
-            onColor = { color = it },
+            onColor = { value -> penRepository.updateInk { it.copy(color = value) } },
             strokeWidth = if (tool == Tool.HIGHLIGHT) highlightWidth else strokeWidth,
-            onStrokeWidth = {
-                if (tool == Tool.HIGHLIGHT) highlightWidth = it else strokeWidth = it
+            onStrokeWidth = { value ->
+                penRepository.updateInk {
+                    if (tool == Tool.HIGHLIGHT) {
+                        it.copy(highlightWidth = HighlightInk.clamp(value))
+                    } else {
+                        it.copy(width = InkSettings.clampWidth(value))
+                    }
+                }
             },
             fontSize = fontSize,
             onFontSize = { fontSize = it },
             opacity = opacity,
-            onOpacity = { opacity = it },
+            onOpacity = { value -> penRepository.updateInk { it.copy(opacity = InkSettings.clampOpacity(value)) } },
             penStyle = penStyle,
-            onPenStyle = { penStyle = it },
+            onPenStyle = { value -> penRepository.updateInk { it.copy(penStyle = value) } },
             pressureInk = pressureInk,
-            onPressureInk = { pressureInk = it },
+            onPressureInk = { value -> penRepository.updateInk { it.copy(pressureInk = value) } },
             pressureCurve = pressureCurve,
-            onPressureCurve = { pressureCurve = it },
+            onPressureCurve = { value -> penRepository.updateInk { it.copy(pressureCurve = value) } },
             highlightWidth = highlightWidth,
-            onHighlightWidth = { highlightWidth = it },
+            onHighlightWidth = { value -> penRepository.updateInk { it.copy(highlightWidth = HighlightInk.clamp(value)) } },
             highlightOpacity = highlightOpacity,
-            onHighlightOpacity = { highlightOpacity = it },
+            onHighlightOpacity = { value ->
+                penRepository.updateInk { it.copy(highlightOpacity = HighlightInk.clampOpacity(value)) }
+            },
             onOpenPenBox = {
                 showStyle = false
                 showPenBox = true
@@ -2043,16 +2008,7 @@ fun NoteEditorScreen(
             onDismiss = { showStyle = false },
             favorites = favoritePens,
             currentPen = InkPolicy.currentPen(
-                InkSettings(
-                    penStyle = penStyle,
-                    color = color,
-                    width = strokeWidth,
-                    opacity = opacity,
-                    pressureCurve = pressureCurve,
-                    highlightWidth = highlightWidth,
-                    pressureInk = pressureInk,
-                    highlightOpacity = highlightOpacity,
-                ),
+                inkSettings,
                 if (tool == Tool.HIGHLIGHT) Tool.HIGHLIGHT else Tool.PEN,
             ),
             onApplyFavorite = { applyPenPreset(it) },
@@ -2300,8 +2256,8 @@ fun NoteEditorScreen(
             onSimplifyPoints = { simplifyPoints = it },
             onShapeRecognition = { shapeRecognition = it },
             onPartialEraser = { partialEraser = it },
-            onPressureInk = { pressureInk = it },
-            onPressureCurve = { pressureCurve = it },
+            onPressureInk = { value -> penRepository.updateInk { it.copy(pressureInk = value) } },
+            onPressureCurve = { value -> penRepository.updateInk { it.copy(pressureCurve = value) } },
             onGestureUndo = { gestureUndo = it },
             onOpenTrace = if (BuildConfig.DEBUG) {
                 {
@@ -2474,6 +2430,7 @@ private fun NoteDock(
     tool: Tool,
     onTool: (Tool) -> Unit,
     color: Int,
+    penStyle: PenStyle,
     showLabels: Boolean,
     onOpenStyle: () -> Unit,
     onLongPressTool: ((Tool) -> Unit)? = null,
@@ -2526,6 +2483,8 @@ private fun NoteDock(
                             label = noteToolLabel(dockTool),
                             selected = selected,
                             primary = noteToolIsPrimary(dockTool),
+                            penStyle = if (dockTool == Tool.PEN) penStyle else null,
+                            penColor = if (dockTool == Tool.PEN) color else null,
                             onClick = {
                                 onTool(
                                     when (dockTool) {
@@ -2657,6 +2616,7 @@ private fun NoteFloatingDock(
     tool: Tool,
     onTool: (Tool) -> Unit,
     color: Int,
+    penStyle: PenStyle,
     showLabels: Boolean,
     onOpenStyle: () -> Unit,
     onLongPressTool: ((Tool) -> Unit)? = null,
@@ -2733,6 +2693,8 @@ private fun NoteFloatingDock(
                         label = noteCompactToolLabel(dockTool),
                         selected = selected,
                         primary = noteToolIsPrimary(dockTool),
+                        penStyle = if (dockTool == Tool.PEN) penStyle else null,
+                        penColor = if (dockTool == Tool.PEN) color else null,
                         onClick = {
                             onTool(
                                 when (dockTool) {
@@ -2823,6 +2785,8 @@ private fun NoteCompactDockTool(
     showLabels: Boolean,
     selected: Boolean,
     primary: Boolean,
+    penStyle: PenStyle? = null,
+    penColor: Int? = null,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -2849,6 +2813,7 @@ private fun NoteCompactDockTool(
             .semantics {
                 contentDescription = noteToolDescription(label, selected)
                 this.selected = selected
+                penStyle?.let { stateDescription = penStyleLabel(it) }
             }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
@@ -2856,13 +2821,41 @@ private fun NoteCompactDockTool(
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (showLabels) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                    if (penStyle != null && penColor != null) {
+                        PenInstrumentArtwork(
+                            style = penStyle,
+                            color = penColor,
+                            modifier = Modifier.size(18.dp),
+                            bodyColor = LocalContentColor.current,
+                            cutoutColor = if (selected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                Color.Transparent
+                            },
+                            showSampleStroke = false,
+                        )
+                    } else {
+                        Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
                     Text(
                         label,
                         style = MaterialTheme.typography.labelSmall,
                         maxLines = STUDENT_LABEL_MAX_LINES,
                     )
                 }
+            } else if (penStyle != null && penColor != null) {
+                PenInstrumentArtwork(
+                    style = penStyle,
+                    color = penColor,
+                    modifier = Modifier.size(22.dp),
+                    bodyColor = LocalContentColor.current,
+                    cutoutColor = if (selected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        Color.Transparent
+                    },
+                    showSampleStroke = false,
+                )
             } else {
                 Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
             }
@@ -2944,6 +2937,8 @@ private fun NoteDockTool(
     showLabels: Boolean,
     selected: Boolean,
     primary: Boolean,
+    penStyle: PenStyle? = null,
+    penColor: Int? = null,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -2972,13 +2967,29 @@ private fun NoteDockTool(
             .semantics {
                 contentDescription = noteToolDescription(label, selected)
                 this.selected = selected
+                penStyle?.let { stateDescription = penStyleLabel(it) }
             }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (showLabels) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(icon, contentDescription = null, modifier = Modifier.size(21.dp))
+                    if (penStyle != null && penColor != null) {
+                        PenInstrumentArtwork(
+                            style = penStyle,
+                            color = penColor,
+                            modifier = Modifier.size(23.dp),
+                            bodyColor = LocalContentColor.current,
+                            cutoutColor = if (selected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                Color.Transparent
+                            },
+                            showSampleStroke = false,
+                        )
+                    } else {
+                        Icon(icon, contentDescription = null, modifier = Modifier.size(21.dp))
+                    }
                     Spacer(Modifier.height(2.dp))
                     Text(
                         label,
@@ -2986,6 +2997,19 @@ private fun NoteDockTool(
                         maxLines = STUDENT_LABEL_MAX_LINES,
                     )
                 }
+            } else if (penStyle != null && penColor != null) {
+                PenInstrumentArtwork(
+                    style = penStyle,
+                    color = penColor,
+                    modifier = Modifier.size(28.dp),
+                    bodyColor = LocalContentColor.current,
+                    cutoutColor = if (selected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        Color.Transparent
+                    },
+                    showSampleStroke = false,
+                )
             } else {
                 Icon(icon, contentDescription = null, modifier = Modifier.size(26.dp))
             }
