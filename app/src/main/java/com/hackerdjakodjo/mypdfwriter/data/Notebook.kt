@@ -386,4 +386,6 @@ data class NotebookDraft(
     val template: PaperTemplate = PaperTemplate.LINED,
     val folder: String = "",
     val tags: List<String> = emptyList(),
+    /** One-tap capture kind; null keeps the normal blank-page create flow. */
+    val quickKind: QuickNoteKind? = null,
 )

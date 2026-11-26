@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hackerdjakodjo.mypdfwriter.data.Excerpt
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.OnboardingStore
+import com.hackerdjakodjo.mypdfwriter.data.QuickNoteCapture
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.data.effectiveStudyLink
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
@@ -45,11 +46,11 @@ import com.hackerdjakodjo.mypdfwriter.ui.OnboardingSheet
 import com.hackerdjakodjo.mypdfwriter.ui.PdfExportSnapshot
 import com.hackerdjakodjo.mypdfwriter.ui.StudyLinkResolution
 import com.hackerdjakodjo.mypdfwriter.ui.PdfViewModel
+import com.hackerdjakodjo.mypdfwriter.ui.PdfStudyCapture
 import com.hackerdjakodjo.mypdfwriter.ui.QuickDestination
 import com.hackerdjakodjo.mypdfwriter.ui.STUDY_PANE_DEFAULT_FRACTION
 import com.hackerdjakodjo.mypdfwriter.ui.StudyNoteBuilder
 import com.hackerdjakodjo.mypdfwriter.ui.StudyPaneSheet
-import com.hackerdjakodjo.mypdfwriter.ui.StudySource
 import com.hackerdjakodjo.mypdfwriter.ui.ToolsScreen
 import com.hackerdjakodjo.mypdfwriter.ui.ViewerScreen
 import com.hackerdjakodjo.mypdfwriter.ui.MULTI_IMPORT_NOTICE
@@ -79,6 +80,11 @@ class MainActivity : ComponentActivity() {
     private var backupIncludeSources = false
     /** Set only by the PDF study pane; the activity result then exports this detached note. */
     private var pendingNoteExport: Notebook? = null
+    /** Detached pane state lives at host scope so ON_STOP can flush it synchronously. */
+    private var studyPaneNotebook by mutableStateOf<Notebook?>(null)
+    private var studyPanePageIndex by mutableStateOf(0)
+    private var studyPaneDocId by mutableStateOf<String?>(null)
+    private var studyPaneFingerprint by mutableStateOf<String?>(null)
     /** Page-range/layer choices paired with [pendingNoteExport] or the current editor. */
     private var pendingNoteExportOptions: NoteExportOptions = NoteExportOptions()
     /** Captured when the SAF export picker opens, so a doc switch cannot redirect it. */
@@ -171,9 +177,6 @@ class MainActivity : ComponentActivity() {
                 val notePage by notebookViewModel.pageIndex.collectAsStateWithLifecycle()
                 val pdfs by viewModel.library.collectAsStateWithLifecycle()
                 val backupState by backupViewModel.state.collectAsStateWithLifecycle()
-                var studyPaneNotebook by remember { mutableStateOf<Notebook?>(null) }
-                var studyPanePageIndex by remember { mutableStateOf(0) }
-                var studyPaneDocId by remember { mutableStateOf<String?>(null) }
                 // Session-only: survives note page changes and PDF page changes
                 // while the pane stays open, and resets with activity recreation.
                 var studyPaneFraction by remember {
@@ -187,6 +190,7 @@ class MainActivity : ComponentActivity() {
                             studyPaneNotebook = null
                             studyPanePageIndex = 0
                             studyPaneDocId = null
+                            studyPaneFingerprint = null
                         },
                         discardNotebook = { notebookViewModel.discardCurrent() },
                         refreshNotebook = { notebookViewModel.refresh() },
@@ -224,16 +228,20 @@ class MainActivity : ComponentActivity() {
                 // is replaced elsewhere, save the note and drop the stale pane. A
                 // failed verified save is surfaced and the stale pane is still dropped
                 // so it can never accept another document's capture.
-                LaunchedEffect(viewer?.docId) {
+                LaunchedEffect(viewer?.docId, viewer?.contentFingerprint) {
                     val pane = studyPaneNotebook ?: return@LaunchedEffect
                     val docId = viewer?.docId
-                    if (docId == null || studyPaneDocId != docId) {
+                    val fingerprint = viewer?.contentFingerprint
+                    if (docId == null || fingerprint.isNullOrBlank() ||
+                        studyPaneDocId != docId || studyPaneFingerprint != fingerprint
+                    ) {
                         if (notebookViewModel.trySaveDetached(pane) == null) {
                             viewModel.postLibraryMessage(NOTE_SAVE_FAILURE_MESSAGE)
                         }
                         studyPaneNotebook = null
                         studyPanePageIndex = 0
                         studyPaneDocId = null
+                        studyPaneFingerprint = null
                     }
                 }
                 val openStudyPane: (Notebook) -> Unit = { notebook ->
@@ -248,6 +256,7 @@ class MainActivity : ComponentActivity() {
                         )
                         studyPaneNotebook = notebook
                         studyPaneDocId = viewer?.docId
+                        studyPaneFingerprint = viewer?.contentFingerprint
                     }
                 }
                 val closeStudyPane: () -> Boolean = {
@@ -263,19 +272,15 @@ class MainActivity : ComponentActivity() {
                         studyPaneNotebook = null
                         studyPanePageIndex = 0
                         studyPaneDocId = null
+                        studyPaneFingerprint = null
                         true
                     }
                 }
                 val openViewerStudyPane: () -> Unit = {
                     if (!mutationLease.isActive) {
                         val doc = viewer
-                        if (doc != null) {
-                            val source = StudySource(
-                                docName = doc.docName,
-                                docUri = viewModel.currentDocumentUri(),
-                                docId = doc.docId,
-                                contentFingerprint = doc.contentFingerprint,
-                            )
+                        val source = viewModel.currentStudySource()
+                        if (doc != null && source != null) {
                             val notebook = notebookViewModel.studyNoteFor(source)
                                 ?: notebookViewModel.createBlankStudyNote(source)
                             if (notebook != null) {
@@ -392,6 +397,13 @@ class MainActivity : ComponentActivity() {
                                 onCreateNotebook = { draft ->
                                     runMutation { notebookViewModel.create(draft) }
                                 },
+                                onQuickCapture = { kind ->
+                                    runMutation {
+                                        if (notebookViewModel.create(QuickNoteCapture.draft(kind)) == null) {
+                                            viewModel.postLibraryMessage(NOTE_SAVE_FAILURE_MESSAGE)
+                                        }
+                                    }
+                                },
                                 onOpenPdf = { doc ->
                                     runMutation { viewModel.openDocument(Uri.parse(doc.uri)) }
                                 },
@@ -432,28 +444,23 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         else -> Box(Modifier.fillMaxSize()) {
-                            val studySource = StudySource(
-                                docName = viewer?.docName.orEmpty(),
-                                docUri = viewModel.currentDocumentUri(),
-                                docId = viewer?.docId,
-                                contentFingerprint = viewer?.contentFingerprint,
-                            )
-                            val appendStudyExcerpt: (String, Int) -> Boolean = { text, page ->
+                            val appendStudyExcerpt: (PdfStudyCapture) -> Boolean = { capture ->
                                 if (mutationLease.isActive || viewer == null) {
                                     false
                                 } else {
-                                    val result = notebookViewModel.appendStudyExcerptResult(
-                                        studySource,
-                                        text,
-                                        page,
-                                    )
-                                    if (result.saved) {
-                                        openStudyPane(result.notebook)
-                                        studyPanePageIndex = result.pageIndex.coerceAtLeast(0)
-                                        true
-                                    } else {
-                                        result.error?.let(viewModel::postLibraryMessage)
+                                    val accepted = viewModel.validatePdfStudyCapture(capture)
+                                    if (accepted == null) {
                                         false
+                                    } else {
+                                        val result = notebookViewModel.appendStudyCaptureResult(accepted)
+                                        if (result.saved) {
+                                            openStudyPane(result.notebook)
+                                            studyPanePageIndex = result.pageIndex.coerceAtLeast(0)
+                                            true
+                                        } else {
+                                            result.error?.let(viewModel::postLibraryMessage)
+                                            false
+                                        }
                                     }
                                 }
                             }
@@ -584,6 +591,8 @@ class MainActivity : ComponentActivity() {
                                                 helpTopic = HelpTopicKey.STUDY_NOTE
                                                 showHelp = true
                                             },
+                                            sourceDocId = viewer?.docId,
+                                            sourceFingerprint = viewer?.contentFingerprint,
                                         )
                                     }
                                 } else {
@@ -687,10 +696,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        super.onStop()
+        // A restore owns the files until it finishes; flushing here would race it.
+        if (mutationLease.isActive) return
+        if (!flushHostState()) viewModel.postLibraryMessage(NOTE_SAVE_FAILURE_MESSAGE)
+    }
+
+    /** One durability barrier for lifecycle stop and backup pre-flush. */
     private fun flushHostState(): Boolean {
-        val notebookOk = notebookViewModel.saveNow()
-        viewModel.flushPdfSavesNow()
-        return notebookOk
+        val pane = studyPaneNotebook
+        if (pane != null) {
+            // Failure is retried by the notebook barrier below; report only the
+            // final aggregate result so an immediate successful retry is truthful.
+            notebookViewModel.trySaveDetached(pane)
+        }
+        val notebookOk = notebookViewModel.flushPendingSavesBeforeBackup()
+        val pdfOk = viewModel.flushAllSavesNow()
+        return notebookOk && pdfOk
     }
 
     private fun finishHostOperation() {

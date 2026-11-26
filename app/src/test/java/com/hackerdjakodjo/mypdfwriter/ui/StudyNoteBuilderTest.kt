@@ -152,6 +152,21 @@ class StudyNoteBuilderTest {
         assertEquals(PaperTemplate.LINED, notebook.pages.single().template)
         assertTrue(notebook.pages.single().annotations.isEmpty())
         assertNull(notebook.pages.single().sourcePageIndex)
+        assertEquals("content://docs/lecture", notebook.pages.single().sourceLink?.uri)
+        assertEquals(0, notebook.pages.single().sourceLink?.sourcePage)
+    }
+
+    @Test
+    fun blankStudyNotePersistsDocumentIdentityForReplacementDetection() {
+        val source = StudySource(
+            docName = "lecture.pdf",
+            docUri = "content://docs/lecture",
+            docId = "doc-a",
+            contentFingerprint = "fingerprint-a",
+        )
+        val link = StudyNoteBuilder.blankStudyNote(source).pages.single().sourceLink!!
+        assertEquals("doc-a", link.docId)
+        assertEquals("fingerprint-a", link.fingerprint)
     }
 
     @Test
@@ -161,6 +176,37 @@ class StudyNoteBuilderTest {
         assertEquals("스터디 노트", notebook.title)
         assertEquals("", notebook.sourceDocumentName)
         assertEquals(1, notebook.pageCount)
+    }
+
+    @Test
+    fun captureLookupRejectsLegacyUriOnlyNotebookWhenFingerprintIsKnown() {
+        val source = StudySource(
+            docName = "lecture.pdf",
+            docUri = "content://docs/lecture",
+            docId = "doc-a",
+            contentFingerprint = "fingerprint-a",
+        )
+        val legacy = Notebook(
+            id = "legacy",
+            sourceDocumentName = "lecture.pdf",
+            sourceDocumentUri = "content://docs/lecture",
+        )
+        val bound = legacy.copy(
+            id = "bound",
+            pages = listOf(
+                NotePage(
+                    sourceLink = StudySourceLink(
+                        uri = "content://docs/lecture",
+                        docId = "doc-a",
+                        sourcePage = 0,
+                        fingerprint = "fingerprint-a",
+                    ),
+                ),
+            ),
+        )
+
+        assertNull(findStudyNotebookForCapture(listOf(legacy), source))
+        assertEquals("bound", findStudyNotebookForCapture(listOf(legacy, bound), source)?.id)
     }
 
     @Test

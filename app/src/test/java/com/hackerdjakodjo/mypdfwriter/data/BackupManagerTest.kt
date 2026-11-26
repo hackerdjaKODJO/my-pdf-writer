@@ -110,6 +110,7 @@ class BackupManagerTest {
             val target = File(root, "target")
             write(File(target, "notebooks/old.json"), "old")
             write(File(target, "sources/keep.pdf"), "keep")
+            write(File(target, "source-identities/local.json"), "stale-fingerprint")
             write(File(target, "unrelated.txt"), "keep")
 
             val work = File(root, "work")
@@ -146,8 +147,36 @@ class BackupManagerTest {
             assertFalse(File(target, "notebooks/old.json").exists())
             assertFalse(File(target, "notebooks/transient.json.tmp").exists())
             assertEquals("keep", File(target, "sources/keep.pdf").readText())
+            assertEquals("stale-fingerprint", File(target, "source-identities/local.json").readText())
             assertEquals("keep", File(target, "unrelated.txt").readText())
             assertFalse(File(extracted.dataDir, "notebooks/note.json").exists())
+        }
+    }
+
+    @Test
+    fun sourceIdentitiesAreBackedUpEvenWithoutSourcePdfs() {
+        withTempRoot { root ->
+            val files = File(root, "files")
+            write(File(files, "source-identities/doc.json"), "{\"fingerprint\":\"fp-a\"}")
+            val archive = ByteArrayOutputStream()
+            BackupArchive.create(
+                filesDir = files,
+                prefsDir = null,
+                includeSources = false,
+                appVersion = "test",
+                out = archive,
+                onProgress = { _, _ -> },
+            )
+            val extracted = BackupArchive.extract(
+                input = ByteArrayInputStream(archive.toByteArray()),
+                workDir = File(root, "work"),
+                onProgress = { _, _ -> },
+            )
+            assertTrue(extracted.manifest.directories.contains("source-identities"))
+            assertEquals(
+                "{\"fingerprint\":\"fp-a\"}",
+                File(extracted.dataDir, "source-identities/doc.json").readText(),
+            )
         }
     }
 
@@ -172,6 +201,7 @@ class BackupManagerTest {
             val target = File(root, "target")
             write(File(target, "notebooks/old.json"), "old")
             write(File(target, "sources/old.pdf"), "old-pdf")
+            write(File(target, "source-identities/local.json"), "stale-fingerprint")
 
             val work = File(root, "work")
             val extracted = BackupArchive.extract(
@@ -195,6 +225,7 @@ class BackupManagerTest {
             assertEquals("new-pdf", File(target, "sources/new.pdf").readText())
             assertFalse(File(target, "sources/old.pdf").exists())
             assertEquals("note", File(target, "notebooks/note.json").readText())
+            assertFalse(File(target, "source-identities/local.json").exists())
         }
     }
 

@@ -112,15 +112,47 @@ object NoteLayers {
      * layer, and annotations that point at an unknown layer stay visible so stale
      * data never silently loses ink.
      */
-    fun visibleAnnotations(page: NotePage): List<Annotation> {
+    fun visibleAnnotations(page: NotePage): List<Annotation> =
+        orderedAnnotations(page, includeHiddenLayers = false)
+
+    /**
+     * The single paint-order policy for editor, thumbnails, previews and export.
+     * Layers are bottom-to-top; annotation order inside one layer stays stable.
+     * Layer opacity is multiplied into each annotation exactly once.
+     */
+    fun renderAnnotations(
+        page: NotePage,
+        includeHiddenLayers: Boolean = false,
+    ): List<Annotation> {
+        val layerById = page.layers.associateBy { it.id }
+        return orderedAnnotations(page, includeHiddenLayers).map { annotation ->
+            val layer = annotation.layerId?.let(layerById::get) ?: page.layers.firstOrNull()
+            if (layer != null && layer.opacity < 1f) {
+                annotation.copy(opacity = (annotation.opacity * layer.opacity).coerceIn(0f, 1f))
+            } else {
+                annotation
+            }
+        }
+    }
+
+    private fun orderedAnnotations(
+        page: NotePage,
+        includeHiddenLayers: Boolean,
+    ): List<Annotation> {
         val layers = page.layers
         if (layers.isEmpty()) return page.annotations
         val defaultId = layers.first().id
         val layerById = layers.associateBy { it.id }
-        return page.annotations.filter { annotation ->
-            val effectiveId = annotation.layerId ?: defaultId
-            layerById[effectiveId]?.visible ?: true
-        }
+        val layerIndex = layers.withIndex().associate { it.value.id to it.index }
+        return page.annotations
+            .filter { annotation ->
+                val effectiveId = annotation.layerId ?: defaultId
+                includeHiddenLayers || layerById[effectiveId]?.visible != false
+            }
+            .sortedBy { annotation ->
+                val effectiveId = annotation.layerId ?: defaultId
+                layerIndex[effectiveId] ?: 0
+            }
     }
 
     /**

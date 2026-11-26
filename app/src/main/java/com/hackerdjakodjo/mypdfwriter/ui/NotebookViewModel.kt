@@ -18,6 +18,7 @@ import com.hackerdjakodjo.mypdfwriter.data.NotebookStore
 import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.data.PaperTint
+import com.hackerdjakodjo.mypdfwriter.data.QuickNoteCapture
 import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExporter
@@ -77,6 +78,24 @@ internal fun mergeResumePage(incoming: Notebook, previous: Notebook?): Notebook 
 internal fun findStudyNotebook(notebooks: List<Notebook>, source: StudySource): Notebook? =
     notebooks.firstOrNull { !it.trashed && studySourcesMatch(it, source) }
 
+/**
+ * Capture is stricter than opening: when the active bytes have a fingerprint, a
+ * legacy URI-only notebook must not silently absorb a replacement PDF's content.
+ */
+internal fun findStudyNotebookForCapture(
+    notebooks: List<Notebook>,
+    source: StudySource,
+): Notebook? {
+    val fingerprint = source.contentFingerprint?.trim()?.takeIf { it.isNotEmpty() }
+        ?: return findStudyNotebook(notebooks, source)
+    return notebooks.firstOrNull { notebook ->
+        !notebook.trashed && studySourcesMatch(notebook, source) &&
+            notebook.pages.any { page ->
+                page.sourceLink?.normalized()?.fingerprint == fingerprint
+            }
+    }
+}
+
 /** Pure capture policy shared by the ViewModel and JVM result tests. */
 internal fun appendStudyExcerptResult(
     source: StudySource,
@@ -84,17 +103,35 @@ internal fun appendStudyExcerptResult(
     pageIndex: Int,
     findExisting: () -> Notebook?,
     save: (Notebook) -> Boolean,
+): StudyAppendResult = appendStudyExcerptResult(
+    capture = StudyCapture(
+        text = text,
+        source = source,
+        sourcePageIndex = pageIndex,
+    ),
+    findExisting = findExisting,
+    save = save,
+)
+
+/** Full-provenance capture policy used after the viewer revalidates identity/page. */
+internal fun appendStudyExcerptResult(
+    capture: StudyCapture,
+    findExisting: () -> Notebook?,
+    save: (Notebook) -> Boolean,
 ): StudyAppendResult {
-    val trimmed = text.trim()
-    val excerpt = Excerpt(pageIndex = pageIndex.coerceAtLeast(0), text = trimmed)
+    val trimmed = capture.text.trim()
+    val excerpt = Excerpt(
+        id = capture.excerptId ?: java.util.UUID.randomUUID().toString(),
+        pageIndex = capture.sourcePageIndex.coerceAtLeast(0),
+        text = trimmed,
+    )
     val existing = findExisting()
     val updated = if (existing != null) {
-        StudyNoteBuilder.appendExcerpt(existing, source, excerpt)
+        StudyNoteBuilder.appendCapture(existing, capture)
     } else {
-        StudyNoteBuilder.fromExcerpts(
-            title = StudyNoteBuilder.suggestedTitle(source),
-            source = source,
-            excerpts = listOf(excerpt),
+        StudyNoteBuilder.fromCapture(
+            title = StudyNoteBuilder.suggestedTitle(capture.source),
+            capture = capture,
         )
     }
     if (trimmed.isBlank()) {
@@ -360,7 +397,10 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             coverStyle = draft.coverStyle,
             folder = draft.folder.trim(),
             tags = draft.tags,
-            pages = listOf(NotePage(template = draft.template)),
+            pages = listOf(
+                draft.quickKind?.let { QuickNoteCapture.page(it) }
+                    ?: NotePage(template = draft.template),
+            ),
         )
         if (!saveSession.saveSnapshot(notebook)) return null
         open(notebook.id)
@@ -398,6 +438,36 @@ class NotebookViewModel(application: Application) : AndroidViewModel(application
             } else if (result.error != null) {
                 saveSession.reportSaveFailure(result.error) {
                     appendStudyExcerptResult(source, text, pageIndex).saved
+                }
+            }
+            result
+        }
+
+    /** Full-provenance append after PdfViewModel has revalidated the active bytes/page. */
+    fun appendStudyCaptureResult(capture: PdfStudyCapture): StudyAppendResult =
+        saveLock.locked {
+            val result = appendStudyExcerptResult(
+                capture = StudyCapture(
+                    text = capture.text,
+                    source = capture.source,
+                    sourcePageIndex = capture.sourcePage,
+                    rect = capture.rect,
+                    excerptId = capture.excerptId,
+                    rotation = capture.rotation,
+                ),
+                findExisting = {
+                    findStudyNotebookForCapture(store.loadAll(), capture.source)
+                },
+                save = ::saveLocked,
+            )
+            if (result.saved) {
+                if (current.value?.id == result.notebookId) {
+                    saveSession.updateCurrent(result.notebook, touchTimestamp = false)
+                }
+                saveSession.publishSaveSuccess(result.notebook)
+            } else if (result.error != null) {
+                saveSession.reportSaveFailure(result.error) {
+                    appendStudyCaptureResult(capture).saved
                 }
             }
             result

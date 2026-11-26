@@ -151,3 +151,12 @@ pending.
 - Release manifest has no `INTERNET`; `RECORD_AUDIO` remains the only sensitive
   app permission.
 - No adb device or pressure-sensitive stylus was available.
+
+## 0.8.92 follow-up
+
+The missing host lifecycle flush and document-bound drag payload described in the
+0.8.91 review are now implemented: `MainActivity.onStop` flushes the live notebook,
+detached study pane, pending retry and PDF state, and drag labels carry source
+`docId`/fingerprint with strict drop-target validation. Page transforms also retain
+per-point timing, and one shared layer policy now drives editor/export/preview paint
+order. Real process-death and stylus validation remain pending.

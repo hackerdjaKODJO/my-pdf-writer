@@ -753,6 +753,7 @@ internal fun StudyPaneSizePresets(
 internal fun SplitSelectionActionBar(
     selectedText: String,
     pageIndex: Int,
+    capture: PdfStudyCapture? = null,
     hasSelection: Boolean,
     loading: Boolean,
     hasWords: Boolean,
@@ -774,7 +775,7 @@ internal fun SplitSelectionActionBar(
         else -> "$wordCount"
     }
     val statusModifier = if (hasSelection) {
-        Modifier.studyNoteDragSource(selectedText, pageIndex)
+        Modifier.studyNoteDragSource(capture)
     } else {
         Modifier
     }

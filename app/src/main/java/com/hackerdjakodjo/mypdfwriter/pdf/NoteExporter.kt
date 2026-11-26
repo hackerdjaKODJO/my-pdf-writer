@@ -8,6 +8,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.ui.PaperBackground
+import com.hackerdjakodjo.mypdfwriter.ui.NoteLayers
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
@@ -66,11 +67,12 @@ object NoteExporter {
      * [includeHiddenLayers] defaults to the editor's WYSIWYG visibility. Layer
      * opacity is applied in both cases; only the hidden-layer filter changes.
      *
-     * Post-it [NotePage.memoCards] are note content (unlike the study-only checklist
-     * and masking overlays), so they are painted after the annotation layer by
-     * default for a WYSIWYG result. [includeMemoCards] is the opt-out for callers
-     * that want an ink-only raster; it defaults to true and is deliberately not a
-     * persisted export field, so older backups and their JSON stay byte-compatible.
+     * Post-it [NotePage.memoCards] are note content, so they are painted after the
+     * annotation and checklist layers by default for a WYSIWYG result.
+     * [includeMemoCards] is the opt-out for callers that want an ink-only raster;
+     * it defaults to true and is deliberately not a persisted export field, so
+     * older backups and their JSON stay byte-compatible. [includeChecklists]
+     * follows the same rule for durable interactive checklist content.
      */
     fun renderPage(
         page: NotePage,
@@ -79,6 +81,7 @@ object NoteExporter {
         includeHiddenLayers: Boolean = false,
         backgroundLoader: (String) -> Bitmap? = { null },
         includeMemoCards: Boolean = true,
+        includeChecklists: Boolean = true,
     ): Bitmap {
         val safeWidth = width.coerceIn(1, 8192)
         val safeHeight = height.coerceIn(1, 8192)
@@ -102,24 +105,23 @@ object NoteExporter {
                 )
             }
         }
-        val layers = page.layers.associateBy { it.id }
-        val visible = page.annotations.filter { annotation ->
-            val layer = layers[annotation.layerId] ?: page.layers.firstOrNull()
-            includeHiddenLayers || layer?.visible != false
-        }.map { annotation ->
-            val layer = layers[annotation.layerId] ?: page.layers.firstOrNull()
-            if (layer != null && layer.opacity < 1f) {
-                annotation.copy(opacity = (annotation.opacity * layer.opacity).coerceIn(0f, 1f))
-            } else {
-                annotation
-            }
-        }
+        val visible = NoteLayers.renderAnnotations(page, includeHiddenLayers)
         AnnotationPainter.draw(
             canvas = canvas,
             annotations = visible,
             width = safeWidth.toFloat(),
             height = safeHeight.toFloat(),
         )
+        // Checklists are durable note content. They sit below post-it cards, matching
+        // the editor's overlay order, and can be excluded explicitly for ink-only output.
+        if (includeChecklists && page.checklists.isNotEmpty()) {
+            ChecklistCardPainter.draw(
+                canvas = canvas,
+                cards = page.checklists,
+                width = safeWidth.toFloat(),
+                height = safeHeight.toFloat(),
+            )
+        }
         // Cards sit above ink in the editor, so paint them last. Redaction and every
         // other annotation are still drawn by AnnotationPainter exactly as before.
         NoteCardPainter.draw(
@@ -175,6 +177,7 @@ object NoteExporter {
                         options.includeHiddenLayers,
                         backgroundLoader,
                         includeMemoCards,
+                        options.includeChecklists,
                     )
                     try {
                         val image = LosslessFactory.createFromImage(document, bitmap)

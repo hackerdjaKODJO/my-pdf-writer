@@ -280,7 +280,7 @@ fun ViewerScreen(
     onOpenTools: () -> Unit,
     onCreateStudyNote: (Notebook) -> Unit = {},
     /** Optional integration hook used by drag-and-drop capture; must not open the notebook. */
-    onAppendStudyExcerpt: (text: String, pageIndex: Int) -> Boolean = { _, _ -> true },
+    onAppendStudyExcerpt: (PdfStudyCapture) -> Boolean = { true },
     /**
      * Optional hub entry point for the live study-note pane. When present, the
      * PDF hub offers "스터디 노트"; the host resolves or creates the notebook
@@ -367,8 +367,8 @@ fun ViewerScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val appendStudyExcerpt: (String, Int) -> Boolean = { text, page ->
-        val added = onAppendStudyExcerpt(text, page)
+    val appendStudyExcerpt: (PdfStudyCapture) -> Boolean = { capture ->
+        val added = onAppendStudyExcerpt(capture)
         if (added) {
             scope.launch { snackbarHostState.showSnackbar(STUDY_NOTE_ADDED_MESSAGE) }
         }
@@ -799,8 +799,9 @@ fun ViewerScreen(
 
     val openNote: () -> Unit = {
         val callback = onOpenStudyNote
-        if (callback != null) {
-            callback(StudySource(state.docName, vm.currentDocumentUri()))
+        val source = vm.currentStudySource()
+        if (callback != null && source != null) {
+            callback(source)
         } else {
             showStudyNote = true
         }
@@ -809,8 +810,8 @@ fun ViewerScreen(
     // the excerpt, hand it to the live pane when there is one, then open the note.
     val captureToNote: () -> Unit = {
         if (selectedText.isNotBlank()) {
-            vm.addExcerptFromSelection(state.pageIndex, selectedText)
-            if (studyPane != null) onAppendStudyExcerpt(selectedText, state.pageIndex)
+            val capture = vm.addExcerptFromSelection(state.pageIndex, selectedText)
+            if (capture != null && studyPane != null) onAppendStudyExcerpt(capture)
             selectedWords = emptyList()
             textSelectMode = false
         }
@@ -1154,6 +1155,7 @@ fun ViewerScreen(
                             TextSelectionActionBar(
                                 text = selectedText,
                                 pageIndex = state.pageIndex,
+                                capture = vm.studyCaptureForSelection(state.pageIndex, selectedText),
                                 hasSelection = selectedWords.isNotEmpty(),
                                 loading = state.textLoading,
                                 hasWords = pageTextWords.isNotEmpty(),
@@ -1473,8 +1475,10 @@ fun ViewerScreen(
 
                     if (chromePolicy.showPageDropTarget && selectedText.isNotBlank()) {
                         StudyNoteDropTarget(
-                            onDrop = { text, page -> appendStudyExcerpt(text, page) },
+                            onDrop = appendStudyExcerpt,
                             caption = "선택한 텍스트를 여기로 끌어다 놓으세요",
+                            expectedDocId = state.docId,
+                            expectedFingerprint = state.contentFingerprint,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .padding(horizontal = 16.dp)
@@ -1520,6 +1524,7 @@ fun ViewerScreen(
                             SplitSelectionActionBar(
                                 selectedText = selectedText,
                                 pageIndex = state.pageIndex,
+                                capture = vm.studyCaptureForSelection(state.pageIndex, selectedText),
                                 hasSelection = selectedWords.isNotEmpty(),
                                 loading = state.textLoading,
                                 hasWords = pageTextWords.isNotEmpty(),
@@ -1693,15 +1698,16 @@ fun ViewerScreen(
                 showExcerpts = false
                 showStudyNote = true
             },
-            onDropExcerpt = { excerpt ->
-                appendStudyExcerpt(excerpt.text, excerpt.pageIndex)
-            },
+            onDropExcerpt = appendStudyExcerpt,
+            captureForExcerpt = vm::studyCaptureForExcerpt,
+            docId = state.docId,
+            fingerprint = state.contentFingerprint,
             onDismiss = { showExcerpts = false },
         )
     }
     if (showStudyNote) {
         StudyNoteSheet(
-            source = StudySource(state.docName, vm.currentDocumentUri()),
+            source = vm.currentStudySource() ?: StudySource(state.docName, vm.currentDocumentUri()),
             excerpts = excerpts,
             onDismiss = { showStudyNote = false },
             onCreate = { notebook ->
@@ -1994,8 +2000,8 @@ fun ViewerScreen(
             onShare = { TextActions.shareText(context, selectedText) },
             onAddToPane = if (studyPane != null) {
                 {
-                    vm.addExcerptFromSelection(state.pageIndex, selectedText)
-                    appendStudyExcerpt(selectedText, state.pageIndex)
+                    val capture = vm.addExcerptFromSelection(state.pageIndex, selectedText)
+                    if (capture != null) appendStudyExcerpt(capture)
                 }
             } else {
                 null
@@ -2141,6 +2147,7 @@ internal fun PdfSaveStatusRow(
 private fun TextSelectionActionBar(
     text: String,
     pageIndex: Int,
+    capture: PdfStudyCapture?,
     hasSelection: Boolean,
     loading: Boolean,
     hasWords: Boolean,
@@ -2194,7 +2201,7 @@ private fun TextSelectionActionBar(
                     .weight(1f)
                     .then(
                         if (hasSelection) {
-                            Modifier.studyNoteDragSource(text, pageIndex)
+                            Modifier.studyNoteDragSource(capture)
                         } else {
                             Modifier
                         },

@@ -5,6 +5,7 @@ import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.os.SystemClock
+import android.view.MotionEvent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -28,6 +30,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -39,6 +42,8 @@ import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.ChecklistCard
 import com.hackerdjakodjo.mypdfwriter.data.DEFAULT_INK_PRESSURE
 import com.hackerdjakodjo.mypdfwriter.data.HighlightInk
+import com.hackerdjakodjo.mypdfwriter.data.InkMotionHistoryBuffer
+import com.hackerdjakodjo.mypdfwriter.data.InkMotionSample
 import com.hackerdjakodjo.mypdfwriter.data.MAX_INK_PRESSURE
 import com.hackerdjakodjo.mypdfwriter.data.MaskingCard
 import com.hackerdjakodjo.mypdfwriter.data.MemoCard
@@ -121,6 +126,8 @@ fun NoteCanvas(
     smoothHandwriting: Boolean = NOTE_SMOOTH_HANDWRITING_DEFAULT,
     simplifyPoints: Boolean = NOTE_SIMPLIFY_POINTS_DEFAULT,
     selectionBounds: NoteSelectionBounds? = null,
+    /** Active layer controls wet-ink opacity and its position in the layer stack. */
+    activeLayerId: String? = null,
     annotationProgress: (Annotation) -> Float = { 1f },
     // Study-only overlay. Defaults keep every existing caller byte-for-byte intact.
     maskingCards: List<MaskingCard> = emptyList(),
@@ -180,6 +187,9 @@ fun NoteCanvas(
     var eraserPressureSensitive by remember { mutableStateOf(false) }
     val eraserTrail = remember { mutableStateListOf<NormalizedPoint>() }
     val lassoPoints = remember { mutableStateListOf<NormalizedPoint>() }
+    var predictedPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
+    var motionCancelled by remember { mutableStateOf(false) }
+    val motionHistory = remember { InkMotionHistoryBuffer() }
 
     LaunchedEffect(page.id, page.orientation) {
         livePoints.clear()
@@ -188,6 +198,9 @@ fun NoteCanvas(
         shapeStart = null
         shapeEnd = null
         eraserPoint = null
+        predictedPoint = null
+        motionCancelled = false
+        motionHistory.clear()
         pan = Offset.Zero
         zoom = 1f
     }
@@ -197,6 +210,44 @@ fun NoteCanvas(
         val viewH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
         val fit = min(viewW / pageWidth, viewH / pageHeight)
         val total = fit * zoom
+        val renderedAnnotations = remember(page) { NoteLayers.renderAnnotations(page) }
+        val activeLayerIndex = remember(page.layers, activeLayerId) {
+            val index = page.layers.indexOfFirst { it.id == activeLayerId }
+            if (index >= 0) index else page.layers.lastIndex.coerceAtLeast(0)
+        }
+        val annotationsBelowActive = remember(renderedAnnotations, activeLayerIndex) {
+            renderedAnnotations.filter { annotationLayerIndex(page, it) <= activeLayerIndex }
+        }
+        val annotationsAboveActive = remember(renderedAnnotations, activeLayerIndex) {
+            renderedAnnotations.filter { annotationLayerIndex(page, it) > activeLayerIndex }
+        }
+        val activeLayerOpacity = remember(page.layers, activeLayerIndex) {
+            page.layers.getOrNull(activeLayerIndex)?.opacity?.coerceIn(0f, 1f) ?: 1f
+        }
+
+        DisposableEffect(
+            page.id,
+            page.orientation,
+            tool,
+            penOnly,
+            zoomLock,
+            pressureEnabled,
+            pressureCurve,
+            gestureUndoEnabled,
+            fit,
+        ) {
+            onDispose {
+                livePoints.clear()
+                eraserTrail.clear()
+                lassoPoints.clear()
+                shapeStart = null
+                shapeEnd = null
+                eraserPoint = null
+                predictedPoint = null
+                motionCancelled = false
+                motionHistory.clear()
+            }
+        }
 
         LaunchedEffect(total, viewW, viewH, pageWidth, pageHeight) {
             val limitX = ((pageWidth * total - viewW) / 2f).coerceAtLeast(0f)
@@ -292,6 +343,8 @@ fun NoteCanvas(
             }
 
             fun clearPreview() {
+                motionHistory.clear()
+                predictedPoint = null
                 livePoints.clear()
                 eraserTrail.clear()
                 lassoPoints.clear()
@@ -307,6 +360,8 @@ fun NoteCanvas(
 
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
+                motionHistory.clear()
+                motionCancelled = false
                 val stylusDown = down.type == PointerType.Stylus
                 val eraserStylus = down.type == PointerType.Eraser
                 val gestureTool = gestureToolForPointer(tool, down.type)
@@ -335,31 +390,43 @@ fun NoteCanvas(
                 var rawPressureMin = Float.POSITIVE_INFINITY
                 var rawPressureMax = Float.NEGATIVE_INFINITY
                 var lastPressureUptimeMs = strokeStartUptimeMs
-                fun capturePressure(
-                    change: PointerInputChange,
-                    eventUptimeMs: Long = change.uptimeMillis,
+                fun capturePressureValue(
+                    pointerType: PointerType,
+                    rawPressure: Float,
+                    pressed: Boolean,
+                    eventUptimeMs: Long,
                 ): Float {
                     val elapsedMs = (eventUptimeMs - lastPressureUptimeMs).coerceAtLeast(0L)
                     lastPressureUptimeMs = maxOf(lastPressureUptimeMs, eventUptimeMs)
                     val effective = effectiveInkPressure(
-                        pointerType = change.type,
-                        rawPressure = change.pressure,
+                        pointerType = pointerType,
+                        rawPressure = rawPressure,
                         pressureEnabled = pressureEnabled,
                         pressureCurve = pressureCurve,
                         calibrator = pressureCalibrator,
-                        pressed = change.pressed,
+                        pressed = pressed,
                         smoother = pressureSmoother,
                         elapsedMs = elapsedMs,
                     )
-                    if (pressureEnabled && change.type == PointerType.Stylus &&
-                        change.pressed && change.pressure.isFinite()
+                    if (pressureEnabled && pointerType == PointerType.Stylus &&
+                        pressed && rawPressure.isFinite()
                     ) {
-                        val raw = clampInkPressure(change.pressure)
+                        val raw = clampInkPressure(rawPressure)
                         rawPressureMin = minOf(rawPressureMin, raw)
                         rawPressureMax = maxOf(rawPressureMax, raw)
                     }
                     return effective
                 }
+
+                fun capturePressure(
+                    change: PointerInputChange,
+                    eventUptimeMs: Long = change.uptimeMillis,
+                ): Float = capturePressureValue(
+                    pointerType = change.type,
+                    rawPressure = change.pressure,
+                    pressed = change.pressed,
+                    eventUptimeMs = eventUptimeMs,
+                )
 
                 // A memo tap, a navigation gesture or a VIEW touch never writes ink,
                 // so it must not teach the calibrator anything either. Sampling those
@@ -411,6 +478,56 @@ fun NoteCanvas(
                     )
                     lastPressure = pressure
                     lastEmittedAtUptimeMs = nowUptimeMs
+                }
+
+                fun emitMotionSample(
+                    sample: InkMotionSample,
+                    pointerType: PointerType,
+                ) {
+                    if (sample.uptimeMs < strokeStartUptimeMs ||
+                        sample.uptimeMs <= lastEmittedAtUptimeMs
+                    ) {
+                        return
+                    }
+                    val position = Offset(sample.x, sample.y)
+                    traveled += (position - lastPosition).getDistance()
+                    lastPosition = position
+                    val pointTimeMs = relativePointTimeMs(
+                        sample.uptimeMs,
+                        strokeStartUptimeMs,
+                        lastEmittedAtUptimeMs - strokeStartUptimeMs,
+                    )
+                    val pressure = capturePressureValue(
+                        pointerType,
+                        sample.pressure,
+                        pressed = true,
+                        eventUptimeMs = sample.uptimeMs,
+                    )
+                    when (gestureTool) {
+                        Tool.TEXT -> Unit
+                        Tool.ERASER -> {
+                            eraserPressure = eraserInputPressure(pointerType, sample.pressure, pressureEnabled)
+                            eraserPressureSensitive = eraserUsesPressure(pointerType, pressureEnabled)
+                            val point = normalize(position, eraserPressure, pointTimeMs)
+                            eraserTrail.add(point)
+                            eraserPoint = point
+                        }
+
+                        Tool.RECT,
+                        Tool.ARROW,
+                        Tool.LINE,
+                        Tool.ELLIPSE,
+                        Tool.UNDERLINE,
+                        Tool.STRIKEOUT,
+                        Tool.REDACT,
+                        Tool.LASSO_RECT -> shapeEnd = normalize(position, pressure, pointTimeMs)
+
+                        Tool.LASSO -> lassoPoints.add(normalize(position, pressure, pointTimeMs))
+
+                        else -> livePoints.add(normalize(position, pressure, pointTimeMs))
+                    }
+                    lastPressure = pressure
+                    lastEmittedAtUptimeMs = maxOf(lastEmittedAtUptimeMs, sample.uptimeMs)
                 }
 
                 if (canDraw) {
@@ -476,6 +593,7 @@ fun NoteCanvas(
                         awaitPointerEvent()
                     }
                     if (event == null) {
+                        predictedPoint = null
                         // A perfectly stationary stylus may produce no MotionEvent
                         // at all. Wake on the dwell cadence and lay down bounded
                         // samples from the last real pointer state.
@@ -508,6 +626,42 @@ fun NoteCanvas(
                     val primary = event.changes.firstOrNull { it.id == down.id }
                     if (primary != null) lastPrimaryChange = primary
 
+                    if (drawing && primary != null) {
+                        val action = recordMotionEvent(event, primary, motionHistory)
+                        if (action == MotionEvent.ACTION_CANCEL) motionCancelled = true
+                        if (!motionCancelled) {
+                            val historical = motionHistory.samplesBefore(primary.uptimeMillis)
+                            historical.forEach { emitMotionSample(it, primary.type) }
+                            predictedPoint = if (
+                                gestureTool == Tool.PEN || gestureTool == Tool.HIGHLIGHT
+                            ) {
+                                motionHistory.predict()?.let { predicted ->
+                                    normalize(
+                                        Offset(predicted.x, predicted.y),
+                                        lastPressure,
+                                        relativePointTimeMs(
+                                            predicted.uptimeMs,
+                                            strokeStartUptimeMs,
+                                            lastEmittedAtUptimeMs - strokeStartUptimeMs,
+                                        ),
+                                    )
+                                }
+                            } else {
+                                null
+                            }
+                            // Compose's current sample represents the same physical
+                            // frame as MotionEvent's current sample. Drop the raw
+                            // current sample after prediction so clock skew cannot
+                            // replay it on the following frame.
+                            motionHistory.clear()
+                        }
+                    }
+
+                    if (motionCancelled) {
+                        clearPreview()
+                        break
+                    }
+
                     if (drawing) {
                         if (primary == null) {
                             clearPreview()
@@ -528,6 +682,13 @@ fun NoteCanvas(
                         }
 
                         if (primary.pressed) {
+                            if (
+                                (gestureTool == Tool.PEN || gestureTool == Tool.HIGHLIGHT) &&
+                                primary.uptimeMillis <= lastEmittedAtUptimeMs
+                            ) {
+                                primary.consume()
+                                continue
+                            }
                             val movement = primary.position - lastPosition
                             if (InkQuality.hasMeaningfulPositionChange(movement.x, movement.y)) {
                                 traveled += movement.getDistance()
@@ -763,6 +924,8 @@ fun NoteCanvas(
             }
         }
 
+        // Dry layer: paper, background and committed ink. It does not observe live
+        // pointer state, so Compose can skip it while the wet layer follows the pen.
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -813,16 +976,32 @@ fun NoteCanvas(
                 native.clipRect(0f, 0f, pageWidth, pageHeight)
                 AnnotationPainter.draw(
                     canvas = native,
-                    annotations = page.annotations,
+                    annotations = annotationsBelowActive,
                     width = pageWidth,
                     height = pageHeight,
                     progress = annotationProgress,
                 )
+                native.restore()
+                native.restore()
+            }
+        }
 
-                selectionBounds?.let { drawSelectionBounds(native, it, pageWidth, pageHeight) }
+        // Wet layer: only the active stroke/tool preview. Pointer samples invalidate
+        // this layer instead of repainting the paper and every committed annotation.
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawIntoCanvas { canvas ->
+                val native = canvas.nativeCanvas
+                native.save()
+                native.translate(size.width / 2f + pan.x, size.height / 2f + pan.y)
+                native.scale(total, total)
+                native.translate(-pageWidth / 2f, -pageHeight / 2f)
+                native.clipRect(0f, 0f, pageWidth, pageHeight)
 
                 val previewPoints = notePreviewPoints(
-                    livePoints.toList(),
+                    buildList {
+                        addAll(livePoints)
+                        predictedPoint?.let(::add)
+                    },
                     stabilizeStrength = stabilizeStrength,
                     smoothHandwriting = smoothHandwriting,
                     simplifyPoints = simplifyPoints,
@@ -835,9 +1014,8 @@ fun NoteCanvas(
                     }
                     AnnotationPainter.drawOne(
                         canvas = native,
-                        annotation = Annotation(
+                        annotation = notePreviewAnnotation(
                             type = previewType,
-                            page = 0,
                             color = color,
                             width = noteStrokeWidth(previewType, strokeWidth),
                             points = previewPoints,
@@ -851,6 +1029,7 @@ fun NoteCanvas(
                             } else {
                                 PenStyle.BALLPOINT
                             },
+                            layerOpacity = activeLayerOpacity,
                         ),
                         width = pageWidth,
                         height = pageHeight,
@@ -874,7 +1053,10 @@ fun NoteCanvas(
                             },
                             width = maxOf(strokeWidth, 0.0025f),
                             points = listOf(start, end),
-                            opacity = if (previewType == AnnotationType.REDACT) 1f else opacity,
+                            opacity = (
+                                (if (previewType == AnnotationType.REDACT) 1f else opacity) *
+                                    activeLayerOpacity
+                            ).coerceIn(0f, 1f),
                         ),
                         width = pageWidth,
                         height = pageHeight,
@@ -890,9 +1072,6 @@ fun NoteCanvas(
 
                 val eraser = eraserPoint
                 if (eraser != null) {
-                    // Notes erase with a fixed normalized kernel. The shared
-                    // preview helper also gives PDF pressure erasers the same
-                    // aspect-correct page-space ellipse.
                     drawSharedEraserPreview(
                         native,
                         eraser,
@@ -903,7 +1082,31 @@ fun NoteCanvas(
                 }
 
                 native.restore()
-                native.restore()
+            }
+        }
+
+        // Committed layers above the active layer stay above wet ink. They are dry
+        // and do not observe pointer state, so a lower-layer preview cannot cover
+        // opaque upper-layer content or jump on commit.
+        if (annotationsAboveActive.isNotEmpty() || selectionBounds != null) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawIntoCanvas { canvas ->
+                    val native = canvas.nativeCanvas
+                    native.save()
+                    native.translate(size.width / 2f + pan.x, size.height / 2f + pan.y)
+                    native.scale(total, total)
+                    native.translate(-pageWidth / 2f, -pageHeight / 2f)
+                    native.clipRect(0f, 0f, pageWidth, pageHeight)
+                    AnnotationPainter.draw(
+                        canvas = native,
+                        annotations = annotationsAboveActive,
+                        width = pageWidth,
+                        height = pageHeight,
+                        progress = annotationProgress,
+                    )
+                    selectionBounds?.let { drawSelectionBounds(native, it, pageWidth, pageHeight) }
+                    native.restore()
+                }
             }
         }
 
@@ -1094,9 +1297,77 @@ internal fun drawSharedEraserPreview(
     canvas.drawOval(oval.left, oval.top, oval.right, oval.bottom, fillPaint)
 }
 
+private fun annotationLayerIndex(page: NotePage, annotation: Annotation): Int {
+    val effectiveId = annotation.layerId ?: page.layers.firstOrNull()?.id
+    val index = page.layers.indexOfFirst { it.id == effectiveId }
+    return if (index >= 0) index else 0
+}
+
 /** Stylus eraser contact overrides the selected drawing tool on both canvases. */
 internal fun gestureToolForPointer(selectedTool: Tool, pointerType: PointerType): Tool =
     if (pointerType == PointerType.Eraser) Tool.ERASER else selectedTool
+
+private fun motionPointerIndex(motion: MotionEvent, primary: PointerInputChange): Int {
+    if (motion.pointerCount <= 0) return -1
+    val expectedToolType = when (primary.type) {
+        PointerType.Stylus -> MotionEvent.TOOL_TYPE_STYLUS
+        PointerType.Eraser -> MotionEvent.TOOL_TYPE_ERASER
+        PointerType.Mouse -> MotionEvent.TOOL_TYPE_MOUSE
+        else -> MotionEvent.TOOL_TYPE_FINGER
+    }
+    val matches = (0 until motion.pointerCount).filter { index ->
+        motion.getToolType(index) == expectedToolType
+    }
+    if (matches.isEmpty()) return -1
+    if (matches.size == 1) return matches.first()
+    val actionIndex = motion.actionIndex.takeIf { it in matches }
+    return actionIndex ?: matches.first()
+}
+
+/**
+ * Copies coalesced platform history into the stroke buffer. The raw MotionEvent may
+ * be in root or local coordinates, so the current sample's difference from Compose's
+ * local position gives the exact offset to apply to every historical sample.
+ */
+private fun recordMotionEvent(
+    event: PointerEvent,
+    primary: PointerInputChange,
+    buffer: InkMotionHistoryBuffer,
+): Int {
+    val motion = event.motionEvent
+        ?: return if (primary.pressed) MotionEvent.ACTION_MOVE else MotionEvent.ACTION_CANCEL
+    val action = motion.actionMasked
+    if (action == MotionEvent.ACTION_CANCEL) {
+        buffer.clear()
+        return action
+    }
+    val pointerIndex = motionPointerIndex(motion, primary)
+    if (pointerIndex !in 0 until motion.pointerCount) return action
+    val offset = primary.position - Offset(motion.getX(pointerIndex), motion.getY(pointerIndex))
+    for (historyIndex in 0 until motion.historySize) {
+        buffer.append(
+            InkMotionSample(
+                x = motion.getHistoricalX(pointerIndex, historyIndex) + offset.x,
+                y = motion.getHistoricalY(pointerIndex, historyIndex) + offset.y,
+                pressure = motion.getHistoricalPressure(pointerIndex, historyIndex),
+                uptimeMs = motion.getHistoricalEventTime(historyIndex),
+            ),
+        )
+    }
+    // The up event's current pressure is synthetic zero. Keep its history, but let
+    // Compose's release branch handle the lift without teaching calibration.
+    if (action == MotionEvent.ACTION_MOVE) {
+        buffer.append(
+            InkMotionSample(
+                x = motion.getX(pointerIndex) + offset.x,
+                y = motion.getY(pointerIndex) + offset.y,
+                pressure = motion.getPressure(pointerIndex),
+                uptimeMs = motion.eventTime,
+            ),
+        )
+    }
+    return action
+}
 
 /** Compose reports the stylus back end as ERASER rather than STYLUS. */
 internal fun isStylusPointer(pointerType: PointerType): Boolean =
@@ -1184,6 +1455,25 @@ internal fun effectiveInkPressure(
     val curved = pressureCurve.applyTo(calibrated)
     return if (smoother != null && pressed) smoother.filter(curved, elapsedMs) else curved
 }
+
+internal fun notePreviewAnnotation(
+    type: AnnotationType,
+    color: Int,
+    width: Float,
+    points: List<NormalizedPoint>,
+    opacity: Float,
+    penStyle: PenStyle,
+    layerOpacity: Float = 1f,
+): Annotation = Annotation(
+    type = type,
+    page = 0,
+    color = color,
+    width = width,
+    points = points,
+    opacity = (opacity * layerOpacity).coerceIn(0f, 1f),
+    penStyle = penStyle,
+    timesMs = pointTimesMs(points),
+)
 
 internal fun noteStrokeWidth(type: AnnotationType, strokeWidth: Float): Float =
     if (type == AnnotationType.HIGHLIGHT) maxOf(strokeWidth, 0.018f) else strokeWidth

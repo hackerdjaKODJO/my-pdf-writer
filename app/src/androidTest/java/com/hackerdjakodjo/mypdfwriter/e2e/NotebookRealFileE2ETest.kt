@@ -58,7 +58,7 @@ import java.io.File
  *
  * Simplification / limitation: instrumented touches cannot inject a stylus, so
  * finger writing is enabled through the note menu in every drawing test. The
- * masking-card test drives the real note-menu -> 복습 -> 가리기 카드 sheet and
+ * masking-card test drives the real note-menu -> 카드 -> 가리기 카드 sheet and
  * the on-page tape, but grades only one card with O (정답); the W (오답) branch
  * uses the same `MaskingCards.mark` callback and is covered by JVM tests.
  *
@@ -185,12 +185,12 @@ class NotebookRealFileE2ETest {
         val id = created!!.id
         showEditor(vm)
 
-        // Real UI path: 노트 메뉴 -> 복습 카드 -> 가리기 카드 -> add card.
+        // Real UI path: 노트 메뉴 -> 카드 -> 가리기 카드 -> add card.
         composeRule.onNodeWithContentDescription(NOTE_MENU).performClick()
         waitForText(NOTE_MENU)
         val menu = composeRule.onNode(hasScrollToIndexAction())
-        menu.performScrollToNode(hasText("복습 카드"))
-        composeRule.onNodeWithText("복습 카드").performClick()
+        menu.performScrollToNode(hasText("카드"))
+        composeRule.onNodeWithText("카드").performClick()
         waitForTextGone(NOTE_MENU)
         waitForText("가리기 카드")
         composeRule.onNodeWithText("가리기 카드").performClick()

@@ -169,8 +169,8 @@ fun ChecklistsSheet(
 
             item {
                 Text(
-                    "체크리스트는 공부용 데이터입니다. 노트 JSON과 로컬 백업에는 저장되지만 " +
-                        "PDF 내보내기에는 포함되지 않습니다.",
+                    "체크리스트는 노트 데이터입니다. 노트 JSON과 로컬 백업에 저장되며 " +
+                        "PDF 내보내기에는 항목과 완료 상태가 함께 포함됩니다.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 10.dp),

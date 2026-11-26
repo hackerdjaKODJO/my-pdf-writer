@@ -130,12 +130,12 @@ internal fun installRestoredData(
     applyPreferences: () -> Unit,
     onRollbackFailed: () -> Unit = {},
 ) {
-    BackupArchive.replaceDirectories(filesDir, stagedFilesDir, directories, rollbackDir)
+    val installedDirectories = BackupArchive.replaceDirectories(filesDir, stagedFilesDir, directories, rollbackDir)
     try {
         applyPreferences()
     } catch (prefsError: Throwable) {
         try {
-            BackupArchive.rollbackDirectories(filesDir, directories, rollbackDir)
+            BackupArchive.rollbackDirectories(filesDir, installedDirectories, rollbackDir)
         } catch (rollbackError: Throwable) {
             onRollbackFailed()
             prefsError.addSuppressed(rollbackError)
@@ -166,6 +166,7 @@ internal object BackupArchive {
         "templates",
         "audio",
         "sources",
+        "source-identities",
     )
 
     val PREFERENCE_FILES = listOf("pen_box.xml", "library.xml")
@@ -445,11 +446,22 @@ internal object BackupArchive {
         stagedFilesDir: File,
         directories: List<String>,
         rollbackDir: File,
-    ) {
+    ): List<String> {
+        val effectiveDirectories = directories.toMutableList()
+        if ("sources" in directories && "source-identities" !in effectiveDirectories) {
+            // Older source-included archives predate fingerprint sidecars. Their
+            // restored source+sidecar pair must start fresh. Source-less archives
+            // keep local identities so a same-URI replacement is still quarantined.
+            effectiveDirectories += "source-identities"
+            val staged = File(stagedFilesDir, "source-identities")
+            if (!staged.exists() && !staged.mkdirs()) {
+                throw BackupException("복원할 폴더를 준비하지 못했습니다: source-identities")
+            }
+        }
         val installed = mutableListOf<String>()
         val movedAside = mutableListOf<String>()
         try {
-            directories.sorted().forEach { name ->
+            effectiveDirectories.sorted().forEach { name ->
                 if (name !in DATA_DIRECTORIES) {
                     throw BackupException("복원할 수 없는 데이터 폴더입니다: $name")
                 }
@@ -476,6 +488,7 @@ internal object BackupArchive {
             }
             throw error
         }
+        return effectiveDirectories
     }
 
     /**

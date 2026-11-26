@@ -200,4 +200,39 @@ class NotePreviewGeometryTest {
         assertSame(shape.points, noteRefineForCommit(shape.points, true, true, skipRefinement = true))
         assertNotEquals(raw, notePreviewPoints(raw))
     }
+
+    @Test
+    fun `wet preview carries timing and applies layer opacity exactly once`() {
+        val points = listOf(
+            NormalizedPoint(0.1f, 0.2f, timeMs = 0L),
+            NormalizedPoint(0.3f, 0.4f, timeMs = 80L),
+            NormalizedPoint(0.5f, 0.6f, timeMs = 160L),
+        )
+        val preview = notePreviewAnnotation(
+            type = AnnotationType.PEN,
+            color = 0xFF123456.toInt(),
+            width = 0.004f,
+            points = points,
+            opacity = 0.8f,
+            penStyle = PenStyle.FOUNTAIN,
+            layerOpacity = 0.5f,
+        )
+
+        assertEquals(listOf(0L, 80L, 160L), preview.timesMs)
+        assertEquals(0.4f, preview.opacity, 0.0001f)
+        assertEquals(points, preview.points)
+    }
+
+    @Test
+    fun `untimed wet preview stays backward compatible`() {
+        val preview = notePreviewAnnotation(
+            type = AnnotationType.PEN,
+            color = 0xFF123456.toInt(),
+            width = 0.004f,
+            points = listOf(NormalizedPoint(0.1f, 0.2f), NormalizedPoint(0.3f, 0.4f)),
+            opacity = 1f,
+            penStyle = PenStyle.BALLPOINT,
+        )
+        assertNull(preview.timesMs)
+    }
 }

@@ -69,10 +69,9 @@ object NotePaper {
         val moved = page.annotations.map { annotation ->
             annotation.copy(
                 points = annotation.points.map { point ->
-                    NormalizedPoint(
+                    point.copy(
                         x = (point.x * oldWidth + shiftX) / newWidth,
                         y = (point.y * oldHeight + shiftY) / newHeight,
-                        pressure = point.pressure,
                     )
                 },
                 width = (annotation.width * widthFactor).coerceAtLeast(MIN_NORMALIZED),
@@ -121,16 +120,14 @@ object NotePaper {
         val rotated = page.annotations.map { annotation ->
             val points = annotation.points.map { point ->
                 if (clockwise) {
-                    NormalizedPoint(
+                    point.copy(
                         x = 1f - point.y,
                         y = point.x,
-                        pressure = point.pressure,
                     )
                 } else {
-                    NormalizedPoint(
+                    point.copy(
                         x = point.y,
                         y = 1f - point.x,
-                        pressure = point.pressure,
                     )
                 }
             }

@@ -212,7 +212,7 @@ class NoteLayersTest {
         val visible = NoteLayers.visibleAnnotations(original)
 
         assertEquals(
-            listOf("locked-ink", "shown-ink", "stale-ink"),
+            listOf("stale-ink", "locked-ink", "shown-ink"),
             visible.map { it.id },
         )
     }
@@ -234,6 +234,49 @@ class NoteLayersTest {
             listOf("legacy", "top-ink"),
             NoteLayers.visibleAnnotations(shown).map { it.id },
         )
+    }
+
+    @Test
+    fun renderAnnotations_sortsByLayerStackAndKeepsWithinLayerOrder() {
+        val original = page(
+            layers = listOf(layer("bottom"), layer("top")),
+            annotations = listOf(
+                ink("top-first", "top"),
+                ink("bottom-first", "bottom"),
+                ink("top-second", "top"),
+                ink("bottom-second", "bottom"),
+            ),
+        )
+
+        assertEquals(
+            listOf("bottom-first", "bottom-second", "top-first", "top-second"),
+            NoteLayers.renderAnnotations(original).map { it.id },
+        )
+    }
+
+    @Test
+    fun renderAnnotations_appliesLayerOpacityOnceAndHonorsHiddenFlag() {
+        val original = page(
+            layers = listOf(
+                layer("bottom", opacity = 0.5f),
+                layer("hidden", visible = false, opacity = 0.4f),
+                layer("top", opacity = 0.8f),
+            ),
+            annotations = listOf(
+                ink("bottom", "bottom").copy(opacity = 0.6f),
+                ink("hidden", "hidden"),
+                ink("top", "top").copy(opacity = 0.5f),
+            ),
+        )
+
+        val rendered = NoteLayers.renderAnnotations(original)
+        assertEquals(listOf("bottom", "top"), rendered.map { it.id })
+        assertEquals(0.3f, rendered[0].opacity, 0.0001f)
+        assertEquals(0.4f, rendered[1].opacity, 0.0001f)
+
+        val withHidden = NoteLayers.renderAnnotations(original, includeHiddenLayers = true)
+        assertEquals(listOf("bottom", "hidden", "top"), withHidden.map { it.id })
+        assertEquals(0.4f, withHidden[1].opacity, 0.0001f)
     }
 
     @Test

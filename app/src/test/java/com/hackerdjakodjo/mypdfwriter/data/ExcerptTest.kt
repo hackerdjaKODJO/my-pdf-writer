@@ -3,9 +3,13 @@ package com.hackerdjakodjo.mypdfwriter.data
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class ExcerptTest {
+    @get:Rule
+    val temporaryFolder = TemporaryFolder()
 
     @Test
     fun excerptJsonRoundTripKeepsFields() {
@@ -43,5 +47,16 @@ class ExcerptTest {
         val restored = Excerpt.listFromJson(Excerpt.listToJson(excerpts))
 
         assertEquals(excerpts, restored)
+    }
+
+    @Test
+    fun storeSaveReportsCanonicalReadbackSuccess() {
+        val store = ExcerptStore(temporaryFolder.newFolder("excerpts"))
+        val excerpts = listOf(
+            Excerpt(id = "a", pageIndex = 0, text = "첫 번째", createdAt = 10L),
+            Excerpt(id = "b", pageIndex = 3, text = "두 번째", createdAt = 20L),
+        )
+        assertTrue(store.save("doc", excerpts))
+        assertEquals(excerpts.sortedByDescending { it.createdAt }, store.load("doc"))
     }
 }

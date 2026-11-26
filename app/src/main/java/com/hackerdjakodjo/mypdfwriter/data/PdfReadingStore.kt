@@ -18,19 +18,21 @@ class PdfReadingStore(context: Context) {
     }
 
     @Synchronized
-    fun save(docId: String, state: PdfReadingState) {
-        if (docId.isBlank()) return
+    fun save(docId: String, state: PdfReadingState): Boolean {
+        if (docId.isBlank()) return false
         dir.mkdirs()
         val target = File(dir, "$docId.json")
         val tmp = File(dir, "$docId.json.tmp")
-        runCatching {
+        return runCatching {
             tmp.writeText(state.toJson().toString())
             if (!tmp.renameTo(target)) {
                 tmp.copyTo(target, overwrite = true)
                 tmp.delete()
             }
-        }.onFailure {
+            load(docId) == state
+        }.getOrElse {
             tmp.delete()
+            false
         }
     }
 

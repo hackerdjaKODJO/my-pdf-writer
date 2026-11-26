@@ -200,13 +200,28 @@ object StudyNoteBuilder {
      * when the reader has no study note for the open document yet. It is not
      * persisted here; the caller decides whether to save it detached.
      */
-    fun blankStudyNote(source: StudySource): Notebook = Notebook(
-        title = suggestedTitle(source),
-        coverColor = DEFAULT_COVER_COLOR,
-        pages = listOf(NotePage(template = PaperTemplate.LINED)),
-        sourceDocumentName = source.docName.trim(),
-        sourceDocumentUri = source.docUri?.trim().orEmpty(),
-    ).normalized()
+    fun blankStudyNote(source: StudySource): Notebook {
+        val sourceUri = source.docUri?.trim().orEmpty()
+        return Notebook(
+            title = suggestedTitle(source),
+            coverColor = DEFAULT_COVER_COLOR,
+            pages = listOf(
+                NotePage(
+                    template = PaperTemplate.LINED,
+                    sourceLink = sourceUri.takeIf { it.isNotBlank() }?.let { uri ->
+                        StudySourceLink(
+                            uri = uri,
+                            docId = source.docId,
+                            sourcePage = 0,
+                            fingerprint = source.contentFingerprint,
+                        ).normalized()
+                    },
+                ),
+            ),
+            sourceDocumentName = source.docName.trim(),
+            sourceDocumentUri = sourceUri,
+        ).normalized()
+    }
 
     /**
      * Finds the notebook already linked to [source] in a library snapshot. Exact

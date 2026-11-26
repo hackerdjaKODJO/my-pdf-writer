@@ -45,11 +45,11 @@ class NoteMenuAndStrokeE2ETest {
     @Test
     fun noteMenuKeepsFourStudentSectionsAndTenInkOptions() {
         assertEquals(
-            listOf("노트", "복습", "내보내기", "도움말"),
+            listOf("노트", "추가", "파일", "설정"),
             NOTE_MENU_SECTION_ORDER.map { it.label },
         )
-        assertFalse("학습 must be renamed 복습", NOTE_MENU_SECTION_ORDER.any { it.label == "학습" })
-        assertEquals("복습 카드", NOTE_REVIEW_CARDS_LABEL)
+        assertFalse("legacy 학습 section must be gone", NOTE_MENU_SECTION_ORDER.any { it.label == "학습" })
+        assertEquals("카드", NOTE_REVIEW_CARDS_LABEL)
         assertEquals(10, NOTE_INK_SETTINGS.size)
         val supporting = noteInkSettingsSupportingLabel()
         assertTrue("ink settings must announce the real option count: $supporting", supporting.contains("10가지"))
@@ -60,18 +60,18 @@ class NoteMenuAndStrokeE2ETest {
         val menu = composeRule.onNode(hasScrollToIndexAction())
         menu.performScrollToNode(hasText("노트"))
         assertTrue(composeRule.onAllNodesWithText("노트").fetchSemanticsNodes().isNotEmpty())
-        menu.performScrollToNode(hasText("복습"))
-        assertTrue(composeRule.onAllNodesWithText("복습").fetchSemanticsNodes().isNotEmpty())
-        menu.performScrollToNode(hasText("복습 카드"))
-        composeRule.onNodeWithText("복습 카드").assertExists()
+        menu.performScrollToNode(hasText("추가"))
+        assertTrue(composeRule.onAllNodesWithText("추가").fetchSemanticsNodes().isNotEmpty())
+        menu.performScrollToNode(hasText("카드"))
+        composeRule.onNodeWithText("카드").assertExists()
         assertFalse(
             "legacy 학습 카드 label must be gone",
             composeRule.onAllNodesWithText("학습 카드").fetchSemanticsNodes().isNotEmpty(),
         )
-        menu.performScrollToNode(hasText("내보내기"))
-        assertTrue(composeRule.onAllNodesWithText("내보내기").fetchSemanticsNodes().isNotEmpty())
-        menu.performScrollToNode(hasText("도움말"))
-        assertTrue(composeRule.onAllNodesWithText("도움말").fetchSemanticsNodes().isNotEmpty())
+        menu.performScrollToNode(hasText("파일"))
+        assertTrue(composeRule.onAllNodesWithText("파일").fetchSemanticsNodes().isNotEmpty())
+        menu.performScrollToNode(hasText("설정"))
+        assertTrue(composeRule.onAllNodesWithText("설정").fetchSemanticsNodes().isNotEmpty())
         menu.performScrollToNode(hasText("필기 설정"))
         composeRule.onNodeWithText(supporting).assertExists()
     }

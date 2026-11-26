@@ -25,6 +25,8 @@ data class NoteExportOptions(
     val currentPageIndex: Int = 0,
     val selectedPageIds: Set<String> = emptySet(),
     val includeHiddenLayers: Boolean = false,
+    /** Interactive checklists are note content and export by default. */
+    val includeChecklists: Boolean = true,
     val suggestedFileName: String = "",
 ) {
     /**

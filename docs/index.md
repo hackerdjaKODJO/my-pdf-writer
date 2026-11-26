@@ -42,6 +42,9 @@
 - [Unobtrusive PDF navigation — 0.8.70](pdf-bottom-nav-0870.md)
 - [Continuous-reader pan-after-zoom regression — 0.8.72](continuous-pan-regression-0872.md)
 - [Continuous pan left-edge cutoff — 0.8.73](continuous-pan-left-edge-0873.md)
+- [Ink quality contract — 0.8.90](ink-quality-0890.md)
+- [Stability and PDF↔note links — 0.8.91](stability-links-0891.md)
+- [EasyNotes-inspired fast ink and capture — 0.8.92](easynote-handwriting-0892.md)
 
 ## 문의
 

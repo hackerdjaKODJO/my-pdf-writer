@@ -16,16 +16,21 @@ class ExcerptStore internal constructor(private val dir: File) {
                 .sortedByDescending { entry -> entry.createdAt }
         } ?: emptyList()
 
-    fun save(docId: String, excerpts: List<Excerpt>) {
+    fun save(docId: String, excerpts: List<Excerpt>): Boolean {
+        if (docId.isBlank()) return false
         dir.mkdirs()
         val target = File(dir, "$docId.json")
         val tmp = File(dir, "$docId.json.tmp")
-        runCatching {
+        return runCatching {
             tmp.writeText(Excerpt.listToJson(excerpts).toString())
             if (!tmp.renameTo(target)) {
                 tmp.copyTo(target, overwrite = true)
                 tmp.delete()
             }
+            load(docId) == excerpts.sortedByDescending { it.createdAt }
+        }.getOrElse {
+            tmp.delete()
+            false
         }
     }
 

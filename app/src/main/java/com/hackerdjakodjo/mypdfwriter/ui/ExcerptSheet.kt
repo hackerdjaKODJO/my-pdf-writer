@@ -65,7 +65,10 @@ fun ExcerptSheet(
     /** Optional integration hook; the viewer supplies it to open [StudyNoteSheet]. */
     onStudyNote: (() -> Unit)? = null,
     /** Optional drag-and-drop hook; rows become draggable when it is supplied. */
-    onDropExcerpt: ((Excerpt) -> Unit)? = null,
+    onDropExcerpt: ((PdfStudyCapture) -> Boolean)? = null,
+    captureForExcerpt: (Excerpt) -> PdfStudyCapture? = { null },
+    docId: String? = null,
+    fingerprint: String? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showTitleDialog by remember { mutableStateOf(false) }
@@ -117,13 +120,10 @@ fun ExcerptSheet(
             if (dropHandler != null) {
                 Spacer(Modifier.size(8.dp))
                 StudyNoteDropTarget(
-                    onDrop = { text, pageIndex ->
-                        val dropped = excerpts.firstOrNull {
-                            it.pageIndex == pageIndex && it.text.trim() == text
-                        } ?: Excerpt(pageIndex = pageIndex, text = text)
-                        dropHandler(dropped)
-                    },
+                    onDrop = { capture -> dropHandler(capture) },
                     caption = "발췌 카드를 길게 눌러 여기로 끌어다 놓으세요",
+                    expectedDocId = docId,
+                    expectedFingerprint = fingerprint,
                 )
             }
             Spacer(Modifier.size(12.dp))
@@ -144,9 +144,11 @@ fun ExcerptSheet(
                     contentPadding = PaddingValues(bottom = 8.dp),
                 ) {
                     items(excerpts, key = { it.id }) { excerpt ->
+                        val capture = captureForExcerpt(excerpt)
                         ExcerptRow(
                             excerpt = excerpt,
-                            draggable = onDropExcerpt != null,
+                            draggable = onDropExcerpt != null && capture != null,
+                            capture = capture,
                             onJump = { onJump(excerpt.pageIndex) },
                             onTranslate = { onTranslate(excerpt.text, translateTarget) },
                             onDictionary = { onDictionary(excerpt.text) },
@@ -192,6 +194,7 @@ fun ExcerptSheet(
 private fun ExcerptRow(
     excerpt: Excerpt,
     draggable: Boolean,
+    capture: PdfStudyCapture?,
     onJump: () -> Unit,
     onTranslate: () -> Unit,
     onDictionary: () -> Unit,
@@ -212,8 +215,8 @@ private fun ExcerptRow(
         modifier = Modifier
             .fillMaxWidth()
             .then(
-                if (draggable) {
-                    Modifier.studyNoteDragSource(excerpt.text, excerpt.pageIndex)
+                if (draggable && capture != null) {
+                    Modifier.studyNoteDragSource(capture)
                 } else {
                     Modifier
                 },

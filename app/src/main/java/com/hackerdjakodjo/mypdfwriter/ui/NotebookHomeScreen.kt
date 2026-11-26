@@ -116,6 +116,7 @@ import com.hackerdjakodjo.mypdfwriter.data.CoverStyle
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NotebookDraft
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
+import com.hackerdjakodjo.mypdfwriter.data.QuickNoteKind
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import kotlin.math.roundToInt
 import java.text.SimpleDateFormat
@@ -209,6 +210,7 @@ fun NotebookHomeScreen(
     pdfs: List<RecentDoc>,
     onOpenNotebook: (String) -> Unit,
     onCreateNotebook: (NotebookDraft) -> Unit,
+    onQuickCapture: (QuickNoteKind) -> Unit = {},
     onOpenPdf: (RecentDoc) -> Unit,
     onImportPdf: () -> Unit,
     onCreatePdf: () -> Unit,
@@ -518,6 +520,7 @@ fun NotebookHomeScreen(
                                 query = updated.query
                             },
                             onCreate = { showCreate = true },
+                            onQuickCapture = onQuickCapture,
                         )
 
                         LibrarySection.PDF -> PdfSection(
@@ -865,16 +868,16 @@ private fun HomeSectionSegments(
 }
 
 /**
- * Home start: one primary action plus exactly one secondary create button. The
- * primary slot resumes a returning student and imports for a new student; the
- * quick-study entry stays reachable but is de-emphasised so it never competes
- * with the primary action.
+ * Home start: one primary action, the normal 새 노트 action, and a compact
+ * quick-capture row for 빠른 메모/체크리스트. The quick-study entry stays
+ * reachable but de-emphasised so it never competes with the primary action.
  */
 @Composable
 private fun StudentHomeStart(
     primary: HomePrimaryAction,
     onPrimary: () -> Unit,
     onCreateNote: () -> Unit,
+    onQuickCapture: (QuickNoteKind) -> Unit,
     onOpenQuickStudy: () -> Unit,
 ) {
     val labels = homeQuickActionLabels(primary == HomePrimaryAction.CONTINUE)
@@ -907,6 +910,23 @@ private fun StudentHomeStart(
                     onClick = onCreateNote,
                     modifier = Modifier.weight(1f),
                 )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            QuickNoteKind.entries.forEach { kind ->
+                OutlinedButton(
+                    onClick = { onQuickCapture(kind) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = MIN_TARGET_DP.dp)
+                        .semantics { contentDescription = kind.label },
+                ) {
+                    Text(kind.label, maxLines = STUDENT_LABEL_MAX_LINES)
+                }
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -1002,6 +1022,7 @@ private fun NotesSection(
     actions: NotebookActions,
     onClearFilters: () -> Unit,
     onCreate: () -> Unit,
+    onQuickCapture: (QuickNoteKind) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         if (homeShowsLibraryControls(visible.size, filterState.hasActiveFilters)) {
@@ -1035,6 +1056,7 @@ private fun NotesSection(
                             primary = homePrimaryAction(hasContent),
                             onPrimary = if (hasContent) onContinue else onImportPdf,
                             onCreateNote = onCreate,
+                            onQuickCapture = onQuickCapture,
                             onOpenQuickStudy = onOpenQuickStudy,
                         )
                     }
@@ -1069,6 +1091,7 @@ private fun NotesSection(
                             primary = homePrimaryAction(hasContent),
                             onPrimary = if (hasContent) onContinue else onImportPdf,
                             onCreateNote = onCreate,
+                            onQuickCapture = onQuickCapture,
                             onOpenQuickStudy = onOpenQuickStudy,
                         )
                     }
@@ -1095,6 +1118,7 @@ private fun NotesSection(
                             primary = homePrimaryAction(hasContent),
                             onPrimary = if (hasContent) onContinue else onImportPdf,
                             onCreateNote = onCreate,
+                            onQuickCapture = onQuickCapture,
                             onOpenQuickStudy = onOpenQuickStudy,
                         )
                     }

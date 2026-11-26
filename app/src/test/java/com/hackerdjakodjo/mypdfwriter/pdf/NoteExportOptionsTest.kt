@@ -72,6 +72,8 @@ class NoteExportOptionsTest {
         val include = NoteExportOptions(includeHiddenLayers = true)
 
         assertFalse(NoteExportOptions().includeHiddenLayers)
+        assertTrue(NoteExportOptions().includeChecklists)
+        assertFalse(NoteExportOptions(includeChecklists = false).includeChecklists)
         assertTrue(include.includeHiddenLayers)
     }
 

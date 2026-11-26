@@ -75,6 +75,8 @@ import com.hackerdjakodjo.mypdfwriter.data.PageOrientation
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
 import com.hackerdjakodjo.mypdfwriter.data.PaperTint
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
+import com.hackerdjakodjo.mypdfwriter.pdf.ChecklistCardPainter
+import com.hackerdjakodjo.mypdfwriter.pdf.NoteCardPainter
 import kotlinx.coroutines.launch
 
 /**
@@ -720,7 +722,19 @@ private fun StudioPagePreview(
             }
             AnnotationPainter.draw(
                 canvas = canvas.nativeCanvas,
-                annotations = page.annotations,
+                annotations = NoteLayers.renderAnnotations(page),
+                width = size.width,
+                height = size.height,
+            )
+            ChecklistCardPainter.draw(
+                canvas = canvas.nativeCanvas,
+                cards = page.checklists,
+                width = size.width,
+                height = size.height,
+            )
+            NoteCardPainter.draw(
+                canvas = canvas.nativeCanvas,
+                cards = NoteCardPainter.visibleMemoCards(page, true),
                 width = size.width,
                 height = size.height,
             )

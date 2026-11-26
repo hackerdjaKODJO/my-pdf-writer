@@ -82,9 +82,11 @@ fun StudyPaneSheet(
     onPageIndexChange: (Int) -> Unit,
     onExportPdf: (NoteExportOptions) -> Unit,
     onOpenSourcePdf: (Int) -> Unit,
-    onCaptureExcerpt: (text: String, pageIndex: Int) -> Boolean,
+    onCaptureExcerpt: (PdfStudyCapture) -> Boolean,
     onJumpToSourcePage: (sourcePageIndex: Int, notePageIndex: Int) -> Unit,
     onOpenHelp: () -> Unit = {},
+    sourceDocId: String? = null,
+    sourceFingerprint: String? = null,
 ) {
     var showLinks by remember(notebook.id) { mutableStateOf(false) }
     var showNoteTools by remember(notebook.id) { mutableStateOf(true) }
@@ -94,13 +96,14 @@ fun StudyPaneSheet(
     val linkCount = remember(notebook.pages) {
         StudyNoteSourceLinks.fromNotebook(notebook).size
     }
-    val handleDropExcerpt: (String, Int) -> Unit = { text, page ->
-        val added = onCaptureExcerpt(text, page)
+    val handleDropExcerpt: (PdfStudyCapture) -> Boolean = { capture ->
+        val added = onCaptureExcerpt(capture)
         captureMessage = if (added) {
-            "PDF p.${page + 1} 발췌를 추가했습니다"
+            "PDF p.${capture.sourcePage + 1} 발췌를 추가했습니다"
         } else {
             "발췌를 추가하지 못했습니다"
         }
+        added
     }
 
     LaunchedEffect(captureMessage) {
@@ -147,6 +150,8 @@ fun StudyPaneSheet(
                     onOpenLinks = { showLinks = true },
                     onClose = onDismiss,
                     onDropExcerpt = handleDropExcerpt,
+                    sourceDocId = sourceDocId,
+                    sourceFingerprint = sourceFingerprint,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(
@@ -184,7 +189,9 @@ private fun StudyPaneFloatingHeader(
     onHeightFractionChange: (Float) -> Unit,
     onOpenLinks: () -> Unit,
     onClose: () -> Unit,
-    onDropExcerpt: (text: String, pageIndex: Int) -> Unit,
+    onDropExcerpt: (PdfStudyCapture) -> Boolean,
+    sourceDocId: String?,
+    sourceFingerprint: String?,
     modifier: Modifier = Modifier,
 ) {
     // The pane occupies heightFraction of the PDF content area, so its measured
@@ -201,6 +208,8 @@ private fun StudyPaneFloatingHeader(
     val dropModifier = rememberStudyNoteDropTarget(
         onDrop = onDropExcerpt,
         onActiveChange = { dropActive = it },
+        expectedDocId = sourceDocId,
+        expectedFingerprint = sourceFingerprint,
     )
     val subtitle = when {
         captureMessage != null -> captureMessage

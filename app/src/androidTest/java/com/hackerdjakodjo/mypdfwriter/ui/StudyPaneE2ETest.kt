@@ -49,7 +49,7 @@ class StudyPaneE2ETest {
                     onPageIndexChange = {},
                     onExportPdf = { _: NoteExportOptions -> },
                     onOpenSourcePdf = {},
-                    onCaptureExcerpt = { _, _ -> true },
+                    onCaptureExcerpt = { _: PdfStudyCapture -> true },
                     onJumpToSourcePage = { _, _ -> },
                 )
             }
@@ -82,8 +82,8 @@ class StudyPaneE2ETest {
         composeRule.onNodeWithText("페이지").assertExists()
 
         val menu = composeRule.onNode(hasScrollToIndexAction())
-        menu.performScrollToNode(hasText("복습 카드"))
-        composeRule.onNodeWithText("복습 카드").performClick()
+        menu.performScrollToNode(hasText("카드"))
+        composeRule.onNodeWithText("카드").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithText("가리기 카드").fetchSemanticsNodes().isNotEmpty()
         }
@@ -113,7 +113,7 @@ class StudyPaneE2ETest {
                     onPageIndexChange = {},
                     onExportPdf = { _: NoteExportOptions -> },
                     onOpenSourcePdf = {},
-                    onCaptureExcerpt = { _, _ -> true },
+                    onCaptureExcerpt = { _: PdfStudyCapture -> true },
                     onJumpToSourcePage = { _, _ -> },
                 )
             }

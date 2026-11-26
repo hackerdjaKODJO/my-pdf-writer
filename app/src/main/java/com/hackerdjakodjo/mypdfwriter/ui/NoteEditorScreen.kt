@@ -144,6 +144,8 @@ import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
 import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
+import com.hackerdjakodjo.mypdfwriter.pdf.ChecklistCardPainter
+import com.hackerdjakodjo.mypdfwriter.pdf.NoteCardPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportOptions
 import com.hackerdjakodjo.mypdfwriter.pdf.NoteExportPageRange
 import com.hackerdjakodjo.mypdfwriter.pdf.noteExportFileName
@@ -337,20 +339,6 @@ fun NoteEditorScreen(
     val activeLayer = page.layers.firstOrNull { it.id == activeLayerId && !it.locked && it.visible }
         ?: page.layers.firstOrNull { !it.locked && it.visible }
         ?: page.layers.firstOrNull()
-    // Depends only on the immutable page snapshot, so a recomposition from any
-    // other state (zoom, replay position, sheets) must not re-walk the layers.
-    val visibleAnnotations = remember(page) {
-        NoteLayers.visibleAnnotations(page).map { annotation ->
-            val layer = page.layers.firstOrNull { it.id == annotation.layerId }
-                ?: page.layers.firstOrNull()
-            if (layer != null && layer.opacity < 1f) {
-                annotation.copy(opacity = (annotation.opacity * layer.opacity).coerceIn(0f, 1f))
-            } else {
-                annotation
-            }
-        }
-    }
-    val visiblePage = page.copy(annotations = visibleAnnotations)
     val annotationProgress: (Annotation) -> Float = { annotation ->
         if (replayNote != null && replayNote?.pageIndex != safeIndex) 1f
         else annotationRevealFraction(annotation, replayNote, replayPositionMs)
@@ -1450,7 +1438,8 @@ fun NoteEditorScreen(
             if (wide) {
                 Row(Modifier.fillMaxSize()) {
                     NoteCanvasPane(
-                        page = visiblePage,
+                        page = page,
+                        activeLayerId = activeLayer?.id,
                         tool = tool,
                         color = color,
                         strokeWidth = if (tool == Tool.HIGHLIGHT) highlightWidth else strokeWidth,
@@ -1527,7 +1516,8 @@ fun NoteEditorScreen(
                 }
             } else {
                 NoteCanvasPane(
-                    page = visiblePage,
+                    page = page,
+                    activeLayerId = activeLayer?.id,
                     tool = tool,
                     color = color,
                     strokeWidth = if (tool == Tool.HIGHLIGHT) highlightWidth else strokeWidth,
@@ -2349,6 +2339,7 @@ private fun NoteCanvasPane(
     smoothHandwriting: Boolean = NOTE_SMOOTH_HANDWRITING_DEFAULT,
     simplifyPoints: Boolean = NOTE_SIMPLIFY_POINTS_DEFAULT,
     selectionBounds: NoteSelectionBounds?,
+    activeLayerId: String?,
     annotationProgress: (Annotation) -> Float,
     maskingCards: List<MaskingCard> = emptyList(),
     showMaskingCards: Boolean = false,
@@ -2398,6 +2389,7 @@ private fun NoteCanvasPane(
             smoothHandwriting = smoothHandwriting,
             simplifyPoints = simplifyPoints,
             selectionBounds = selectionBounds,
+            activeLayerId = activeLayerId,
             annotationProgress = annotationProgress,
             maskingCards = maskingCards,
             showMaskingCards = showMaskingCards,
@@ -3668,6 +3660,7 @@ private fun NoteExportOptionsSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var range by remember { mutableStateOf(NoteExportPageRange.ALL) }
     var includeHiddenLayers by remember { mutableStateOf(false) }
+    var includeChecklists by remember { mutableStateOf(true) }
     val selectedAvailable = selectedPageIds.isNotEmpty()
     val safeCurrent = if (pageCount <= 0) 0 else currentIndex.coerceIn(0, pageCount - 1)
     val safeRange = if (range == NoteExportPageRange.SELECTED && !selectedAvailable) {
@@ -3774,6 +3767,38 @@ private fun NoteExportOptionsSheet(
                     )
                 }
             }
+            Surface(
+                onClick = { includeChecklists = !includeChecklists },
+                shape = RoundedCornerShape(12.dp),
+                color = Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = MIN_TARGET_DP.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("체크리스트 포함", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            if (includeChecklists) {
+                                "항목과 완료 상태를 PDF에 함께 저장"
+                            } else {
+                                "필기와 카드만 내보냄"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = includeChecklists,
+                        onCheckedChange = { includeChecklists = it },
+                    )
+                }
+            }
             Text(
                 "파일 이름: $fileName",
                 style = MaterialTheme.typography.labelMedium,
@@ -3802,6 +3827,7 @@ private fun NoteExportOptionsSheet(
                                 currentPageIndex = safeCurrent,
                                 selectedPageIds = selectedPageIds,
                                 includeHiddenLayers = includeHiddenLayers,
+                                includeChecklists = includeChecklists,
                                 suggestedFileName = fileName,
                             ),
                         )
@@ -3995,7 +4021,19 @@ private fun NotePagePreview(
             }
             AnnotationPainter.draw(
                 canvas = canvas.nativeCanvas,
-                annotations = page.annotations,
+                annotations = NoteLayers.renderAnnotations(page),
+                width = size.width,
+                height = size.height,
+            )
+            ChecklistCardPainter.draw(
+                canvas = canvas.nativeCanvas,
+                cards = page.checklists,
+                width = size.width,
+                height = size.height,
+            )
+            NoteCardPainter.draw(
+                canvas = canvas.nativeCanvas,
+                cards = NoteCardPainter.visibleMemoCards(page, true),
                 width = size.width,
                 height = size.height,
             )

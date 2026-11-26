@@ -24,9 +24,11 @@ import androidx.test.core.app.ApplicationProvider
 import com.hackerdjakodjo.mypdfwriter.MainActivity
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.OnboardingStore
+import com.hackerdjakodjo.mypdfwriter.data.QuickNoteKind
 import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import com.hackerdjakodjo.mypdfwriter.ui.theme.MyPdfWriterTheme
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -69,12 +71,14 @@ class HomeStartE2ETest {
         showOnboardingPrompt: Boolean = false,
         onOpenOnboarding: () -> Unit = {},
         onDismissOnboardingPrompt: () -> Unit = {},
+        onQuickCapture: (QuickNoteKind) -> Unit = {},
     ) {
         NotebookHomeScreen(
             notebooks = notebooks,
             pdfs = pdfs,
             onOpenNotebook = {},
             onCreateNotebook = {},
+            onQuickCapture = onQuickCapture,
             onOpenPdf = {},
             onImportPdf = {},
             onCreatePdf = {},
@@ -102,7 +106,7 @@ class HomeStartE2ETest {
         }
         composeRule.waitForIdle()
 
-        listOf("내 노트", "PDF 가져오기", "새 노트").forEach { label ->
+        listOf("내 노트", "PDF 가져오기", "새 노트", "빠른 메모", "체크리스트").forEach { label ->
             val matches = composeRule.onAllNodesWithText(label).fetchSemanticsNodes()
             assertTrue("home must expose '$label'", matches.isNotEmpty())
         }
@@ -118,6 +122,22 @@ class HomeStartE2ETest {
         listOf("노트 섹션", "PDF 섹션", "태그 섹션").forEach { label ->
             composeRule.onNodeWithContentDescription(label).assertExists()
         }
+    }
+
+    @Test
+    fun quickCaptureButtonsReportTheirKindWithoutOpeningCreateDialog() {
+        val captured = mutableListOf<QuickNoteKind>()
+        composeRule.setContent {
+            MyPdfWriterTheme { home(onQuickCapture = { captured.add(it) }) }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("빠른 메모").performClick()
+        composeRule.onNodeWithText("체크리스트").performClick()
+        composeRule.waitForIdle()
+
+        assertEquals(listOf(QuickNoteKind.MEMO, QuickNoteKind.CHECKLIST), captured)
+        composeRule.onNodeWithText("새 노트 만들기").assertDoesNotExist()
     }
 
     @Test
