@@ -50,6 +50,7 @@
 - [Favorite-pen strip removal — 0.8.95](favorites-removal-0895.md)
 - [Slim PDF/note split divider — 0.8.96](slim-split-divider-0896.md)
 - [Multi-agent UI simplification — 0.8.97](ui-simplification-0897.md)
+- [Line-only study pane — 0.8.98](line-only-study-pane-0898.md)
 
 ## 문의
 

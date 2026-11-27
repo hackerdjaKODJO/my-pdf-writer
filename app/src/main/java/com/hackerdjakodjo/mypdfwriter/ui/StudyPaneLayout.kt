@@ -27,29 +27,8 @@ internal const val STUDY_PANE_DISMISS_OVERSHOOT = 0.06f
 /** Presets shown in the pane header's tiny size popup. */
 internal val STUDY_PANE_PRESETS = listOf(0.50f, 0.70f, 0.85f)
 
-/**
- * Floating header metrics (dp). The pane header is an overlay instead of a
- * full-width stack: one 40 dp row with a grip, title/source, size popup, link and
- * close actions. The whole header is the drop target, so a separate capture
- * toggle and strip are unnecessary.
- */
-internal const val STUDY_PANE_HEADER_ROW_HEIGHT_DP = MIN_TARGET_DP
-internal const val STUDY_PANE_HEADER_VERTICAL_PADDING_DP = 2
-internal const val STUDY_PANE_HEADER_SIDE_MARGIN_DP = 8
-internal const val STUDY_PANE_HEADER_TOP_MARGIN_DP = 4
-
-/** Height of the old handle + title + permanent capture strip header. */
-internal const val STUDY_PANE_LEGACY_STACKED_HEADER_HEIGHT_DP = 90
-
-internal fun studyPaneFloatingHeaderHeightDp(): Int =
-    STUDY_PANE_HEADER_ROW_HEIGHT_DP + STUDY_PANE_HEADER_VERTICAL_PADDING_DP * 2
-
-/**
- * Top inset the compact editor's contextual hint needs so it sits below the
- * floating header instead of behind it.
- */
-internal fun studyPaneFloatingHeaderInsetDp(): Int =
-    STUDY_PANE_HEADER_TOP_MARGIN_DP + studyPaneFloatingHeaderHeightDp()
+/** No header/inset: the note canvas starts immediately below the slim divider. */
+internal const val STUDY_PANE_TOP_INSET_DP = 0
 
 internal fun clampStudyPaneFraction(fraction: Float): Float {
     if (!fraction.isFinite()) return STUDY_PANE_DEFAULT_FRACTION

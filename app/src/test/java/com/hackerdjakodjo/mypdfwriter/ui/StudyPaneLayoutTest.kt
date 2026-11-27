@@ -167,12 +167,4 @@ class StudyPaneLayoutTest {
         assertEquals(0.85f, studyPanePresetAfterDoubleTap(0.35f), 0.0001f)
         assertTrue(studyPanePresetAfterDoubleTap(0.62f) in STUDY_PANE_PRESETS)
     }
-
-    @Test
-    fun `study pane header row keeps every header control tappable`() {
-        assertTrue(
-            "header row must keep 48dp controls accessible",
-            isAccessibleTarget(STUDY_PANE_HEADER_ROW_HEIGHT_DP),
-        )
-    }
 }

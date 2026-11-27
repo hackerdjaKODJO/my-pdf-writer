@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -135,13 +136,15 @@ internal enum class NoteMenuEntry(val section: NoteMenuSection) {
     INK_SETTINGS(NoteMenuSection.SETTINGS),
     EXPORT_PDF(NoteMenuSection.FILE),
     SOURCE_PDF(NoteMenuSection.FILE),
+    SOURCE_LINKS(NoteMenuSection.FILE),
     HELP(NoteMenuSection.SETTINGS),
 }
 
-/** Rows shown in the main sheet, in order: 9–11 depending on the note. */
+/** Rows shown in the main sheet, in order: 10–12 depending on available sources. */
 internal fun noteMenuEntries(
     hasRename: Boolean,
     hasSourcePdf: Boolean,
+    hasSourceLinks: Boolean = false,
 ): List<NoteMenuEntry> = buildList {
     if (hasRename) add(NoteMenuEntry.RENAME)
     add(NoteMenuEntry.PAGES)
@@ -152,6 +155,7 @@ internal fun noteMenuEntries(
     add(NoteMenuEntry.AUDIO)
     add(NoteMenuEntry.EXPORT_PDF)
     if (hasSourcePdf) add(NoteMenuEntry.SOURCE_PDF)
+    if (hasSourceLinks) add(NoteMenuEntry.SOURCE_LINKS)
     add(NoteMenuEntry.INK_SETTINGS)
     add(NoteMenuEntry.HELP)
 }
@@ -213,6 +217,7 @@ internal fun NoteMenuSheet(
     onInkSettings: () -> Unit,
     onExportPdf: () -> Unit,
     onOpenSourcePdf: (() -> Unit)?,
+    onOpenSourceLinks: (() -> Unit)? = null,
     onOpenHelp: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -220,6 +225,7 @@ internal fun NoteMenuSheet(
     val entries = noteMenuEntries(
         hasRename = onRename != null,
         hasSourcePdf = onOpenSourcePdf != null,
+        hasSourceLinks = onOpenSourceLinks != null,
     )
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -336,6 +342,13 @@ internal fun NoteMenuSheet(
                             title = "원본 PDF 열기",
                             supporting = "연결된 PDF에서 열기",
                             onClick = onOpenSourcePdf ?: {},
+                        )
+
+                        NoteMenuEntry.SOURCE_LINKS -> NoteMenuRow(
+                            icon = Icons.Outlined.Link,
+                            title = "원본 PDF 링크",
+                            supporting = "노트와 원본 PDF 페이지 함께 이동",
+                            onClick = onOpenSourceLinks ?: {},
                         )
 
                         NoteMenuEntry.HELP -> NoteMenuRow(

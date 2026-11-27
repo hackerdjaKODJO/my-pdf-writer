@@ -165,20 +165,19 @@ private const val NOTE_TRACE_TAG = "NoteEditor"
  * export sheet. Callers own the SAF launcher and pass the options to
  * [com.hackerdjakodjo.mypdfwriter.pdf.NoteExporter].
  *
- * [compact] is used by [StudyPaneSheet]: the study-pane header owns the title and
- * close action, so the editor drops its own top app bar, cell-phone hint strip and
+ * [compact] is used by [StudyPaneSheet]: the study pane has no title/header row,
+ * so the editor drops its own top app bar, cell-phone hint strip and
  * layout-consuming dock. The canvas fills the pane and a small translucent dock
  * floats near the bottom edge with the six primary tools, one style slot,
  * undo/redo, the note menu and the page pill. Every tool, sheet, page manager,
  * export, search, audio, layer, lasso, pressure and template action stays
  * reachable through the compact dock, page pill, page manager and note menu.
  *
- * [compactTopInsetDp] keeps the compact contextual hint below the study pane's
- * floating header without adding top padding to the canvas itself.
+ * [compactTopInsetDp] remains available for callers that overlay their own top
+ * chrome; the line-only study pane passes zero.
  *
- * [compactShowTools] is owned by the study-pane header toggle. Hidden tools remove
- * the floating dock entirely and leave a small `도구` restore pill in the bottom-end
- * corner; shown tools keep the six-tool dock and its style/undo/redo/menu/page row.
+ * [compactShowTools] can hide the floating dock and leave a small `도구` restore
+ * pill in the bottom-end corner. The line-only study pane keeps tools visible.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -190,6 +189,7 @@ fun NoteEditorScreen(
     onPageIndexChange: (Int) -> Unit,
     onExportPdf: (NoteExportOptions) -> Unit,
     onOpenSourcePdf: ((Int) -> Unit)? = null,
+    onOpenSourceLinks: (() -> Unit)? = null,
     compact: Boolean = false,
     compactTopInsetDp: Int = 0,
     compactShowTools: Boolean = true,
@@ -2161,6 +2161,12 @@ fun NoteEditorScreen(
                 }
             } else {
                 null
+            },
+            onOpenSourceLinks = onOpenSourceLinks?.let { openLinks ->
+                {
+                    showMenu = false
+                    openLinks()
+                }
             },
             onOpenHelp = {
                 showMenu = false

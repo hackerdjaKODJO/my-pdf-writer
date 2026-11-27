@@ -138,37 +138,8 @@ class NoteFloatingChromeTest {
     }
 
     @Test
-    fun `study pane floating header keeps one compact row`() {
-        val header = studyPaneFloatingHeaderHeightDp()
-        val expected = STUDY_PANE_HEADER_ROW_HEIGHT_DP +
-            STUDY_PANE_HEADER_VERTICAL_PADDING_DP * 2
-
-        assertEquals(expected, header)
-        // Header controls are now 48dp targets plus the same vertical padding.
-        assertEquals(52, header)
-        assertTrue("floating header should stay one compact row, was $header", header <= 56)
-        assertTrue(
-            "floating header stays well below the old stacked header",
-            header < STUDY_PANE_LEGACY_STACKED_HEADER_HEIGHT_DP,
-        )
-    }
-
-    @Test
-    fun `compact hint inset clears the floating header`() {
-        val header = studyPaneFloatingHeaderHeightDp()
-        val inset = studyPaneFloatingHeaderInsetDp()
-
-        assertEquals(STUDY_PANE_HEADER_TOP_MARGIN_DP + header, inset)
-        assertTrue(inset >= header)
-        assertTrue("hint inset should stay small, was $inset", inset < 64)
-        assertEquals(56, inset)
-    }
-
-    @Test
-    fun `study pane header margins preserve the floating look`() {
-        assertTrue(STUDY_PANE_HEADER_SIDE_MARGIN_DP >= 4)
-        assertTrue(STUDY_PANE_HEADER_TOP_MARGIN_DP >= 2)
-        assertTrue(STUDY_PANE_HEADER_ROW_HEIGHT_DP <= MIN_TARGET_DP)
+    fun `study pane reserves no header inset above the note canvas`() {
+        assertEquals(0, STUDY_PANE_TOP_INSET_DP)
     }
 
     @Test
