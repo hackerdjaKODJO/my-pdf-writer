@@ -74,11 +74,26 @@ class ViewerToolDockTest {
         assertEquals("타원", dockAnnotationLabel(Tool.ELLIPSE))
         assertEquals("밑줄", dockAnnotationLabel(Tool.UNDERLINE))
         assertEquals("취소선", dockAnnotationLabel(Tool.STRIKEOUT))
+        assertEquals("물결선", dockAnnotationLabel(Tool.SQUIGGLY))
         assertEquals("스탬프", dockAnnotationLabel(Tool.STAMP))
         assertEquals("서명", dockAnnotationLabel(Tool.SIGNATURE))
         assertEquals("가림", dockAnnotationLabel(Tool.REDACT))
         assertEquals("주석", dockAnnotationLabel(Tool.PEN))
         assertEquals("주석", dockAnnotationLabel(Tool.VIEW))
+    }
+
+    @Test
+    fun annotationEditIsAContextActionNotASeventhDockSlot() {
+        assertEquals(
+            listOf(ViewerContextAction.EDIT_ANNOTATIONS, ViewerContextAction.STYLE),
+            viewerContextActions(
+                Tool.PEN,
+                canUndo = false,
+                canRedo = false,
+                canEditAnnotations = true,
+            ),
+        )
+        assertEquals(6, viewerDockSlots.size)
     }
 
     @Test
@@ -113,6 +128,7 @@ class ViewerToolDockTest {
             Tool.ELLIPSE,
             Tool.UNDERLINE,
             Tool.STRIKEOUT,
+            Tool.SQUIGGLY,
             Tool.STAMP,
             Tool.SIGNATURE,
             Tool.REDACT,

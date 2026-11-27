@@ -38,6 +38,7 @@ class PdfAnnotationFilterTest {
                 AnnotationType.UNDERLINE,
                 AnnotationType.STRIKEOUT,
                 AnnotationType.SIGNATURE,
+                AnnotationType.SQUIGGLY,
             ),
             rows.map { it.type },
         )

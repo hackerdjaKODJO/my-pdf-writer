@@ -6,7 +6,7 @@
 광고·계정·인터넷 권한 없이 **기기 안에서만** 동작합니다.
 
 - **패키지**: `com.hackerdjakodjo.mypdfwriter`
-- **버전**: `0.8.99` (개발 빌드)
+- **버전**: `0.8.100` (개발 빌드)
 - **지원 OS**: Android 8.0 (API 26) 이상
 - **타깃 SDK**: 36 (Android 16)
 - **PC 인계 문서**: [`HANDOFF.md`](HANDOFF.md)
@@ -240,6 +240,7 @@ Android 16(Pixel 7 AVD)에서 다음 흐름을 직접 확인했습니다.
 
 - PDF 열기, 최근 문서 등록/제거, 빈 PDF 생성
 - 펜·형광펜·텍스트·사각형·화살표·지우개, 색/굵기 변경
+- PDF 주석 객체 편집: 선택·이동·크기/회전·복제·순서·삭제·내용/스타일 변경과 물결선
 - 실행 취소/다시 실행
 - 페이지 회전(90°/180°), 이동, 삭제, 빈 페이지 추가, 원본 구성 초기화
 - 회전된 페이지에서 텍스트·밑줄·형광펜이 함께 회전
@@ -250,11 +251,11 @@ Android 16(Pixel 7 AVD)에서 다음 흐름을 직접 확인했습니다.
   - 내보낸 PDF를 앱에서 다시 열어 편집 가능한 주석이 없음을 확인
 - **R8 릴리스 APK**에서 PDF 열기, 펜, 검색(2건), 페이지 회전, 내보내기 재검증
   - `release-r8-test.pdf` (14,545 bytes), `pdfinfo`: 3 pages, A4, Page rot 90
-- **단위 테스트 1329개 통과 · E2E 167개 케이스 컴파일** (페이지 회전/정규화, 주석 JSON, 노트북/레이어/북마크, 펜박스/선택,
+- **단위 테스트 1344개 통과 · E2E 168개 케이스 컴파일** (페이지 회전/정규화, 주석 JSON, 노트북/레이어/북마크, 펜박스/선택,
   발췌 JSON, OCR 범위, 페이지 정리, coalesced motion history, 체크리스트 내보내기 등) · 문서 바인딩 링크·저장 검증·복원 안전성 회귀 추가
 - 릴리스 APK 권한 확인: `INTERNET`/저장소/카메라/알림/광고 ID 없음
 - 네이티브 라이브러리 16 KB 페이지 정렬 확인 (`zipalign -c -P 16`)
-- 노트·PDF 도형 아이콘과 삼각형 커밋 E2E 2개를 `assembleDebugAndroidTest`로 컴파일 (실기기 실행 대기)
+- 노트·PDF 도형 아이콘/삼각형·주석 객체 편집 E2E 3개를 `assembleDebugAndroidTest`로 컴파일 (실기기 실행 대기)
 - Flexcil 필기 리뷰·기능 매트릭스: [`docs/flexcil-handwriting-review.md`](docs/flexcil-handwriting-review.md)
 - 템플릿 스튜디오 정책: [`docs/template-studio.md`](docs/template-studio.md)
 - PDF UX·텍스트 선택: [`docs/pdf-ux-selection-and-hub.md`](docs/pdf-ux-selection-and-hub.md)
@@ -440,6 +441,7 @@ app/src/test/java/com/hackerdjakodjo/mypdfwriter/data/
 - **v0.8.90**: 멀티 에이전트 필압·필기감 개선 — 삼성 노트·StarNote·Flexcil 정적 분석을 참고해 점별 타임스탬프 기반 압력·속도·dwell·재생 처리, 비정상 압력값 안전화, 렌더 스케일 독립 잉크 효과, 연필 재생 안정화, 노트 미리보기/최종 확정 일치, PDF·노트 공통 압력 반경 지우개와 PDF 스타일러스 지우개 지원 (versionCode 99)
 - **v0.8.91**: 멀티 에이전트 안정성·PDF↔노트 링크 강화 — URI/docId/콘텐츠 지문 기반 문서 식별, 원본 페이지 단위 링크와 페이지 편집 후 재해석, 손실/변경/잘못된 문서 명시적 처리, pane·드래그 문서 바인딩, 복원 시 pane 폐기, 노트 저장 검증·실패 전파, canonical/.tmp 함께 삭제, 같은 문서 재열기 flush, 백업/복원 중 변경 차단 및 lifecycle flush (versionCode 100)
 - **v0.8.92**: EasyNotes 정적 분석 기반 빠른 필기·캡처 — dry/wet 캔버스 분리, coalesced MotionEvent history와 제한적 예측, ON_STOP의 노트/PDF/읽기/발췌 통합 flush, docId+지문+원본 페이지 재검증 드래그, 페이지 회전 타이밍 보존, 레이어 순서·투명도 통일, 원터치 빠른 메모/체크리스트와 체크리스트 PDF 내보내기 (versionCode 101)
+- **v0.8.100**: Foxit-style PDF 주석 객체 편집 1단계 — 앱에서 만든 주석을 탭해 이동·크기/회전·복제·순서 변경·삭제하고 내용·색상·굵기·불투명도·글자 크기·회전을 편집, 주석 편집 문맥 행/시트/선택 바 추가, 물결선 도구와 선택 텍스트 물결선 추가, 기하/충돌/JSON/추적 회귀 테스트 확장 (versionCode 109)
 - **v0.8.99**: 도형 도구 UX 개편 — 사각형·삼각형·타원·직선·화살표를 텍스트가 아닌 공통 벡터 아이콘 타일로 표시, 노트 전체/학습 패널 트레이와 도크·PDF 주석 시트·스타일 헤더에 동일 시각 언어 적용, 활성 PDF 도형은 문맥 행에서 이름·아이콘·스타일 접근 제공, 분할 PDF 툴바에도 활성 도형 반영; 삼각형을 실제 PDF·노트 주석으로 추가해 3개 꼭짓점 저장·렌더·내보내기·회전·선택·지우개까지 지원 (versionCode 108)
 - **v0.8.98**: 노트 패널을 선형 공간으로 전환 — PDF/노트 사이 파일명·아이콘 헤더와 상단 여백 제거, 24dp 높이 조절 선만 유지, 발췌 드롭은 패널 전체에서 지원, 원본 PDF 링크는 노트 메뉴로 이동 (versionCode 107)
 - **v0.8.97**: 다중 에이전트 UI 단순화 — 홈은 검색·설정만 남기고 정렬/보기를 하나의 보기 메뉴로 통합, 재방문 홈은 이어서 카드 하나만 표시, PDF 메뉴의 행별 도움말 아이콘과 노트 메뉴의 중복 undo/redo 제거, 북마크 상태 라벨 개선, 저장 완료 표시 자동 숨김 (versionCode 106)

@@ -368,6 +368,9 @@ fun ViewerScreen(
     var showAudioMenu by remember { mutableStateOf(false) }
     var showToolMore by remember { mutableStateOf(false) }
     var showToolStyle by remember { mutableStateOf(false) }
+    var showAnnotationStyle by remember { mutableStateOf(false) }
+    var annotationEditMode by remember(state.docId) { mutableStateOf(false) }
+    var selectedAnnotationId by remember(state.docId) { mutableStateOf<String?>(null) }
     var showSelectionMore by remember { mutableStateOf(false) }
     var showTextEditDialog by remember { mutableStateOf(false) }
     // Display-only: annotations stay stored and exported; this only hides the canvas layer.
@@ -405,6 +408,9 @@ fun ViewerScreen(
     }
     var chromeHidden by remember { mutableStateOf(false) }
     val selectedText = remember(selectedWords) { PdfTextLayout.selectionText(selectedWords) }
+    val selectedAnnotation = remember(state.annotations, selectedAnnotationId) {
+        state.annotations.firstOrNull { it.id == selectedAnnotationId }
+    }
     val openPdfHelp: (HelpTopicKey) -> Unit = { topic ->
         if (onOpenHelpTopic != null) {
             onOpenHelpTopic(topic)
@@ -442,6 +448,8 @@ fun ViewerScreen(
             selectedWords = emptyList()
         } else {
             vm.setTool(Tool.VIEW)
+            annotationEditMode = false
+            selectedAnnotationId = null
             textSelectMode = true
             selectedWords = emptyList()
             vm.loadTextWords(state.pageIndex)
@@ -457,6 +465,8 @@ fun ViewerScreen(
     val requestSelectionAt: (NormalizedPoint) -> Unit = { point ->
         if (!textSelectMode) {
             vm.setTool(Tool.VIEW)
+            annotationEditMode = false
+            selectedAnnotationId = null
             textSelectMode = true
             selectedWords = emptyList()
             val pageWords = pageTextWords.filter {
@@ -487,11 +497,43 @@ fun ViewerScreen(
         }
     }
 
-    val selectTool: (Tool) -> Unit = { tool -> vm.setTool(tool) }
+    val selectTool: (Tool) -> Unit = { tool ->
+        if (tool != Tool.VIEW) {
+            annotationEditMode = false
+            selectedAnnotationId = null
+        }
+        vm.setTool(tool)
+    }
+
+    val startAnnotationEdit: () -> Unit = {
+        vm.setTool(Tool.VIEW)
+        textSelectMode = false
+        selectedWords = emptyList()
+        annotationsHidden = false
+        annotationEditMode = true
+    }
+    val toggleAnnotationEdit: () -> Unit = {
+        if (annotationEditMode) {
+            annotationEditMode = false
+            selectedAnnotationId = null
+        } else {
+            startAnnotationEdit()
+        }
+    }
 
     LaunchedEffect(state.docId) {
         textSelectMode = false
         selectedWords = emptyList()
+        annotationEditMode = false
+        selectedAnnotationId = null
+    }
+    LaunchedEffect(state.pageIndex) {
+        selectedAnnotationId = null
+    }
+    LaunchedEffect(selectedAnnotationId, state.annotations) {
+        if (selectedAnnotationId != null && state.annotations.none { it.id == selectedAnnotationId }) {
+            selectedAnnotationId = null
+        }
     }
     // Seeds the first tab and follows every document switch/rename. The study
     // pane still saves on the existing docId change; this only tracks the tab.
@@ -1012,7 +1054,7 @@ fun ViewerScreen(
     }
     val pdfTopInset = statusBarTopDp +
         if (chromePolicy.showTopAppBar) (PDF_COMPACT_TOP_BAR_HEIGHT_DP + 4).dp else 0.dp
-    val chromeTapAllowed = chromeTapToggleAllowed(
+    val chromeTapAllowed = !annotationEditMode && chromeTapToggleAllowed(
         mode = autoHideMode,
         studyPaneOpen = splitMode,
         sheetOpen = sheetOpen,
@@ -1118,6 +1160,8 @@ fun ViewerScreen(
                             onUndo = vm::undo,
                             onRedo = vm::redo,
                             onOpenTools = { showToolMore = true },
+                            onEditAnnotations = toggleAnnotationEdit,
+                            annotationEditActive = annotationEditMode,
                         )
                         if (textSelectMode) {
                             TextSelectionActionBar(
@@ -1331,12 +1375,37 @@ fun ViewerScreen(
                         onLinkTapped = handleLinkTap,
                         onPreviousPage = vm::previousPage,
                         onNextPage = vm::nextPage,
+                        annotationEditMode = annotationEditMode && state.tool == Tool.VIEW && !textSelectMode,
+                        selectedAnnotationId = selectedAnnotationId,
+                        onSelectAnnotation = { selectedAnnotationId = it },
+                        onTransformAnnotation = vm::replaceAnnotation,
                     )
+
+                    if (annotationEditMode && selectedAnnotation != null) {
+                        ViewerAnnotationSelectionBar(
+                            annotation = selectedAnnotation,
+                            onEdit = { showAnnotationStyle = true },
+                            onDuplicate = {
+                                vm.duplicateAnnotation(selectedAnnotation.id)
+                                selectedAnnotationId = null
+                            },
+                            onForward = { vm.moveAnnotationOrder(selectedAnnotation.id, forward = true) },
+                            onBackward = { vm.moveAnnotationOrder(selectedAnnotation.id, forward = false) },
+                            onDelete = {
+                                vm.deleteAnnotation(selectedAnnotation.id)
+                                selectedAnnotationId = null
+                            },
+                            onDone = toggleAnnotationEdit,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(start = 8.dp, end = 8.dp, bottom = 10.dp),
+                        )
+                    }
 
                     // Small, always-visible lock affordance. Bottom-start keeps it
                     // clear of the top hint/search chips; page navigation now lives
                     // in its own row below the canvas.
-                    if (state.pageLocked) {
+                    if (state.pageLocked && selectedAnnotation == null) {
                         PageLockBadge(
                             onUnlock = vm::togglePageLock,
                             modifier = Modifier
@@ -1357,7 +1426,7 @@ fun ViewerScreen(
                         // Full-screen reader: the strip sits above the hint chip.
                         // Split mode places it at the strip's bottom instead, where
                         // it cannot cover the floating page/toolbar row.
-                        if (showTabStrip && !splitMode) {
+                        if (showTabStrip && !splitMode && selectedAnnotation == null) {
                             DocumentTabStrip(
                                 state = tabsState,
                                 onSelectTab = switchToTab,
@@ -1534,7 +1603,7 @@ fun ViewerScreen(
                         // The strip floats at the bottom of the PDF sample so the
                         // top-center page/toolbar row stays untouched. During text
                         // selection the selection bar owns that edge.
-                        if (showTabStrip && !chromePolicy.showSplitSelectionBar) {
+                        if (showTabStrip && !chromePolicy.showSplitSelectionBar && selectedAnnotation == null) {
                             DocumentTabStrip(
                                 state = tabsState,
                                 onSelectTab = switchToTab,
@@ -1883,6 +1952,10 @@ fun ViewerScreen(
                 showToolMore = false
                 showViewerPenBox = true
             },
+            onEditAnnotations = {
+                showToolMore = false
+                startAnnotationEdit()
+            },
         )
     }
     if (showViewerPenBox) {
@@ -1937,6 +2010,20 @@ fun ViewerScreen(
             onDismiss = { showToolStyle = false },
         )
     }
+    if (showAnnotationStyle && selectedAnnotation != null) {
+        ViewerAnnotationStyleSheet(
+            annotation = selectedAnnotation,
+            onDismiss = { showAnnotationStyle = false },
+            onApply = { updated ->
+                val contentChanged = updated.text != selectedAnnotation.text ||
+                    updated.stamp != selectedAnnotation.stamp
+                vm.replaceAnnotation(
+                    updated,
+                    kind = if (contentChanged) "content" else "style",
+                )
+            },
+        )
+    }
     if (showSelectionMore) {
         TextSelectionMoreSheet(
             selectedText = selectedText,
@@ -1947,6 +2034,10 @@ fun ViewerScreen(
             onDictionary = { TextActions.define(context, selectedText) },
             onExcerpt = captureToNote,
             onEditText = { showTextEditDialog = true },
+            onSquiggly = {
+                vm.addTextMarkup(selectedWords, AnnotationType.SQUIGGLY, state.color)
+                selectedWords = emptyList()
+            },
             onShare = { TextActions.shareText(context, selectedText) },
             onAddToPane = if (studyPane != null) {
                 {

@@ -284,6 +284,7 @@ class AnnotationJsonTest {
             AnnotationType.REDACT,
             AnnotationType.COVER_TEXT,
             AnnotationType.TRIANGLE,
+            AnnotationType.SQUIGGLY,
         )
 
         newTypes.forEach { type ->

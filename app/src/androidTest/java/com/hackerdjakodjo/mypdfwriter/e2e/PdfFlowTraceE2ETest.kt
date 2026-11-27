@@ -152,8 +152,9 @@ class PdfFlowTraceE2ETest {
     /**
      * Intent: a complete real PDF session must leave an ordered, structured
      * trace on disk that a developer can keep referencing during development.
-     * APIs: `openDocument`, `setTool`, `addStroke`, `rotatePage`, `search`,
-     * `captureExportSnapshot`, `exportTo`, `closeDocument`, then `DevLog.snapshot`.
+     * APIs: `openDocument`, `setTool`, `addStroke`, `replaceAnnotation`,
+     * `rotatePage`, `search`, `captureExportSnapshot`, `exportTo`, `closeDocument`,
+     * then `DevLog.snapshot`.
      * Asserts: the PDF_FLOW events appear in open -> annotate -> page-edit ->
      * search -> export -> close order with the documented field values, export
      * starts before it finishes with bytes > 0, and no PDF text is logged.
@@ -178,6 +179,18 @@ class PdfFlowTraceE2ETest {
         }
         PdfFixture.awaitUntil("pen stroke committed") {
             vm.viewer.value?.annotations?.size == 1
+        }
+        val committed = vm.viewer.value!!.annotations.single()
+        onUi {
+            replaceAnnotation(
+                committed.copy(
+                    points = committed.points.map { it.copy(x = (it.x + 0.02f).coerceAtMost(1f)) },
+                ),
+                kind = "transform",
+            )
+        }
+        PdfFixture.awaitUntil("annotation object edit committed") {
+            vm.viewer.value?.annotations?.single()?.points?.first()?.x == committed.points.first().x + 0.02f
         }
 
         // ---- edit pages
@@ -223,6 +236,7 @@ class PdfFlowTraceE2ETest {
                 "open_start",
                 "open_done",
                 "annotate",
+                "annotation_edit",
                 "page_edit",
                 "search",
                 "export_start",
@@ -249,6 +263,10 @@ class PdfFlowTraceE2ETest {
             "1",
             annotate.fields["total"],
         )
+
+        val annotationEdit = firstFlowEvent("annotation_edit")
+        assertEquals("transform", annotationEdit.fields["kind"])
+        assertEquals("PEN", annotationEdit.fields["type"])
 
         val search = firstFlowEvent("search")
         assertEquals(

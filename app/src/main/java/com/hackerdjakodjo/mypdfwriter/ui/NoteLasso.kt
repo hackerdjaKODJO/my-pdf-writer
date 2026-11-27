@@ -73,6 +73,7 @@ private fun annotationHitsLasso(annotation: Annotation, outline: List<Normalized
         AnnotationType.HIGHLIGHT,
         AnnotationType.UNDERLINE,
         AnnotationType.STRIKEOUT,
+        AnnotationType.SQUIGGLY,
         AnnotationType.LINE,
         AnnotationType.ARROW -> polylineHitsLasso(annotation.points, outline)
 

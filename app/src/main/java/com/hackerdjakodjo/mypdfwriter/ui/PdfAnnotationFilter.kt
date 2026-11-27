@@ -31,6 +31,7 @@ object PdfAnnotationFilter {
         AnnotationType.HIGHLIGHT,
         AnnotationType.UNDERLINE,
         AnnotationType.STRIKEOUT,
+        AnnotationType.SQUIGGLY,
         AnnotationType.SIGNATURE,
         -> AnnotationFilter.INK
 

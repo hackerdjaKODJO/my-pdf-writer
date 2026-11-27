@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -129,6 +130,15 @@ private class CanvasTransform {
             timeMs,
         )
     }
+
+    /** Normalized page coordinate -> screen position, including crop/zoom/pan. */
+    fun toScreen(point: NormalizedPoint): Offset {
+        val display = PdfCrop.pageToDisplay(point.x, point.y, insets)
+        return Offset(
+            viewW / 2f + pan.x + (display.x - 0.5f) * visibleW * total,
+            viewH / 2f + topAnchorOffset + pan.y + (display.y - 0.5f) * visibleH * total,
+        )
+    }
 }
 
 @Composable
@@ -202,6 +212,11 @@ fun PdfCanvas(
     /** Fit-zoom horizontal swipe in VIEW mode turns the page. */
     onPreviousPage: () -> Unit = {},
     onNextPage: () -> Unit = {},
+    /** App-created annotation object editing; disabled by default. */
+    annotationEditMode: Boolean = false,
+    selectedAnnotationId: String? = null,
+    onSelectAnnotation: (String?) -> Unit = {},
+    onTransformAnnotation: (Annotation) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val pageW = (bitmap?.width?.toFloat() ?: (displayWidthPt * 2f)).coerceAtLeast(1f)
@@ -239,11 +254,16 @@ fun PdfCanvas(
     var eraserPressureSensitive by remember { mutableStateOf(false) }
     var selectionStart by remember { mutableStateOf<NormalizedPoint?>(null) }
     var selectionEnd by remember { mutableStateOf<NormalizedPoint?>(null) }
+    var annotationPreview by remember(pageKey) { mutableStateOf<Annotation?>(null) }
     val eraserTrail = remember { mutableStateListOf<NormalizedPoint>() }
     val selectedWordSet = remember(selectedWords) { selectedWords.toSet() }
     // Filtering per page used to allocate two new lists on every draw frame.
     val pageAnnotations = remember(annotations, pageIndex) {
         annotations.filter { it.page == pageIndex }
+    }
+    val renderedPageAnnotations = remember(pageAnnotations, annotationPreview) {
+        val preview = annotationPreview
+        if (preview == null) pageAnnotations else pageAnnotations.map { if (it.id == preview.id) preview else it }
     }
     val pageWords = remember(textWords, pageIndex) {
         textWords.filter { it.pageIndex == pageIndex }
@@ -272,6 +292,11 @@ fun PdfCanvas(
         eraserPressureSensitive = false
         selectionStart = null
         selectionEnd = null
+        annotationPreview = null
+    }
+
+    LaunchedEffect(annotationEditMode) {
+        if (!annotationEditMode) annotationPreview = null
     }
 
     LaunchedEffect(textSelectMode) {
@@ -384,7 +409,9 @@ fun PdfCanvas(
                 endY = b.y,
             )
 
-        val gestureModifier = if (textSelectMode && textWords.isNotEmpty()) {
+        val gestureModifier = if (annotationEditMode) {
+            Modifier
+        } else if (textSelectMode && textWords.isNotEmpty()) {
             Modifier.pointerInput(pageIndex, textWords) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -685,6 +712,7 @@ fun PdfCanvas(
                             Tool.ELLIPSE,
                             Tool.UNDERLINE,
                             Tool.STRIKEOUT,
+                            Tool.SQUIGGLY,
                             Tool.REDACT -> true
                             else -> false
                         }
@@ -943,7 +971,7 @@ fun PdfCanvas(
                 )
                 AnnotationPainter.draw(
                     native,
-                    pageAnnotations,
+                    renderedPageAnnotations,
                     pageW,
                     pageH,
                     progress = annotationProgress,
@@ -1162,6 +1190,27 @@ fun PdfCanvas(
                 )
             }
         }
+
+        if (annotationEditMode) {
+            PdfAnnotationEditOverlay(
+                annotations = pageAnnotations,
+                selectedAnnotationId = selectedAnnotationId,
+                preview = annotationPreview,
+                pageWidth = pageW,
+                pageHeight = pageH,
+                visibleClip = Rect(
+                    viewW / 2f + pan.x - visW * total / 2f,
+                    viewH / 2f + topAnchorOffset + pan.y - visH * total / 2f,
+                    viewW / 2f + pan.x + visW * total / 2f,
+                    viewH / 2f + topAnchorOffset + pan.y + visH * total / 2f,
+                ),
+                normalize = { transform.normalize(it) },
+                toScreen = { transform.toScreen(it) },
+                onSelect = onSelectAnnotation,
+                onTransform = onTransformAnnotation,
+                onPreview = { annotationPreview = it },
+            )
+        }
     }
 }
 
@@ -1173,6 +1222,7 @@ private fun annotationTypeForTool(tool: Tool): AnnotationType? = when (tool) {
     Tool.ELLIPSE -> AnnotationType.ELLIPSE
     Tool.UNDERLINE -> AnnotationType.UNDERLINE
     Tool.STRIKEOUT -> AnnotationType.STRIKEOUT
+    Tool.SQUIGGLY -> AnnotationType.SQUIGGLY
     Tool.REDACT -> AnnotationType.REDACT
     else -> null
 }

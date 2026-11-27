@@ -43,6 +43,7 @@ import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -134,6 +135,7 @@ internal val dockAnnotationTools: Set<Tool> = viewerShapeTools + setOf(
     Tool.TEXT,
     Tool.UNDERLINE,
     Tool.STRIKEOUT,
+    Tool.SQUIGGLY,
     Tool.STAMP,
     Tool.SIGNATURE,
     Tool.REDACT,
@@ -151,6 +153,7 @@ internal fun dockAnnotationLabel(tool: Tool): String = when (tool) {
     Tool.RECT, Tool.TRIANGLE, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> shapeToolLabel(tool)
     Tool.UNDERLINE -> "밑줄"
     Tool.STRIKEOUT -> "취소선"
+    Tool.SQUIGGLY -> "물결선"
     Tool.STAMP -> "스탬프"
     Tool.SIGNATURE -> "서명"
     Tool.REDACT -> "가림"
@@ -165,6 +168,7 @@ internal fun dockAnnotationIcon(tool: Tool): ImageVector = when (tool) {
     Tool.ELLIPSE -> Icons.Outlined.Circle
     Tool.UNDERLINE -> Icons.Outlined.FormatUnderlined
     Tool.STRIKEOUT -> Icons.Outlined.FormatStrikethrough
+    Tool.SQUIGGLY -> Icons.Outlined.Timeline
     Tool.STAMP -> Icons.Outlined.Approval
     Tool.SIGNATURE -> Icons.Outlined.Draw
     Tool.REDACT -> Icons.Outlined.VisibilityOff
@@ -206,8 +210,10 @@ internal const val PDF_STYLE_ACTION_TAG = "pdf_style_action"
 internal const val PDF_UNDO_ACTION_TAG = "pdf_undo_action"
 internal const val PDF_REDO_ACTION_TAG = "pdf_redo_action"
 internal const val PDF_ANNOTATION_TOOLS_TAG = "pdf_annotation_tools"
+internal const val PDF_ANNOTATION_EDIT_TAG = "pdf_annotation_edit_mode"
 
 internal enum class ViewerContextAction(val label: String, val testTag: String) {
+    EDIT_ANNOTATIONS("주석 편집", PDF_ANNOTATION_EDIT_TAG),
     STYLE("스타일", PDF_STYLE_ACTION_TAG),
     ANNOTATION_TOOLS("주석 도구", PDF_ANNOTATION_TOOLS_TAG),
     UNDO("실행 취소", PDF_UNDO_ACTION_TAG),
@@ -220,7 +226,9 @@ internal fun viewerContextActions(
     canUndo: Boolean,
     canRedo: Boolean,
     canOpenTools: Boolean = false,
+    canEditAnnotations: Boolean = false,
 ): List<ViewerContextAction> = buildList {
+    if (canEditAnnotations) add(ViewerContextAction.EDIT_ANNOTATIONS)
     if (canOpenTools && isDockAnnotationTool(tool)) add(ViewerContextAction.ANNOTATION_TOOLS)
     if (isStyleTool(tool)) add(ViewerContextAction.STYLE)
     if (canUndo) add(ViewerContextAction.UNDO)
@@ -234,6 +242,8 @@ internal fun ViewerContextActionRow(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onOpenTools: (() -> Unit)? = null,
+    onEditAnnotations: (() -> Unit)? = null,
+    annotationEditActive: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val actions = viewerContextActions(
@@ -241,6 +251,7 @@ internal fun ViewerContextActionRow(
         state.canUndo,
         state.canRedo,
         canOpenTools = onOpenTools != null,
+        canEditAnnotations = onEditAnnotations != null,
     )
     if (actions.isEmpty()) return
 
@@ -255,14 +266,23 @@ internal fun ViewerContextActionRow(
         actions.forEach { action ->
             Surface(
                 onClick = when (action) {
+                    ViewerContextAction.EDIT_ANNOTATIONS -> onEditAnnotations ?: {}
                     ViewerContextAction.STYLE -> onStyle
                     ViewerContextAction.ANNOTATION_TOOLS -> onOpenTools ?: {}
                     ViewerContextAction.UNDO -> onUndo
                     ViewerContextAction.REDO -> onRedo
                 },
                 shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (action == ViewerContextAction.EDIT_ANNOTATIONS && annotationEditActive) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                },
+                contentColor = if (action == ViewerContextAction.EDIT_ANNOTATIONS && annotationEditActive) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
                 modifier = Modifier
                     .sizeIn(
                         minWidth = MIN_TARGET_DP.dp,
@@ -277,6 +297,9 @@ internal fun ViewerContextActionRow(
                         }
                         if (action == ViewerContextAction.ANNOTATION_TOOLS) {
                             stateDescription = "현재 ${dockAnnotationLabel(state.tool)} 도구"
+                        }
+                        if (action == ViewerContextAction.EDIT_ANNOTATIONS) {
+                            this.selected = annotationEditActive
                         }
                     },
             ) {
@@ -294,6 +317,7 @@ internal fun ViewerContextActionRow(
                     } else {
                         Icon(
                             when (action) {
+                                ViewerContextAction.EDIT_ANNOTATIONS -> Icons.Outlined.EditNote
                                 ViewerContextAction.STYLE -> Icons.Outlined.Tune
                                 ViewerContextAction.ANNOTATION_TOOLS -> dockAnnotationIcon(state.tool)
                                 ViewerContextAction.UNDO -> Icons.AutoMirrored.Outlined.Undo
@@ -721,6 +745,7 @@ private val textAndShapeToolOptions = listOf(
 private val markupAndStampToolOptions = listOf(
     ToolOption(Tool.UNDERLINE, Icons.Outlined.FormatUnderlined, "밑줄", "끌어서 밑줄"),
     ToolOption(Tool.STRIKEOUT, Icons.Outlined.FormatStrikethrough, "취소선", "끌어서 취소선"),
+    ToolOption(Tool.SQUIGGLY, Icons.Outlined.Timeline, "물결선", "끌어서 물결선"),
     ToolOption(Tool.STAMP, Icons.Outlined.Approval, "스탬프", "페이지를 눌러 배치"),
     ToolOption(Tool.SIGNATURE, Icons.Outlined.Draw, "서명", "페이지를 눌러 배치"),
     ToolOption(Tool.REDACT, Icons.Outlined.VisibilityOff, "가림", "끌어서 검게 가리기"),
@@ -747,6 +772,7 @@ fun ViewerToolMoreSheet(
     currentPen: PenPreset? = null,
     onApplyFavorite: ((PenPreset) -> Unit)? = null,
     onOpenPenRegistry: (() -> Unit)? = null,
+    onEditAnnotations: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val activeLabel = if (isDockAnnotationTool(currentTool)) {
@@ -773,6 +799,19 @@ fun ViewerToolMoreSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (onEditAnnotations != null) {
+                TextButton(
+                    onClick = {
+                        onDismiss()
+                        onEditAnnotations()
+                    },
+                    modifier = Modifier.testTag(PDF_ANNOTATION_EDIT_TAG),
+                ) {
+                    Icon(Icons.Outlined.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("주석 편집")
+                }
+            }
             if (onUndo != null || onRedo != null || (onStyle != null && styleEnabled)) {
                 Spacer(Modifier.height(12.dp))
                 Text(
@@ -1127,6 +1166,7 @@ fun ViewerStyleSheet(
                     Tool.ELLIPSE,
                     Tool.UNDERLINE,
                     Tool.STRIKEOUT,
+                    Tool.SQUIGGLY,
                     -> {
                         Spacer(Modifier.height(16.dp))
                         val strokeValue = "${(state.strokeWidth * 1000).roundToInt()}"
@@ -1189,7 +1229,7 @@ fun ViewerStyleSheet(
 }
 
 @Composable
-private fun SettingHeader(label: String, value: String) {
+internal fun SettingHeader(label: String, value: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
         Text(
@@ -1210,6 +1250,7 @@ private fun styleToolLabel(tool: Tool): String = when (tool) {
     Tool.ARROW -> "화살표"
     Tool.UNDERLINE -> "밑줄"
     Tool.STRIKEOUT -> "취소선"
+    Tool.SQUIGGLY -> "물결선"
     Tool.ELLIPSE -> "타원"
     Tool.LINE -> "직선"
     Tool.STAMP -> "스탬프"

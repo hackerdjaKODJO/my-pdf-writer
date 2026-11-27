@@ -51,6 +51,7 @@ import androidx.compose.material.icons.outlined.RotateRight
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -1151,6 +1152,7 @@ private fun annotationTypeLabelRes(type: AnnotationType): Int = when (type) {
     AnnotationType.ARROW -> R.string.annotation_type_arrow
     AnnotationType.UNDERLINE -> R.string.annotation_type_underline
     AnnotationType.STRIKEOUT -> R.string.annotation_type_strikeout
+    AnnotationType.SQUIGGLY -> R.string.annotation_type_squiggly
     AnnotationType.ELLIPSE -> R.string.annotation_type_ellipse
     AnnotationType.LINE -> R.string.annotation_type_line
     AnnotationType.STAMP -> R.string.annotation_type_stamp
@@ -1913,6 +1915,7 @@ private fun locationsAnnotationIcon(type: AnnotationType): ImageVector = when (t
     AnnotationType.HIGHLIGHT -> Icons.Outlined.Highlight
     AnnotationType.UNDERLINE -> Icons.Outlined.FormatUnderlined
     AnnotationType.STRIKEOUT -> Icons.Outlined.FormatStrikethrough
+    AnnotationType.SQUIGGLY -> Icons.Outlined.Timeline
     AnnotationType.TEXT,
     AnnotationType.STAMP,
     AnnotationType.COVER_TEXT,

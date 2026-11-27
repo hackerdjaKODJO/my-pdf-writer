@@ -524,6 +524,7 @@ object NoteInk {
         AnnotationType.HIGHLIGHT,
         AnnotationType.UNDERLINE,
         AnnotationType.STRIKEOUT,
+        AnnotationType.SQUIGGLY,
         AnnotationType.LINE,
         AnnotationType.ARROW,
         AnnotationType.SIGNATURE,
@@ -951,6 +952,7 @@ private fun noteAnnotationHit(
         AnnotationType.SIGNATURE,
         AnnotationType.UNDERLINE,
         AnnotationType.STRIKEOUT,
+        AnnotationType.SQUIGGLY,
         AnnotationType.LINE,
         AnnotationType.ARROW -> EraserGeometry.eraserHitsStroke(annotation.points, probes, radius)
 

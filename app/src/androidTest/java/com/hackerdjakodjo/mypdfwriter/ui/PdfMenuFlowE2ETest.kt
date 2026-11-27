@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -80,6 +82,57 @@ class PdfMenuFlowE2ETest {
         assertEquals(Tool.TRIANGLE, currentTool)
         composeRule.onNodeWithTag(shapeToolTag(Tool.TRIANGLE)).assertIsSelected()
         composeRule.onNodeWithTag(shapeToolTag(Tool.RECT)).assertIsNotSelected()
+    }
+
+    @Test
+    fun annotationOverlaySelectsAndMovesAnObjectWithOneCommit() {
+        val original = Annotation(
+            id = "rect",
+            type = AnnotationType.RECT,
+            page = 0,
+            color = 0xFF000000.toInt(),
+            width = 0.004f,
+            points = listOf(NormalizedPoint(0.2f, 0.2f), NormalizedPoint(0.8f, 0.8f)),
+        )
+        val viewportPx = with(composeRule.density) { 300.dp.toPx() }
+        var selectedId by mutableStateOf<String?>(null)
+        var transformed by mutableStateOf<Annotation?>(null)
+        composeRule.setContent {
+            MaterialTheme {
+                Box(Modifier.size(300.dp)) {
+                    PdfAnnotationEditOverlay(
+                        annotations = listOf(original),
+                        selectedAnnotationId = selectedId,
+                        preview = null,
+                        pageWidth = viewportPx,
+                        pageHeight = viewportPx,
+                        visibleClip = Rect(0f, 0f, viewportPx, viewportPx),
+                        normalize = { NormalizedPoint(it.x / viewportPx, it.y / viewportPx) },
+                        toScreen = { Offset(it.x * viewportPx, it.y * viewportPx) },
+                        onSelect = { selectedId = it },
+                        onTransform = { transformed = it },
+                        onPreview = {},
+                    )
+                }
+            }
+        }
+
+        val center = Offset(viewportPx * 0.5f, viewportPx * 0.5f)
+        composeRule.onNodeWithTag(PDF_ANNOTATION_EDIT_OVERLAY_TAG).performTouchInput {
+            click(center)
+        }
+        composeRule.waitForIdle()
+        assertEquals("rect", selectedId)
+
+        composeRule.onNodeWithTag(PDF_ANNOTATION_EDIT_OVERLAY_TAG).performTouchInput {
+            down(center)
+            moveTo(Offset(viewportPx * 0.6f, viewportPx * 0.55f))
+            up()
+        }
+        composeRule.waitForIdle()
+        val moved = requireNotNull(transformed)
+        assertEquals(0.3f, moved.points[0].x, 0.001f)
+        assertEquals(0.25f, moved.points[0].y, 0.001f)
     }
 
     @Test

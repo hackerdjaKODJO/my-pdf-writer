@@ -106,6 +106,7 @@ object AnnotationPainter {
             AnnotationType.ARROW -> drawArrow(canvas, annotation, width, height)
             AnnotationType.TEXT -> drawText(canvas, annotation, width, height)
             AnnotationType.UNDERLINE, AnnotationType.STRIKEOUT -> drawMarkupLine(canvas, annotation, width, height)
+            AnnotationType.SQUIGGLY -> drawSquiggle(canvas, annotation, width, height)
             AnnotationType.ELLIPSE -> drawEllipse(canvas, annotation, width, height)
             AnnotationType.LINE -> drawStraightLine(canvas, annotation, width, height)
             AnnotationType.STAMP -> drawStamp(canvas, annotation, width, height)
@@ -193,6 +194,11 @@ object AnnotationPainter {
                     timesMs = annotation.timesMs?.take(points.size),
                 )
                 drawMarkupLine(canvas, partial, width, height)
+            }
+
+            AnnotationType.SQUIGGLY -> {
+                val points = revealedEndpoints(annotation.points, fraction) ?: return
+                drawSquiggle(canvas, annotation.copy(points = points), width, height)
             }
 
             AnnotationType.TEXT -> drawText(canvas, annotation.faded(fraction), width, height)
@@ -1472,6 +1478,36 @@ object AnnotationPainter {
             moveTo(points[0].x * width, points[0].y * height)
             for (i in 1 until points.size) {
                 lineTo(points[i].x * width, points[i].y * height)
+            }
+        }
+        canvas.drawPath(path, paint)
+    }
+
+    private fun drawSquiggle(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
+        if (annotation.points.size < 2) return
+        val start = annotation.points.first()
+        val end = annotation.points.last()
+        val x1 = start.x * width
+        val y1 = start.y * height
+        val x2 = end.x * width
+        val y2 = end.y * height
+        val dx = x2 - x1
+        val dy = y2 - y1
+        val length = hypot(dx, dy).coerceAtLeast(1f)
+        val paint = basePaint(annotation, width)
+        val normalX = -dy / length
+        val normalY = dx / length
+        val amplitude = paint.strokeWidth * 0.9f
+        val steps = (length / (paint.strokeWidth * 2f).coerceAtLeast(2f)).roundToInt().coerceIn(8, 160)
+        val path = Path().apply {
+            moveTo(x1, y1)
+            for (index in 1..steps) {
+                val fraction = index.toFloat() / steps
+                val wave = sin(fraction * PI.toFloat() * 6f) * amplitude
+                lineTo(
+                    x1 + dx * fraction + normalX * wave,
+                    y1 + dy * fraction + normalY * wave,
+                )
             }
         }
         canvas.drawPath(path, paint)

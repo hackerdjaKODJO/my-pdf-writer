@@ -29,6 +29,7 @@ object AnnotationSummary {
         AnnotationType.HIGHLIGHT -> "형광펜"
         AnnotationType.UNDERLINE -> "밑줄"
         AnnotationType.STRIKEOUT -> "취소선"
+        AnnotationType.SQUIGGLY -> "물결선"
         AnnotationType.SIGNATURE -> "서명"
         AnnotationType.TEXT -> "글상자"
         AnnotationType.STAMP -> "도장"

@@ -79,6 +79,7 @@ enum class AnnotationType {
      */
     COVER_TEXT,
     TRIANGLE,
+    SQUIGGLY,
 }
 
 enum class PenStyle {
@@ -106,6 +107,7 @@ enum class Tool {
     LASSO,
     LASSO_RECT,
     TRIANGLE,
+    SQUIGGLY,
 }
 
 data class Annotation(

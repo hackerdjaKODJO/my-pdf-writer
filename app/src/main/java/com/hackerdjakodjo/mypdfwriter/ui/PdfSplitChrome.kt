@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -270,6 +271,7 @@ internal fun textSelectionPrimaryIcon(action: TextSelectionPrimaryAction): Image
 internal enum class TextSelectionSecondaryAction(val label: String) {
     CAPTURE(PDF_HUB_CAPTURE_LABEL),
     EDIT("텍스트 편집"),
+    SQUIGGLY("물결선"),
     SHARE("공유"),
 }
 
@@ -826,6 +828,7 @@ internal fun TextSelectionMoreSheet(
     onDictionary: () -> Unit,
     onExcerpt: () -> Unit,
     onEditText: () -> Unit,
+    onSquiggly: () -> Unit = {},
     onShare: () -> Unit,
     onAddToPane: (() -> Unit)?,
     onDismissSelection: () -> Unit,
@@ -890,6 +893,15 @@ internal fun TextSelectionMoreSheet(
                 onClick = {
                     onDismiss()
                     onEditText()
+                },
+            )
+            SplitSheetAction(
+                label = TextSelectionSecondaryAction.SQUIGGLY.label,
+                icon = Icons.Outlined.Timeline,
+                enabled = hasSelection,
+                onClick = {
+                    onDismiss()
+                    onSquiggly()
                 },
             )
             SplitSheetAction(

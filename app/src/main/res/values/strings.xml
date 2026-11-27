@@ -43,6 +43,7 @@
     <string name="tool_arrow">화살표</string>
     <string name="tool_underline">밑줄</string>
     <string name="tool_strikeout">취소선</string>
+    <string name="tool_squiggly">물결선</string>
     <string name="tool_ellipse">타원</string>
     <string name="tool_line">직선</string>
     <string name="tool_stamp">스탬프</string>
@@ -145,6 +146,7 @@
     <string name="annotation_type_arrow">화살표</string>
     <string name="annotation_type_underline">밑줄</string>
     <string name="annotation_type_strikeout">취소선</string>
+    <string name="annotation_type_squiggly">물결선</string>
     <string name="annotation_type_ellipse">타원</string>
     <string name="annotation_type_line">직선</string>
     <string name="annotation_type_stamp">스탬프</string>

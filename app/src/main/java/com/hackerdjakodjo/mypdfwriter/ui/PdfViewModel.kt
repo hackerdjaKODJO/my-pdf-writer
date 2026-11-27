@@ -575,7 +575,8 @@ internal fun pdfStrokeAnnotation(
             AnnotationType.LINE,
             AnnotationType.ELLIPSE,
             AnnotationType.UNDERLINE,
-            AnnotationType.STRIKEOUT -> maxOf(state.strokeWidth, 0.0025f)
+            AnnotationType.STRIKEOUT,
+            AnnotationType.SQUIGGLY -> maxOf(state.strokeWidth, 0.0025f)
             else -> state.strokeWidth
         },
         points = usablePoints,
@@ -598,9 +599,44 @@ private fun isTwoPointType(type: AnnotationType): Boolean = when (type) {
     AnnotationType.ELLIPSE,
     AnnotationType.UNDERLINE,
     AnnotationType.STRIKEOUT,
+    AnnotationType.SQUIGGLY,
     AnnotationType.REDACT,
     AnnotationType.COVER_TEXT -> true
     else -> false
+}
+
+/** Duplicates one annotation immediately after its original, preserving page order. */
+internal fun duplicateAnnotationIn(
+    annotations: List<Annotation>,
+    id: String,
+    newId: String,
+): List<Annotation> {
+    val index = annotations.indexOfFirst { it.id == id }
+    if (index < 0) return annotations
+    return annotations.toMutableList().apply {
+        add(index + 1, annotations[index].copy(id = newId))
+    }
+}
+
+/** Moves one annotation one step inside its own page's draw order. */
+internal fun moveAnnotationOrderIn(
+    annotations: List<Annotation>,
+    id: String,
+    forward: Boolean,
+): List<Annotation> {
+    val selected = annotations.firstOrNull { it.id == id } ?: return annotations
+    val pageAnnotations = annotations.filter { it.page == selected.page }
+    val oldIndex = pageAnnotations.indexOfFirst { it.id == id }
+    val newIndex = (oldIndex + if (forward) 1 else -1).coerceIn(0, pageAnnotations.lastIndex)
+    if (oldIndex == newIndex) return annotations
+    val reordered = pageAnnotations.toMutableList().apply {
+        val item = removeAt(oldIndex)
+        add(newIndex, item)
+    }
+    var pageCursor = 0
+    return annotations.map { annotation ->
+        if (annotation.page == selected.page) reordered[pageCursor++] else annotation
+    }
 }
 
 /** PDF eraser preview and hit testing share this exact normalized radius. */
@@ -621,7 +657,8 @@ internal fun pdfEraserHitsAnnotation(
         AnnotationType.ARROW,
         AnnotationType.LINE,
         AnnotationType.UNDERLINE,
-        AnnotationType.STRIKEOUT -> EraserGeometry.eraserHitsStroke(annotation.points, eraser, radius)
+        AnnotationType.STRIKEOUT,
+        AnnotationType.SQUIGGLY -> EraserGeometry.eraserHitsStroke(annotation.points, eraser, radius)
 
         AnnotationType.RECT -> {
             if (annotation.points.size < 2) return false
@@ -1563,6 +1600,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             Tool.ARROW -> AnnotationType.ARROW
             Tool.UNDERLINE -> AnnotationType.UNDERLINE
             Tool.STRIKEOUT -> AnnotationType.STRIKEOUT
+            Tool.SQUIGGLY -> AnnotationType.SQUIGGLY
             Tool.ELLIPSE -> AnnotationType.ELLIPSE
             Tool.LINE -> AnnotationType.LINE
             Tool.REDACT -> AnnotationType.REDACT
@@ -1633,8 +1671,69 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteAnnotation(id: String) {
         val state = _viewer.value ?: return
-        if (state.annotations.none { it.id == id }) return
+        val removed = state.annotations.firstOrNull { it.id == id } ?: return
         mutateAnnotations { annotations -> annotations.filterNot { it.id == id } }
+        PdfFlowTrace.annotationEdit(
+            kind = "delete",
+            annotationId = id,
+            type = removed.type.name,
+            page = removed.page,
+            total = state.annotations.size - 1,
+        )
+    }
+
+    /** Replaces one app-created annotation as a single undoable object edit. */
+    fun replaceAnnotation(updated: Annotation, kind: String = "transform") {
+        val state = _viewer.value ?: return
+        val existing = state.annotations.firstOrNull { it.id == updated.id } ?: return
+        if (existing.page != updated.page || updated.points.any { !it.x.isFinite() || !it.y.isFinite() }) return
+        if (existing == updated) return
+        mutateAnnotations { annotations ->
+            annotations.map { if (it.id == updated.id) updated else it }
+        }
+        PdfFlowTrace.annotationEdit(
+            kind = kind,
+            annotationId = updated.id,
+            type = updated.type.name,
+            page = updated.page,
+            total = state.annotations.size,
+        )
+    }
+
+    /** Duplicates an annotation immediately after its original in draw order. */
+    fun duplicateAnnotation(id: String) {
+        val state = _viewer.value ?: return
+        val index = state.annotations.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val original = state.annotations[index]
+        val duplicate = original.copy(id = UUID.randomUUID().toString())
+        mutateAnnotations { annotations ->
+            duplicateAnnotationIn(annotations, id, duplicate.id)
+        }
+        PdfFlowTrace.annotationEdit(
+            kind = "duplicate",
+            annotationId = duplicate.id,
+            type = duplicate.type.name,
+            page = duplicate.page,
+            total = state.annotations.size + 1,
+        )
+    }
+
+    /** Moves an annotation one step within its page's draw order. */
+    fun moveAnnotationOrder(id: String, forward: Boolean) {
+        val state = _viewer.value ?: return
+        val selected = state.annotations.firstOrNull { it.id == id } ?: return
+        if (moveAnnotationOrderIn(state.annotations, id, forward) == state.annotations) return
+        mutateAnnotations { annotations ->
+            moveAnnotationOrderIn(annotations, id, forward)
+        }
+        PdfFlowTrace.annotationEdit(
+            kind = if (forward) "forward" else "backward",
+            annotationId = id,
+            type = selected.type.name,
+            page = selected.page,
+            total = state.annotations.size,
+        )
     }
 
     fun annotationsForPage(page: Int): List<Annotation> =
@@ -2312,7 +2411,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         if (words.isEmpty()) return
         if (type != AnnotationType.HIGHLIGHT &&
             type != AnnotationType.UNDERLINE &&
-            type != AnnotationType.STRIKEOUT
+            type != AnnotationType.STRIKEOUT &&
+            type != AnnotationType.SQUIGGLY
         ) {
             return
         }
@@ -2352,7 +2452,8 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
 
-                AnnotationType.UNDERLINE -> if (vertical) {
+                AnnotationType.UNDERLINE,
+                AnnotationType.SQUIGGLY -> if (vertical) {
                     // With /Rotate 90 the glyph "up" direction is to the right, so the
                     // underline sits on the left edge; /Rotate 270 is the mirror case.
                     val x = if (first.rotation % 360 == 90) {
@@ -2413,6 +2514,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 message = when (type) {
                     AnnotationType.HIGHLIGHT -> "선택한 텍스트에 형광펜을 표시했습니다."
                     AnnotationType.UNDERLINE -> "선택한 텍스트에 밑줄을 표시했습니다."
+                    AnnotationType.SQUIGGLY -> "선택한 텍스트에 물결선을 표시했습니다."
                     else -> "선택한 텍스트에 취소선을 표시했습니다."
                 },
             )

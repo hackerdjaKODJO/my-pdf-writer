@@ -79,6 +79,19 @@ object PdfFlowTrace {
         )
     }
 
+    /** An existing app annotation was transformed, restyled or reordered. */
+    fun annotationEdit(kind: String, annotationId: String, type: String, page: Int, total: Int) {
+        DevLog.event(
+            COMPONENT,
+            "annotation_edit",
+            "kind" to kind,
+            "annotationId" to annotationId,
+            "type" to type,
+            "page" to page,
+            "total" to total,
+        )
+    }
+
     /** An annotation history action; [annotationId] may be null for bulk actions. */
     fun history(action: String, annotationId: String?, remaining: Int) {
         DevLog.event(
