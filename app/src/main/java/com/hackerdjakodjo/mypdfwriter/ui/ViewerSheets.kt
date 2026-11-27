@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Approval
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.ChangeHistory
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.CropSquare
 import androidx.compose.material.icons.outlined.Delete
@@ -1146,6 +1147,7 @@ private fun annotationTypeLabelRes(type: AnnotationType): Int = when (type) {
     AnnotationType.HIGHLIGHT -> R.string.annotation_type_highlight
     AnnotationType.TEXT -> R.string.annotation_type_text
     AnnotationType.RECT -> R.string.annotation_type_rect
+    AnnotationType.TRIANGLE -> R.string.annotation_type_triangle
     AnnotationType.ARROW -> R.string.annotation_type_arrow
     AnnotationType.UNDERLINE -> R.string.annotation_type_underline
     AnnotationType.STRIKEOUT -> R.string.annotation_type_strikeout
@@ -1916,6 +1918,7 @@ private fun locationsAnnotationIcon(type: AnnotationType): ImageVector = when (t
     AnnotationType.COVER_TEXT,
     -> Icons.Outlined.TextFields
 
+    AnnotationType.TRIANGLE -> Icons.Outlined.ChangeHistory
     AnnotationType.RECT -> Icons.Outlined.CropSquare
     AnnotationType.ELLIPSE -> Icons.Outlined.Circle
     AnnotationType.LINE -> Icons.Outlined.HorizontalRule

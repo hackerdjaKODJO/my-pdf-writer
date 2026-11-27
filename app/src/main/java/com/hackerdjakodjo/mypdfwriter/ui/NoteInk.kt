@@ -4,6 +4,7 @@ import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.clampInkPressure
+import com.hackerdjakodjo.mypdfwriter.data.triangleVertices
 import com.hackerdjakodjo.mypdfwriter.pdf.EraserGeometry
 import java.util.ArrayDeque
 import java.util.UUID
@@ -966,6 +967,15 @@ private fun noteAnnotationHit(
                 probes,
                 radius,
             )
+
+        AnnotationType.TRIANGLE -> {
+            val border = triangleVertices(annotation.points)
+            border.size >= 3 && EraserGeometry.eraserHitsStroke(
+                border + border.first(),
+                probes,
+                radius,
+            )
+        }
 
         AnnotationType.TEXT,
         AnnotationType.STAMP -> annotation.points.firstOrNull()?.let { anchor ->

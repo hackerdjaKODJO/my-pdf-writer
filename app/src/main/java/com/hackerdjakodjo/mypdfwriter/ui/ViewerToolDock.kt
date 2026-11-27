@@ -52,6 +52,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
@@ -120,7 +121,7 @@ internal fun annotationColorName(color: Int): String = when (color) {
 internal fun Modifier.sectionHeading(): Modifier = semantics { heading() }
 
 /** Tools that are drawn by dragging a two-point shape. */
-val viewerShapeTools = setOf(Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE)
+val viewerShapeTools = SHAPE_TOOLS.toSet()
 
 internal fun isShapeTool(tool: Tool): Boolean = tool in viewerShapeTools
 
@@ -147,10 +148,7 @@ internal fun isDockAnnotationTool(tool: Tool): Boolean = tool in dockAnnotationT
  */
 internal fun dockAnnotationLabel(tool: Tool): String = when (tool) {
     Tool.TEXT -> "글상자"
-    Tool.RECT -> "사각형"
-    Tool.ARROW -> "화살표"
-    Tool.LINE -> "직선"
-    Tool.ELLIPSE -> "타원"
+    Tool.RECT, Tool.TRIANGLE, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> shapeToolLabel(tool)
     Tool.UNDERLINE -> "밑줄"
     Tool.STRIKEOUT -> "취소선"
     Tool.STAMP -> "스탬프"
@@ -207,9 +205,11 @@ internal fun viewerDockLongPressOpensStyle(slot: ViewerDockSlot): Boolean =
 internal const val PDF_STYLE_ACTION_TAG = "pdf_style_action"
 internal const val PDF_UNDO_ACTION_TAG = "pdf_undo_action"
 internal const val PDF_REDO_ACTION_TAG = "pdf_redo_action"
+internal const val PDF_ANNOTATION_TOOLS_TAG = "pdf_annotation_tools"
 
 internal enum class ViewerContextAction(val label: String, val testTag: String) {
     STYLE("스타일", PDF_STYLE_ACTION_TAG),
+    ANNOTATION_TOOLS("주석 도구", PDF_ANNOTATION_TOOLS_TAG),
     UNDO("실행 취소", PDF_UNDO_ACTION_TAG),
     REDO("다시 실행", PDF_REDO_ACTION_TAG),
 }
@@ -219,8 +219,10 @@ internal fun viewerContextActions(
     tool: Tool,
     canUndo: Boolean,
     canRedo: Boolean,
+    canOpenTools: Boolean = false,
 ): List<ViewerContextAction> = buildList {
-    if (tool == Tool.PEN || tool == Tool.HIGHLIGHT) add(ViewerContextAction.STYLE)
+    if (canOpenTools && isDockAnnotationTool(tool)) add(ViewerContextAction.ANNOTATION_TOOLS)
+    if (isStyleTool(tool)) add(ViewerContextAction.STYLE)
     if (canUndo) add(ViewerContextAction.UNDO)
     if (canRedo) add(ViewerContextAction.REDO)
 }
@@ -231,9 +233,15 @@ internal fun ViewerContextActionRow(
     onStyle: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
+    onOpenTools: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    val actions = viewerContextActions(state.tool, state.canUndo, state.canRedo)
+    val actions = viewerContextActions(
+        state.tool,
+        state.canUndo,
+        state.canRedo,
+        canOpenTools = onOpenTools != null,
+    )
     if (actions.isEmpty()) return
 
     Row(
@@ -248,6 +256,7 @@ internal fun ViewerContextActionRow(
             Surface(
                 onClick = when (action) {
                     ViewerContextAction.STYLE -> onStyle
+                    ViewerContextAction.ANNOTATION_TOOLS -> onOpenTools ?: {}
                     ViewerContextAction.UNDO -> onUndo
                     ViewerContextAction.REDO -> onRedo
                 },
@@ -260,23 +269,48 @@ internal fun ViewerContextActionRow(
                         minHeight = MIN_TARGET_DP.dp,
                     )
                     .testTag(action.testTag)
-                    .semantics { contentDescription = action.label },
+                    .semantics {
+                        contentDescription = if (action == ViewerContextAction.ANNOTATION_TOOLS) {
+                            "${dockAnnotationLabel(state.tool)}, 주석 도구 열기"
+                        } else {
+                            action.label
+                        }
+                        if (action == ViewerContextAction.ANNOTATION_TOOLS) {
+                            stateDescription = "현재 ${dockAnnotationLabel(state.tool)} 도구"
+                        }
+                    },
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Icon(
-                        when (action) {
-                            ViewerContextAction.STYLE -> Icons.Outlined.Tune
-                            ViewerContextAction.UNDO -> Icons.AutoMirrored.Outlined.Undo
-                            ViewerContextAction.REDO -> Icons.AutoMirrored.Outlined.Redo
+                    if (action == ViewerContextAction.ANNOTATION_TOOLS && isShapeTool(state.tool)) {
+                        ShapeIcon(
+                            tool = state.tool,
+                            modifier = Modifier.size(17.dp),
+                            tint = LocalContentColor.current,
+                        )
+                    } else {
+                        Icon(
+                            when (action) {
+                                ViewerContextAction.STYLE -> Icons.Outlined.Tune
+                                ViewerContextAction.ANNOTATION_TOOLS -> dockAnnotationIcon(state.tool)
+                                ViewerContextAction.UNDO -> Icons.AutoMirrored.Outlined.Undo
+                                ViewerContextAction.REDO -> Icons.AutoMirrored.Outlined.Redo
+                            },
+                            contentDescription = null,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                    Text(
+                        if (action == ViewerContextAction.ANNOTATION_TOOLS) {
+                            dockAnnotationLabel(state.tool)
+                        } else {
+                            action.label
                         },
-                        contentDescription = null,
-                        modifier = Modifier.size(17.dp),
+                        style = MaterialTheme.typography.labelLarge,
                     )
-                    Text(action.label, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -682,10 +716,6 @@ private val baseToolOptions = listOf(
 
 private val textAndShapeToolOptions = listOf(
     ToolOption(Tool.TEXT, Icons.Outlined.TextFields, "글상자", "페이지를 눌러 입력"),
-    ToolOption(Tool.RECT, Icons.Outlined.CropSquare, "사각형", "끌어서 사각형"),
-    ToolOption(Tool.ARROW, Icons.Outlined.NorthEast, "화살표", "끌어서 화살표"),
-    ToolOption(Tool.LINE, Icons.Outlined.HorizontalRule, "직선", "끌어서 직선"),
-    ToolOption(Tool.ELLIPSE, Icons.Outlined.Circle, "타원", "끌어서 타원"),
 )
 
 private val markupAndStampToolOptions = listOf(
@@ -809,8 +839,13 @@ fun ViewerToolMoreSheet(
             )
             Spacer(Modifier.height(14.dp))
             ToolOptionSection(
-                title = "글상자·도형",
+                title = "글상자",
                 options = textAndShapeToolOptions,
+                currentTool = currentTool,
+                onSelectTool = onSelectTool,
+            )
+            Spacer(Modifier.height(14.dp))
+            ShapeToolSection(
                 currentTool = currentTool,
                 onSelectTool = onSelectTool,
             )
@@ -822,6 +857,44 @@ fun ViewerToolMoreSheet(
                 onSelectTool = onSelectTool,
             )
         }
+    }
+}
+
+@Composable
+private fun ShapeToolSection(
+    currentTool: Tool,
+    onSelectTool: (Tool) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "도형",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.sectionHeading(),
+        )
+        Spacer(Modifier.width(10.dp))
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+        )
+    }
+    Spacer(Modifier.height(6.dp))
+    SHAPE_TOOLS.chunked(2).forEach { row ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            row.forEach { tool ->
+                ShapeToolTile(
+                    tool = tool,
+                    selected = currentTool == tool,
+                    onClick = { onSelectTool(tool) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (row.size == 1) Spacer(Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(6.dp))
     }
 }
 
@@ -956,6 +1029,19 @@ fun ViewerStyleSheet(
                 .padding(bottom = 28.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (isShapeTool(state.tool)) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            ShapeIcon(tool = state.tool, modifier = Modifier.size(22.dp))
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                }
                 Column(Modifier.weight(1f)) {
                     Text(
                         if (state.tool == Tool.PEN || state.tool == Tool.HIGHLIGHT) "펜 설정" else "스타일",
@@ -963,7 +1049,11 @@ fun ViewerStyleSheet(
                         modifier = Modifier.sectionHeading(),
                     )
                     Text(
-                        "${styleToolLabel(state.tool)} 도구의 색상과 크기를 조정합니다.",
+                        if (isShapeTool(state.tool)) {
+                            "${shapeToolLabel(state.tool)} 스타일"
+                        } else {
+                            "${styleToolLabel(state.tool)} 도구의 색상과 크기를 조정합니다."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1031,6 +1121,7 @@ fun ViewerStyleSheet(
                     }
 
                     Tool.RECT,
+                    Tool.TRIANGLE,
                     Tool.ARROW,
                     Tool.LINE,
                     Tool.ELLIPSE,
@@ -1115,6 +1206,7 @@ private fun styleToolLabel(tool: Tool): String = when (tool) {
     Tool.HIGHLIGHT -> "형광펜"
     Tool.TEXT -> "글상자"
     Tool.RECT -> "사각형"
+    Tool.TRIANGLE -> "삼각형"
     Tool.ARROW -> "화살표"
     Tool.UNDERLINE -> "밑줄"
     Tool.STRIKEOUT -> "취소선"

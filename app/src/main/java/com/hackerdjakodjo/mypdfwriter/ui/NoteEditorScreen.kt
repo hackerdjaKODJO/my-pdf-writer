@@ -143,6 +143,7 @@ import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.PressureCurve
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.data.pressureCurveRange
+import com.hackerdjakodjo.mypdfwriter.data.triangleVertices
 import com.hackerdjakodjo.mypdfwriter.debug.NoteTrace
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.ChecklistCardPainter
@@ -2429,11 +2430,10 @@ private fun NoteDock(
                 .navigationBarsPadding(),
         ) {
             if (noteIsShapeTool(tool)) {
-                NoteToolTray(
-                    label = "도형",
-                    options = NOTE_SHAPE_TOOLS.map { it to noteShapeLabel(it) },
+                NoteShapeToolTray(
                     selectedTool = tool,
                     onTool = onTool,
+                    showLabels = showLabels,
                 )
             }
             if (noteIsLassoTool(tool)) {
@@ -2472,6 +2472,11 @@ private fun NoteDock(
                             primary = noteToolIsPrimary(dockTool),
                             penStyle = if (dockTool == Tool.PEN) penStyle else null,
                             penColor = if (dockTool == Tool.PEN) color else null,
+                            shapeTool = if (dockTool == Tool.RECT) {
+                                if (noteIsShapeTool(tool)) tool else Tool.RECT
+                            } else {
+                                null
+                            },
                             onClick = {
                                 onTool(
                                     when (dockTool) {
@@ -2643,11 +2648,10 @@ private fun NoteFloatingDock(
                 ),
         ) {
             if (noteIsShapeTool(tool)) {
-                NoteToolTray(
-                    label = "도형",
-                    options = NOTE_SHAPE_TOOLS.map { it to noteShapeLabel(it) },
+                NoteShapeToolTray(
                     selectedTool = tool,
                     onTool = onTool,
+                    showLabels = showLabels,
                     compact = true,
                 )
             }
@@ -2682,6 +2686,11 @@ private fun NoteFloatingDock(
                         primary = noteToolIsPrimary(dockTool),
                         penStyle = if (dockTool == Tool.PEN) penStyle else null,
                         penColor = if (dockTool == Tool.PEN) color else null,
+                        shapeTool = if (dockTool == Tool.RECT) {
+                            if (noteIsShapeTool(tool)) tool else Tool.RECT
+                        } else {
+                            null
+                        },
                         onClick = {
                             onTool(
                                 when (dockTool) {
@@ -2774,6 +2783,7 @@ private fun NoteCompactDockTool(
     primary: Boolean,
     penStyle: PenStyle? = null,
     penColor: Int? = null,
+    shapeTool: Tool? = null,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -2800,6 +2810,7 @@ private fun NoteCompactDockTool(
             .semantics {
                 contentDescription = noteToolDescription(label, selected)
                 this.selected = selected
+                shapeTool?.let { stateDescription = shapeToolLabel(it) }
                 penStyle?.let { stateDescription = penStyleLabel(it) }
             }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
@@ -2808,43 +2819,29 @@ private fun NoteCompactDockTool(
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (showLabels) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (penStyle != null && penColor != null) {
-                        PenInstrumentArtwork(
-                            style = penStyle,
-                            color = penColor,
-                            modifier = Modifier.size(18.dp),
-                            bodyColor = LocalContentColor.current,
-                            cutoutColor = if (selected) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                Color.Transparent
-                            },
-                            showSampleStroke = false,
-                        )
-                    } else {
-                        Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
-                    }
+                    NoteDockGlyph(
+                        icon = icon,
+                        penStyle = penStyle,
+                        penColor = penColor,
+                        shapeTool = shapeTool,
+                        sizeDp = 18,
+                        selected = selected,
+                    )
                     Text(
                         label,
                         style = MaterialTheme.typography.labelSmall,
                         maxLines = STUDENT_LABEL_MAX_LINES,
                     )
                 }
-            } else if (penStyle != null && penColor != null) {
-                PenInstrumentArtwork(
-                    style = penStyle,
-                    color = penColor,
-                    modifier = Modifier.size(22.dp),
-                    bodyColor = LocalContentColor.current,
-                    cutoutColor = if (selected) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        Color.Transparent
-                    },
-                    showSampleStroke = false,
-                )
             } else {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+                NoteDockGlyph(
+                    icon = icon,
+                    penStyle = penStyle,
+                    penColor = penColor,
+                    shapeTool = shapeTool,
+                    sizeDp = 22,
+                    selected = selected,
+                )
             }
         }
     }
@@ -2906,13 +2903,44 @@ private fun NoteCompactStyleButton(color: Int, onClick: () -> Unit) {
     }
 }
 
+@Composable
+private fun NoteDockGlyph(
+    icon: ImageVector,
+    penStyle: PenStyle?,
+    penColor: Int?,
+    shapeTool: Tool?,
+    sizeDp: Int,
+    selected: Boolean,
+) {
+    when {
+        shapeTool != null -> ShapeIcon(
+            tool = shapeTool,
+            modifier = Modifier.size(sizeDp.dp),
+            tint = LocalContentColor.current,
+        )
+        penStyle != null && penColor != null -> PenInstrumentArtwork(
+            style = penStyle,
+            color = penColor,
+            modifier = Modifier.size(sizeDp.dp),
+            bodyColor = LocalContentColor.current,
+            cutoutColor = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                Color.Transparent
+            },
+            showSampleStroke = false,
+        )
+        else -> Icon(icon, contentDescription = null, modifier = Modifier.size(sizeDp.dp))
+    }
+}
+
 private fun noteDockToolIcon(tool: Tool): ImageVector = when (tool) {
     Tool.PEN -> Icons.Filled.Edit
     Tool.HIGHLIGHT -> Icons.Filled.Highlight
     Tool.ERASER -> Icons.Filled.AutoFixNormal
     Tool.LASSO, Tool.LASSO_RECT -> Icons.Filled.Gesture
     Tool.TEXT -> Icons.Filled.TextFields
-    Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> Icons.Filled.Category
+    Tool.RECT, Tool.TRIANGLE, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> Icons.Filled.Category
     else -> Icons.Filled.Edit
 }
 
@@ -2926,6 +2954,7 @@ private fun NoteDockTool(
     primary: Boolean,
     penStyle: PenStyle? = null,
     penColor: Int? = null,
+    shapeTool: Tool? = null,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -2954,6 +2983,7 @@ private fun NoteDockTool(
             .semantics {
                 contentDescription = noteToolDescription(label, selected)
                 this.selected = selected
+                shapeTool?.let { stateDescription = shapeToolLabel(it) }
                 penStyle?.let { stateDescription = penStyleLabel(it) }
             }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
@@ -2961,22 +2991,14 @@ private fun NoteDockTool(
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (showLabels) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (penStyle != null && penColor != null) {
-                        PenInstrumentArtwork(
-                            style = penStyle,
-                            color = penColor,
-                            modifier = Modifier.size(23.dp),
-                            bodyColor = LocalContentColor.current,
-                            cutoutColor = if (selected) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                Color.Transparent
-                            },
-                            showSampleStroke = false,
-                        )
-                    } else {
-                        Icon(icon, contentDescription = null, modifier = Modifier.size(21.dp))
-                    }
+                    NoteDockGlyph(
+                        icon = icon,
+                        penStyle = penStyle,
+                        penColor = penColor,
+                        shapeTool = shapeTool,
+                        sizeDp = 23,
+                        selected = selected,
+                    )
                     Spacer(Modifier.height(2.dp))
                     Text(
                         label,
@@ -2984,21 +3006,15 @@ private fun NoteDockTool(
                         maxLines = STUDENT_LABEL_MAX_LINES,
                     )
                 }
-            } else if (penStyle != null && penColor != null) {
-                PenInstrumentArtwork(
-                    style = penStyle,
-                    color = penColor,
-                    modifier = Modifier.size(28.dp),
-                    bodyColor = LocalContentColor.current,
-                    cutoutColor = if (selected) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        Color.Transparent
-                    },
-                    showSampleStroke = false,
-                )
             } else {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(26.dp))
+                NoteDockGlyph(
+                    icon = icon,
+                    penStyle = penStyle,
+                    penColor = penColor,
+                    shapeTool = shapeTool,
+                    sizeDp = 28,
+                    selected = selected,
+                )
             }
         }
     }
@@ -3126,6 +3142,34 @@ private fun NotePagePill(
 }
 
 @Composable
+private fun NoteShapeToolTray(
+    selectedTool: Tool,
+    onTool: (Tool) -> Unit,
+    showLabels: Boolean,
+    compact: Boolean = false,
+) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .padding(horizontal = if (compact) 4.dp else 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SHAPE_TOOLS.forEach { option ->
+                ShapeToolTile(
+                    tool = option,
+                    selected = selectedTool == option,
+                    onClick = { onTool(option) },
+                    showLabel = showLabels,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun NoteToolTray(
     label: String,
     options: List<Pair<Tool, String>>,
@@ -3159,14 +3203,6 @@ private fun NoteToolTray(
             }
         }
     }
-}
-
-private fun noteShapeLabel(tool: Tool): String = when (tool) {
-    Tool.RECT -> "사각형"
-    Tool.ARROW -> "화살표"
-    Tool.LINE -> "선"
-    Tool.ELLIPSE -> "원"
-    else -> "도형"
 }
 
 private fun noteLassoLabel(tool: Tool): String =
@@ -4242,7 +4278,7 @@ internal fun noteToolHint(tool: Tool): String = when (tool) {
     Tool.PEN, Tool.HIGHLIGHT -> "획을 그리세요"
     Tool.ERASER -> "획을 문질러 지우세요"
     Tool.TEXT -> "빈 곳을 눌러 글상자 입력"
-    Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> "끌어서 도형 그리기"
+    Tool.RECT, Tool.TRIANGLE, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> "끌어서 ${shapeToolLabel(tool)} 그리기"
     Tool.LASSO -> "끌어서 자유롭게 선택"
     Tool.LASSO_RECT -> "끌어서 사각형으로 선택"
     else -> "필기"
@@ -4262,13 +4298,14 @@ internal fun noteStrokeAnnotation(
     nowMs: Long = System.currentTimeMillis(),
 ): Annotation {
     val safeDuration = durationMs.coerceAtLeast(0L)
+    val commitPoints = if (type == AnnotationType.TRIANGLE) triangleVertices(points) else points
     return Annotation(
         type = type,
         page = 0,
         color = color,
         width = noteCommittedStrokeWidth(type, strokeWidth),
-        points = points,
-        timesMs = pointTimesMs(points),
+        points = commitPoints,
+        timesMs = pointTimesMs(commitPoints),
         opacity = if (type == AnnotationType.HIGHLIGHT) {
             HighlightInk.clampOpacity(highlightOpacity)
         } else {
@@ -4288,6 +4325,7 @@ internal fun noteStrokeAnnotation(
 internal fun noteCommittedStrokeWidth(type: AnnotationType, strokeWidth: Float): Float = when (type) {
     AnnotationType.HIGHLIGHT -> noteStrokeWidth(type, strokeWidth)
     AnnotationType.RECT,
+    AnnotationType.TRIANGLE,
     AnnotationType.ARROW,
     AnnotationType.LINE,
     AnnotationType.ELLIPSE,

@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import com.hackerdjakodjo.mypdfwriter.data.Tool
 import kotlin.math.roundToInt
 
 /**
@@ -362,6 +363,7 @@ internal fun SplitPdfToolbar(
     onOpenHub: () -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    currentTool: Tool = Tool.VIEW,
 ) {
     val toggleState = splitSelectionToggleState(
         textSelectMode = textSelectMode,
@@ -410,8 +412,14 @@ internal fun SplitPdfToolbar(
 
             SplitChromeButton(
                 icon = Icons.Outlined.Handyman,
-                contentDescription = "주석",
+                contentDescription = if (isDockAnnotationTool(currentTool)) {
+                    "${dockAnnotationLabel(currentTool)}, 주석 도구 열기"
+                } else {
+                    "주석"
+                },
                 onClick = onOpenTools,
+                selected = isDockAnnotationTool(currentTool),
+                shapeTool = if (isShapeTool(currentTool)) currentTool else null,
             )
 
             if (!compact) {
@@ -742,6 +750,7 @@ private fun SplitChromeButton(
     selectedTint: Color? = null,
     loading: Boolean = false,
     error: Boolean = false,
+    shapeTool: Tool? = null,
 ) {
     val contentColor = when {
         !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
@@ -781,6 +790,12 @@ private fun SplitChromeButton(
                     modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp,
                     color = MaterialTheme.colorScheme.primary,
+                )
+            } else if (shapeTool != null) {
+                ShapeIcon(
+                    tool = shapeTool,
+                    modifier = Modifier.size(19.dp),
+                    tint = contentColor,
                 )
             } else {
                 Icon(

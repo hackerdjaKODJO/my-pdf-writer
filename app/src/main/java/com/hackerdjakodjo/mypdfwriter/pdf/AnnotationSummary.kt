@@ -34,6 +34,7 @@ object AnnotationSummary {
         AnnotationType.STAMP -> "도장"
         AnnotationType.COVER_TEXT -> "덮어쓰기"
         AnnotationType.RECT -> "사각형"
+        AnnotationType.TRIANGLE -> "삼각형"
         AnnotationType.ELLIPSE -> "타원"
         AnnotationType.LINE -> "직선"
         AnnotationType.ARROW -> "화살표"

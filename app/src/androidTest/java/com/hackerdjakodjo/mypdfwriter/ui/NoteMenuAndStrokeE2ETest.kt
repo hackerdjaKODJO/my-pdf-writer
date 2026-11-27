@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -19,6 +20,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
+import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.Notebook
 import com.hackerdjakodjo.mypdfwriter.data.NotePage
 import com.hackerdjakodjo.mypdfwriter.data.PaperTemplate
@@ -203,6 +206,52 @@ class NoteMenuAndStrokeE2ETest {
             afterRedo.map { it.id }.toSet(),
         )
         assertTrue(afterRedo.all { it.points.size >= 2 })
+    }
+
+    @Test
+    fun shapeTrayUsesIconTilesAndCommitsAnExplicitTriangle() {
+        val initial = Notebook(
+            id = "e2e-shape-notebook",
+            title = "도형 노트",
+            pages = listOf(NotePage(id = "shape-page-0", template = PaperTemplate.BLANK)),
+        )
+        val latest = AtomicReference(initial)
+        composeRule.setContent {
+            var notebook by remember { mutableStateOf(initial) }
+            NoteEditorScreen(
+                notebook = notebook,
+                pageIndex = 0,
+                onBack = {},
+                onChange = { updated ->
+                    notebook = updated
+                    latest.set(updated)
+                },
+                onPageIndexChange = {},
+                onExportPdf = {},
+            )
+        }
+        composeRule.waitForIdle()
+        enableFingerWriting()
+
+        composeRule.onNodeWithContentDescription("도형").performClick()
+        composeRule.waitForIdle()
+        val minTargetPx = with(composeRule.density) { 48.dp.roundToPx() }
+        SHAPE_TOOLS.forEach { tool ->
+            val tile = composeRule.onNodeWithTag(shapeToolTag(tool))
+            tile.assertExists()
+            assertTrue(tile.fetchSemanticsNode().boundsInRoot.width >= minTargetPx)
+            assertTrue(tile.fetchSemanticsNode().boundsInRoot.height >= minTargetPx)
+        }
+        composeRule.onNodeWithTag(shapeToolTag(Tool.RECT)).assertIsSelected()
+        composeRule.onNodeWithTag(shapeToolTag(Tool.TRIANGLE)).performClick()
+        composeRule.onNodeWithTag(shapeToolTag(Tool.TRIANGLE)).assertIsSelected()
+        composeRule.onNodeWithContentDescription("도형, 선택됨").assertExists()
+
+        drawStroke(yFraction = 0.38f)
+        composeRule.waitForIdle()
+        val annotation = latest.get().pages.single().annotations.single()
+        assertEquals(AnnotationType.TRIANGLE, annotation.type)
+        assertEquals(3, annotation.points.size)
     }
 
     @Composable

@@ -78,6 +78,7 @@ enum class AnnotationType {
      * into the page image; the original words remain in the PDF content stream.
      */
     COVER_TEXT,
+    TRIANGLE,
 }
 
 enum class PenStyle {
@@ -104,6 +105,7 @@ enum class Tool {
     ERASER,
     LASSO,
     LASSO_RECT,
+    TRIANGLE,
 }
 
 data class Annotation(

@@ -25,9 +25,9 @@ repository. Read it before changing code.
 Use a **three-part semantic version: `MAJOR.MINOR.PATCH`**. The version string
 must always have two decimal points.
 
-- Current delivered version: **`0.8.98`** — `versionCode = 107`.
-- Current worktree release: **`0.8.98`** — `versionCode = 107`.
-- **Next version after this delivery is `0.8.99` — `versionCode = 108`.**
+- Current delivered version: **`0.8.99`** — `versionCode = 108`.
+- Current worktree release: **`0.8.99`** — `versionCode = 108`.
+- **Next version after this delivery is `0.8.100` — `versionCode = 109`.**
 - For every subsequent app delivery, increment the **PATCH** component by one:
   `0.8.1`, `0.8.2`, `0.8.3`, … Do **not** jump to `0.9.0` or `1.0.0` unless the
   user explicitly approves a new minor/major milestone.
@@ -55,6 +55,7 @@ must always have two decimal points.
 
 | Version | versionCode | Date | Commit | Summary |
 | --- | --- | --- | --- | --- |
+| `0.8.99` | 108 | 2026-11-27 | `v0.8.99` | Shape-tool UX overhaul: shared vector glyph tiles for rectangle/triangle/ellipse/line/arrow across PDF and notes, active-shape dock/style/context identity, balanced PDF shape grid and split-toolbar feedback; added real triangle annotations with three stored vertices and PDF/note render/export/rotation/lasso/eraser support. 1,329 JVM tests pass; 167 instrumentation cases compile; arm64 debug and R8 release builds pass; real-device visual validation pending |
 | `0.8.98` | 107 | 2026-11-27 | — | Line-only study pane: removed the floating note title/source/control header and its reserved top inset so the note canvas starts immediately below the 24dp PDF/note resize line. Kept excerpt drop on the whole pane and moved 원본 PDF 링크 into the note menu. 1,318 JVM tests pass; 165 instrumentation cases compile; arm64 debug and R8 release builds pass; real-device UI validation pending |
 | `0.8.97` | 106 | 2026-11-26 | — | Multi-agent UI simplification informed by static Flexcil/StarNote/EasyNotes/Samsung/PDF Reader/MyReader comparison: one Home view-and-sort menu replaces two buttons, duplicate Home/Note Help icons removed, returning Home shows one resume surface instead of two, PDF easy-menu per-row help icons removed with state-aware bookmark label, note-menu duplicate undo/redo removed, and successful PDF auto-save confirmation auto-hides. 1,321 JVM tests pass; 165 instrumentation cases compile; arm64 debug and R8 release builds pass; real-device UI validation pending |
 | `0.8.96` | 105 | 2026-11-26 | — | Split-view space reclamation: the PDF/note boundary is now a 24dp slim drag handle only. Removed page navigation, percentage pill, size popup trigger and PDF-tools toggle from the middle row; PDF tools stay in the floating PDF chrome and page access remains in the PDF menu. Divider tests/help updated. 1,318 JVM tests pass; 164 instrumentation cases compile; arm64 debug and R8 release builds pass; real-device split-height validation pending |

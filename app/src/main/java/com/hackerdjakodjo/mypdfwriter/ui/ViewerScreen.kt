@@ -1117,6 +1117,7 @@ fun ViewerScreen(
                             onStyle = { showToolStyle = true },
                             onUndo = vm::undo,
                             onRedo = vm::redo,
+                            onOpenTools = { showToolMore = true },
                         )
                         if (textSelectMode) {
                             TextSelectionActionBar(
@@ -1481,6 +1482,7 @@ fun ViewerScreen(
                                 },
                                 onOpenTools = { showToolMore = true },
                                 onOpenHub = openPdfMenu,
+                                currentTool = state.tool,
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
                                     .padding(top = 6.dp, start = 48.dp, end = 48.dp),

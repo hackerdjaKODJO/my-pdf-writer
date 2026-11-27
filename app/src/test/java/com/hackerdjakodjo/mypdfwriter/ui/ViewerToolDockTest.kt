@@ -40,10 +40,11 @@ class ViewerToolDockTest {
     @Test
     fun shapeToolsMatchTheCanvasShapeGestures() {
         assertEquals(
-            setOf(Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE),
+            setOf(Tool.RECT, Tool.TRIANGLE, Tool.ELLIPSE, Tool.LINE, Tool.ARROW),
             viewerShapeTools,
         )
         assertTrue(isShapeTool(Tool.RECT))
+        assertTrue(isShapeTool(Tool.TRIANGLE))
         assertTrue(isShapeTool(Tool.ELLIPSE))
         assertFalse(isShapeTool(Tool.PEN))
         assertFalse(isShapeTool(Tool.REDACT))
@@ -55,6 +56,7 @@ class ViewerToolDockTest {
         assertTrue(isStyleTool(Tool.HIGHLIGHT))
         assertTrue(isStyleTool(Tool.TEXT))
         assertTrue(isStyleTool(Tool.RECT))
+        assertTrue(isStyleTool(Tool.TRIANGLE))
         assertTrue(isStyleTool(Tool.STAMP))
         assertTrue(isStyleTool(Tool.SIGNATURE))
         assertFalse(isStyleTool(Tool.VIEW))
@@ -66,6 +68,7 @@ class ViewerToolDockTest {
     fun annotationSlotShowsTheActiveExtraToolName() {
         assertEquals("글상자", dockAnnotationLabel(Tool.TEXT))
         assertEquals("사각형", dockAnnotationLabel(Tool.RECT))
+        assertEquals("삼각형", dockAnnotationLabel(Tool.TRIANGLE))
         assertEquals("화살표", dockAnnotationLabel(Tool.ARROW))
         assertEquals("직선", dockAnnotationLabel(Tool.LINE))
         assertEquals("타원", dockAnnotationLabel(Tool.ELLIPSE))
@@ -104,6 +107,7 @@ class ViewerToolDockTest {
         listOf(
             Tool.TEXT,
             Tool.RECT,
+            Tool.TRIANGLE,
             Tool.ARROW,
             Tool.LINE,
             Tool.ELLIPSE,

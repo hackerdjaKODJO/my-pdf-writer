@@ -54,7 +54,7 @@ class PdfAnnotationFilterTest {
     }
 
     @Test
-    fun shapesCategoryContainsRectEllipseLineAndArrow() {
+    fun shapesCategoryContainsRectTriangleEllipseLineAndArrow() {
         val rows = PdfAnnotationFilter.filter(allTypes(), AnnotationFilter.SHAPES)
 
         assertEquals(
@@ -63,6 +63,7 @@ class PdfAnnotationFilterTest {
                 AnnotationType.ARROW,
                 AnnotationType.ELLIPSE,
                 AnnotationType.LINE,
+                AnnotationType.TRIANGLE,
             ),
             rows.map { it.type },
         )

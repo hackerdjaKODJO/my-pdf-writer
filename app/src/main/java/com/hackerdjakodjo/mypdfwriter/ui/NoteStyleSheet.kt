@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Draw
@@ -29,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -79,7 +81,7 @@ internal const val NOTE_PEN_PRESETS_LABEL = "내 펜"
 internal const val NOTE_MASKING_CARD_LABEL = "가리기 카드"
 internal const val NOTE_CHECKLIST_LABEL = "체크리스트"
 
-internal val NOTE_SHAPE_TOOLS = listOf(Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE)
+internal val NOTE_SHAPE_TOOLS = SHAPE_TOOLS
 internal val NOTE_LASSO_TOOLS = listOf(Tool.LASSO, Tool.LASSO_RECT)
 
 internal fun noteIsShapeTool(tool: Tool): Boolean = tool in NOTE_SHAPE_TOOLS
@@ -97,6 +99,7 @@ internal fun noteStyleShowsThickness(tool: Tool): Boolean = when (tool) {
     Tool.PEN,
     Tool.HIGHLIGHT,
     Tool.RECT,
+    Tool.TRIANGLE,
     Tool.ARROW,
     Tool.LINE,
     Tool.ELLIPSE -> true
@@ -108,6 +111,7 @@ internal fun noteStyleShowsOpacity(tool: Tool): Boolean = when (tool) {
     Tool.PEN,
     Tool.TEXT,
     Tool.RECT,
+    Tool.TRIANGLE,
     Tool.ARROW,
     Tool.LINE,
     Tool.ELLIPSE -> true
@@ -123,7 +127,7 @@ internal fun noteStyleTitle(tool: Tool): String = when (tool) {
     Tool.TEXT -> "$NOTE_TEXT_TOOL_LABEL 스타일"
     Tool.ERASER -> "지우개"
     Tool.LASSO, Tool.LASSO_RECT -> "선택"
-    Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> "도형 스타일"
+    Tool.RECT, Tool.TRIANGLE, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> "${shapeToolLabel(tool)} 스타일"
     else -> "스타일"
 }
 
@@ -187,6 +191,19 @@ internal fun NoteStyleSheet(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (noteIsShapeTool(tool)) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            ShapeIcon(tool = tool, modifier = Modifier.size(22.dp))
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                }
                 Column(Modifier.weight(1f)) {
                     Text(
                         if (tool == Tool.PEN || tool == Tool.HIGHLIGHT) "펜 설정" else "스타일",

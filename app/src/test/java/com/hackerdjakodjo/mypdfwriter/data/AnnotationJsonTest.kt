@@ -283,6 +283,7 @@ class AnnotationJsonTest {
             AnnotationType.SIGNATURE,
             AnnotationType.REDACT,
             AnnotationType.COVER_TEXT,
+            AnnotationType.TRIANGLE,
         )
 
         newTypes.forEach { type ->

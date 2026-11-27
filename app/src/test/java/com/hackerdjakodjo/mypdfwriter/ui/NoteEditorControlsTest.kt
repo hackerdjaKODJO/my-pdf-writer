@@ -11,6 +11,7 @@ class NoteEditorControlsTest {
     @Test
     fun `shape group contains only shape tools`() {
         assertTrue(noteIsShapeTool(Tool.RECT))
+        assertTrue(noteIsShapeTool(Tool.TRIANGLE))
         assertTrue(noteIsShapeTool(Tool.ARROW))
         assertTrue(noteIsShapeTool(Tool.LINE))
         assertTrue(noteIsShapeTool(Tool.ELLIPSE))
@@ -42,12 +43,14 @@ class NoteEditorControlsTest {
         assertTrue(noteStyleShowsThickness(Tool.PEN))
         assertTrue(noteStyleShowsThickness(Tool.HIGHLIGHT))
         assertTrue(noteStyleShowsThickness(Tool.ARROW))
+        assertTrue(noteStyleShowsThickness(Tool.TRIANGLE))
         assertFalse(noteStyleShowsThickness(Tool.TEXT))
         assertFalse(noteStyleShowsThickness(Tool.ERASER))
 
         assertTrue(noteStyleShowsOpacity(Tool.PEN))
         assertTrue(noteStyleShowsOpacity(Tool.TEXT))
         assertTrue(noteStyleShowsOpacity(Tool.ELLIPSE))
+        assertTrue(noteStyleShowsOpacity(Tool.TRIANGLE))
         assertFalse(noteStyleShowsOpacity(Tool.HIGHLIGHT))
 
         assertTrue(noteStyleShowsFontSize(Tool.TEXT))
@@ -153,6 +156,7 @@ class NoteEditorControlsTest {
         assertEquals("체크리스트", NOTE_CHECKLIST_LABEL)
         assertEquals("포스트잇", NOTE_MEMO_CARD_LABEL)
         assertTrue(noteStyleTitle(Tool.TEXT).contains(NOTE_TEXT_TOOL_LABEL))
+        assertEquals("삼각형 스타일", noteStyleTitle(Tool.TRIANGLE))
         assertTrue(noteToolHint(Tool.TEXT).contains(NOTE_TEXT_TOOL_LABEL))
     }
 

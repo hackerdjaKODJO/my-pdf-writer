@@ -679,6 +679,7 @@ fun PdfCanvas(
 
                         val isShape = when (gestureTool) {
                             Tool.RECT,
+                            Tool.TRIANGLE,
                             Tool.ARROW,
                             Tool.LINE,
                             Tool.ELLIPSE,
@@ -1166,6 +1167,7 @@ fun PdfCanvas(
 
 private fun annotationTypeForTool(tool: Tool): AnnotationType? = when (tool) {
     Tool.RECT -> AnnotationType.RECT
+    Tool.TRIANGLE -> AnnotationType.TRIANGLE
     Tool.ARROW -> AnnotationType.ARROW
     Tool.LINE -> AnnotationType.LINE
     Tool.ELLIPSE -> AnnotationType.ELLIPSE

@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertTextEquals
@@ -55,6 +57,30 @@ class PdfMenuFlowE2ETest {
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    @Test
+    fun pdfShapePickerUsesSharedIconTilesAndKeepsTheActiveShape() {
+        var currentTool by mutableStateOf(Tool.RECT)
+        composeRule.setContent {
+            MaterialTheme {
+                ViewerToolMoreSheet(
+                    currentTool = currentTool,
+                    onSelectTool = { currentTool = it },
+                    onDismiss = {},
+                )
+            }
+        }
+
+        SHAPE_TOOLS.forEach { tool ->
+            composeRule.onNodeWithTag(shapeToolTag(tool)).assertExists()
+        }
+        composeRule.onNodeWithTag(shapeToolTag(Tool.RECT)).assertIsSelected()
+        composeRule.onNodeWithTag(shapeToolTag(Tool.TRIANGLE)).performScrollTo().performClick()
+        composeRule.waitForIdle()
+        assertEquals(Tool.TRIANGLE, currentTool)
+        composeRule.onNodeWithTag(shapeToolTag(Tool.TRIANGLE)).assertIsSelected()
+        composeRule.onNodeWithTag(shapeToolTag(Tool.RECT)).assertIsNotSelected()
+    }
 
     @Test
     fun pdfMenuStartsEasyAndExpertFooterKeepsTheFullInventory() {

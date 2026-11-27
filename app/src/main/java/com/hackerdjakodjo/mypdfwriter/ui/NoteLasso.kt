@@ -3,6 +3,7 @@ package com.hackerdjakodjo.mypdfwriter.ui
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
 import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
+import com.hackerdjakodjo.mypdfwriter.data.triangleVertices
 import kotlin.math.max
 import kotlin.math.min
 
@@ -84,6 +85,22 @@ private fun annotationHitsLasso(annotation: Annotation, outline: List<Normalized
 
         AnnotationType.TEXT -> boxHitsLasso(textBox(annotation), outline)
         AnnotationType.STAMP -> boxHitsLasso(stampBox(annotation), outline)
+        AnnotationType.TRIANGLE -> {
+            val vertices = triangleVertices(annotation.points)
+            if (vertices.size < 3) {
+                false
+            } else {
+                boxHitsLasso(
+                    NoteBox(
+                        left = vertices.minOf { it.x },
+                        top = vertices.minOf { it.y },
+                        right = vertices.maxOf { it.x },
+                        bottom = vertices.maxOf { it.y },
+                    ),
+                    outline,
+                )
+            }
+        }
         AnnotationType.RECT,
         AnnotationType.ELLIPSE,
         AnnotationType.REDACT,

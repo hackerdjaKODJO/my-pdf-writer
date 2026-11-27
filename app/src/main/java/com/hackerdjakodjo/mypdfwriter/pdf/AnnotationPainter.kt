@@ -14,6 +14,7 @@ import com.hackerdjakodjo.mypdfwriter.data.MIN_PRESSURE_WIDTH_FACTOR
 import com.hackerdjakodjo.mypdfwriter.data.PenStyle
 import com.hackerdjakodjo.mypdfwriter.data.inkResponseSeries
 import com.hackerdjakodjo.mypdfwriter.data.revealPointCount
+import com.hackerdjakodjo.mypdfwriter.data.triangleVertices
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -101,6 +102,7 @@ object AnnotationPainter {
                 response = annotationInkResponse(annotation),
             )
             AnnotationType.RECT -> drawRect(canvas, annotation, width, height)
+            AnnotationType.TRIANGLE -> drawTriangle(canvas, annotation, width, height)
             AnnotationType.ARROW -> drawArrow(canvas, annotation, width, height)
             AnnotationType.TEXT -> drawText(canvas, annotation, width, height)
             AnnotationType.UNDERLINE, AnnotationType.STRIKEOUT -> drawMarkupLine(canvas, annotation, width, height)
@@ -194,6 +196,7 @@ object AnnotationPainter {
             }
 
             AnnotationType.TEXT -> drawText(canvas, annotation.faded(fraction), width, height)
+            AnnotationType.TRIANGLE -> drawTriangle(canvas, annotation.faded(fraction), width, height)
             AnnotationType.STAMP -> drawStamp(canvas, annotation.faded(fraction), width, height)
             // Text-like reveal: fade the whole cover + replacement in together.
             AnnotationType.COVER_TEXT -> drawCoverText(canvas, annotation.faded(fraction), width, height)
@@ -1418,6 +1421,19 @@ object AnnotationPainter {
             maxOf(a.y, b.y) * height,
             paint,
         )
+    }
+
+    private fun drawTriangle(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {
+        val vertices = triangleVertices(annotation.points)
+        if (vertices.size < 3) return
+        val path = Path().apply {
+            moveTo(vertices[0].x * width, vertices[0].y * height)
+            for (index in 1 until vertices.size) {
+                lineTo(vertices[index].x * width, vertices[index].y * height)
+            }
+            close()
+        }
+        canvas.drawPath(path, basePaint(annotation, width))
     }
 
     private fun drawEllipse(canvas: Canvas, annotation: Annotation, width: Float, height: Float) {

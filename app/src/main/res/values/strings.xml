@@ -39,6 +39,7 @@
     <string name="tool_highlight">형광펜</string>
     <string name="tool_text">텍스트</string>
     <string name="tool_rect">사각형</string>
+    <string name="tool_triangle">삼각형</string>
     <string name="tool_arrow">화살표</string>
     <string name="tool_underline">밑줄</string>
     <string name="tool_strikeout">취소선</string>
@@ -140,6 +141,7 @@
     <string name="annotation_type_highlight">형광펜</string>
     <string name="annotation_type_text">텍스트</string>
     <string name="annotation_type_rect">사각형</string>
+    <string name="annotation_type_triangle">삼각형</string>
     <string name="annotation_type_arrow">화살표</string>
     <string name="annotation_type_underline">밑줄</string>
     <string name="annotation_type_strikeout">취소선</string>

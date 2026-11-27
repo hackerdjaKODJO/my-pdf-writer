@@ -250,7 +250,7 @@ internal fun noteToolLabel(tool: Tool): String = when (tool) {
     Tool.ERASER -> "지우개"
     Tool.LASSO, Tool.LASSO_RECT -> "선택"
     Tool.TEXT -> NOTE_TEXT_TOOL_LABEL
-    Tool.RECT, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> "도형"
+    Tool.RECT, Tool.TRIANGLE, Tool.ARROW, Tool.LINE, Tool.ELLIPSE -> "도형"
     else -> "도구"
 }
 

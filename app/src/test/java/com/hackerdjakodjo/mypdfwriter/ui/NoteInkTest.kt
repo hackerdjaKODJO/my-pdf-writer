@@ -363,6 +363,11 @@ class NoteInkTest {
                 listOf(point(0.30f, 0.40f), point(0.70f, 0.60f)),
             ),
             annotation(
+                "triangle",
+                AnnotationType.TRIANGLE,
+                listOf(point(0.50f, 0.10f), point(0.20f, 0.80f), point(0.80f, 0.80f)),
+            ),
+            annotation(
                 "redact",
                 AnnotationType.REDACT,
                 listOf(point(0.30f, 0.40f), point(0.70f, 0.60f)),

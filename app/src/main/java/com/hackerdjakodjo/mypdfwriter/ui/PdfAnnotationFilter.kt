@@ -40,6 +40,7 @@ object PdfAnnotationFilter {
         -> AnnotationFilter.TEXT
 
         AnnotationType.RECT,
+        AnnotationType.TRIANGLE,
         AnnotationType.ELLIPSE,
         AnnotationType.LINE,
         AnnotationType.ARROW,

@@ -43,6 +43,7 @@ import com.hackerdjakodjo.mypdfwriter.data.RecentDoc
 import com.hackerdjakodjo.mypdfwriter.data.SearchHit
 import com.hackerdjakodjo.mypdfwriter.data.StudySourceLink
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.data.triangleVertices
 import com.hackerdjakodjo.mypdfwriter.debug.DevLog
 import com.hackerdjakodjo.mypdfwriter.pdf.AnnotationPainter
 import com.hackerdjakodjo.mypdfwriter.pdf.CropInsets
@@ -555,10 +556,11 @@ internal fun pdfStrokeAnnotation(
     durationMs: Long,
     nowMs: Long = System.currentTimeMillis(),
 ): Annotation {
+    val shapedPoints = if (type == AnnotationType.TRIANGLE) triangleVertices(points) else points
     val usablePoints = if (isTwoPointType(type)) {
-        listOf(points.first(), points.last())
+        listOf(shapedPoints.first(), shapedPoints.last())
     } else {
-        points
+        shapedPoints
     }
     val safeDuration = durationMs.coerceAtLeast(0L)
     return Annotation(
@@ -568,6 +570,7 @@ internal fun pdfStrokeAnnotation(
         width = when (type) {
             AnnotationType.HIGHLIGHT -> HighlightInk.clamp(state.highlightWidth)
             AnnotationType.RECT,
+            AnnotationType.TRIANGLE,
             AnnotationType.ARROW,
             AnnotationType.LINE,
             AnnotationType.ELLIPSE,
@@ -636,6 +639,12 @@ internal fun pdfEraserHitsAnnotation(
                 eraser,
                 radius,
             )
+        }
+
+        AnnotationType.TRIANGLE -> {
+            val border = triangleVertices(annotation.points)
+            if (border.size < 3) return false
+            EraserGeometry.eraserHitsStroke(border + border.first(), eraser, radius)
         }
 
         AnnotationType.TEXT -> {
@@ -1550,6 +1559,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
             Tool.PEN -> AnnotationType.PEN
             Tool.HIGHLIGHT -> AnnotationType.HIGHLIGHT
             Tool.RECT -> AnnotationType.RECT
+            Tool.TRIANGLE -> AnnotationType.TRIANGLE
             Tool.ARROW -> AnnotationType.ARROW
             Tool.UNDERLINE -> AnnotationType.UNDERLINE
             Tool.STRIKEOUT -> AnnotationType.STRIKEOUT

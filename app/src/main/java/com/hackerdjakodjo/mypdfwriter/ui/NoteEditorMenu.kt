@@ -588,7 +588,7 @@ internal fun NoteInkSettingsSheet(
                 NoteInkSetting.SHAPE_RECOGNITION -> NoteMenuToggleRow(
                     icon = Icons.Filled.Palette,
                     title = "도형 자동 인식",
-                    supporting = "펜으로 그린 선·사각형·원을 도형으로 변환",
+                    supporting = "펜으로 그린 직선·사각형·타원을 도형으로 변환",
                     checked = shapeRecognition,
                     onCheckedChange = onShapeRecognition,
                 )

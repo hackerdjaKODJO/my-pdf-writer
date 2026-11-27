@@ -522,6 +522,8 @@ fun NoteCanvas(
                         }
 
                         Tool.RECT,
+
+                        Tool.TRIANGLE,
                         Tool.ARROW,
                         Tool.LINE,
                         Tool.ELLIPSE,
@@ -556,6 +558,8 @@ fun NoteCanvas(
                         }
 
                         Tool.RECT,
+
+                        Tool.TRIANGLE,
                         Tool.ARROW,
                         Tool.LINE,
                         Tool.ELLIPSE,
@@ -701,6 +705,8 @@ fun NoteCanvas(
                                     }
 
                                     Tool.RECT,
+
+                                    Tool.TRIANGLE,
                                     Tool.ARROW,
                                     Tool.LINE,
                                     Tool.ELLIPSE,
@@ -759,6 +765,8 @@ fun NoteCanvas(
                                 }
 
                                 Tool.RECT,
+
+                                Tool.TRIANGLE,
                                 Tool.ARROW,
                                 Tool.LINE,
                                 Tool.ELLIPSE,
@@ -1501,6 +1509,7 @@ internal fun noteAnnotationTypeForTool(tool: Tool): AnnotationType? = when (tool
     Tool.HIGHLIGHT -> AnnotationType.HIGHLIGHT
     Tool.TEXT -> AnnotationType.TEXT
     Tool.RECT -> AnnotationType.RECT
+    Tool.TRIANGLE -> AnnotationType.TRIANGLE
     Tool.ARROW -> AnnotationType.ARROW
     Tool.LINE -> AnnotationType.LINE
     Tool.ELLIPSE -> AnnotationType.ELLIPSE
