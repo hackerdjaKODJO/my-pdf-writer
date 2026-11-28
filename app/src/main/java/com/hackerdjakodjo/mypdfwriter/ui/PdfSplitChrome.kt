@@ -100,7 +100,9 @@ internal fun pdfChromePolicy(
     hasSelection: Boolean,
     chromeHidden: Boolean = false,
     autoHideMode: ChromeAutoHideMode = ChromeAutoHideMode.OFF,
-): PdfChromePolicy = when {
+): PdfChromePolicy {
+    val selectionActive = textSelectMode || hasSelection
+    return when {
     studyPaneOpen -> PdfChromePolicy(
         showTopAppBar = false,
         showBottomBar = false,
@@ -108,11 +110,11 @@ internal fun pdfChromePolicy(
         // The study pane header already owns a drop target; a second target
         // over the tiny PDF strip only wastes reading space.
         showPageDropTarget = false,
-        showSplitToolbar = !textSelectMode,
-        showSplitSelectionBar = textSelectMode,
+        showSplitToolbar = !selectionActive,
+        showSplitSelectionBar = selectionActive,
     )
 
-    isChromeImmersive(studyPaneOpen, autoHideMode, chromeHidden) -> PdfChromePolicy(
+    isChromeImmersive(studyPaneOpen, autoHideMode, chromeHidden) && !selectionActive -> PdfChromePolicy(
         // Auto-hide is an overlay state: no bar, hint or drop target may consume
         // height. The floating back/menu controls in ViewerScreen stay reachable.
         showTopAppBar = false,
@@ -127,10 +129,11 @@ internal fun pdfChromePolicy(
         showTopAppBar = true,
         showBottomBar = true,
         showHintPill = true,
-        showPageDropTarget = textSelectMode && hasSelection,
+        showPageDropTarget = selectionActive && hasSelection,
         showSplitToolbar = false,
         showSplitSelectionBar = false,
     )
+    }
 }
 
 /**

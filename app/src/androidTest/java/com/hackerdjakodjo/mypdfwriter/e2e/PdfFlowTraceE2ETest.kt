@@ -7,9 +7,12 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ApplicationProvider
 import com.hackerdjakodjo.mypdfwriter.MainActivity
+import com.hackerdjakodjo.mypdfwriter.data.AnnotationType
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.OnboardingStore
 import com.hackerdjakodjo.mypdfwriter.data.Tool
+import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import com.hackerdjakodjo.mypdfwriter.debug.DevLog
 import com.hackerdjakodjo.mypdfwriter.debug.DevLogEntry
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfFlowTrace
@@ -192,6 +195,22 @@ class PdfFlowTraceE2ETest {
         PdfFixture.awaitUntil("annotation object edit committed") {
             vm.viewer.value?.annotations?.single()?.points?.first()?.x == committed.points.first().x + 0.02f
         }
+        onUi {
+            addTextMarkup(
+                words = listOf(
+                    PdfTextWord(
+                        pageIndex = 0,
+                        text = "FIXTURE",
+                        rect = NormalizedRect(0.1f, 0.1f, 0.3f, 0.14f),
+                    ),
+                ),
+                type = AnnotationType.HIGHLIGHT,
+                color = 0xFFFFD54F.toInt(),
+            )
+        }
+        PdfFixture.awaitUntil("text highlight committed") {
+            vm.viewer.value?.annotations?.size == 2
+        }
 
         // ---- edit pages
         val revisionBefore = vm.viewer.value!!.revision
@@ -267,6 +286,10 @@ class PdfFlowTraceE2ETest {
         val annotationEdit = firstFlowEvent("annotation_edit")
         assertEquals("transform", annotationEdit.fields["kind"])
         assertEquals("PEN", annotationEdit.fields["type"])
+        assertTrue(
+            "text markup must emit a privacy-safe HIGHLIGHT annotation event",
+            flowEvents().any { it.event == "annotate" && it.fields["type"] == "HIGHLIGHT" },
+        )
 
         val search = firstFlowEvent("search")
         assertEquals(

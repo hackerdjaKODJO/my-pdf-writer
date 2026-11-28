@@ -14,7 +14,7 @@ internal enum class PdfContextHint {
     /** Nothing to teach right now (selection is active, words are absent, ...). */
     NONE,
 
-    /** VIEW mode: long-press selects a word; the dock toggle selects a range. */
+    /** VIEW mode: direct tap/drag selects text; the dock toggle enables precise lasso mode. */
     VIEW_SELECTION_HINT,
 
     /** Word geometry is still being extracted. */
@@ -59,7 +59,7 @@ internal fun pdfContextHint(state: PdfContextHintState): PdfContextHint = when {
     else -> PdfContextHint.TOOL_HINT
 }
 
-internal const val PDF_HINT_VIEW_TEXT = "길게 눌러 단어 선택 · 하단 텍스트 선택으로 범위 선택"
+internal const val PDF_HINT_VIEW_TEXT = "텍스트를 탭하거나 드래그해 선택 · 빈 곳에서 페이지 이동"
 internal const val PDF_HINT_PAGE_NAVIGATION_TEXT = "위쪽 페이지 이동"
 internal const val PDF_HINT_VIEW_ZOOM_TEXT = "보기 도구에서 두 손가락·더블 탭으로 확대"
 internal const val PDF_HINT_STYLE_UNDO_TEXT = "스타일·실행 취소는 도구 독 위 버튼에"

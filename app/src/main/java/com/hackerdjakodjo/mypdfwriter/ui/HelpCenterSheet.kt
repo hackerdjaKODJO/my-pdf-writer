@@ -98,8 +98,8 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
         subtitle = "처음 60초면 읽기·표시·노트·복습까지 한 번에",
         steps = listOf(
             "홈에서 PDF 가져오기 또는 이어서 읽기로 강의자료를 엽니다.",
-            "하단 도구 독의 텍스트 선택을 누르고 중요한 문장을 드래그합니다.",
-            "플로팅 바에서 형광펜을 눌러 표시를 PDF에 저장합니다.",
+            "보기 상태에서 중요한 단어를 탭하거나 문장을 드래그해 선택합니다.",
+            "나타난 선택 바에서 형광펜을 눌러 표시를 PDF에 저장합니다.",
             "하단 도구 독의 노트를 눌러 ${UiCopy.STUDY_NOTE}(${UiCopy.STUDY_NOTE_DESCRIPTION})를 엽니다.",
             "가운데 손잡이를 위로 올려 노트를 넓히고 펜으로 필기합니다.",
             "노트 메뉴의 원본 PDF 링크로 원본 페이지를 오가고, 홈 설정의 백업/복원으로 작업을 보관합니다.",
@@ -131,8 +131,8 @@ internal fun helpTopics(): List<HelpTopic> = listOf(
         title = "텍스트 선택·형광펜",
         subtitle = "텍스트 PDF에서 단어를 고르고 바로 표시하기",
         steps = listOf(
-            "하단 도구의 텍스트 선택을 누르면 단어 박스가 표시됩니다.",
-            "한 단어는 짧게 탭하고, 여러 단어는 첫 단어에서 끝 단어까지 드래그합니다.",
+            "보기 상태에서 단어를 짧게 탭하거나 첫 단어에서 끝 단어까지 드래그합니다.",
+            "정확한 사각형 선택이 필요하면 하단 도구의 텍스트 선택을 누릅니다. 접근성 서비스에서는 PDF 캔버스의 첫·이전·다음 단어 선택 동작을 사용할 수 있습니다.",
             "선택 바에서 형광펜·밑줄·취소선을 눌러 표시를 저장합니다.",
             "같은 바의 복사·${UiCopy.CAPTURE_TO_NOTE}를 쓰거나 더보기에서 번역·사전·공유를 실행할 수 있습니다. ${UiCopy.CAPTURE_TO_NOTE}는 ${UiCopy.CAPTURE_TO_NOTE_DESCRIPTION}.",
         ),
@@ -260,7 +260,7 @@ internal fun quickCards(): List<QuickCard> = listOf(
     QuickCard(
         key = QuickCardKey.MARK_WHILE_READ,
         label = "2 표시하며 읽기",
-        sentence = "하단의 텍스트 선택으로 문장을 고르고 형광펜으로 표시합니다.",
+        sentence = "보기 상태에서 문장을 탭하거나 드래그해 고르고 형광펜으로 표시합니다.",
         destination = QuickDestination.MARKUP_TOOLS,
         actionLabel = "자세히",
         topicKey = HelpTopicKey.TEXT_SELECTION,

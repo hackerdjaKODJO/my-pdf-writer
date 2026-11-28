@@ -3,9 +3,13 @@ package com.hackerdjakodjo.mypdfwriter.ui
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
@@ -13,8 +17,11 @@ import androidx.compose.ui.test.performTouchInput
 import com.hackerdjakodjo.mypdfwriter.data.NormalizedPoint
 import com.hackerdjakodjo.mypdfwriter.data.Tool
 import com.hackerdjakodjo.mypdfwriter.pdf.NormalizedRect
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfLink
+import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextLayout
 import com.hackerdjakodjo.mypdfwriter.pdf.PdfTextWord
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import kotlin.math.min
@@ -58,6 +65,152 @@ class PdfCanvasSelectionE2ETest {
             down(Offset(left + side * 0.20f, top + side * 0.20f))
             moveTo(Offset(left + side * 0.80f, top + side * 0.80f))
             up()
+        }
+        composeRule.waitForIdle()
+
+        assertEquals(listOf(first, second), selected)
+    }
+
+    @Test
+    fun viewModeTapSelectsTextWithoutEnteringSelectionMode() {
+        val word = word("direct", 0.35f, 0.40f, 0.65f, 0.60f)
+        var selected: List<PdfTextWord> = emptyList()
+        setCanvas(
+            words = listOf(word),
+            onSelection = { selected = it },
+            textSelectMode = false,
+            onDirectTextTap = { point ->
+                selected = listOfNotNull(PdfTextLayout.wordAtStrict(listOf(word), point.x, point.y))
+            },
+        )
+
+        composeRule.onNodeWithTag(CANVAS_TAG).performTouchInput {
+            down(center)
+            up()
+        }
+        composeRule.waitForIdle()
+
+        assertEquals(listOf(word), selected)
+    }
+
+    @Test
+    fun viewModeCanvasExposesWordSelectionAccessibilityActions() {
+        val word = word("accessible", 0.35f, 0.40f, 0.65f, 0.60f)
+        setCanvas(words = listOf(word), onSelection = {}, textSelectMode = false)
+
+        val actions = composeRule.onNodeWithTag(CANVAS_TAG)
+            .fetchSemanticsNode()
+            .config[SemanticsActions.CustomActions]
+
+        assertTrue(actions.any { it.label == "첫 단어 선택" })
+        assertTrue(actions.any { it.label == "이전 단어 선택" })
+        assertTrue(actions.any { it.label == "다음 단어 선택" })
+    }
+
+    @Test
+    fun viewModeLinkTapKeepsPriorityOverDirectTextSelection() {
+        val word = word("linked", 0.35f, 0.40f, 0.65f, 0.60f)
+        var selected: List<PdfTextWord> = emptyList()
+        var linkTaps = 0
+        setCanvas(
+            words = listOf(word),
+            onSelection = { selected = it },
+            textSelectMode = false,
+            links = listOf(PdfLink(rect = word.rect, targetPage = 1)),
+            onLinkTapped = { linkTaps++ },
+            onDirectTextTap = { point ->
+                selected = listOfNotNull(PdfTextLayout.wordAtStrict(listOf(word), point.x, point.y))
+            },
+        )
+
+        composeRule.onNodeWithTag(CANVAS_TAG).performTouchInput {
+            down(center)
+            up()
+        }
+        composeRule.waitForIdle()
+
+        assertEquals(1, linkTaps)
+        assertTrue(selected.isEmpty())
+    }
+
+    @Test
+    fun viewModeDragSelectsTextWithoutEnteringSelectionMode() {
+        val first = word("first", 0.30f, 0.40f, 0.48f, 0.58f)
+        val second = word("second", 0.52f, 0.40f, 0.70f, 0.58f)
+        var selected: List<PdfTextWord> = emptyList()
+        setCanvas(
+            words = listOf(first, second),
+            onSelection = { selected = it },
+            textSelectMode = false,
+        )
+
+        composeRule.onNodeWithTag(CANVAS_TAG).performTouchInput {
+            val side = min(width, height).toFloat()
+            val left = (width - side) / 2f
+            val top = (height - side) / 2f
+            down(Offset(left + side * 0.35f, top + side * 0.49f))
+            moveTo(Offset(left + side * 0.60f, top + side * 0.49f))
+            moveTo(Offset(left + side * 0.72f, top + side * 0.49f))
+            up()
+        }
+        composeRule.waitForIdle()
+
+        assertEquals(listOf(first, second), selected)
+    }
+
+    @Test
+    fun viewModeDragDuringLoadingSelectsWhenWordsArriveWithoutTurningPage() {
+        val first = word("first", 0.30f, 0.40f, 0.48f, 0.58f)
+        val second = word("second", 0.52f, 0.40f, 0.70f, 0.58f)
+        var words by mutableStateOf<List<PdfTextWord>>(emptyList())
+        var loading by mutableStateOf(true)
+        var selected: List<PdfTextWord> = emptyList()
+        var pageTurns = 0
+        composeRule.setContent {
+            PdfCanvas(
+                bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888),
+                docId = "e2e-loading-doc",
+                pageIndex = 0,
+                displayWidthPt = 595f,
+                displayHeightPt = 595f,
+                annotations = emptyList(),
+                tool = Tool.VIEW,
+                color = 0xFF1F4E79.toInt(),
+                strokeWidth = 0.0035f,
+                fontSize = 0.024f,
+                opacity = 1f,
+                zoom = 1f,
+                textWords = words,
+                textSelectMode = false,
+                textLoading = loading,
+                onZoomChange = {},
+                onAddStroke = { _, _ -> },
+                onEraseStroke = { _, _, _ -> },
+                onRequestText = {},
+                onRequestStamp = {},
+                onRequestSignature = {},
+                onTextSelection = { selected = it },
+                onNextPage = { pageTurns++ },
+                modifier = Modifier.fillMaxSize().testTag(CANVAS_TAG),
+            )
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(CANVAS_TAG).performTouchInput {
+            val side = min(width, height).toFloat()
+            val left = (width - side) / 2f
+            val top = (height - side) / 2f
+            down(Offset(left + side * 0.35f, top + side * 0.49f))
+            moveTo(Offset(left + side * 0.60f, top + side * 0.49f))
+            moveTo(Offset(left + side * 0.72f, top + side * 0.49f))
+            up()
+        }
+        composeRule.waitForIdle()
+        assertEquals(0, pageTurns)
+
+        composeRule.runOnIdle {
+            words = listOf(first, second)
+            loading = false
         }
         composeRule.waitForIdle()
 
@@ -137,6 +290,9 @@ class PdfCanvasSelectionE2ETest {
         onSelection: (List<PdfTextWord>) -> Unit,
         textSelectMode: Boolean = true,
         onRequestSelectionAt: (NormalizedPoint) -> Unit = {},
+        onDirectTextTap: (NormalizedPoint) -> Unit = {},
+        links: List<PdfLink> = emptyList(),
+        onLinkTapped: (PdfLink) -> Unit = {},
     ) {
         composeRule.setContent {
             PdfCanvas(
@@ -153,6 +309,7 @@ class PdfCanvasSelectionE2ETest {
                 opacity = 1f,
                 zoom = 1f,
                 textWords = words,
+                links = links,
                 textSelectMode = textSelectMode,
                 onZoomChange = {},
                 onAddStroke = { _, _ -> },
@@ -161,6 +318,8 @@ class PdfCanvasSelectionE2ETest {
                 onRequestStamp = {},
                 onRequestSignature = {},
                 onTextSelection = onSelection,
+                onDirectTextTap = onDirectTextTap,
+                onLinkTapped = onLinkTapped,
                 onRequestSelectionAt = onRequestSelectionAt,
                 modifier = Modifier.fillMaxSize().testTag(CANVAS_TAG),
             )

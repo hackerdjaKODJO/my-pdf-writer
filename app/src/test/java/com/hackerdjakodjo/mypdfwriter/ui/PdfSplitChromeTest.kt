@@ -55,6 +55,24 @@ class PdfSplitChromeTest {
     }
 
     @Test
+    fun directSelectionUsesTheSameChromeAsExplicitSelection() {
+        val full = pdfChromePolicy(
+            studyPaneOpen = false,
+            textSelectMode = false,
+            hasSelection = true,
+        )
+        assertTrue(full.showPageDropTarget)
+
+        val split = pdfChromePolicy(
+            studyPaneOpen = true,
+            textSelectMode = false,
+            hasSelection = true,
+        )
+        assertFalse(split.showSplitToolbar)
+        assertTrue(split.showSplitSelectionBar)
+    }
+
+    @Test
     fun splitSelectionReplacesTheToolbarWithoutRestoringBars() {
         val policy = pdfChromePolicy(
             studyPaneOpen = true,
@@ -261,8 +279,8 @@ class PdfSplitChromeTest {
     fun immersiveChromeDropsBarsWithoutChangingSplitOrDefaultPolicy() {
         val immersive = pdfChromePolicy(
             studyPaneOpen = false,
-            textSelectMode = true,
-            hasSelection = true,
+            textSelectMode = false,
+            hasSelection = false,
             chromeHidden = true,
             autoHideMode = ChromeAutoHideMode.ON,
         )
@@ -273,6 +291,16 @@ class PdfSplitChromeTest {
         assertFalse(immersive.showSplitToolbar)
         assertFalse(immersive.showSplitSelectionBar)
         assertTrue(isChromeImmersive(false, ChromeAutoHideMode.ON, true))
+
+        val selection = pdfChromePolicy(
+            studyPaneOpen = false,
+            textSelectMode = false,
+            hasSelection = true,
+            chromeHidden = true,
+            autoHideMode = ChromeAutoHideMode.ON,
+        )
+        assertTrue(selection.showBottomBar)
+        assertTrue(selection.showPageDropTarget)
 
         // Hidden state never applies to split mode or to the OFF mode.
         assertFalse(isChromeImmersive(true, ChromeAutoHideMode.ON, true))

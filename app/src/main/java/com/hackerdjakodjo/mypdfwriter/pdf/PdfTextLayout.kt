@@ -66,6 +66,7 @@ object PdfTextLayout {
         val path: String,
         val lastModified: Long,
         val length: Long,
+        val pageIndex: Int?,
     )
 
     /** Small LRU: search highlights otherwise re-parse the whole PDF on every keystroke. */
@@ -80,14 +81,18 @@ object PdfTextLayout {
     /** Drops cached layouts after a document rewrite. */
     fun clearLineCache() = synchronized(lineCache) { lineCache.clear() }
 
-    suspend fun lines(source: File): List<PdfTextLine> = withContext(Dispatchers.IO) {
-        val key = TextCacheKey(source.absolutePath, source.lastModified(), source.length())
+    suspend fun lines(source: File, pageIndex: Int? = null): List<PdfTextLine> = withContext(Dispatchers.IO) {
+        val key = TextCacheKey(source.absolutePath, source.lastModified(), source.length(), pageIndex)
         synchronized(lineCache) { lineCache[key] }?.let { return@withContext it }
         val lines = PDDocument.load(source).use { document ->
             val stripper = LayoutStripper().apply {
                 sortByPosition = true
                 lineSeparator = "\n"
                 wordSeparator = " "
+                if (pageIndex != null && pageIndex in 0 until document.numberOfPages) {
+                    startPage = pageIndex + 1
+                    endPage = pageIndex + 1
+                }
             }
             // getText drives the extraction; LayoutStripper collects its own lines.
             stripper.getText(document)
@@ -97,7 +102,8 @@ object PdfTextLayout {
         lines
     }
 
-    suspend fun words(source: File): List<PdfTextWord> = lines(source).flatMap { it.words }
+    suspend fun words(source: File, pageIndex: Int? = null): List<PdfTextWord> =
+        lines(source, pageIndex).flatMap { it.words }
 
     /** Joins selected words in visual reading order for copy/translate/excerpt actions. */
     fun selectionText(words: List<PdfTextWord>): String {
@@ -176,11 +182,8 @@ object PdfTextLayout {
         x: Float,
         y: Float,
     ): PdfTextWord? {
+        wordAtStrict(words, x, y)?.let { return it }
         if (words.isEmpty()) return null
-        val containing = words.filter { it.text.isNotBlank() && it.rect.contains(x, y) }
-        if (containing.isNotEmpty()) {
-            return containing.minByOrNull { it.rect.width * it.rect.height }
-        }
         return words.asSequence()
             .filter { it.text.isNotBlank() }
             .map { word -> word to distanceToRect(word.rect, x, y) }
@@ -195,6 +198,15 @@ object PdfTextLayout {
             )
             ?.first
     }
+
+    /** Strict containing-word hit used by always-on direct selection. */
+    fun wordAtStrict(
+        words: List<PdfTextWord>,
+        x: Float,
+        y: Float,
+    ): PdfTextWord? = words
+        .filter { it.text.isNotBlank() && it.rect.contains(x, y) }
+        .minByOrNull { it.rect.width * it.rect.height }
 
     private fun distanceToRect(rect: NormalizedRect, x: Float, y: Float): Float {
         val dx = max(max(rect.left - x, 0f), x - rect.right)

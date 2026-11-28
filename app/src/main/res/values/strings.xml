@@ -56,7 +56,7 @@
     <string name="zoom_in">확대</string>
     <string name="zoom_out">축소</string>
     <string name="fit_page">화면에 맞추기</string>
-    <string name="hint_view">보기 도구 · 위쪽 페이지 이동 · 두 손가락·더블 탭 확대</string>
+    <string name="hint_view">텍스트 탭·드래그로 선택 · 빈 곳에서 페이지 이동·확대</string>
     <string name="hint_draw">한 손가락으로 그리세요 · 스타일·실행 취소는 도구 독 위에</string>
     <string name="hint_text">텍스트를 놓을 위치를 탭하세요</string>
     <string name="hint_stamp">스탬프를 놓을 위치를 탭하세요</string>

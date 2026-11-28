@@ -37,6 +37,10 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.hackerdjakodjo.mypdfwriter.data.Annotation
@@ -183,6 +187,7 @@ fun PdfCanvas(
     links: List<PdfLink> = emptyList(),
     textWords: List<PdfTextWord> = emptyList(),
     textSelectMode: Boolean = false,
+    textLoading: Boolean = false,
     selectedWords: List<PdfTextWord> = emptyList(),
     searchHighlights: List<SearchMatchRect> = emptyList(),
     annotationProgress: (Annotation) -> Float = { 1f },
@@ -201,6 +206,8 @@ fun PdfCanvas(
     onRequestStamp: (NormalizedPoint) -> Unit,
     onRequestSignature: (NormalizedPoint) -> Unit,
     onTextSelection: (List<PdfTextWord>) -> Unit = {},
+    /** Short VIEW-mode tap on text; the host may select immediately or after geometry loads. */
+    onDirectTextTap: (NormalizedPoint) -> Unit = {},
     /**
      * Long press while in VIEW mode. The host decides whether to enter text-selection
      * mode and, when word geometry is already available, which word to preselect.
@@ -254,6 +261,9 @@ fun PdfCanvas(
     var eraserPressureSensitive by remember { mutableStateOf(false) }
     var selectionStart by remember { mutableStateOf<NormalizedPoint?>(null) }
     var selectionEnd by remember { mutableStateOf<NormalizedPoint?>(null) }
+    var directTextDragActive by remember { mutableStateOf(false) }
+    var suppressDirectTap by remember { mutableStateOf(false) }
+    var pendingDirectDrag by remember(pageKey) { mutableStateOf<Pair<NormalizedPoint, NormalizedPoint>?>(null) }
     var annotationPreview by remember(pageKey) { mutableStateOf<Annotation?>(null) }
     val eraserTrail = remember { mutableStateListOf<NormalizedPoint>() }
     val selectedWordSet = remember(selectedWords) { selectedWords.toSet() }
@@ -280,6 +290,10 @@ fun PdfCanvas(
     val currentLinks by rememberUpdatedState(links)
     val currentOnLinkTapped by rememberUpdatedState(onLinkTapped)
     val currentOnEraseStroke by rememberUpdatedState(onEraseStroke)
+    val currentOnTextSelection by rememberUpdatedState(onTextSelection)
+    val currentOnDirectTextTap by rememberUpdatedState(onDirectTextTap)
+    val currentTextLoading by rememberUpdatedState(textLoading)
+    val currentSelectablePageWords by rememberUpdatedState(selectablePageWords)
 
     LaunchedEffect(pageKey) {
         pan = Offset.Zero
@@ -292,6 +306,9 @@ fun PdfCanvas(
         eraserPressureSensitive = false
         selectionStart = null
         selectionEnd = null
+        directTextDragActive = false
+        suppressDirectTap = false
+        pendingDirectDrag = null
         annotationPreview = null
     }
 
@@ -303,6 +320,29 @@ fun PdfCanvas(
         if (!textSelectMode) {
             selectionStart = null
             selectionEnd = null
+        }
+    }
+
+    LaunchedEffect(textWords, currentTextLoading, pendingDirectDrag, tool, annotationEditMode, textSelectMode) {
+        val drag = pendingDirectDrag ?: return@LaunchedEffect
+        if (tool != Tool.VIEW || annotationEditMode || textSelectMode) {
+            pendingDirectDrag = null
+            return@LaunchedEffect
+        }
+        if (!currentTextLoading) {
+            if (currentSelectablePageWords.isNotEmpty()) {
+                currentOnTextSelection(
+                    PdfTextLayout.wordsForGestureOnPage(
+                        pageWords = currentSelectablePageWords,
+                        startX = drag.first.x,
+                        startY = drag.first.y,
+                        endX = drag.second.x,
+                        endY = drag.second.y,
+                        tapSpan = 0f,
+                    ),
+                )
+            }
+            pendingDirectDrag = null
         }
     }
 
@@ -459,9 +499,93 @@ fun PdfCanvas(
             }
         } else if (tool == Tool.VIEW) {
             Modifier
+                // Direct text drag claims only gestures that begin strictly on a
+                // word. Blank-area pan/page-swipe and two-finger zoom stay with
+                // the existing detectors below.
+                .pointerInput(pageIndex) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(
+                            requireUnconsumed = false,
+                            pass = PointerEventPass.Initial,
+                        )
+                        suppressDirectTap = false
+                        if (currentMemoHitTest(down.position)) return@awaitEachGesture
+                        val start = transform.normalize(down.position)
+                        val wordsReady = currentSelectablePageWords.isNotEmpty()
+                        if (!wordsReady && !currentTextLoading) return@awaitEachGesture
+                        if (wordsReady && PdfTextLayout.wordAtStrict(currentSelectablePageWords, start.x, start.y) == null) {
+                            return@awaitEachGesture
+                        }
+                        var claimed = false
+                        var completed = false
+                        var lastPublished: List<PdfTextWord> = currentSelectedWords
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                if (event.changes.count { it.pressed } > 1) {
+                                    if (claimed) currentOnTextSelection(emptyList())
+                                    return@awaitEachGesture
+                                }
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    completed = true
+                                    break
+                                }
+                                if (!change.positionChanged()) continue
+                                if (!claimed && (change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                                    claimed = true
+                                    directTextDragActive = true
+                                    selectionStart = start
+                                }
+                                if (!claimed) continue
+                                change.consume()
+                                val current = transform.normalize(change.position)
+                                selectionEnd = current
+                                if (currentSelectablePageWords.isEmpty()) continue
+                                val next = PdfTextLayout.wordsForGestureOnPage(
+                                    pageWords = currentSelectablePageWords,
+                                    startX = start.x,
+                                    startY = start.y,
+                                    endX = current.x,
+                                    endY = current.y,
+                                    tapSpan = 0f,
+                                )
+                                if (TextSelectionPublish.shouldPublish(lastPublished, next)) {
+                                    lastPublished = next
+                                    currentOnTextSelection(next)
+                                }
+                            }
+                        } finally {
+                            if (claimed) {
+                                val end = selectionEnd ?: start
+                                if (completed && currentSelectablePageWords.isNotEmpty()) {
+                                    val final = PdfTextLayout.wordsForGestureOnPage(
+                                        pageWords = currentSelectablePageWords,
+                                        startX = start.x,
+                                        startY = start.y,
+                                        endX = end.x,
+                                        endY = end.y,
+                                        tapSpan = 0f,
+                                    )
+                                    if (TextSelectionPublish.shouldPublish(lastPublished, final)) {
+                                        currentOnTextSelection(final)
+                                    }
+                                } else if (completed) {
+                                    pendingDirectDrag = start to end
+                                } else {
+                                    currentOnTextSelection(emptyList())
+                                }
+                                suppressDirectTap = true
+                                directTextDragActive = false
+                                selectionStart = null
+                                selectionEnd = null
+                            }
+                        }
+                    }
+                }
                 .pointerInput(Unit) {
                     detectTransformGestures { centroid, panChange, zoomChange, _ ->
-                        if (memoGestureActive.value) return@detectTransformGestures
+                        if (memoGestureActive.value || directTextDragActive || currentTextLoading) return@detectTransformGestures
                         val oldTotal = transform.total
                         val newZoom = (transform.zoom * zoomChange).coerceIn(1f, 6f)
                         val newTotal = transform.fit * newZoom
@@ -507,12 +631,20 @@ fun PdfCanvas(
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { position ->
+                            if (suppressDirectTap) {
+                                suppressDirectTap = false
+                                return@detectTapGestures
+                            }
                             // Links are checked only for short taps in VIEW mode;
                             // a card consumes its own taps before this handler.
                             if (!currentMemoHitTest(position)) {
                                 val point = transform.normalize(position)
                                 val link = PdfLinks.linkAt(currentLinks, point.x, point.y)
-                                if (link != null) currentOnLinkTapped(link)
+                                if (link != null) {
+                                    currentOnLinkTapped(link)
+                                } else {
+                                    currentOnDirectTextTap(point)
+                                }
                             }
                         },
                         onDoubleTap = { tapPosition ->
@@ -565,7 +697,7 @@ fun PdfCanvas(
                         // double tap writes it immediately while the parent's
                         // `zoom` prop only updates on the next composition.
                         if (currentMemoHitTest(down.position) || memoGestureActive.value ||
-                            currentZoom > 1f || transform.zoom > 1f
+                            directTextDragActive || currentTextLoading || currentZoom > 1f || transform.zoom > 1f
                         ) return@awaitEachGesture
                         val id = down.id.value
                         var totalX = 0f
@@ -577,6 +709,7 @@ fun PdfCanvas(
                         )
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
+                            if (directTextDragActive) return@awaitEachGesture
                             val pointer = event.changes.firstOrNull { it.id.value == id }
                             if (pointer == null || !pointer.pressed) break
                             if (event.changes.count { it.pressed } > 1) return@awaitEachGesture
@@ -889,7 +1022,42 @@ fun PdfCanvas(
             }
         }
 
-        Canvas(modifier = Modifier.fillMaxSize().then(gestureModifier)) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(gestureModifier)
+                .semantics {
+                    stateDescription = if (currentSelectedWords.isEmpty()) {
+                        "선택된 텍스트 없음"
+                    } else {
+                        "${currentSelectedWords.size}개 단어 선택됨"
+                    }
+                    if (tool == Tool.VIEW && selectablePageWords.isNotEmpty()) {
+                        val selectedIndex = currentSelectedWords.firstOrNull()
+                            ?.let { selectablePageWords.indexOf(it) } ?: -1
+                        customActions = listOf(
+                            CustomAccessibilityAction("첫 단어 선택") {
+                                currentOnTextSelection(listOf(selectablePageWords.first()))
+                                true
+                            },
+                            CustomAccessibilityAction("이전 단어 선택") {
+                                val index = if (selectedIndex < 0) {
+                                    selectablePageWords.lastIndex
+                                } else {
+                                    (selectedIndex - 1 + selectablePageWords.size) % selectablePageWords.size
+                                }
+                                currentOnTextSelection(listOf(selectablePageWords[index]))
+                                true
+                            },
+                            CustomAccessibilityAction("다음 단어 선택") {
+                                val index = (selectedIndex + 1).coerceAtLeast(0) % selectablePageWords.size
+                                currentOnTextSelection(listOf(selectablePageWords[index]))
+                                true
+                            },
+                        )
+                    }
+                },
+        ) {
             val cx = size.width / 2f + pan.x
             val cy = size.height / 2f + topAnchorOffset + pan.y
             drawIntoCanvas { canvas ->
@@ -1064,7 +1232,7 @@ fun PdfCanvas(
         // search and overlays above are NOT redrawn while a finger drags the
         // selection rectangle — only this small overlay is invalidated. The
         // transform below mirrors the page Canvas exactly so every rect aligns.
-        if (textSelectMode && textWords.isNotEmpty()) {
+        if ((textSelectMode || selectedWords.isNotEmpty()) && textWords.isNotEmpty()) {
             Canvas(Modifier.matchParentSize()) {
                 val cx = size.width / 2f + pan.x
                 val cy = size.height / 2f + topAnchorOffset + pan.y
@@ -1102,7 +1270,7 @@ fun PdfCanvas(
                         if (word in selectedWordSet) {
                             native.drawRect(left, top, right, bottom, selectedFill)
                             native.drawRect(left, top, right, bottom, selectedBorder)
-                        } else {
+                        } else if (textSelectMode) {
                             native.drawRect(left, top, right, bottom, subtleFill)
                         }
                     }

@@ -143,6 +143,44 @@ class PdfTextLayoutTest {
     }
 
     @Test
+    fun strictDirectHitDoesNotStealBlankAreaGestures() {
+        val outer = word("outer", 0.1f, 0.1f, 0.4f, 0.2f)
+        val inner = word("inner", 0.15f, 0.12f, 0.25f, 0.18f)
+
+        assertEquals(inner, PdfTextLayout.wordAtStrict(listOf(outer, inner), 0.2f, 0.15f))
+        assertNull(PdfTextLayout.wordAtStrict(listOf(outer, inner), 0.205f, 0.21f))
+        assertEquals(outer, PdfTextLayout.wordAt(listOf(outer, inner), 0.205f, 0.21f))
+    }
+
+    @Test
+    fun directDragUsesRealIntersectionWithoutTapFallback() {
+        val first = word("first", 0.1f, 0.1f, 0.2f, 0.2f)
+        val second = word("second", 0.22f, 0.1f, 0.32f, 0.2f)
+
+        assertEquals(
+            listOf(first, second),
+            PdfTextLayout.wordsForGestureOnPage(
+                pageWords = listOf(first, second),
+                startX = 0.12f,
+                startY = 0.15f,
+                endX = 0.30f,
+                endY = 0.15f,
+                tapSpan = 0f,
+            ),
+        )
+        assertTrue(
+            PdfTextLayout.wordsForGestureOnPage(
+                pageWords = listOf(first, second),
+                startX = 0.21f,
+                startY = 0.15f,
+                endX = 0.211f,
+                endY = 0.15f,
+                tapSpan = 0f,
+            ).isEmpty(),
+        )
+    }
+
+    @Test
     fun dragSelectionReturnsOnlyIntersectingWordsOnTheCurrentPage() {
         val hello = word("Hello", 0.1f, 0.1f, 0.2f, 0.12f)
         val world = word("world", 0.21f, 0.1f, 0.3f, 0.12f)
@@ -228,7 +266,8 @@ class PdfTextLayoutTest {
     }
 
     @Test
-    fun groupByLineUsesCachedLineOrder() {        val hello = word("Hello", 0.1f, 0.1f, 0.2f, 0.12f)
+    fun groupByLineUsesCachedLineOrder() {
+        val hello = word("Hello", 0.1f, 0.1f, 0.2f, 0.12f)
         val world = word("world", 0.21f, 0.101f, 0.3f, 0.121f)
         val second = word("Second", 0.1f, 0.2f, 0.2f, 0.22f)
         val line = word("line", 0.21f, 0.2f, 0.27f, 0.22f)

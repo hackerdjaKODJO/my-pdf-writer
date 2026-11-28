@@ -131,12 +131,10 @@ class PdfContextHintsTest {
     @Test
     fun hintTextsStayShortAndCarryTheOcrShortcut() {
         val viewHint = pdfContextHintText(PdfContextHint.VIEW_SELECTION_HINT)
-        assertTrue(viewHint.contains("길게 눌러 단어 선택"))
-        assertTrue(viewHint.contains("텍스트 선택"))
-        // In VIEW a plain tap follows a link and a drag pans/turns pages, so the
-        // hint must not claim those gestures select text.
-        assertFalse(viewHint.contains("탭해서 선택"))
-        assertFalse(viewHint.contains("드래그해서 범위 선택"))
+        assertTrue(viewHint.contains("탭"))
+        assertTrue(viewHint.contains("드래그"))
+        assertTrue(viewHint.contains("빈 곳"))
+        assertTrue(viewHint.contains("페이지 이동"))
         assertTrue(pdfContextHintText(PdfContextHint.LOADING).contains("읽는 중"))
         assertTrue(pdfContextHintText(PdfContextHint.NO_TEXT).contains("OCR"))
         assertTrue(pdfContextHintText(PdfContextHint.SELECTED_HINT).contains("탭"))

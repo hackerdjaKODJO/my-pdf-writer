@@ -2326,10 +2326,13 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
      * Loads word geometry for the working PDF on first use, then serves any page from
      * the per-document cache. PDFBox extraction stays off the main thread.
      */
-    fun loadTextWords(pageIndex: Int = _viewer.value?.pageIndex ?: 0) {
+    fun loadTextWords(
+        pageIndex: Int = _viewer.value?.pageIndex ?: 0,
+        announce: Boolean = true,
+    ) {
         val state = _viewer.value ?: return
         val file = workingFile ?: return
-        val key = textLayoutKeyFor(state, file)
+        val key = textLayoutKeyFor(state, file, pageIndex)
 
         if (key == textLayoutKey) {
             _viewer.update { it?.copy(textLoading = false) }
@@ -2351,7 +2354,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         _viewer.update { it?.copy(textLoading = true) }
         textLayoutJob = viewModelScope.launch {
             val lines = try {
-                withContext(Dispatchers.IO) { PdfTextLayout.lines(file) }
+                withContext(Dispatchers.IO) { PdfTextLayout.lines(file, pageIndex) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Throwable) {
@@ -2365,7 +2368,10 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 textLayoutLines = emptyList()
                 _textWords.value = emptyList()
                 _viewer.update {
-                    it?.copy(textLoading = false, message = "텍스트 레이아웃을 읽지 못했습니다.")
+                    it?.copy(
+                        textLoading = false,
+                        message = if (announce) "텍스트 레이아웃을 읽지 못했습니다." else it.message,
+                    )
                 }
             } else {
                 textLayoutKey = key
@@ -2374,7 +2380,7 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
                 _viewer.update {
                     it?.copy(
                         textLoading = false,
-                        message = if (lines.isEmpty()) {
+                        message = if (announce && lines.isEmpty()) {
                             "이 PDF에는 선택할 수 있는 텍스트가 없습니다."
                         } else {
                             it.message
@@ -2385,16 +2391,21 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Passive current-page warm-up for direct VIEW-mode text selection. */
+    fun preloadTextWords(pageIndex: Int = _viewer.value?.pageIndex ?: 0) =
+        loadTextWords(pageIndex, announce = false)
+
     private fun publishTextWords(pageIndex: Int) {
         _textWords.value = textLayoutLines
             .filter { it.pageIndex == pageIndex }
             .flatMap { it.words }
     }
 
-    private fun textLayoutKeyFor(state: ViewerUiState, file: File): String =
-        "${state.docId}:${state.contentFingerprint}:${file.absolutePath}:${file.lastModified()}:${state.pages.size}:${state.revision}"
+    private fun textLayoutKeyFor(state: ViewerUiState, file: File, pageIndex: Int): String =
+        "${state.docId}:${state.contentFingerprint}:${file.absolutePath}:${file.lastModified()}:${state.pages.size}:${state.revision}:$pageIndex"
 
     private fun resetTextLayout() {
+        PdfTextLayout.clearLineCache()
         synchronized(pageLinkCache) { pageLinkCache.clear() }
         textLayoutJob?.cancel()
         textLayoutJob = null
@@ -2509,6 +2520,14 @@ class PdfViewModel(application: Application) : AndroidViewModel(application) {
         if (added.isEmpty()) return
 
         mutateAnnotations { it + added }
+        added.forEachIndexed { index, annotation ->
+            PdfFlowTrace.annotate(
+                type = annotation.type.name,
+                annotationId = annotation.id,
+                page = annotation.page,
+                total = state.annotations.size + index + 1,
+            )
+        }
         _viewer.update {
             it?.copy(
                 message = when (type) {

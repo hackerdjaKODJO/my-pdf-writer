@@ -385,6 +385,7 @@ fun ViewerScreen(
     var signatureTarget by remember { mutableStateOf<NormalizedPoint?>(null) }
     var textSelectMode by remember { mutableStateOf(false) }
     var selectedWords by remember { mutableStateOf<List<PdfTextWord>>(emptyList()) }
+    var pendingDirectTextPoint by remember { mutableStateOf<NormalizedPoint?>(null) }
     var searchHighlights by remember { mutableStateOf<List<SearchMatchRect>>(emptyList()) }
     // Explicit dismissal of the one contextual hint chip; resets on document,
     // page, tool or selection-mode changes so guidance is not lost forever.
@@ -408,6 +409,7 @@ fun ViewerScreen(
     }
     var chromeHidden by remember { mutableStateOf(false) }
     val selectedText = remember(selectedWords) { PdfTextLayout.selectionText(selectedWords) }
+    val selectionUiActive = textSelectMode || selectedWords.isNotEmpty()
     val selectedAnnotation = remember(state.annotations, selectedAnnotationId) {
         state.annotations.firstOrNull { it.id == selectedAnnotationId }
     }
@@ -452,7 +454,21 @@ fun ViewerScreen(
             selectedAnnotationId = null
             textSelectMode = true
             selectedWords = emptyList()
+            pendingDirectTextPoint = null
             vm.loadTextWords(state.pageIndex)
+        }
+    }
+
+    val directSelectTextAt: (NormalizedPoint) -> Unit = { point ->
+        if (state.tool == Tool.VIEW && !annotationEditMode) {
+            val word = PdfTextLayout.wordAtStrict(pageTextWords, point.x, point.y)
+            if (word != null) {
+                pendingDirectTextPoint = null
+                selectedWords = listOf(word)
+            } else {
+                pendingDirectTextPoint = point
+                if (!state.textLoading) vm.preloadTextWords(state.pageIndex)
+            }
         }
     }
 
@@ -469,6 +485,7 @@ fun ViewerScreen(
             selectedAnnotationId = null
             textSelectMode = true
             selectedWords = emptyList()
+            pendingDirectTextPoint = null
             val pageWords = pageTextWords.filter {
                 it.pageIndex == state.pageIndex && it.text.isNotBlank()
             }
@@ -501,6 +518,9 @@ fun ViewerScreen(
         if (tool != Tool.VIEW) {
             annotationEditMode = false
             selectedAnnotationId = null
+            textSelectMode = false
+            selectedWords = emptyList()
+            pendingDirectTextPoint = null
         }
         vm.setTool(tool)
     }
@@ -509,6 +529,7 @@ fun ViewerScreen(
         vm.setTool(Tool.VIEW)
         textSelectMode = false
         selectedWords = emptyList()
+        pendingDirectTextPoint = null
         annotationsHidden = false
         annotationEditMode = true
     }
@@ -524,6 +545,7 @@ fun ViewerScreen(
     LaunchedEffect(state.docId) {
         textSelectMode = false
         selectedWords = emptyList()
+        pendingDirectTextPoint = null
         annotationEditMode = false
         selectedAnnotationId = null
     }
@@ -548,12 +570,25 @@ fun ViewerScreen(
     }
     LaunchedEffect(state.pageIndex, state.revision) {
         selectedWords = emptyList()
+        pendingDirectTextPoint = null
         if (textSelectMode) vm.loadTextWords(state.pageIndex)
     }
+    LaunchedEffect(pageTextWords, state.textLoading, pendingDirectTextPoint) {
+        val point = pendingDirectTextPoint ?: return@LaunchedEffect
+        if (!state.textLoading) {
+            val word = PdfTextLayout.wordAtStrict(pageTextWords, point.x, point.y)
+            if (word != null) selectedWords = listOf(word)
+            pendingDirectTextPoint = null
+        }
+    }
+    LaunchedEffect(state.docId, state.pageIndex, state.revision, state.tool, state.busy) {
+        if (!state.busy && state.tool == Tool.VIEW) vm.preloadTextWords(state.pageIndex)
+    }
     LaunchedEffect(state.tool) {
-        if (textSelectMode && state.tool != Tool.VIEW) {
+        if (state.tool != Tool.VIEW) {
             textSelectMode = false
             selectedWords = emptyList()
+            pendingDirectTextPoint = null
         }
     }
     LaunchedEffect(state.docId, state.pageIndex, state.tool, textSelectMode) {
@@ -561,8 +596,8 @@ fun ViewerScreen(
     }
     // An active annotation tool or text selection needs its action bar; never
     // leave it stranded behind hidden chrome.
-    LaunchedEffect(textSelectMode, state.tool) {
-        if (textSelectMode || state.tool != Tool.VIEW) chromeHidden = false
+    LaunchedEffect(selectionUiActive, state.tool) {
+        if (selectionUiActive || state.tool != Tool.VIEW) chromeHidden = false
     }
     LaunchedEffect(state.searchQuery, state.pageIndex, state.revision) {
         val query = viewerHighlightQuery(state.searchQuery)
@@ -1040,7 +1075,7 @@ fun ViewerScreen(
     // Split/focus chrome: with the study pane open no app bar or dock row may
     // consume height. All PDF controls become floating overlays over the strip.
     val splitMode = studyPane != null
-    val immersive = isChromeImmersive(splitMode, autoHideMode, chromeHidden)
+    val immersive = !selectionUiActive && isChromeImmersive(splitMode, autoHideMode, chromeHidden)
     val chromePolicy = pdfChromePolicy(
         studyPaneOpen = splitMode,
         textSelectMode = textSelectMode,
@@ -1163,7 +1198,7 @@ fun ViewerScreen(
                             onEditAnnotations = toggleAnnotationEdit,
                             annotationEditActive = annotationEditMode,
                         )
-                        if (textSelectMode) {
+                        if (selectionUiActive) {
                             TextSelectionActionBar(
                                 text = selectedText,
                                 pageIndex = state.pageIndex,
@@ -1343,6 +1378,7 @@ fun ViewerScreen(
                         links = pageLinks,
                         textWords = pageTextWords,
                         textSelectMode = textSelectMode,
+                        textLoading = state.textLoading,
                         selectedWords = selectedWords,
                         annotationProgress = { annotation ->
                             if (replayNote != null && replayNote?.pageIndex != state.pageIndex) 1f
@@ -1371,6 +1407,7 @@ fun ViewerScreen(
                         onRequestStamp = { stampTarget = it },
                         onRequestSignature = { signatureTarget = it },
                         onTextSelection = { selectedWords = it },
+                        onDirectTextTap = directSelectTextAt,
                         onRequestSelectionAt = requestSelectionAt,
                         onLinkTapped = handleLinkTap,
                         onPreviousPage = vm::previousPage,
